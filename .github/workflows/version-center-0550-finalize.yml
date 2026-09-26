@@ -1,0 +1,127 @@
+name: Version Center 0.1.550 isolated validation
+
+on:
+  push:
+    branches: [agent/version-center-0.1.550]
+    paths:
+      - '.github/workflows/version-center-0550-finalize.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/version-center-0.1.550
+          fetch-depth: 0
+
+      - name: Prove exact application source
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA='4029da184bd7656293e5a8be58753f4a123d8643'
+          git cat-file -e "$SOURCE_SHA^{commit}"
+          mapfile -t delta < <(git diff --name-only "$SOURCE_SHA"..HEAD)
+          if [[ ${#delta[@]} -ne 1 || "${delta[0]}" != '.github/workflows/version-center-0550-finalize.yml' ]]; then
+            printf 'Unexpected delta from application source commit:\n%s\n' "${delta[*]}" >&2
+            exit 1
+          fi
+          grep -Fq 'br.com.mapeiaia.rotacerta.versioncenter.VersionCenterCard()' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          grep -Fq 'val releaseVersionName = "0.1.550"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 5_842' app/build.gradle.kts
+          grep -Fq 'id("com.google.gms.google-services") apply false' app/build.gradle.kts
+          grep -Fq 'if (googleServicesConfigFile.isFile)' app/build.gradle.kts
+          grep -Fq 'import androidx.compose.foundation.rememberScrollState' app/src/main/java/br/com/mapeiaia/rotacerta/versioncenter/VersionCenterCard.kt
+          if grep -Fq 'items.forEach(::RegressionDetails)' app/src/main/java/br/com/mapeiaia/rotacerta/versioncenter/VersionCenterCard.kt; then
+            echo 'Stale non-composable function reference remains.' >&2
+            exit 1
+          fi
+          grep -Fq '"version": "0.1.550"' app/src/main/assets/release_history.json
+          grep -Fq '"build": 5842' app/src/main/assets/release_history.json
+          test ! -e app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Version Center unit tests
+        id: owned_tests
+        shell: bash
+        env:
+          ROTA_CERTA_GIT_SHA: 4029da184bd7656293e5a8be58753f4a123d8643
+          ROTA_CERTA_GIT_BRANCH: agent/version-center-0.1.550
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest --tests 'br.com.mapeiaia.rotacerta.versioncenter.VersionHistoryLogicTest' --no-daemon --stacktrace
+
+      - name: Full inherited unit suite
+        id: full_tests
+        continue-on-error: true
+        shell: bash
+        env:
+          ROTA_CERTA_GIT_SHA: 4029da184bd7656293e5a8be58753f4a123d8643
+          ROTA_CERTA_GIT_BRANCH: agent/version-center-0.1.550
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Lint
+        id: lint
+        continue-on-error: true
+        shell: bash
+        env:
+          ROTA_CERTA_GIT_SHA: 4029da184bd7656293e5a8be58753f4a123d8643
+          ROTA_CERTA_GIT_BRANCH: agent/version-center-0.1.550
+        run: |
+          set -euo pipefail
+          ./gradlew :app:lintDebug --no-daemon --stacktrace
+
+      - name: Assemble compile-validation APK
+        id: assemble
+        shell: bash
+        env:
+          ROTA_CERTA_GIT_SHA: 4029da184bd7656293e5a8be58753f4a123d8643
+          ROTA_CERTA_GIT_BRANCH: agent/version-center-0.1.550
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          mkdir -p /tmp/version-center-0550-validation
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/version-center-0550-validation/rota-certa-0.1.550-ci-validation-only.apk
+          sha256sum /tmp/version-center-0550-validation/rota-certa-0.1.550-ci-validation-only.apk > /tmp/version-center-0550-validation/apk.sha256
+
+      - name: Build evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/version-center-0550-validation
+          printf '%s\n' \
+            'purpose=compile-validation-only' \
+            'googleServicesConfigPresent=false' \
+            'googleServicesPluginApplied=false' \
+            'productionArtifact=false' \
+            'versionName=0.1.550' \
+            'versionCode=5842' \
+            'applicationSourceSha=4029da184bd7656293e5a8be58753f4a123d8643' \
+            'branch=agent/version-center-0.1.550' \
+            'versionCenterUnitTests=${{ steps.owned_tests.outcome }}' \
+            'fullInheritedUnitSuite=${{ steps.full_tests.outcome }}' \
+            'lint=${{ steps.lint.outcome }}' \
+            'assemble=${{ steps.assemble.outcome }}' \
+            > /tmp/version-center-0550-validation/evidence.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rota-certa-version-center-0.1.550-ci-validation-only
+          path: /tmp/version-center-0550-validation
+          retention-days: 7

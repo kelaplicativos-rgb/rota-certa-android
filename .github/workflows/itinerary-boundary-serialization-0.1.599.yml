@@ -1,0 +1,214 @@
+name: Itinerary boundary serialization 0.1.599
+
+on:
+  push:
+    branches:
+      - agent/itinerary-boundary-serialization-0.1.599
+    paths:
+      - '.github/workflows/itinerary-boundary-serialization-0.1.599.yml'
+      - 'app/build.gradle.kts'
+      - 'app/src/main/assets/release_history.json'
+      - 'app/src/main/assets/blablacar/scripts/trip_itinerary.js'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaItineraryRecovery0598.kt'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorNetworkSourceModule.kt'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/DedicatedItineraryRecovery0598Test.kt'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/ItineraryBoundarySerialization0599Test.kt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: itinerary-boundary-serialization-0599-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: itinerary_boundary_0599_ci_dummy_key
+      EXPECTED_VERSION_CODE: '5890'
+      EXPECTED_VERSION_NAME: '0.1.599'
+      BASE_SHA: '619d55e40392473a54bb0de4658e42285ca87eb8'
+
+    steps:
+      - name: Checkout exact triggering HEAD
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove exact source and isolated diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --check "$BASE_SHA"...HEAD
+          grep -Fq 'val releaseVersionCode = 5_890' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.599"' app/build.gradle.kts
+          grep -Fq '"version": "0.1.599"' app/src/main/assets/release_history.json
+          grep -Fq 'DETAIL, ITINERARY, PUBLIC_SHARE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'TRIP_ITINERARY_CAPTURED_0599' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'origin = result.detail.origin.ifBlank { candidate.origin.trim() }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'alignExactTripWaypoints0599' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorNetworkSourceModule.kt
+          grep -Fq 'networkComplete:networkComplete' app/src/main/assets/blablacar/scripts/trip_itinerary.js
+          git diff --name-only "$BASE_SHA"...HEAD | sort | tee /tmp/changed.txt
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          test -s "$FAROL"
+          sha256sum "$FAROL" | tee /tmp/farol-before.sha256
+          if grep -Fqx "$FAROL" /tmp/changed.txt; then
+            echo "Protected FAROL changed unexpectedly" >&2
+            exit 1
+          fi
+          printf '%s\n' "$GITHUB_SHA" | tee /tmp/source-head.txt
+          printf '%s\n' "$GITHUB_REF_NAME" | tee /tmp/source-branch.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify hosted Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK_ROOT"
+          test -d "$SDK_ROOT/platforms/android-35"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run targeted root-cause regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew             :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.ItineraryBoundarySerialization0599Test'             --tests 'br.com.mapeiaia.rotacerta.trips.DedicatedItineraryRecovery0598Test'             --tests 'br.com.mapeiaia.rotacerta.trips.CanonicalItinerarySegmentPreservation0597Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkSegments0319Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaSegments0311Test'             --tests 'br.com.mapeiaia.rotacerta.trips.SegmentAvailabilityCards0580Test'             --tests 'br.com.mapeiaia.rotacerta.trips.UnifiedSegmentAvailability0596Test'             --tests 'br.com.mapeiaia.rotacerta.trips.CentralDoDia0552Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace             | tee /tmp/targeted-tests.log
+
+      - name: Compare full unit-test failures against exact 0.1.598 base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add --detach /tmp/rc-0598 "$BASE_SHA"
+          chmod +x /tmp/rc-0598/gradlew
+
+          set +e
+          (
+            cd /tmp/rc-0598
+            ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ) > /tmp/base-tests.log 2>&1
+          BASE_EXIT=$?
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace > /tmp/head-tests.log 2>&1
+          HEAD_EXIT=$?
+          set -e
+
+          python3 - <<'PY'
+          import pathlib
+          import xml.etree.ElementTree as ET
+
+          def failures(root):
+              result = set()
+              d = pathlib.Path(root) / "app/build/test-results/testDebugUnitTest"
+              for f in d.glob("*.xml"):
+                  tree = ET.parse(f)
+                  for case in tree.getroot().iter("testcase"):
+                      if case.find("failure") is not None or case.find("error") is not None:
+                          result.add(f"{case.attrib.get('classname','')}::{case.attrib.get('name','')}")
+              return result
+
+          base = failures("/tmp/rc-0598")
+          head = failures(".")
+          new = sorted(head - base)
+          fixed = sorted(base - head)
+          pathlib.Path("/tmp/base-failures.txt").write_text("\n".join(sorted(base)) + ("\n" if base else ""))
+          pathlib.Path("/tmp/head-failures.txt").write_text("\n".join(sorted(head)) + ("\n" if head else ""))
+          pathlib.Path("/tmp/new-failures.txt").write_text("\n".join(new) + ("\n" if new else ""))
+          pathlib.Path("/tmp/fixed-baseline-failures.txt").write_text("\n".join(fixed) + ("\n" if fixed else ""))
+          print(f"baseline_failures={len(base)}")
+          print(f"head_failures={len(head)}")
+          print(f"new_failures={len(new)}")
+          print(f"fixed_baseline_failures={len(fixed)}")
+          if new:
+              print("\n".join(new))
+              raise SystemExit(1)
+          PY
+
+          echo "base_gradle_exit=$BASE_EXIT" | tee /tmp/unit-regression-summary.txt
+          echo "head_gradle_exit=$HEAD_EXIT" | tee -a /tmp/unit-regression-summary.txt
+          echo "new_failure_count=$(wc -l < /tmp/new-failures.txt)" | tee -a /tmp/unit-regression-summary.txt
+
+      - name: Assemble exact-head installable APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ROTA_CERTA_GIT_SHA="$GITHUB_SHA"
+          export ROTA_CERTA_GIT_BRANCH="$GITHUB_REF_NAME"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          unzip -t "$APK" > /tmp/zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -Fq 'Verified' /tmp/apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
+
+      - name: Package evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          sha256sum "$FAROL" | tee /tmp/farol-after.sha256
+          diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
+          OUT=/tmp/0599
+          mkdir -p "$OUT"
+          SHORT_SHA="${GITHUB_SHA:0:12}"
+          FINAL="$OUT/rota-certa-$EXPECTED_VERSION_NAME-$EXPECTED_VERSION_CODE-$SHORT_SHA.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$FINAL"
+          sha256sum "$FINAL" | tee "$OUT/apk.sha256"
+          cp /tmp/targeted-tests.log /tmp/unit-regression-summary.txt /tmp/base-failures.txt /tmp/head-failures.txt /tmp/new-failures.txt /tmp/fixed-baseline-failures.txt /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed.txt "$OUT/"
+          cat > "$OUT/root-cause-0598.txt" <<'EOF'
+          health_package=rota-certa-saude-0.1.598-completo-20260920-192104.zip
+          observed_barbosa_waypoints=6
+          observed_ezequiel_waypoints=3
+          observed_effective_itinerary_stops=0
+          observed_exact_candidate_boundaries_present=true
+          observed_dedicated_capture_stale_callback=true
+          root_cause_1=detail DOM boundaries were empty while exact candidate boundaries were populated
+          root_cause_2=TRIP_ITINERARY shared Phase.DETAIL and could lose its orchestrator token to delayed TRIP_DETAIL callbacks
+          fix_1=hydrate detail boundaries from exact strong-identity candidate before route reconciliation
+          fix_2=serialize dedicated itinerary capture in Phase.ITINERARY
+          fix_3=align complete exact-trip network endpoints to canonical card boundaries and preserve intermediate waypoints
+          EOF
+          cat > "$OUT/final-status.txt" <<EOF
+          package=br.com.mapeiaia.rotacerta
+          version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
+          source_head=$GITHUB_SHA
+          source_branch=$GITHUB_REF_NAME
+          exact_base=$BASE_SHA
+          boundary_hydration=PASS_BY_TEST
+          dedicated_itinerary_serialization=PASS_BY_TEST
+          exact_complete_waypoint_alignment=PASS_BY_TEST
+          detailed_segment_stop_mapping=PASS_BY_TEST
+          segment_availability_projection=PASS_BY_TEST
+          no_new_unit_failures_vs_0598=PASS_BY_TEST
+          farol_untouched=PASS
+          physical_approval=PENDING_SAMSUNG_SM_S911B_ANDROID_16
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.599-5890-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0599

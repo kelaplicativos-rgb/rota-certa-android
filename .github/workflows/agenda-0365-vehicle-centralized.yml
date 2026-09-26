@@ -1,0 +1,138 @@
+name: Rota Certa 0.1.365 vehicle settings centralized
+
+on:
+  push:
+    branches:
+      - agent/agenda-vehicle-centralized-0.1.365
+  pull_request:
+    branches:
+      - agent/agenda-simple-reservation-options-0.1.361
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agenda-vehicle-centralized-0365
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Prove source and surgical UI scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=b659c4fbfbc4e4248eb9051cf90fe985103b91fe
+          SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          grep -Fq 'versionCode = 5658' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.365"' app/build.gradle.kts
+
+          TIMELINE=app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          ONLINE=app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaSettingsUi.kt
+          ! grep -Fq 'driverDefaultsExpanded' "$TIMELINE"
+          ! grep -Fq 'if (driverDefaultsExpanded) "Fechar dados do veículo" else "Dados do veículo"' "$TIMELINE"
+          grep -Fq 'internal fun TripDriverDefaultsCard(' "$TIMELINE"
+          grep -Fq 'repository.saveSettings(settings.copy(vehicleCapacity = parsed))' "$TIMELINE"
+          grep -Fq 'referenceStore.save(origin)' "$TIMELINE"
+
+          grep -Fq 'if (vehicleExpanded) "🚗 Veículo ▲" else "🚗 Veículo ▼"' "$ONLINE"
+          grep -Fq 'TripDriverDefaultsCard(' "$ONLINE"
+          grep -Fq 'vehicleSettingsRepository' "$ONLINE"
+          grep -Fq 'PublicProfileTextField("Marca/modelo"' "$ONLINE"
+          grep -Fq 'PublicProfileTextField("Cor"' "$ONLINE"
+          grep -Fq 'PublicProfileTextField("Comodidades"' "$ONLINE"
+          grep -Fq 'WhatsApp e pagamento nunca são sobrescritos pela sincronização BlaBlaCar.' "$ONLINE"
+
+          test "$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' | wc -l)" -eq 0
+          git diff --name-only "$BASE"..HEAD | tee /tmp/changed-files.txt
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt > /tmp/farol.sha256
+
+      - name: Configure Firebase Android config
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          test -n "$APP_ID"
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests and installable APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          SOURCE_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
+          export ROTA_CERTA_GIT_SHA="$SOURCE_SHA"
+          export ROTA_CERTA_GIT_BRANCH="$SOURCE_BRANCH"
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace | tee /tmp/gradle.txt
+
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          cmp -s /tmp/farol.sha256 <(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt)
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
+          grep -Fq "versionCode='5658'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.365'" /tmp/aapt.txt
+
+          mkdir -p /tmp/0365
+          cp "$APK" /tmp/0365/rota-certa-0.1.365-veiculo-centralizado.apk
+          sha256sum /tmp/0365/rota-certa-0.1.365-veiculo-centralizado.apk | tee /tmp/0365/apk.sha256
+          cp /tmp/aapt.txt /tmp/0365/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0365/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0365/gradle.txt
+          cp /tmp/changed-files.txt /tmp/0365/changed-files.txt
+          git rev-parse HEAD > /tmp/0365/source-head.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0365/dex-strings.txt
+          grep -Fq "$SOURCE_SHA" /tmp/0365/dex-strings.txt
+          grep -Fq 'Sobre o Rota Certa' /tmp/0365/dex-strings.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.365-veiculo-centralizado
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0365

@@ -1,0 +1,93 @@
+diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/FarolVisualPriority0189.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/FarolVisualPriority0189.kt
+new file mode 100644
+index 0000000..ce7d394
+--- /dev/null
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/FarolVisualPriority0189.kt
+@@ -0,0 +1,87 @@
++package br.com.mapeiaia.rotacerta
++
++import kotlin.math.max
++
++/**
++ * Segmentação espacial universal da 0.1.189.
++ *
++ * Não conhece marcas nem decide cor. Apenas transforma fragmentos posicionados
++ * em blocos visuais coerentes para que o gate universal possa escolher a
++ * autoridade visual atual sem misturar cards.
++ */
++data class FarolSpatialFragment0189(
++    val id: String,
++    val text: String,
++    val left: Int,
++    val top: Int,
++    val right: Int,
++    val bottom: Int,
++)
++
++data class FarolVisualGroup0189(
++    val id: String,
++    val text: String,
++    val left: Int,
++    val top: Int,
++    val right: Int,
++    val bottom: Int,
++    val fragmentIds: List<String>,
++)
++
++object FarolVisualPriority0189 {
++    const val CONTRACT_MARKER = "FAROL_VISUAL_PRIORITY_0189"
++
++    fun cluster(
++        prefix: String,
++        fragments: List<FarolSpatialFragment0189>,
++    ): List<FarolVisualGroup0189> {
++        val valid = fragments.asSequence()
++            .filter { it.text.isNotBlank() }
++            .filter { it.right > it.left && it.bottom > it.top }
++            .sortedWith(compareBy<FarolSpatialFragment0189> { it.top }.thenBy { it.left })
++            .take(120)
++            .toList()
++        if (valid.isEmpty()) return emptyList()
++
++        val heights = valid.map { (it.bottom - it.top).coerceAtLeast(1) }.sorted()
++        val medianHeight = heights[heights.size / 2]
++        // Adaptativo: acompanha a tipografia da tela e evita um valor específico de aparelho.
++        val maxVerticalGap = (medianHeight * 2.4).toInt().coerceIn(28, 180)
++
++        val groups = ArrayList<MutableList<FarolSpatialFragment0189>>()
++        var current = arrayListOf(valid.first())
++        for (next in valid.drop(1)) {
++            val currentBottom = current.maxOf { it.bottom }
++            val verticalGap = (next.top - currentBottom).coerceAtLeast(0)
++            val currentLeft = current.minOf { it.left }
++            val currentRight = current.maxOf { it.right }
++            val horizontalOverlap = minOf(currentRight, next.right) - maxOf(currentLeft, next.left)
++            val currentWidth = (currentRight - currentLeft).coerceAtLeast(1)
++            val nextWidth = (next.right - next.left).coerceAtLeast(1)
++            val overlapRatio = horizontalOverlap.coerceAtLeast(0).toDouble() / minOf(currentWidth, nextWidth)
++
++            // Fragmentos próximos verticalmente pertencem ao mesmo contêiner visual.
++            // Em layouts com colunas, exigimos alguma sobreposição horizontal quando há lacuna.
++            val joins = verticalGap <= maxVerticalGap && (verticalGap == 0 || overlapRatio >= 0.12)
++            if (joins) {
++                current += next
++            } else {
++                groups += current
++                current = arrayListOf(next)
++            }
++        }
++        groups += current
++
++        return groups.mapIndexed { index, group ->
++            FarolVisualGroup0189(
++                id = "$prefix/group:$index",
++                text = group.map { it.text.trim() }.filter(String::isNotBlank).distinct().joinToString("\n"),
++                left = group.minOf { it.left },
++                top = group.minOf { it.top },
++                right = group.maxOf { it.right },
++                bottom = group.maxOf { it.bottom },
++                fragmentIds = group.map { it.id },
++            )
++        }.filter { it.text.isNotBlank() }
++    }
++}

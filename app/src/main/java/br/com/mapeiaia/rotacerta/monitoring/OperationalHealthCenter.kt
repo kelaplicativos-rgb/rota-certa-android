@@ -1,0 +1,866 @@
+package br.com.mapeiaia.rotacerta.monitoring
+
+import android.content.ContentProvider
+import android.content.ContentValues
+import android.content.Context
+import android.database.Cursor
+import android.net.Uri
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Card
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.work.CoroutineWorker
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
+import br.com.mapeiaia.rotacerta.BuildConfig
+import br.com.mapeiaia.rotacerta.DiagnosticSeverity0507
+import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
+import br.com.mapeiaia.rotacerta.trips.AgendaSyncCrashTraceStore
+import org.json.JSONArray
+import org.json.JSONObject
+import java.security.MessageDigest
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+enum class OperationalHealthState { GREEN, YELLOW, RED }
+enum class OperationalIncidentSeverity { WARNING, CRITICAL }
+enum class OperationalIncidentLifecycle { ACTIVE, RECOVERED, HISTORICAL, REGRESSION }
+enum class OperationalValidationState { IMPROVED, STABLE, REGRESSION, INSUFFICIENT_DATA }
+
+data class OperationalIncident(
+    val id: String,
+    val severity: OperationalIncidentSeverity,
+    val module: String,
+    val fingerprint: String,
+    val firstSeenMillis: Long,
+    val lastSeenMillis: Long,
+    val count: Int,
+    val errorCode: String,
+    val symptom: String,
+    val probableRootCause: String,
+    val confidencePercent: Int,
+    val suggestedCorrection: String,
+    val lifecycle: OperationalIncidentLifecycle = OperationalIncidentLifecycle.ACTIVE,
+)
+
+data class OperationalOpportunity(
+    val incidentId: String,
+    val title: String,
+    val proposal: String,
+)
+
+data class OperationalHealthSnapshot(
+    val scannedAtMillis: Long,
+    val state: OperationalHealthState,
+    val sourceEventCount: Int,
+    val droppedEvents: Long,
+    val incidents: List<OperationalIncident>,
+    val opportunities: List<OperationalOpportunity>,
+    val validation: OperationalValidationState,
+    val validationSummary: String,
+)
+
+object OperationalHealthEngine {
+    private const val DAY = 24L * 60L * 60L * 1000L
+    private const val SIX_HOURS = 6L * 60L * 60L * 1000L
+    private val failureTokens = listOf(
+        "ERROR", "FAILED", "FAILURE", "MISSING", "MISMATCH", "TIMEOUT",
+        "STALE", "BLOCKED", "UNAVAILABLE", "CRASH", "REJECTED",
+        "SLOW_OPERATION", "LONG_BLOCK", "JANK_FRAME",
+    )
+    private val criticalTokens = listOf(
+        "CRASH", "IDENTITY", "PROFILE_MISMATCH", "EDIT_TARGET_MISSING",
+        "CANONICAL", "CORRUPT", "AUTH", "SESSION",
+    )
+
+    fun analyze(
+        snapshot: UnifiedDebugEventStore.Snapshot,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): OperationalHealthSnapshot {
+        val candidates = snapshot.events.filter { event ->
+            event.atMillis >= nowMillis - DAY && isPotentialProblem(event)
+        }
+        val groups = candidates.groupBy(::fingerprint)
+        val incidents = groups.map { (fingerprint, grouped) ->
+            val ordered = grouped.sortedBy { it.atMillis }
+            val sample = ordered.last()
+            val diagnostic = sample.diagnosticContext
+            val invariantErrorCode = when {
+                isMissingSpecificTripHref0576(sample) -> "SPECIFIC_TRIP_HREF_COVERAGE_MISSING_0576"
+                else -> ""
+            }
+            val errorCode = diagnostic?.errorCode.orEmpty().ifBlank { invariantErrorCode }
+            val module = diagnostic?.parentModule?.label ?: inferModule(sample.stage)
+            val technicalKey = listOf(errorCode, sample.stage, diagnostic?.operation.orEmpty())
+                .joinToString(" ")
+                .uppercase(Locale.ROOT)
+            val severity = if (
+                diagnostic?.severity == DiagnosticSeverity0507.ERROR &&
+                criticalTokens.any(technicalKey::contains)
+            ) OperationalIncidentSeverity.CRITICAL
+            else if (criticalTokens.any(technicalKey::contains)) OperationalIncidentSeverity.CRITICAL
+            else OperationalIncidentSeverity.WARNING
+            val diagnosis = diagnose(technicalKey, module)
+            OperationalIncident(
+                id = "INC-" + fingerprint.take(10).uppercase(Locale.ROOT),
+                severity = severity,
+                module = module,
+                fingerprint = fingerprint,
+                firstSeenMillis = ordered.first().atMillis,
+                lastSeenMillis = sample.atMillis,
+                count = grouped.size,
+                errorCode = errorCode.ifBlank { normalizedStage(sample.stage) },
+                symptom = sanitizeEvidence(sample),
+                probableRootCause = diagnosis.rootCause,
+                confidencePercent = diagnosis.confidence,
+                suggestedCorrection = diagnosis.correction,
+                lifecycle = if (grouped.all(::isHistoricalRehydratedEvidence0576)) {
+                    OperationalIncidentLifecycle.HISTORICAL
+                } else {
+                    OperationalIncidentLifecycle.ACTIVE
+                },
+            )
+        }.sortedWith(
+            compareByDescending<OperationalIncident> { it.severity == OperationalIncidentSeverity.CRITICAL }
+                .thenByDescending { it.lastSeenMillis },
+        )
+
+        val activeIncidents = incidents.filter {
+            it.lifecycle == OperationalIncidentLifecycle.ACTIVE ||
+                it.lifecycle == OperationalIncidentLifecycle.REGRESSION
+        }
+        val recentCritical = activeIncidents.any {
+            it.severity == OperationalIncidentSeverity.CRITICAL &&
+                it.lastSeenMillis >= nowMillis - 60L * 60L * 1000L
+        }
+        val state = when {
+            recentCritical -> OperationalHealthState.RED
+            activeIncidents.isNotEmpty() -> OperationalHealthState.YELLOW
+            else -> OperationalHealthState.GREEN
+        }
+        val opportunities = activeIncidents
+            .filter { it.count >= 2 || it.severity == OperationalIncidentSeverity.CRITICAL }
+            .take(12)
+            .map(::opportunityFor)
+        val comparisonEvents = snapshot.events.filterNot(::isHistoricalRehydratedEvidence0576)
+        val recentCandidates = candidates.filter { it.atMillis >= nowMillis - SIX_HOURS }
+        val previousCandidates = candidates.filter {
+            it.atMillis >= nowMillis - (2L * SIX_HOURS) && it.atMillis < nowMillis - SIX_HOURS
+        }
+        val recentIncidentCount = recentCandidates.map(::fingerprint).distinct().size
+        val previousIncidentCount = previousCandidates.map(::fingerprint).distinct().size
+        val previousCoverageEvents = comparisonEvents.filter {
+            it.atMillis >= nowMillis - (2L * SIX_HOURS) && it.atMillis < nowMillis - SIX_HOURS
+        }
+        val recentCoverageEvents = comparisonEvents.filter {
+            it.atMillis >= nowMillis - SIX_HOURS && it.atMillis <= nowMillis
+        }
+        val oldestComparableAt = comparisonEvents.minOfOrNull { it.atMillis }
+        val newestComparableAt = comparisonEvents.maxOfOrNull { it.atMillis }
+        val hasFullComparisonWindow =
+            previousCoverageEvents.isNotEmpty() &&
+                recentCoverageEvents.isNotEmpty() &&
+                oldestComparableAt != null &&
+                newestComparableAt != null &&
+                oldestComparableAt < nowMillis - SIX_HOURS &&
+                newestComparableAt >= nowMillis - SIX_HOURS
+
+        val validation = when {
+            !hasFullComparisonWindow -> OperationalValidationState.INSUFFICIENT_DATA
+            previousIncidentCount > 0 && recentIncidentCount == 0 -> OperationalValidationState.IMPROVED
+            recentIncidentCount > previousIncidentCount -> OperationalValidationState.REGRESSION
+            else -> OperationalValidationState.STABLE
+        }
+        val validationSummary = when (validation) {
+            OperationalValidationState.IMPROVED ->
+                "Incidentes únicos caíram de $previousIncidentCount para 0; eventos relacionados na janela anterior=${previousCandidates.size}."
+            OperationalValidationState.REGRESSION ->
+                "Incidentes únicos aumentaram de $previousIncidentCount para $recentIncidentCount; eventos relacionados na janela recente=${recentCandidates.size}."
+            OperationalValidationState.STABLE ->
+                "Incidentes únicos: anterior=$previousIncidentCount e recente=$recentIncidentCount; eventos recentes=${recentCandidates.size}."
+            OperationalValidationState.INSUFFICIENT_DATA -> {
+                val oldest = oldestComparableAt?.let { nowMillis - it } ?: 0L
+                val coverageHours = oldest / (60L * 60L * 1000L)
+                "Comparação de 12h indisponível: cobertura viva aproximada=${coverageHours}h; eventos na janela anterior=${previousCoverageEvents.size}; eventos na janela recente=${recentCoverageEvents.size}; removidos nesta sessão=${snapshot.droppedEvents}. Evidência histórica reidratada não conta como cobertura contínua."
+            }
+        }
+        return OperationalHealthSnapshot(
+            scannedAtMillis = nowMillis,
+            state = state,
+            sourceEventCount = snapshot.events.size,
+            droppedEvents = snapshot.droppedEvents,
+            incidents = incidents.take(30),
+            opportunities = opportunities,
+            validation = validation,
+            validationSummary = validationSummary,
+        )
+    }
+
+    fun isPotentialProblem(event: UnifiedDebugEventStore.SnapshotEvent): Boolean {
+        if (isExpectedDefensiveOutcome0576(event)) return false
+        if (isMissingSpecificTripHref0576(event)) return true
+        val diagnostic = event.diagnosticContext
+        if (diagnostic?.severity == DiagnosticSeverity0507.ERROR) return true
+        if (diagnostic?.errorCode?.isNotBlank() == true) return true
+        val stage = event.stage.uppercase(Locale.ROOT)
+        val result = diagnostic?.result.orEmpty().uppercase(Locale.ROOT)
+        if (result in setOf("SUCCESS", "SUCCEEDED", "OK", "COMPLETED", "RESOLVED", "RECOVERED")) return false
+        return failureTokens.any(stage::contains)
+    }
+
+    internal fun isExpectedDefensiveOutcome0576(event: UnifiedDebugEventStore.SnapshotEvent): Boolean {
+        val stage = event.stage.uppercase(Locale.ROOT)
+        if (stage == "AGENDA_BACKGROUND_SYNC_STALE_ONE_SHOT_0435") return true
+        if (
+            stage.contains("STALE") &&
+            (stage.contains("IGNORED") || stage.contains("REJECTED") || stage.contains("SKIPPED"))
+        ) return true
+        val result = event.diagnosticContext?.result.orEmpty().uppercase(Locale.ROOT)
+        return result in setOf("SKIPPED", "IGNORED", "REJECTED", "STALE_STATE") &&
+            stage.contains("STALE")
+    }
+
+    internal fun isHistoricalRehydratedEvidence0576(event: UnifiedDebugEventStore.SnapshotEvent): Boolean =
+        event.stage.startsWith("RECOVERED_", ignoreCase = true)
+
+    internal fun isMissingSpecificTripHref0576(event: UnifiedDebugEventStore.SnapshotEvent): Boolean {
+        if (!event.stage.equals("TRIP_IDENTITY", ignoreCase = true)) return false
+        val details = event.details.lowercase(Locale.ROOT)
+        return "externaltripidpresent=true" in details && "specifichrefpresent=false" in details
+    }
+
+    private data class Diagnosis(val rootCause: String, val confidence: Int, val correction: String)
+
+    private fun diagnose(key: String, module: String): Diagnosis = when {
+        key.contains("EDIT_TARGET_MISSING") ->
+            Diagnosis(
+                "A ação chegou ao executor sem um alvo operacional forte previamente resolvido.",
+                95,
+                "Resolver uma TripOperationalIdentity única antes de qualquer ação e bloquear execução quando a identidade estiver incompleta.",
+            )
+        (key.contains("CANONICAL") || key.contains("SEGMENT")) &&
+            (key.contains("SEAT") || key.contains("AVAIL") || key.contains("MISMATCH")) ->
+            Diagnosis(
+                "A projeção consumida por uma superfície não contém o mesmo contrato canônico de disponibilidade usado pela origem.",
+                91,
+                "Publicar disponibilidade por trecho dentro do mesmo snapshot canônico e validar a invariante Agenda.segmentAvailability == Timeline.segmentAvailability.",
+            )
+        key.contains("REFRESH") && (key.contains("SCOPE") || key.contains("ALL")) ->
+            Diagnosis(
+                "O estado visual de sincronização mistura escopo global com operação de uma única viagem.",
+                90,
+                "Introduzir OperationScope explícito (GLOBAL, TRIP, PROFILE, PASSENGER) e derivar a UI exclusivamente desse escopo.",
+            )
+        key.contains("PASSENGER") && (key.contains("LOAD") || key.contains("TIMEOUT")) ->
+            Diagnosis(
+                "O ciclo assíncrono de passageiros não alcançou estado terminal confiável.",
+                84,
+                "Modelar carregamento com estados terminais explícitos, timeout observável e invalidação por versão da viagem.",
+            )
+        key.contains("SPECIFIC_TRIP_HREF_COVERAGE_MISSING") ->
+            Diagnosis(
+                "A coleta reconheceu a identidade externa da viagem, mas não preservou um href específico para abrir a viagem correspondente.",
+                96,
+                "Tratar externalTripId + href específico como contrato indivisível de identidade de navegação; capturar o href na mesma origem autoritativa e bloquear promoção de uma viagem navegável quando o binding estiver ausente.",
+            )
+        key.contains("PERMALINK") || key.contains("PUBLIC_LINK") ->
+            Diagnosis(
+                "O vínculo entre a viagem administrativa e o permalink público não possui autoridade forte em algum ponto do fluxo.",
+                89,
+                "Preservar somente bindings autoritativos observados e rejeitar reconstrução ou promoção de URL por heurística.",
+            )
+        key.contains("PROFILE_MISMATCH") || key.contains("SESSION") || key.contains("AUTH") ->
+            Diagnosis(
+                "A operação perdeu a atestação entre identidade esperada, sessão isolada e destino final.",
+                88,
+                "Manter validação fail-closed de profileUuid/sessão e exigir atestação positiva antes de marcar a operação como concluída.",
+            )
+        key.contains("STALE") || key.contains("SNAPSHOT") ->
+            Diagnosis(
+                "Há uma janela em que uma projeção antiga permanece elegível depois de uma mudança de autoridade.",
+                80,
+                "Versionar snapshots e invalidações com revisão monotônica e impedir regressão para revisão anterior.",
+            )
+        key.contains("BOOKING_OUTBOX_ENQUEUE") &&
+            (key.contains("SLOW_OPERATION") || key.contains("LONG_BLOCK")) ->
+            Diagnosis(
+                "A persistência da outbox canônica está consumindo tempo excessivo no caminho de reconciliação, tipicamente por reserialização de snapshots históricos redundantes.",
+                97,
+                "Compactar histórico terminal da outbox por viagem, preservar integralmente somente trabalho acionável e medir novamente BOOKING_OUTBOX_ENQUEUE antes de alterar semântica canônica.",
+            )
+        key.contains("BOOKING_RECONCILE") &&
+            (key.contains("SLOW_OPERATION") || key.contains("LONG_BLOCK")) ->
+            Diagnosis(
+                "A reconciliação de reservas está fan-out sobre muitos alvos e herda o custo das fases de persistência/publicação pós-importação.",
+                93,
+                "Separar custo de fetch/import/outbox por fase, eliminar persistência histórica redundante primeiro e só então reduzir escopo remoto se a latência de BOOKING_REMOTE_FETCH continuar dominante.",
+            )
+        key.contains("SLOW_OPERATION") || key.contains("LONG_BLOCK") || key.contains("JANK_FRAME") ->
+            Diagnosis(
+                "Uma operação ou frame ultrapassou o orçamento de responsividade e bloqueou a experiência perceptível da tela.",
+                92,
+                "Retirar trabalho pesado da main thread, reduzir recomposição/serialização no caminho crítico e validar novamente os percentis e frames longos.",
+            )
+        else ->
+            Diagnosis(
+                "Falha recorrente ou terminal detectada no módulo $module; os eventos disponíveis ainda não isolam uma única causa.",
+                60,
+                "Correlacionar operationId/correlationId e comparar o primeiro desvio com o último estado saudável antes de alterar a lógica de negócio.",
+            )
+    }
+
+    internal fun opportunityForIncident0575(incident: OperationalIncident): OperationalOpportunity =
+        opportunityFor(incident)
+
+    private fun opportunityFor(incident: OperationalIncident): OperationalOpportunity {
+        val key = (incident.errorCode + " " + incident.probableRootCause).uppercase(Locale.ROOT)
+        return when {
+            key.contains("IDENT") || key.contains("TARGET") ->
+                OperationalOpportunity(
+                    incident.id,
+                    "Identidade operacional única",
+                    "Centralizar profileUuid + tripId + canonicalTripId + conta proprietária em um resolvedor único reutilizado por todas as ações.",
+                )
+            key.contains("CANON") || key.contains("SEGMENT") ->
+                OperationalOpportunity(
+                    incident.id,
+                    "Contrato canônico verificável",
+                    "Transformar paridade Agenda/Timeline em invariante automática de CI e de runtime, sem cálculos paralelos por superfície.",
+                )
+            key.contains("SCOPE") || key.contains("REFRESH") ->
+                OperationalOpportunity(
+                    incident.id,
+                    "Escopo explícito de operação",
+                    "Adotar um OperationScope tipado para eliminar estados globais representando ações locais.",
+                )
+            else ->
+                OperationalOpportunity(
+                    incident.id,
+                    "Corrigir ${incident.errorCode.take(48)}",
+                    "Causa provável (${incident.confidencePercent}%): ${incident.probableRootCause} Correção estrutural: ${incident.suggestedCorrection}",
+                )
+        }
+    }
+
+    internal fun fingerprintForEvidence0575(event: UnifiedDebugEventStore.SnapshotEvent): String =
+        fingerprint(event)
+
+    private fun fingerprint(event: UnifiedDebugEventStore.SnapshotEvent): String {
+        val d = event.diagnosticContext
+        val raw = listOf(
+            d?.parentModule?.name.orEmpty(),
+            d?.errorCode.orEmpty(),
+            d?.operation.orEmpty(),
+            normalizedStage(event.stage),
+        ).joinToString("|").lowercase(Locale.ROOT)
+        return MessageDigest.getInstance("SHA-256")
+            .digest(raw.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+    }
+
+    private fun normalizedStage(value: String): String =
+        value.uppercase(Locale.ROOT)
+            .replace(Regex("[0-9]{3,4}"), "#")
+            .take(120)
+
+    private fun inferModule(stage: String): String {
+        val upper = stage.uppercase(Locale.ROOT)
+        return when {
+            upper.contains("AGENDA") -> "Agenda"
+            upper.contains("TIMELINE") -> "Timeline"
+            upper.contains("BLABLA") -> "BlaBlaCar"
+            upper.contains("SCRIPT") -> "Scripts"
+            upper.contains("PASSENGER") -> "Passageiros"
+            else -> "Operação"
+        }
+    }
+
+    private fun sanitizeEvidence(event: UnifiedDebugEventStore.SnapshotEvent): String {
+        val diagnostic = event.diagnosticContext
+        return buildString {
+            append(event.stage.take(140))
+            diagnostic?.operation?.takeIf(String::isNotBlank)?.let { append(" • operation=").append(it.take(80)) }
+            diagnostic?.result?.takeIf(String::isNotBlank)?.let { append(" • result=").append(it.take(60)) }
+            diagnostic?.reason?.takeIf(String::isNotBlank)?.let { append(" • reason=").append(it.take(180)) }
+        }.let(UnifiedDebugEventStore::sanitizeForExport)
+    }
+}
+
+object OperationalHealthRuntime {
+    private val latestProblemAt = AtomicLong(0L)
+    private val latestCriticalAt = AtomicLong(0L)
+
+    fun observe(event: UnifiedDebugEventStore.SnapshotEvent) {
+        if (!OperationalHealthEngine.isPotentialProblem(event)) return
+        latestProblemAt.accumulateAndGet(event.atMillis, ::maxOf)
+        val key = buildString {
+            append(event.stage)
+            append(' ')
+            append(event.diagnosticContext?.errorCode.orEmpty())
+        }.uppercase(Locale.ROOT)
+        if (
+            event.diagnosticContext?.severity == DiagnosticSeverity0507.ERROR ||
+            listOf("CRASH", "IDENTITY", "PROFILE_MISMATCH", "EDIT_TARGET_MISSING", "CANONICAL").any(key::contains)
+        ) {
+            latestCriticalAt.accumulateAndGet(event.atMillis, ::maxOf)
+        }
+    }
+
+    fun latestProblemAtMillis(): Long = latestProblemAt.get()
+    fun latestCriticalAtMillis(): Long = latestCriticalAt.get()
+}
+
+object OperationalHealthStore {
+    private const val PREFS = "rota_certa_operational_health_0572"
+    private const val KEY = "snapshot"
+
+    fun save(context: Context, snapshot: OperationalHealthSnapshot) {
+        val json = JSONObject()
+            .put("scannedAtMillis", snapshot.scannedAtMillis)
+            .put("state", snapshot.state.name)
+            .put("sourceEventCount", snapshot.sourceEventCount)
+            .put("droppedEvents", snapshot.droppedEvents)
+            .put("validation", snapshot.validation.name)
+            .put("validationSummary", snapshot.validationSummary)
+        val incidents = JSONArray()
+        snapshot.incidents.forEach { incident ->
+            incidents.put(
+                JSONObject()
+                    .put("id", incident.id)
+                    .put("severity", incident.severity.name)
+                    .put("module", incident.module)
+                    .put("fingerprint", incident.fingerprint)
+                    .put("firstSeenMillis", incident.firstSeenMillis)
+                    .put("lastSeenMillis", incident.lastSeenMillis)
+                    .put("count", incident.count)
+                    .put("errorCode", incident.errorCode)
+                    .put("symptom", incident.symptom)
+                    .put("probableRootCause", incident.probableRootCause)
+                    .put("confidencePercent", incident.confidencePercent)
+                    .put("suggestedCorrection", incident.suggestedCorrection)
+                    .put("lifecycle", incident.lifecycle.name),
+            )
+        }
+        json.put("incidents", incidents)
+        val opportunities = JSONArray()
+        snapshot.opportunities.forEach { opportunity ->
+            opportunities.put(
+                JSONObject()
+                    .put("incidentId", opportunity.incidentId)
+                    .put("title", opportunity.title)
+                    .put("proposal", opportunity.proposal),
+            )
+        }
+        json.put("opportunities", opportunities)
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY, json.toString()).apply()
+    }
+
+    fun load(context: Context): OperationalHealthSnapshot? {
+        val raw = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY, null) ?: return null
+        return runCatching {
+            val json = JSONObject(raw)
+            val incidentsJson = json.optJSONArray("incidents") ?: JSONArray()
+            val incidents = buildList {
+                for (index in 0 until incidentsJson.length()) {
+                    val item = incidentsJson.getJSONObject(index)
+                    add(
+                        OperationalIncident(
+                            id = item.optString("id"),
+                            severity = enumValueOrDefault(item.optString("severity"), OperationalIncidentSeverity.WARNING),
+                            module = item.optString("module"),
+                            fingerprint = item.optString("fingerprint"),
+                            firstSeenMillis = item.optLong("firstSeenMillis"),
+                            lastSeenMillis = item.optLong("lastSeenMillis"),
+                            count = item.optInt("count"),
+                            errorCode = item.optString("errorCode"),
+                            symptom = item.optString("symptom"),
+                            probableRootCause = item.optString("probableRootCause"),
+                            confidencePercent = item.optInt("confidencePercent"),
+                            suggestedCorrection = item.optString("suggestedCorrection"),
+                            lifecycle = enumValueOrDefault(
+                                item.optString("lifecycle"),
+                                OperationalIncidentLifecycle.HISTORICAL,
+                            ),
+                        ),
+                    )
+                }
+            }
+            val opportunitiesJson = json.optJSONArray("opportunities") ?: JSONArray()
+            val opportunities = buildList {
+                for (index in 0 until opportunitiesJson.length()) {
+                    val item = opportunitiesJson.getJSONObject(index)
+                    add(
+                        OperationalOpportunity(
+                            incidentId = item.optString("incidentId"),
+                            title = item.optString("title"),
+                            proposal = item.optString("proposal"),
+                        ),
+                    )
+                }
+            }
+            OperationalHealthSnapshot(
+                scannedAtMillis = json.optLong("scannedAtMillis"),
+                state = enumValueOrDefault(json.optString("state"), OperationalHealthState.GREEN),
+                sourceEventCount = json.optInt("sourceEventCount"),
+                droppedEvents = json.optLong("droppedEvents"),
+                incidents = incidents,
+                opportunities = opportunities,
+                validation = enumValueOrDefault(json.optString("validation"), OperationalValidationState.INSUFFICIENT_DATA),
+                validationSummary = json.optString("validationSummary"),
+            )
+        }.getOrNull()
+    }
+
+    private inline fun <reified T : Enum<T>> enumValueOrDefault(value: String, fallback: T): T =
+        enumValues<T>().firstOrNull { it.name == value } ?: fallback
+}
+
+object OperationalHealthCoordinator {
+    private const val INCIDENT_RETENTION_MS = 24L * 60L * 60L * 1000L
+    private const val RECENT_CRITICAL_MS = 60L * 60L * 1000L
+
+    fun scan(context: Context): OperationalHealthSnapshot {
+        val source = UnifiedDebugEventStore.snapshot()
+        val fresh = OperationalHealthEngine.analyze(source)
+        return mergeWithStored(context, fresh).also { merged ->
+            OperationalHealthStore.save(context, merged)
+            OperationalHealthEvidenceCapsuleStore0576.capture(context, source, merged)
+        }
+    }
+
+    fun current(context: Context): OperationalHealthSnapshot {
+        val source = UnifiedDebugEventStore.snapshot()
+        val fresh = OperationalHealthEngine.analyze(source)
+        return mergeWithStored(context, fresh).also { merged ->
+            OperationalHealthStore.save(context, merged)
+            OperationalHealthEvidenceCapsuleStore0576.capture(context, source, merged)
+        }
+    }
+
+    private fun mergeWithStored(
+        context: Context,
+        fresh: OperationalHealthSnapshot,
+    ): OperationalHealthSnapshot {
+        val previous = OperationalHealthStore.load(context) ?: return fresh
+        val cutoff = fresh.scannedAtMillis - INCIDENT_RETENTION_MS
+        val mergedByFingerprint = linkedMapOf<String, OperationalIncident>()
+
+        val freshFingerprints = fresh.incidents.mapTo(mutableSetOf(), OperationalIncident::fingerprint)
+        previous.incidents
+            .filter { it.lastSeenMillis >= cutoff }
+            .forEach { previousIncident ->
+                val lifecycle = when {
+                    previousIncident.fingerprint in freshFingerprints -> previousIncident.lifecycle
+                    fresh.sourceEventCount > 0 -> OperationalIncidentLifecycle.RECOVERED
+                    else -> OperationalIncidentLifecycle.HISTORICAL
+                }
+                mergedByFingerprint[previousIncident.fingerprint] = previousIncident.copy(lifecycle = lifecycle)
+            }
+
+        fresh.incidents.forEach { incoming ->
+            val existing = mergedByFingerprint[incoming.fingerprint]
+            mergedByFingerprint[incoming.fingerprint] = if (existing == null) {
+                incoming
+            } else {
+                val newest = if (incoming.lastSeenMillis >= existing.lastSeenMillis) incoming else existing
+                val lifecycle = when {
+                    incoming.lifecycle == OperationalIncidentLifecycle.HISTORICAL ->
+                        OperationalIncidentLifecycle.HISTORICAL
+                    existing.lifecycle == OperationalIncidentLifecycle.RECOVERED ||
+                        existing.lifecycle == OperationalIncidentLifecycle.HISTORICAL ->
+                        OperationalIncidentLifecycle.REGRESSION
+                    else -> OperationalIncidentLifecycle.ACTIVE
+                }
+                newest.copy(
+                    firstSeenMillis = minOf(existing.firstSeenMillis, incoming.firstSeenMillis),
+                    lastSeenMillis = maxOf(existing.lastSeenMillis, incoming.lastSeenMillis),
+                    count = maxOf(existing.count, incoming.count),
+                    lifecycle = lifecycle,
+                )
+            }
+        }
+
+        val incidents = mergedByFingerprint.values
+            .sortedWith(
+                compareByDescending<OperationalIncident> { it.severity == OperationalIncidentSeverity.CRITICAL }
+                    .thenByDescending { it.lastSeenMillis },
+            )
+            .take(30)
+
+        val activeIncidents = incidents.filter {
+            it.lifecycle == OperationalIncidentLifecycle.ACTIVE ||
+                it.lifecycle == OperationalIncidentLifecycle.REGRESSION
+        }
+        val state = when {
+            activeIncidents.any {
+                it.severity == OperationalIncidentSeverity.CRITICAL &&
+                    it.lastSeenMillis >= fresh.scannedAtMillis - RECENT_CRITICAL_MS
+            } -> OperationalHealthState.RED
+            activeIncidents.isNotEmpty() -> OperationalHealthState.YELLOW
+            else -> OperationalHealthState.GREEN
+        }
+
+        val opportunities = activeIncidents
+            .filter { it.count >= 2 || it.severity == OperationalIncidentSeverity.CRITICAL }
+            .take(12)
+            .map(OperationalHealthEngine::opportunityForIncident0575)
+
+        val validation = fresh.validation
+        val validationSummary = if (
+            fresh.sourceEventCount == 0 &&
+            incidents.isNotEmpty()
+        ) {
+            "Sem novos eventos no processo atual; incidentes sanitizados ainda válidos foram preservados, mas a tendência antes/depois permanece como dados insuficientes."
+        } else {
+            fresh.validationSummary
+        }
+
+        return fresh.copy(
+            state = state,
+            droppedEvents = fresh.droppedEvents,
+            incidents = incidents,
+            opportunities = opportunities,
+            validation = validation,
+            validationSummary = validationSummary,
+        )
+    }
+}
+
+class OperationalHealthWorker(
+    appContext: Context,
+    params: WorkerParameters,
+) : CoroutineWorker(appContext, params) {
+    override suspend fun doWork(): Result = runCatching {
+        OperationalHealthCoordinator.scan(applicationContext)
+        Result.success()
+    }.getOrElse { error ->
+        UnifiedDebugEventStore.recordAlways(
+            stage = "OPERATIONAL_HEALTH_SCAN_FAILED_0577",
+            packageName = applicationContext.packageName,
+            details = "errorClass=${error.javaClass.simpleName}",
+        )
+        Result.failure()
+    }
+}
+
+object OperationalHealthScheduler {
+    private const val PERIODIC_NAME = "operational-health-hourly-0572"
+    private const val IMMEDIATE_NAME = "operational-health-startup-0572"
+
+    fun ensureScheduled(context: Context) {
+        val request = PeriodicWorkRequestBuilder<OperationalHealthWorker>(1, TimeUnit.HOURS).build()
+        WorkManager.getInstance(context.applicationContext).enqueueUniquePeriodicWork(
+            PERIODIC_NAME,
+            ExistingPeriodicWorkPolicy.UPDATE,
+            request,
+        )
+    }
+
+    fun enqueueImmediate(context: Context) {
+        WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
+            IMMEDIATE_NAME,
+            ExistingWorkPolicy.REPLACE,
+            OneTimeWorkRequestBuilder<OperationalHealthWorker>().build(),
+        )
+    }
+}
+
+class OperationalHealthInitializerProvider : ContentProvider() {
+    override fun onCreate(): Boolean {
+        val appContext = context?.applicationContext ?: return false
+        runCatching {
+            AgendaSyncCrashTraceStore.recoverPersistedCrashIntoUnifiedDebug(appContext)
+            OperationalHealthScheduler.ensureScheduled(appContext)
+            OperationalHealthScheduler.enqueueImmediate(appContext)
+        }
+        return true
+    }
+    override fun query(uri: Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): Cursor? = null
+    override fun getType(uri: Uri): String? = null
+    override fun insert(uri: Uri, values: ContentValues?): Uri? = null
+    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
+    override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = 0
+}
+
+class OperationalHealthActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        OperationalHealthScheduler.ensureScheduled(this)
+        setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                OperationalHealthScreen()
+            }
+        }
+    }
+
+    @Composable
+    private fun OperationalHealthScreen() {
+        var snapshot by remember { mutableStateOf(OperationalHealthCoordinator.current(this)) }
+        var exportStatus by remember { mutableStateOf<String?>(null) }
+        val exportScope = rememberCoroutineScope()
+        val formatter = remember { SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale("pt", "BR")) }
+
+        fun exportTechnicalPackage0575(incidentId: String? = null) {
+            exportStatus = if (incidentId == null) {
+                "Gerando pacote técnico sanitizado…"
+            } else {
+                "Gerando evidência sanitizada de $incidentId…"
+            }
+            exportScope.launch {
+                val healthNow = OperationalHealthCoordinator.current(this@OperationalHealthActivity)
+                val sourceNow = UnifiedDebugEventStore.snapshot()
+                val saved = withContext(Dispatchers.IO) {
+                    OperationalHealthTechnicalPackage0575.generateAndSave(
+                        context = this@OperationalHealthActivity,
+                        health = healthNow,
+                        source = sourceNow,
+                        incidentId = incidentId,
+                    )
+                }
+                exportStatus = saved.fold(
+                    onSuccess = { "Arquivo pronto em Downloads/Rota Certa/Diagnosticos: ${it.displayName}" },
+                    onFailure = { "Falha ao gerar pacote técnico: ${it.javaClass.simpleName}" },
+                )
+                snapshot = healthNow
+            }
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Central de Saúde e Evolução", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(
+                when (snapshot.state) {
+                    OperationalHealthState.GREEN -> "🟢 Operação sem incidente detectado na janela atual"
+                    OperationalHealthState.YELLOW -> "🟡 Há incidentes que exigem acompanhamento"
+                    OperationalHealthState.RED -> "🔴 Há incidente crítico recente"
+                },
+                fontWeight = FontWeight.Bold,
+            )
+            Text("Versão ${BuildConfig.VERSION_NAME} • build ${BuildConfig.VERSION_CODE}")
+            Text("Commit ${BuildConfig.BUILD_GIT_SHA.take(12)} • branch ${BuildConfig.BUILD_GIT_BRANCH}")
+            Text("Última auditoria: ${formatter.format(Date(snapshot.scannedAtMillis))}")
+            Text("Eventos sanitizados no buffer: ${snapshot.sourceEventCount} • removidos por limite: ${snapshot.droppedEvents}")
+            OperationalHealthRuntime.latestCriticalAtMillis().takeIf { it > 0L }?.let {
+                Text("Último crítico observado em tempo real: ${formatter.format(Date(it))}")
+            }
+            Button(
+                onClick = {
+                    snapshot = OperationalHealthCoordinator.scan(this@OperationalHealthActivity)
+                    OperationalHealthScheduler.enqueueImmediate(this@OperationalHealthActivity)
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Executar auditoria agora") }
+            OutlinedButton(
+                onClick = { exportTechnicalPackage0575() },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Gerar arquivo técnico (.zip)") }
+            exportStatus?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall)
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Validação antes/depois", fontWeight = FontWeight.Bold)
+                    Text(snapshot.validation.name)
+                    Text(snapshot.validationSummary, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+
+            Text("Incidentes", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            if (snapshot.incidents.isEmpty()) {
+                Text("Nenhum incidente detectado na janela sanitizada disponível.")
+            } else {
+                snapshot.incidents.forEach { incident ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(incident.id, fontWeight = FontWeight.Bold)
+                                Text(if (incident.severity == OperationalIncidentSeverity.CRITICAL) "CRÍTICO" else "ATENÇÃO")
+                            }
+                            Text("${incident.module} • ocorrências ${incident.count}")
+                            Text(
+                                "Estado: " + when (incident.lifecycle) {
+                                    OperationalIncidentLifecycle.ACTIVE -> "ATIVO"
+                                    OperationalIncidentLifecycle.RECOVERED -> "RECUPERADO"
+                                    OperationalIncidentLifecycle.HISTORICAL -> "HISTÓRICO"
+                                    OperationalIncidentLifecycle.REGRESSION -> "REGRESSÃO"
+                                },
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text("Código: ${incident.errorCode}")
+                            Text("Sintoma: ${incident.symptom}", style = MaterialTheme.typography.bodySmall)
+                            Text("Causa provável (${incident.confidencePercent}%): ${incident.probableRootCause}")
+                            Text("Correção estrutural: ${incident.suggestedCorrection}", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                "Primeiro: ${formatter.format(Date(incident.firstSeenMillis))} • Último: ${formatter.format(Date(incident.lastSeenMillis))}",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            OutlinedButton(
+                                onClick = { exportTechnicalPackage0575(incident.id) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text("Gerar evidência deste incidente") }
+                        }
+                    }
+                }
+            }
+
+            if (snapshot.opportunities.isNotEmpty()) {
+                Text("Oportunidades de evolução", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                snapshot.opportunities.forEach { opportunity ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text(opportunity.title, fontWeight = FontWeight.Bold)
+                            Text("Origem: ${opportunity.incidentId}", style = MaterialTheme.typography.bodySmall)
+                            Text(opportunity.proposal)
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Privacidade: esta Central usa somente eventos já sanitizados pelo flight recorder. O ZIP técnico passa novamente pelo sanitizador antes de ser salvo em Downloads. Não executa patch, deploy, login, cancelamento, reserva ou edição de viagem automaticamente.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}

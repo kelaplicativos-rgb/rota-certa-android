@@ -1,0 +1,151 @@
+name: Rota Certa 0.1.628 trip target reservation
+
+on:
+  push:
+    branches:
+      - agent/viagem-certa-trip-target-0.1.628
+    paths:
+      - '.github/workflows/viagem-certa-trip-target-0.1.628.yml'
+      - 'trip-platform/**'
+      - 'app/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: ci_dummy_key_0625
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      SOURCE_SHA: ${{ github.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Verify source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          echo "ROTA_CERTA_GIT_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=agent/viagem-certa-trip-target-0.1.628" >> "$GITHUB_ENV"
+          grep -Fq 'val releaseVersionCode = 5_919' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.628"' app/build.gradle.kts
+          grep -Fq 'semanticMismatch06122' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'buildPassengerMergeAliases0627' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerIdentityStore.kt
+          grep -Fq 'PASSENGER_IDENTITY_INTEGRITY_0627' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerIdentityStore.kt
+          grep -Fq 'fromPassengerPath' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt
+          grep -Fq 'PASSENGERS_LOCAL_LOAD_END' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerAdminUi.kt
+          grep -Fq 'passenger-password-session' trip-platform/functions/index.js
+          grep -Fq 'passengerDirectory0625' trip-platform/functions/index.js
+          grep -Fq '__Host-viagem_certa_device_0626' trip-platform/functions/index.js
+          grep -Fq 'ensurePublicBookingPassengerAccess0626' trip-platform/functions/index.js
+          grep -Fq 'requestedResolved = await resolveDriverUsername(requestedDriver)' trip-platform/functions/index.js
+          grep -Fq 'const tripResolved = await resolveDriverUsername(tripDriver)' trip-platform/functions/index.js
+          grep -Fq 'bookingSelection0623.tripToken ? undefined : publicSlug0569' trip-platform/public/public-agenda-shell-0569.js
+          grep -Fq 'bookingContactStep0625' trip-platform/public/index.html
+          grep -Fq '>Minha área</a>' trip-platform/public/index.html
+          grep -Fq '0.1.628-trip-target' trip-platform/public/index.html
+          grep -Fq '0.1.626-known-device' trip-platform/public/minha-area.html
+          grep -Fq 'timeline0625' trip-platform/public/minha-area.html
+          test "$(grep -o 'public-agenda-shell-0569.js' trip-platform/public/index.html | wc -l)" -eq 1
+          ! grep -Fq '0.1.624-pin-booking' trip-platform/public/index.html
+          ! grep -Fq 'sessionStorage.setItem(passengerSessionKey0625' trip-platform/public/public-agenda-shell-0569.js
+          ! grep -Fq 'sessionStorage.setItem(sessionKey0625' trip-platform/public/minha-area.js
+          ! grep -Fq 'signInWithPhoneNumber' trip-platform/public/public-agenda-shell-0569.js
+          ! grep -Fq 'firebase-auth.js' trip-platform/public/index.html
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Test web booking contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/public/public-agenda-shell-0569.js
+          node --check trip-platform/public/minha-area.js
+          node --test trip-platform/functions/test/reservation-approval-0356.test.js trip-platform/functions/test/public-booking-0296.test.js trip-platform/functions/test/public-booking-realtime-0304.test.js trip-platform/functions/test/viagem-certa-passenger-gate-0589.test.js trip-platform/functions/test/viagem-certa-passenger-timeline-0625.test.js trip-platform/functions/test/viagem-certa-known-device-0626.test.js trip-platform/functions/test/viagem-certa-trip-target-0628.test.js
+
+      - name: Configure Firebase Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@14.12.0 apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@14.12.0 apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@14.12.0 apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@14.12.0 apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test Android contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest --tests '*PassengerIdentityIntegrity0627Test' --tests '*PassengerPickerCanonical0352Test' --tests '*CanonicalPassengerSegments0491Test' --tests '*GlobalPassengerFlow0256Test' --tests '*ReservationApproval0356Test' --tests '*AgendaCanonicalCentralSync0403Test' --tests '*BlaBlaUnifiedHtmlCapture0605Test' --tests '*BlaBlaLiveHtmlCommit0617Test' --tests '*PublicAgendaAutoSync0300Test' --tests '*SegmentAvailabilityTruthGate0603Test' --no-daemon --max-workers=1 --no-parallel --stacktrace
+
+      - name: Build exact SHA APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" > /tmp/aapt.txt
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
+          grep -Fq "versionCode='5919'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.628'" /tmp/aapt.txt
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > /tmp/apksigner.txt
+          grep -Fq 'Verified' /tmp/apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex.txt
+          grep -Fq "$SOURCE_SHA" /tmp/dex.txt
+          mkdir -p /tmp/0628
+          SHORT_SHA="$(printf '%s' "$SOURCE_SHA" | cut -c1-12)"
+          cp "$APK" "/tmp/0628/RotaCerta-0.1.628-build5919-$SHORT_SHA-SM-S911B.apk"
+          sha256sum /tmp/0628/*.apk | tee /tmp/0628/apk.sha256
+          printf 'source_head=%s\nversion=0.1.628/5919\npackage=br.com.mapeiaia.rotacerta\ntarget=Samsung SM-S911B\n' "$SOURCE_SHA" > /tmp/0628/final-status.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.628-5919-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0628

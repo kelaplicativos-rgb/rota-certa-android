@@ -1,0 +1,1325 @@
+package br.com.mapeiaia.rotacerta.trips
+
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.unit.dp
+import br.com.mapeiaia.rotacerta.R
+import java.math.RoundingMode
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+internal data class PassengerAdminCandidate(
+    val key: String,
+    val displayName: String,
+    /** Contact observed from Timeline/integration or entered as contact history. */
+    val whatsapp: String,
+    /** Explicit identifier used to enter the public Agenda. */
+    val agendaAccessWhatsapp: String = "",
+    val localProfile: PassengerProfile? = null,
+    val remoteAccess: DriverPassengerAccess? = null,
+    val externalPassengerId: String = "",
+    val source: String = "",
+    val lastActivityMillis: Long = 0L,
+)
+
+internal data class PassengerDirectorySelection0630(
+    val profiles: List<PassengerProfile>,
+    val conflictedContactKeys: Set<String>,
+)
+
+internal fun passengerDirectorySelection0630(
+    profiles: List<PassengerProfile>,
+): PassengerDirectorySelection0630 {
+    val groups = profiles
+        .filter { !it.archived }
+        .groupBy { passengerAdminContactKey(it.agendaAccessContact()) }
+    val conflicted = groups
+        .filter { (contactKey, members) -> contactKey.isNotBlank() && members.size > 1 }
+        .keys
+    val syncable = groups
+        .filter { (contactKey, members) -> contactKey.isNotBlank() && members.size == 1 }
+        .values
+        .map { it.single() }
+    return PassengerDirectorySelection0630(syncable, conflicted)
+}
+
+
+@Composable
+fun PassengerAdminScreen(
+    store: TripStore,
+    onBack: () -> Unit,
+    onChanged: (String) -> Unit,
+    showHeader: Boolean = true,
+    externalBackToken: Int = 0,
+    onHierarchyChanged: (Boolean) -> Unit = {},
+) {
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
+    val passengerStore = remember(context) { PassengerIdentityStore(context) }
+    val passengerRepository = remember(context) { PassengerRepository(context) }
+    val collectorStore = remember(context) { BlaBlaCollectorStateStore(context) }
+    var revision by remember { mutableIntStateOf(0) }
+    var remoteDirectorySyncToken0650 by remember { mutableIntStateOf(0) }
+    var remotePassengers by remember { mutableStateOf<List<DriverPassengerAccess>>(emptyList()) }
+    var referralCreditCents by remember { mutableStateOf(0L) }
+    var search by remember { mutableStateOf("") }
+    var newName by remember { mutableStateOf("") }
+    var newWhatsapp by remember { mutableStateOf("") }
+    var selectedNewPassengerId by remember { mutableStateOf("") }
+    var accessWhatsappDrafts by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var creditValue by remember { mutableStateOf("") }
+    var temporaryPassword by remember { mutableStateOf<String?>(null) }
+    var temporaryPasswordFor by remember { mutableStateOf("") }
+    var temporaryPasswordWhatsapp0651 by remember { mutableStateOf("") }
+    var loading by remember { mutableStateOf(false) }
+    var historyProfileId by remember { mutableStateOf<String?>(null) }
+    var selectedHistory0420 by remember { mutableStateOf<PassengerPersistentHistory?>(null) }
+    var selectedCandidateKey0419 by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(historyProfileId) {
+        onHierarchyChanged(historyProfileId != null)
+        selectedHistory0420 = historyProfileId?.let { id ->
+            withContext(Dispatchers.IO) { passengerStore.persistentHistory(id) }
+        }
+    }
+    LaunchedEffect(externalBackToken) {
+        if (externalBackToken > 0 && historyProfileId != null) {
+            historyProfileId = null
+        }
+    }
+    var blockCandidate by remember { mutableStateOf<PassengerAdminCandidate?>(null) }
+    var settingsState by remember(store) { mutableStateOf<TripOnlineSettings?>(null) }
+    var localProfiles by remember { mutableStateOf<List<PassengerProfile>>(emptyList()) }
+    var collectedTrips by remember { mutableStateOf<List<BlaBlaCollectorTrip>>(emptyList()) }
+    var passengerHistories by remember { mutableStateOf<Map<String, PassengerPersistentHistory>>(emptyMap()) }
+    val settings = settingsState ?: TripOnlineSettings()
+
+    LaunchedEffect(store) {
+        settingsState = withContext(Dispatchers.IO) { store.onlineSettings() }
+    }
+    LaunchedEffect(revision) {
+        AgendaTrace.event(context, "PASSENGERS_LOCAL_LOAD_START", "revision=$revision")
+        val repair = withContext(Dispatchers.IO) { passengerStore.ensureCanonicalIntegrity0627() }
+        val snapshot = withContext(Dispatchers.IO) {
+            passengerStore.profiles() to collectorStore.lastResponseRecoveringDynamicSessions()?.trips.orEmpty()
+        }
+        localProfiles = snapshot.first
+        collectedTrips = snapshot.second
+        AgendaTrace.event(
+            context,
+            "PASSENGERS_LOCAL_LOAD_END",
+            "rawProfiles=" + repair.rawProfiles +
+                " canonicalProfiles=" + repair.canonicalProfiles +
+                " aliasesCreated=" + repair.aliasesCreated +
+                " unresolvedContactConflicts=" + repair.unresolvedContactConflicts +
+                " htmlTrips=" + snapshot.second.size +
+                " htmlPassengers=" + snapshot.second.sumOf { it.passengers.size },
+        )
+    }
+    LaunchedEffect(localProfiles) {
+        val ids = localProfiles.map(PassengerProfile::id).toSet()
+        AgendaTrace.event(context, "PASSENGERS_HISTORY_LOAD_START", "profiles=" + ids.size)
+        passengerHistories = withContext(Dispatchers.IO) {
+            passengerStore.persistentHistorySnapshot(ids)
+        }
+        AgendaTrace.event(
+            context,
+            "PASSENGERS_HISTORY_LOAD_END",
+            "profiles=" + passengerHistories.size +
+                " occurrences=" + passengerHistories.values.sumOf { it.totalOccurrences } +
+                " completed=" + passengerHistories.values.sumOf { it.totalRides },
+        )
+    }
+    val collectedPassengers = remember(collectedTrips) {
+        collectedTrips.flatMap { trip -> trip.passengers }.filter { it.name.isNotBlank() }
+    }
+    val collectedIdentityKey = remember(collectedTrips) {
+        collectedTrips.flatMap { trip ->
+            trip.passengers.map { passenger ->
+                listOf(trip.profile_uuid, trip.trip_id.orEmpty(), passenger.booking_href.orEmpty(), passenger.name, passenger.phone.orEmpty()).joinToString("~")
+            }
+        }.joinToString("|")
+    }
+    LaunchedEffect(collectedIdentityKey) {
+        if (collectedIdentityKey.isBlank()) return@LaunchedEffect
+        val changed = withContext(Dispatchers.IO) {
+            var anyChanged = false
+            collectedTrips.forEach { trip ->
+                trip.passengers.forEach { passenger ->
+                    val externalId = stableExternalPassengerId(BlaBlaCollectorUrlModule.passengerIdentityKey(passenger.booking_href))
+                    val observed = passengerStore.observeExternalPassenger(
+                        displayName = passenger.name,
+                        whatsapp = passenger.phone,
+                        externalPassengerId = externalId,
+                        reservationKey = externalPassengerReservationKey(trip.profile_uuid, passenger.booking_href),
+                        externalTripId = trip.trip_id,
+                        driverProfileUuid = trip.profile_uuid,
+                    )
+                    if (observed != null) anyChanged = true
+                }
+            }
+            anyChanged
+        }
+        if (changed) {
+            revision++
+            remoteDirectorySyncToken0650++
+        }
+    }
+    var canonicalSearchIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    LaunchedEffect(search, revision) {
+        canonicalSearchIds = if (search.isBlank()) {
+            emptySet()
+        } else {
+            withContext(Dispatchers.IO) {
+                passengerRepository.search(search, 50).map(PassengerProfile::id).toSet()
+            }
+        }
+    }
+    val candidates = remember(localProfiles, collectedPassengers, remotePassengers, search, canonicalSearchIds) {
+        mergePassengerAdminCandidates(localProfiles, collectedPassengers, remotePassengers)
+            .filter { candidate ->
+                val needle = search.trim()
+                needle.isBlank() ||
+                    candidate.localProfile?.id in canonicalSearchIds ||
+                    candidate.displayName.contains(needle, ignoreCase = true) ||
+                    candidate.whatsapp.contains(needle, ignoreCase = true)
+            }
+    }
+    var visibleCandidateLimit0420 by remember(search) { mutableIntStateOf(24) }
+    val visibleCandidates0420 = remember(candidates, visibleCandidateLimit0420) {
+        candidates.take(visibleCandidateLimit0420)
+    }
+
+    var newPassengerSuggestions by remember { mutableStateOf<List<PassengerProfile>>(emptyList()) }
+    LaunchedEffect(newName, newWhatsapp, revision) {
+        val query = newWhatsapp.takeIf { it.filter(Char::isDigit).length >= 4 } ?: newName
+        newPassengerSuggestions = withContext(Dispatchers.IO) {
+            passengerRepository.search(query, 6)
+        }
+    }
+
+    suspend fun reloadRemote(syncDirectory: Boolean = true) {
+        if (!settings.configured) {
+            AgendaTrace.event(context, "PASSENGERS_REMOTE_LOAD_SKIPPED", "reason=integration_not_configured")
+            return
+        }
+        val api = TripRemoteApi(settings)
+        if (syncDirectory) {
+            val directorySelection0630 = withContext(Dispatchers.IO) {
+                passengerDirectorySelection0630(passengerStore.profiles())
+            }
+            AgendaTrace.event(
+                context,
+                "PASSENGERS_DIRECTORY_SYNC_START_0630",
+                "syncable=${directorySelection0630.profiles.size} conflictedContacts=${directorySelection0630.conflictedContactKeys.size}",
+            )
+            try {
+                val response = api.syncPassengerDirectory(directorySelection0630.profiles)
+                AgendaTrace.event(
+                    context,
+                    "PASSENGERS_DIRECTORY_SYNC_END_0630",
+                    "synced=${response.synced} conflictedContacts=${directorySelection0630.conflictedContactKeys.size}",
+                )
+            } catch (error: CancellationException) {
+                AgendaTrace.event(
+                    context,
+                    "PASSENGERS_DIRECTORY_SYNC_CANCELLED_0652",
+                    "syncable=${directorySelection0630.profiles.size} reason=composition_left",
+                )
+                throw error
+            } catch (error: Throwable) {
+                AgendaTrace.event(
+                    context,
+                    "PASSENGERS_DIRECTORY_SYNC_ERROR_0630",
+                    "syncable=${directorySelection0630.profiles.size} conflictedContacts=${directorySelection0630.conflictedContactKeys.size} error=" +
+                        (error.message ?: error::class.java.simpleName).take(240),
+                )
+            }
+        }
+
+        AgendaTrace.event(context, "PASSENGERS_REMOTE_LOAD_START", "driver=" + settings.driverUsername)
+        val response = try {
+            api.listDriverPassengers()
+        } catch (error: CancellationException) {
+            AgendaTrace.event(
+                context,
+                "PASSENGERS_REMOTE_LOAD_CANCELLED_0652",
+                "reason=composition_left",
+            )
+            throw error
+        } catch (error: Throwable) {
+            AgendaTrace.event(
+                context,
+                "PASSENGERS_REMOTE_LOAD_ERROR",
+                "error=" + (error.message ?: error::class.java.simpleName).take(240),
+            )
+            onChanged("Não foi possível carregar acessos dos passageiros: ${error.message ?: "erro de conexão"}")
+            return
+        }
+        withContext(Dispatchers.IO) {
+            response.passengers.forEach { access ->
+                val current = passengerStore.resolveCanonicalPassenger(
+                    onlineIdentityId = access.id,
+                    whatsapp = access.passengerContact,
+                ) ?: access.displayName.trim().takeIf(String::isNotEmpty)?.let { name ->
+                    passengerStore.createProfile(name, access.passengerContact)
+                }
+                if (current != null) {
+                    val refreshed = passengerStore.saveProfile(
+                        current.copy(
+                            displayName = access.displayName.trim().ifBlank { current.displayName },
+                            agendaAccessWhatsapp = access.passengerContact.trim().ifBlank { current.agendaAccessWhatsapp },
+                            publicAccessStatus = access.status,
+                            referredByContact = access.referredByContact,
+                            creditBalanceCents = access.creditBalanceCents,
+                            creditEarnedCents = access.creditEarnedCents,
+                            creditSpentCents = access.creditSpentCents,
+                        ),
+                    )
+                    stableExternalPassengerId(access.id)?.let { passengerStore.linkOnlineIdentityId(refreshed.id, it) }
+                }
+            }
+        }
+        remotePassengers = response.passengers
+        referralCreditCents = response.referralCreditCents
+        creditValue = formatCreditInput(response.referralCreditCents)
+        localProfiles = withContext(Dispatchers.IO) { passengerStore.profiles() }
+        AgendaTrace.event(
+            context,
+            "PASSENGERS_REMOTE_LOAD_END",
+            "remotePassengers=" + response.passengers.size + " canonicalProfiles=" + localProfiles.size,
+        )
+    }
+
+    LaunchedEffect(settings.driverUsername, settings.driverToken, remoteDirectorySyncToken0650) {
+        reloadRemote(syncDirectory = true)
+    }
+
+    if (historyProfileId != null) {
+        PassengerHistoryPanel(
+            history = selectedHistory0420,
+            onBack = { historyProfileId = null },
+            showHeader = showHeader,
+            onArchiveToggle = { profile ->
+                passengerStore.setArchived(profile.id, !profile.archived)
+                revision++
+                onChanged(
+                    if (profile.archived) "Passageiro restaurado na lista; histórico preservado."
+                    else "Passageiro arquivado da lista; histórico, UUIDs, bloqueios e viagens foram preservados.",
+                )
+                historyProfileId = null
+            },
+        )
+        return
+    }
+
+    fun canonicalProfile(candidate: PassengerAdminCandidate): PassengerProfile? {
+        val resolved = passengerStore.resolveCanonicalPassenger(
+            passengerId = candidate.localProfile?.id,
+            externalPassengerId = candidate.externalPassengerId,
+            onlineIdentityId = candidate.remoteAccess?.id,
+            whatsapp = candidate.whatsapp,
+        ) ?: candidate.displayName.trim().takeIf(String::isNotEmpty)?.let { name ->
+            passengerStore.createProfile(name, candidate.whatsapp)
+        } ?: return null
+        val restored = if (resolved.archived) passengerStore.saveProfile(resolved.copy(archived = false)) else resolved
+        stableExternalPassengerId(candidate.externalPassengerId)?.let { passengerStore.linkExternalPassengerId(restored.id, it) }
+        stableExternalPassengerId(candidate.remoteAccess?.id)?.let { passengerStore.linkOnlineIdentityId(restored.id, it) }
+        return passengerStore.profile(restored.id) ?: restored
+    }
+
+    fun openCandidateHistory(candidate: PassengerAdminCandidate) {
+        scope.launch {
+            val profile = withContext(Dispatchers.IO) { canonicalProfile(candidate) }
+            if (profile == null) {
+                onChanged("Não foi possível criar a identidade canônica deste passageiro.")
+            } else {
+                historyProfileId = profile.id
+            }
+        }
+    }
+
+    if (showHeader) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("👥 Passageiros", style = MaterialTheme.typography.headlineSmall)
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.semantics { contentDescription = "Voltar para a Agenda de Viagens" },
+            ) { Text("←") }
+        }
+    }
+    Text(
+        "Administre quem pode entrar na Agenda de Viagens, senhas temporárias, indicações e créditos.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+
+    if (!settings.configured) {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                "Configure a Integração online antes de liberar acessos. Os cadastros locais continuam disponíveis.",
+                modifier = Modifier.padding(12.dp),
+            )
+        }
+    }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Programa de indicações", style = MaterialTheme.typography.titleMedium)
+            OutlinedTextField(
+                value = creditValue,
+                onValueChange = { creditValue = it.take(16) },
+                label = { Text("Crédito por indicação concluída (R$)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
+            Text("Valor atual: ${formatCreditMoney(referralCreditCents)}", style = MaterialTheme.typography.bodySmall)
+            Button(
+                enabled = settings.configured && !loading,
+                onClick = {
+                    val cents = parseCreditInput(creditValue)
+                    if (cents == null) {
+                        onChanged("Informe um valor de crédito válido.")
+                    } else {
+                        loading = true
+                        scope.launch {
+                            runCatching { TripRemoteApi(settings).updateReferralCredit(cents) }
+                                .onSuccess {
+                                    referralCreditCents = it.referralCreditCents
+                                    creditValue = formatCreditInput(it.referralCreditCents)
+                                    onChanged("Crédito por indicação atualizado para ${formatCreditMoney(it.referralCreditCents)}.")
+                                }
+                                .onFailure { onChanged("Não foi possível atualizar o crédito: ${it.message ?: "erro de conexão"}") }
+                            loading = false
+                        }
+                    }
+                },
+            ) { Text("Salvar valor dos créditos") }
+        }
+    }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Cadastrar passageiro", style = MaterialTheme.typography.titleMedium)
+            OutlinedTextField(
+                value = newName,
+                onValueChange = {
+                    newName = it.take(120)
+                    selectedNewPassengerId = ""
+                },
+                label = { Text("Nome") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = newWhatsapp,
+                onValueChange = {
+                    newWhatsapp = it.take(40)
+                    selectedNewPassengerId = ""
+                },
+                label = { Text("WhatsApp") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (newPassengerSuggestions.isNotEmpty() && selectedNewPassengerId.isBlank()) {
+                Text("Passageiros já cadastrados", style = MaterialTheme.typography.bodySmall)
+                newPassengerSuggestions.forEach { existing ->
+                    OutlinedButton(
+                        onClick = {
+                            selectedNewPassengerId = existing.id
+                            newName = existing.displayName
+                            newWhatsapp = existing.agendaAccessWhatsapp.ifBlank { existing.whatsapp }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Usar ${existing.displayName}${existing.whatsapp.takeIf(String::isNotBlank)?.let { " • ${maskPassengerAdminContact(it)}" }.orEmpty()}")
+                    }
+                }
+            }
+            if (selectedNewPassengerId.isNotBlank()) {
+                Text("✓ Passageiro canônico selecionado", style = MaterialTheme.typography.bodySmall)
+            }
+            Button(onClick = {
+                val name = newName.trim()
+                val phone = newWhatsapp.trim()
+                if (name.isBlank() || passengerAdminContactKey(phone).isBlank()) {
+                    onChanged("Informe nome e WhatsApp do passageiro.")
+                } else {
+                    val selected = selectedNewPassengerId.takeIf(String::isNotBlank)?.let(passengerStore::profile)
+                    val accessKey = passengerAdminContactKey(phone)
+                    val localConflict = passengerStore.profiles().firstOrNull { existing ->
+                        existing.id != selected?.id &&
+                            passengerAdminContactKey(existing.agendaAccessWhatsapp) == accessKey
+                    }
+                    if (localConflict != null) {
+                        onChanged("Este WhatsApp de acesso já está associado a ${localConflict.displayName}.")
+                    } else {
+                        val exactAccessMatches = passengerStore.profiles().filter {
+                            passengerAdminContactKey(it.agendaAccessWhatsapp) == accessKey
+                        }
+                        val target = selected ?: exactAccessMatches.singleOrNull()
+                        if (selected == null && exactAccessMatches.size > 1) {
+                            onChanged("Há mais de um cadastro com esse WhatsApp de acesso. Selecione manualmente o passageiro correto; nenhum foi unido automaticamente.")
+                        } else {
+                            if (target == null) {
+                                passengerStore.saveProfile(
+                                    PassengerProfile(
+                                        displayName = name,
+                                        whatsapp = phone,
+                                        agendaAccessWhatsapp = phone,
+                                    ),
+                                )
+                            } else {
+                                passengerStore.saveProfile(
+                                    target.copy(
+                                        displayName = name,
+                                        agendaAccessWhatsapp = phone,
+                                        archived = false,
+                                    ),
+                                )
+                            }
+                            newName = ""
+                            newWhatsapp = ""
+                            selectedNewPassengerId = ""
+                            revision++
+                            remoteDirectorySyncToken0650++
+                            onChanged(
+                                if (target == null) {
+                                    "Novo passengerId criado com WhatsApp de acesso. O acesso à Agenda de Viagens será sincronizado automaticamente."
+                                } else {
+                                    "PassengerId existente mantido. WhatsApp de acesso atualizado; o acesso à Agenda de Viagens será sincronizado automaticamente."
+                                },
+                            )
+                        }
+                    }
+                }
+            }) { Text(if (selectedNewPassengerId.isBlank()) "Cadastrar novo" else "Usar cadastro selecionado") }
+        }
+    }
+
+    temporaryPassword?.let { password ->
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("Senha temporária gerada", style = MaterialTheme.typography.titleMedium)
+                Text(temporaryPasswordFor)
+                Text(password, style = MaterialTheme.typography.headlineMedium)
+                Text("Envie esta senha ao passageiro. O portal exigirá a criação de uma nova senha antes de liberar a Área VIP.")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = {
+                        clipboard.setText(AnnotatedString(password))
+                        onChanged("Senha temporária copiada.")
+                    }) { Text("Copiar senha") }
+                    OutlinedButton(
+                        enabled = passengerAdminContactKey(temporaryPasswordWhatsapp0651).isNotBlank(),
+                        onClick = {
+                            sendTemporaryPasswordWhatsApp0651(
+                                context = context,
+                                whatsapp = temporaryPasswordWhatsapp0651,
+                                password = password,
+                            )
+                        },
+                    ) { Text("Enviar WhatsApp") }
+                    OutlinedButton(onClick = {
+                        temporaryPassword = null
+                        temporaryPasswordFor = ""
+                        temporaryPasswordWhatsapp0651 = ""
+                    }) { Text("Fechar") }
+                }
+            }
+        }
+    }
+
+    OutlinedTextField(
+        value = search,
+        onValueChange = { search = it },
+        label = { Text("Buscar por nome ou WhatsApp") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+    )
+
+    if (candidates.isEmpty()) {
+        Text("Nenhum passageiro encontrado.")
+    } else {
+        Text(
+            "Toque em um passageiro para abrir as opções. A permissão de administrador fica dentro do passageiro selecionado.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+
+    visibleCandidates0420.forEach { candidate ->
+        val access = candidate.remoteAccess
+        val activeAccessWhatsapp = access?.passengerContact?.takeIf(String::isNotBlank)
+            ?: candidate.agendaAccessWhatsapp.ifBlank { candidate.whatsapp }
+        val accessWhatsappDraft = accessWhatsappDrafts[candidate.key] ?: activeAccessWhatsapp
+        val expanded0419 = selectedCandidateKey0419 == candidate.key
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                val localProfile = candidate.localProfile
+                Text(
+                    (if (localProfile?.blocked == true) "🚫 " else "") + candidate.displayName.ifBlank { "Passageiro" },
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        "Contato/origem: " + candidate.whatsapp.ifBlank { "não informado" },
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(
+                        enabled = candidate.whatsapp.isNotBlank(),
+                        onClick = { openPassengerWhatsApp(context, candidate.whatsapp) },
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_whatsapp_action),
+                            contentDescription = "Abrir WhatsApp de ${candidate.displayName}",
+                            tint = Color.Unspecified,
+                        )
+                    }
+                }
+                localProfile?.let { profile ->
+                    val durableHistory = passengerHistories[profile.id]
+                    Text(
+                        "${durableHistory?.totalRides ?: 0} concluída(s) • ${durableHistory?.totalOccurrences ?: 0} ocorrência(s)/reserva(s)",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    if (profile.blocked) Text("⛔ NÃO ACEITO NO MEU CARRO", color = MaterialTheme.colorScheme.error)
+                }
+                passengerAccessLabel(access)?.let { label ->
+                    Text(label, style = MaterialTheme.typography.bodySmall)
+                }
+                when (access?.passwordRecoveryStatus) {
+                    "REQUESTED" -> Text("🔑 Recuperação de senha solicitada", style = MaterialTheme.typography.bodySmall)
+                    "ISSUED" -> Text("🟠 Senha temporária emitida • troca obrigatória pendente", style = MaterialTheme.typography.bodySmall)
+                    "COMPLETED" -> Text("✅ Recuperação de senha concluída", style = MaterialTheme.typography.bodySmall)
+                }
+                if (access?.accountMustChangePassword == true && access.passwordRecoveryStatus != "ISSUED") {
+                    Text("🟠 Troca de senha obrigatória pendente", style = MaterialTheme.typography.bodySmall)
+                }
+                if (access?.agendaAdmin == true) {
+                    Text("🔐 Administrador da Agenda", style = MaterialTheme.typography.bodySmall)
+                }
+                if (candidate.source.isNotBlank()) Text(candidate.source, style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(
+                    onClick = {
+                        selectedCandidateKey0419 = if (expanded0419) null else candidate.key
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (expanded0419) "Fechar opções" else "Gerenciar passageiro")
+                }
+                if (expanded0419) {
+                    HorizontalDivider()
+                    Text("Gerenciar passageiro", style = MaterialTheme.typography.titleSmall)
+                    OutlinedButton(
+                        onClick = { openCandidateHistory(candidate) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Abrir histórico do passageiro") }
+
+                    val accessAuthorized0419 = access?.status in setOf("AUTHORIZED", "ACTIVE")
+                    Text("Administração da Agenda", style = MaterialTheme.typography.titleSmall)
+                    OutlinedButton(
+                        enabled = settings.configured &&
+                            !loading &&
+                            access != null &&
+                            accessAuthorized0419,
+                        onClick = {
+                            loading = true
+                            scope.launch {
+                                val canonical = withContext(Dispatchers.IO) { canonicalProfile(candidate) }
+                                if (canonical == null) {
+                                    onChanged("Não foi possível vincular a identidade canônica deste passageiro.")
+                                    loading = false
+                                    return@launch
+                                }
+                                runCatching {
+                                    TripRemoteApi(settings).setPassengerAgendaAdmin0418(
+                                        passengerContact = activeAccessWhatsapp,
+                                        passengerId = canonical.id,
+                                        agendaAdmin = !(access?.agendaAdmin == true),
+                                    )
+                                }.onSuccess { response ->
+                                    revision++
+                                    selectedCandidateKey0419 = candidate.key
+                                    reloadRemote(syncDirectory = false)
+                                    onChanged(
+                                        if (response.passenger.agendaAdmin) {
+                                            "${candidate.displayName} foi salvo como administrador e verá Administração da Agenda dentro de Minhas Viagens."
+                                        } else {
+                                            "Permissão de administrador removida de ${candidate.displayName}."
+                                        },
+                                    )
+                                }.onFailure { error ->
+                                    onChanged("Falha ao alterar administrador da Agenda: ${error.message ?: "erro de conexão"}")
+                                }
+                                loading = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(if (access?.agendaAdmin == true) "Remover administrador" else "Definir como administrador")
+                    }
+                    when {
+                        access == null -> {
+                            val accessKey0630 = passengerAdminContactKey(activeAccessWhatsapp)
+                            val localConflictCount0630 = localProfiles.count {
+                                passengerAdminContactKey(it.agendaAccessContact()) == accessKey0630 && accessKey0630.isNotBlank()
+                            }
+                            Text(
+                                if (localConflictCount0630 > 1) {
+                                    "Existem $localConflictCount0630 cadastros locais usando este WhatsApp. O acesso online não é criado automaticamente até a identidade ser consolidada."
+                                } else {
+                                    "Acesso online ainda não encontrado. Esta tela tenta sincronizar o cadastro automaticamente ao abrir e atualizar."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        !accessAuthorized0419 -> Text(
+                            "O acesso deste passageiro não está autorizado nesta Agenda.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        !access.accountActivated && !access.agendaAdmin -> Text(
+                            "Você pode salvar a permissão agora. Ela aparecerá para o passageiro assim que ele ativar e entrar em Minhas Viagens.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+
+                    access?.referredByContact?.takeIf(String::isNotBlank)?.let {
+                    Text("Indicado por: ${maskPassengerAdminContact(it)}", style = MaterialTheme.typography.bodySmall)
+                }
+                if (access != null) {
+                    Text(
+                        "Créditos: ${formatCreditMoney(access.creditBalanceCents)} • ganhos ${formatCreditMoney(access.creditEarnedCents)} • usados ${formatCreditMoney(access.creditSpentCents)}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                HorizontalDivider()
+                if (candidate.localProfile != null) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { blockCandidate = candidate },
+                            modifier = Modifier.semantics {
+                                contentDescription = if (candidate.localProfile.blocked) {
+                                    "Liberar passageiro no carro"
+                                } else {
+                                    "Marcar como Não aceito no meu carro"
+                                }
+                            },
+                        ) { Text(if (candidate.localProfile.blocked) "✅" else "🚫") }
+                    }
+                }
+                Text("Acesso à Agenda", style = MaterialTheme.typography.titleSmall)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = accessWhatsappDraft,
+                        onValueChange = { value ->
+                            accessWhatsappDrafts = accessWhatsappDrafts + (candidate.key to value.take(40))
+                        },
+                        label = { Text("WhatsApp de acesso") },
+                        supportingText = {
+                            Text("Pode ser diferente do contato capturado. Alterar este número não troca o passengerId nem apaga o histórico.")
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    OutlinedButton(
+                        enabled = !loading && passengerAdminContactKey(accessWhatsappDraft).isNotBlank(),
+                        onClick = {
+                            loading = true
+                            scope.launch {
+                                val accessKey = passengerAdminContactKey(accessWhatsappDraft)
+                                val canonical = withContext(Dispatchers.IO) { canonicalProfile(candidate) }
+                                val localConflict = localProfiles.firstOrNull { existing ->
+                                    existing.id != canonical?.id &&
+                                        passengerAdminContactKey(existing.agendaAccessWhatsapp) == accessKey
+                                }
+                                when {
+                                    canonical == null -> onChanged("Não foi possível vincular a identidade canônica deste passageiro.")
+                                    localConflict != null -> onChanged("Este WhatsApp de acesso já está associado a ${localConflict.displayName}.")
+                                    else -> {
+                                        val remoteResult = if (access != null && settings.configured) {
+                                            runCatching {
+                                                TripRemoteApi(settings).updatePassengerAccessWhatsapp(
+                                                    passengerId = canonical.id,
+                                                    currentPassengerContact = access.passengerContact,
+                                                    newPassengerContact = accessWhatsappDraft,
+                                                    displayName = canonical.displayName,
+                                                )
+                                            }
+                                        } else {
+                                            Result.success(DriverPassengerBlockResponse())
+                                        }
+                                        remoteResult.onSuccess {
+                                            val saved = withContext(Dispatchers.IO) {
+                                                passengerStore.saveProfile(
+                                                    canonical.copy(agendaAccessWhatsapp = accessWhatsappDraft),
+                                                )
+                                            }
+                                            accessWhatsappDrafts = accessWhatsappDrafts - candidate.key
+                                            revision++
+                                            if (settings.configured) {
+                                                if (access == null) {
+                                                    runCatching { TripRemoteApi(settings).syncPassengerDirectory(listOf(saved)) }
+                                                }
+                                                reloadRemote(syncDirectory = false)
+                                            }
+                                            onChanged(
+                                                if (access == null) {
+                                                    "WhatsApp de acesso salvo no mesmo passengerId. O acesso deste passageiro foi sincronizado individualmente."
+                                                } else {
+                                                    "WhatsApp de acesso atualizado. PassengerId, histórico, reservas, créditos e conta foram preservados."
+                                                },
+                                            )
+                                        }.onFailure { error ->
+                                            onChanged("Falha ao atualizar WhatsApp de acesso: ${error.message ?: "erro de conexão"}")
+                                        }
+                                    }
+                                }
+                                loading = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Salvar WhatsApp de acesso") }
+
+                    val canonicalAccessProfile = candidate.localProfile
+                    val accessKey0630 = passengerAdminContactKey(activeAccessWhatsapp)
+                    val localConflictCount0630 = localProfiles.count {
+                        passengerAdminContactKey(it.agendaAccessContact()) == accessKey0630 && accessKey0630.isNotBlank()
+                    }
+                    Text(
+                        when {
+                            canonicalAccessProfile?.blocked == true -> "🔴 Não aceito no meu carro • acesso negado"
+                            access?.status in setOf("AUTHORIZED", "ACTIVE") -> "🟢 Acesso online autorizado"
+                            access == null && localConflictCount0630 > 1 ->
+                                "Cadastro local • conflito de identidade no mesmo WhatsApp"
+                            else -> "Cadastro local na base unificada"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    if (canonicalAccessProfile?.blocked != true && access == null) {
+                        Text(
+                            if (localConflictCount0630 > 1) {
+                                "A sincronização automática foi pausada para este WhatsApp porque há mais de um passengerId local associado a ele."
+                            } else {
+                                "A tela sincroniza este cadastro ao abrir e ao atualizar; nenhum indicador permanente é exibido enquanto não houver estado remoto real."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    val passwordRecoveryAvailable0650 =
+                        canonicalAccessProfile != null &&
+                            passengerAdminContactKey(activeAccessWhatsapp).isNotBlank()
+                    OutlinedButton(
+                        enabled = settings.configured && !loading && passwordRecoveryAvailable0650,
+                        onClick = {
+                            loading = true
+                            scope.launch {
+                                val canonical = withContext(Dispatchers.IO) { canonicalProfile(candidate) }
+                                if (canonical == null) {
+                                    onChanged("Não foi possível vincular a identidade canônica deste passageiro.")
+                                    loading = false
+                                    return@launch
+                                }
+                                val api = TripRemoteApi(settings)
+                                val result = runCatching {
+                                    try {
+                                        api.resetPassengerPassword(
+                                            passengerContact = activeAccessWhatsapp,
+                                            passengerId = canonical.id,
+                                        )
+                                    } catch (error: TripRemoteApiException) {
+                                        if (error.httpStatus != 404) throw error
+                                        api.syncPassengerDirectory(listOf(canonical))
+                                        api.resetPassengerPassword(
+                                            passengerContact = activeAccessWhatsapp,
+                                            passengerId = canonical.id,
+                                        )
+                                    }
+                                }
+                                result
+                                    .onSuccess {
+                                        temporaryPassword = it.temporaryPassword
+                                        temporaryPasswordFor = candidate.displayName
+                                        temporaryPasswordWhatsapp0651 = activeAccessWhatsapp
+                                        onChanged(
+                                            if (it.firstAccessPassword) {
+                                                "Senha temporária de primeiro acesso gerada."
+                                            } else {
+                                                "Nova senha temporária gerada."
+                                            },
+                                        )
+                                        reloadRemote(syncDirectory = false)
+                                    }
+                                    .onFailure { onChanged("Falha ao gerar nova senha: ${it.message ?: "erro de conexão"}") }
+                                loading = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            when {
+                                access?.passwordRecoveryStatus == "REQUESTED" -> "Gerar senha solicitada"
+                                access?.accountActivated == false -> "Gerar senha de primeiro acesso"
+                                else -> "Gerar nova senha"
+                            },
+                        )
+                    }
+                    if (access == null && canonicalAccessProfile != null) {
+                        OutlinedButton(
+                            enabled = settings.configured && !loading && passwordRecoveryAvailable0650,
+                            onClick = {
+                                loading = true
+                                scope.launch {
+                                    val canonical = withContext(Dispatchers.IO) { canonicalProfile(candidate) }
+                                    if (canonical == null) {
+                                        onChanged("Não foi possível vincular a identidade canônica deste passageiro.")
+                                    } else {
+                                        runCatching {
+                                            TripRemoteApi(settings).syncPassengerDirectory(listOf(canonical))
+                                        }.onSuccess {
+                                            reloadRemote(syncDirectory = false)
+                                            onChanged("Acesso deste passageiro reparado e sincronizado individualmente.")
+                                        }.onFailure {
+                                            onChanged("Falha ao reparar acesso: ${it.message ?: "erro de conexão"}")
+                                        }
+                                    }
+                                    loading = false
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Reparar acesso") }
+                    }
+                }
+                }
+            }
+        }
+    }
+
+    if (visibleCandidates0420.size < candidates.size) {
+        val remaining0420 = candidates.size - visibleCandidates0420.size
+        OutlinedButton(
+            onClick = {
+                visibleCandidateLimit0420 = (visibleCandidateLimit0420 + 24).coerceAtMost(candidates.size)
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Mostrar mais passageiros ($remaining0420)")
+        }
+    }
+
+    blockCandidate?.let { candidate ->
+        val currentlyBlocked = candidate.localProfile?.blocked == true
+        AlertDialog(
+            onDismissRequest = { blockCandidate = null },
+            title = { Text(if (currentlyBlocked) "Remover bloqueio?" else "Não aceito no meu carro?") },
+            text = {
+                Text(
+                    if (currentlyBlocked) {
+                        "O desbloqueio é explícito e mantém passengerId, cadastro e histórico."
+                    } else {
+                        "O bloqueio ficará preso ao passengerId, negará a Agenda de Viagens e cancelará reservas Rota Certa ativas, liberando as vagas."
+                    },
+                )
+            },
+            confirmButton = {
+                Button(
+                    enabled = !loading,
+                    onClick = {
+                        val nextBlocked = !currentlyBlocked
+                        loading = true
+                        scope.launch {
+                            val current = withContext(Dispatchers.IO) { canonicalProfile(candidate) }
+                            if (current == null) {
+                                blockCandidate = null
+                                loading = false
+                                onChanged("Não foi possível vincular a identidade canônica deste passageiro.")
+                                return@launch
+                            }
+                            val saved = withContext(Dispatchers.IO) {
+                                passengerStore.setBlocked(
+                                    current.id,
+                                    nextBlocked,
+                                    if (nextBlocked) "Não aceito no meu carro" else "",
+                                ) ?: current
+                            }
+                            revision++
+                            blockCandidate = null
+                            onChanged(
+                                if (nextBlocked) "⛔ Não aceito no meu carro. Bloqueio salvo no passengerId."
+                                else "Passageiro desbloqueado explicitamente.",
+                            )
+                            val contact = saved.agendaAccessContact()
+                            if (settings.configured && passengerAdminContactKey(contact).isNotBlank()) {
+                                runCatching {
+                                    TripRemoteApi(settings).setPassengerAccessBlocked(
+                                        passengerContact = contact,
+                                        blocked = nextBlocked,
+                                        passengerId = saved.id,
+                                    )
+                                }.onSuccess { response ->
+                                    if (nextBlocked) {
+                                        runCatching { PublicBookingRemoteSync0296.pullAndReconcile(context, store) }
+                                    }
+                                    reloadRemote(syncDirectory = false)
+                                    revision++
+                                    onChanged(
+                                        if (nextBlocked) {
+                                            "⛔ Bloqueio sincronizado. ${response.cancelledBookings} reserva(s) ativa(s) cancelada(s); vagas recalculadas."
+                                        } else {
+                                            "Desbloqueio sincronizado. O acesso automático à Agenda de Viagens foi restaurado."
+                                        },
+                                    )
+                                }.onFailure { error ->
+                                    onChanged(
+                                        "Bloqueio local preservado; sincronização online pendente: ${error.message ?: "erro de conexão"}",
+                                    )
+                                }
+                            }
+                            loading = false
+                        }
+                    },
+                ) { Text(if (currentlyBlocked) "Desbloquear" else "Confirmar ⛔") }
+            },
+            dismissButton = { TextButton(onClick = { blockCandidate = null }) { Text("Cancelar") } },
+        )
+    }
+
+}
+
+@Composable
+internal fun PassengerHistoryPanel(
+    history: PassengerPersistentHistory?,
+    onBack: () -> Unit,
+    onArchiveToggle: (PassengerProfile) -> Unit,
+    showHeader: Boolean = true,
+) {
+    val context = LocalContext.current
+    if (showHeader) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Histórico do passageiro", style = MaterialTheme.typography.headlineSmall)
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.semantics { contentDescription = "Voltar para Passageiros" },
+            ) { Text("←") }
+        }
+    }
+    if (history == null) {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Text("Histórico não encontrado.", modifier = Modifier.padding(12.dp))
+        }
+        return
+    }
+
+    val profile = history.profile
+    val formatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+    fun whenText(value: Long): String = java.time.Instant.ofEpochMilli(value)
+        .atZone(java.time.ZoneId.systemDefault())
+        .format(formatter)
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text((if (profile.blocked) "🚫 " else "") + profile.displayName, style = MaterialTheme.typography.titleLarge)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(profile.whatsapp.ifBlank { "Telefone não informado" }, modifier = Modifier.weight(1f))
+                IconButton(
+                    enabled = profile.whatsapp.isNotBlank(),
+                    onClick = { openPassengerWhatsApp(context, profile.whatsapp) },
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_whatsapp_action),
+                        contentDescription = "Abrir WhatsApp do passageiro",
+                        tint = Color.Unspecified,
+                    )
+                }
+            }
+            Text("${history.totalRides} viagem(ns) concluída(s)", style = MaterialTheme.typography.titleMedium)
+            Text("${history.totalOccurrences} ocorrência(s)/reserva(s)", style = MaterialTheme.typography.bodyMedium)
+            Text("Primeiro registro: ${whenText(history.firstSeenAtMillis)}", style = MaterialTheme.typography.bodySmall)
+            Text("Último registro: ${whenText(history.lastSeenAtMillis)}", style = MaterialTheme.typography.bodySmall)
+            if (profile.blocked) {
+                Text(
+                    "⛔ NÃO ACEITO NO MEU CARRO${profile.blockedReason.takeIf(String::isNotBlank)?.let { " • $it" }.orEmpty()}",
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            TextButton(onClick = { onArchiveToggle(profile) }) {
+                Text(if (profile.archived) "Restaurar na lista" else "Arquivar da lista")
+            }
+        }
+    }
+
+    Text("Viagens concluídas", style = MaterialTheme.typography.titleMedium)
+    if (history.completedRides.isEmpty()) {
+        Text("Nenhuma viagem foi confirmada com ✅ ainda.", style = MaterialTheme.typography.bodySmall)
+    } else {
+        history.completedRides.sortedByDescending { it.completedAtMillis ?: it.updatedAtMillis }.forEach { ride ->
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(whenText(ride.completedAtMillis ?: ride.updatedAtMillis), style = MaterialTheme.typography.titleSmall)
+                    val route = listOf(ride.origin, ride.destination).filter(String::isNotBlank).joinToString(" → ")
+                    if (route.isNotBlank()) Text(route)
+                    val segment = listOf(ride.boarding, ride.dropoff).filter(String::isNotBlank).joinToString(" → ")
+                    if (segment.isNotBlank() && segment != route) Text("Trecho: $segment", style = MaterialTheme.typography.bodySmall)
+                    Text("${ride.seats} lugar(es) • ${ride.source.ifBlank { "Origem não informada" }}", style = MaterialTheme.typography.bodySmall)
+                    ride.driverProfileUuid.takeIf(String::isNotBlank)?.let {
+                        Text("Perfil: $it", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+    }
+
+    Text("Ocorrências e reservas", style = MaterialTheme.typography.titleMedium)
+    history.rides.sortedByDescending(PassengerRideRecord::updatedAtMillis).forEach { ride ->
+        val status = when (ride.status) {
+            PassengerOccurrenceStatus.OBSERVED -> "Observado"
+            PassengerOccurrenceStatus.CAPTURED -> "Capturado"
+            PassengerOccurrenceStatus.RESERVED -> "Reservado"
+            PassengerOccurrenceStatus.CANCELLED -> "Cancelado"
+            PassengerOccurrenceStatus.COMPLETED -> "Concluído ✅"
+        }
+        Text("• $status • ${whenText(ride.updatedAtMillis)} • ${ride.source.ifBlank { "origem não informada" }}", style = MaterialTheme.typography.bodySmall)
+    }
+
+    Text("Alterações de identidade", style = MaterialTheme.typography.titleMedium)
+    if (history.observations.isEmpty()) {
+        Text("Nenhuma alteração observada.", style = MaterialTheme.typography.bodySmall)
+    } else {
+        history.observations.forEach { observation ->
+            val details = listOf(
+                observation.displayName.takeIf(String::isNotBlank),
+                observation.whatsapp.takeIf(String::isNotBlank),
+                observation.photoUrl.takeIf(String::isNotBlank)?.let { "foto registrada" },
+                observation.source.takeIf(String::isNotBlank),
+            ).filterNotNull().joinToString(" • ")
+            Text("• ${whenText(observation.observedAtMillis)} — $details", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+
+    if (profile.externalPassengerIds.isNotEmpty() || profile.onlineIdentityIds.isNotEmpty()) {
+        HorizontalDivider()
+        Text("Identificadores técnicos", style = MaterialTheme.typography.titleSmall)
+        if (profile.externalPassengerIds.isNotEmpty()) {
+            Text("BlaBlaCar UUID: ${profile.externalPassengerIds.joinToString(", ")}", style = MaterialTheme.typography.bodySmall)
+        }
+        if (profile.onlineIdentityIds.isNotEmpty()) {
+            Text("Identidade online: ${profile.onlineIdentityIds.joinToString(", ")}", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+internal fun mergePassengerAdminCandidates(
+    localProfiles: List<PassengerProfile>,
+    collectedPassengers: List<BlaBlaCollectorPassenger>,
+    remotePassengers: List<DriverPassengerAccess>,
+): List<PassengerAdminCandidate> {
+    val map = linkedMapOf<String, PassengerAdminCandidate>()
+    val localById = localProfiles.associateBy(PassengerProfile::id)
+    val localByExternal = localProfiles.flatMap { profile -> profile.externalPassengerIds.map { it to profile } }.toMap()
+    val localByOnline = localProfiles.flatMap { profile -> profile.onlineIdentityIds.map { it to profile } }.toMap()
+    val phoneGroups = localProfiles
+        .mapNotNull { profile -> passengerAdminContactKey(profile.whatsapp).takeIf(String::isNotBlank)?.let { it to profile } }
+        .groupBy({ it.first }, { it.second })
+    val uniqueLocalByPhone = phoneGroups.mapNotNull { (key, profiles) -> profiles.singleOrNull()?.let { key to it } }.toMap()
+
+    fun merge(
+        key: String,
+        name: String,
+        phone: String,
+        local: PassengerProfile?,
+        remote: DriverPassengerAccess?,
+        externalPassengerId: String,
+        source: String,
+    ) {
+        val previous = map[key]
+        map[key] = PassengerAdminCandidate(
+            key = key,
+            displayName = remote?.displayName?.takeIf(String::isNotBlank)
+                ?: local?.displayName?.takeIf(String::isNotBlank)
+                ?: previous?.displayName?.takeIf(String::isNotBlank)
+                ?: name.trim(),
+            whatsapp = local?.whatsapp?.takeIf(String::isNotBlank)
+                ?: previous?.whatsapp?.takeIf(String::isNotBlank)
+                ?: phone.trim(),
+            agendaAccessWhatsapp = remote?.passengerContact?.takeIf(String::isNotBlank)
+                ?: local?.agendaAccessWhatsapp?.takeIf(String::isNotBlank)
+                ?: previous?.agendaAccessWhatsapp?.takeIf(String::isNotBlank)
+                ?: "",
+            localProfile = local ?: previous?.localProfile,
+            remoteAccess = remote ?: previous?.remoteAccess,
+            externalPassengerId = externalPassengerId.ifBlank { previous?.externalPassengerId.orEmpty() },
+            source = listOf(previous?.source.orEmpty(), source).filter(String::isNotBlank).distinct().joinToString(" • "),
+            lastActivityMillis = maxOf(previous?.lastActivityMillis ?: 0L, local?.updatedAtMillis ?: 0L),
+        )
+    }
+
+    localProfiles.forEach { profile ->
+        merge(
+            key = "canonical:${profile.id}",
+            name = profile.displayName,
+            phone = profile.whatsapp,
+            local = profile,
+            remote = null,
+            externalPassengerId = profile.externalPassengerIds.firstOrNull().orEmpty(),
+            source = "Cadastro Rota Certa",
+        )
+    }
+
+    collectedPassengers.forEachIndexed { index, passenger ->
+        val externalId = stableExternalPassengerId(BlaBlaCollectorUrlModule.passengerIdentityKey(passenger.booking_href)).orEmpty()
+        val phoneKey = passengerAdminContactKey(passenger.phone.orEmpty())
+        val linked = localByExternal[externalId] ?: uniqueLocalByPhone[phoneKey]
+        val key = when {
+            linked != null -> "canonical:${linked.id}"
+            externalId.isNotBlank() -> "external:$externalId"
+            phoneKey.isNotBlank() -> "phone:$phoneKey"
+            !passenger.booking_href.isNullOrBlank() -> "capture:${passenger.booking_href}"
+            else -> "capture:$index:${normalizePassengerSearch(passenger.name)}"
+        }
+        merge(
+            key = key,
+            name = passenger.name,
+            phone = passenger.phone.orEmpty(),
+            local = linked,
+            remote = null,
+            externalPassengerId = externalId,
+            source = "Captado na Timeline/BlaBlaCar",
+        )
+    }
+
+    remotePassengers.forEachIndexed { index, access ->
+        val onlineId = stableExternalPassengerId(access.id).orEmpty()
+        val phoneKey = passengerAdminContactKey(access.passengerContact)
+        val linked = localById[access.passengerId] ?: localByOnline[onlineId] ?: uniqueLocalByPhone[phoneKey]
+        val key = when {
+            linked != null -> "canonical:${linked.id}"
+            onlineId.isNotBlank() -> "online:$onlineId"
+            phoneKey.isNotBlank() -> "phone:$phoneKey"
+            else -> "remote:$index:${normalizePassengerSearch(access.displayName)}"
+        }
+        merge(
+            key = key,
+            name = access.displayName,
+            phone = access.passengerContact,
+            local = linked,
+            remote = access,
+            externalPassengerId = "",
+            source = if (access.status == "PENDING") "Indicação aguardando aprovação" else "Acesso online",
+        )
+    }
+
+    return map.values
+        .filterNot { candidate ->
+            candidate.localProfile?.archived == true &&
+                candidate.remoteAccess == null &&
+                !candidate.source.contains("Captado na Timeline/BlaBlaCar")
+        }
+        .sortedWith(
+        compareBy<PassengerAdminCandidate> {
+            when {
+                it.remoteAccess?.passwordRecoveryStatus == "REQUESTED" -> 0
+                it.remoteAccess?.status == "PENDING" -> 1
+                it.localProfile?.blocked == true -> 2
+                it.remoteAccess?.status == "ACTIVE" -> 3
+                else -> 4
+            }
+        }.thenByDescending(PassengerAdminCandidate::lastActivityMillis)
+            .thenBy(String.CASE_INSENSITIVE_ORDER) { it.displayName },
+    )
+}
+
+
+private fun sendTemporaryPasswordWhatsApp0651(
+    context: Context,
+    whatsapp: String,
+    password: String,
+) {
+    val localDigits = passengerAdminContactKey(whatsapp)
+    if (localDigits.isBlank()) return
+    val destination = "55" + localDigits
+    val message = "Sua senha temporária da Área VIP é $password. Use-a para entrar e crie uma nova senha para concluir a recuperação."
+    val uri = Uri.parse("https://wa.me/$destination?text=" + Uri.encode(message))
+    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+}
+
+internal fun passengerAdminContactKey(raw: String): String {
+    val digits = raw.filter(Char::isDigit)
+    if (digits.length < 10) return ""
+    return if (digits.startsWith("55") && digits.length in 12..13) digits.drop(2) else digits.takeLast(11)
+}
+
+internal fun maskPassengerAdminContact(raw: String): String {
+    val digits = passengerAdminContactKey(raw)
+    if (digits.length < 10) return raw
+    return if (digits.length == 11) "(${digits.take(2)}) ${digits.substring(2, 7)}-${digits.takeLast(4)}"
+    else "(${digits.take(2)}) ${digits.substring(2, 6)}-${digits.takeLast(4)}"
+}
+
+internal fun passengerAccessLabel(access: DriverPassengerAccess?): String? = when (access?.status) {
+    null -> null
+    "AUTHORIZED", "ACTIVE" -> "🟢 Acesso automático"
+    "SUSPENDED", "PENDING" -> "🟡 Sincronização pendente"
+    "BLOCKED" -> "⛔ Não aceito no meu carro"
+    else -> "⚪ Estado online: " + access?.status.orEmpty().lowercase()
+}
+
+internal fun parseCreditInput(raw: String): Long? = runCatching {
+    val normalized = raw.trim().replace(".", "").replace(",", ".")
+    normalized.toBigDecimal().movePointRight(2).setScale(0, RoundingMode.HALF_UP).longValueExact()
+}.getOrNull()?.takeIf { it in 0L..1_000_000L }
+
+internal fun formatCreditInput(cents: Long): String =
+    java.math.BigDecimal.valueOf(cents.coerceAtLeast(0L), 2).setScale(2).toPlainString().replace(".", ",")
+
+internal fun formatCreditMoney(cents: Long): String =
+    "R$ " + formatCreditInput(cents)

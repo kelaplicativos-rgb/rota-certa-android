@@ -1,0 +1,123 @@
+name: Navigation href current route 0.1.579
+
+on:
+  push:
+    branches:
+      - agent/navigation-href-current-route-0.1.579
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: navigation-href-current-route-0.1.579-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GOOGLE_MAPS_API_KEY: navigation_href_validation_dummy_key
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      ANDROID_HOME: /usr/local/lib/android/sdk
+
+    steps:
+      - name: Checkout exact triggering SHA
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove exact source and version
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          git diff --check b425a11006282bc658539e498cf73a30cfa2cef0...HEAD
+          grep -Fq 'val releaseVersionCode = 5_870' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.579"' app/build.gradle.kts
+          grep -Fq '"version": "0.1.579"' app/src/main/assets/release_history.json
+          grep -Fq '/ride-plan/trip-edit/' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt
+          grep -Fq '/ride-plan/trip-edit/' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDomParsing.kt
+          grep -Fq 'ride-plan' app/src/main/assets/blablacar/scripts/ride_list.js
+          grep -Fq 'ride-plan' app/src/main/assets/blablacar/scripts/trip_open.js
+          grep -Fq 'ride-plan' app/src/main/assets/blablacar/scripts/trip_detail.js
+          grep -Fq 'ride-plan' app/src/main/assets/blablacar/scripts/trip_public_share.js
+          git rev-parse HEAD | tee validated-source-head.txt
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify preinstalled Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "$ANDROID_SDK_ROOT"
+          test -d "$ANDROID_SDK_ROOT/platforms/android-35"
+          find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1 | tee android-build-tools-dir.txt
+          test -s android-build-tools-dir.txt
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run targeted Android regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.NavigationCurrentManageHref0579Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.NavigationIdentityAtomic0578Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaAutoSync0300Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTimelineTemporalCutoff0548Test' \
+            --tests 'br.com.mapeiaia.rotacerta.monitoring.OperationalHealthEngineTest' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace | tee navigation-href-tests.log
+
+      - name: Assemble exact debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace | tee assemble-debug.log
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee aapt-badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta'" aapt-badging.txt
+          grep -q "versionCode='5870'" aapt-badging.txt
+          grep -q "versionName='0.1.579'" aapt-badging.txt
+          cp "$APK" rota-certa-0.1.579-navigation-href-current-route.apk
+          stat -c '%s' rota-certa-0.1.579-navigation-href-current-route.apk | tee apk-size-bytes.txt
+          sha256sum rota-certa-0.1.579-navigation-href-current-route.apk | tee apk-sha256.txt
+
+      - name: Upload validation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.579-navigation-href-current-route-${{ github.sha }}
+          retention-days: 90
+          if-no-files-found: error
+          path: |
+            rota-certa-0.1.579-navigation-href-current-route.apk
+            validated-source-head.txt
+            navigation-href-tests.log
+            assemble-debug.log
+            apksigner.txt
+            aapt-badging.txt
+            apk-size-bytes.txt
+            apk-sha256.txt
+            app/build/reports/tests/testDebugUnitTest
+
+      - name: Confirm exact SHA artifact publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s rota-certa-0.1.579-navigation-href-current-route.apk
+          test -s apk-sha256.txt
+          test -s validated-source-head.txt
+          test "$(cat validated-source-head.txt)" = "$GITHUB_SHA"
+          echo "APK published for exact SHA $GITHUB_SHA"

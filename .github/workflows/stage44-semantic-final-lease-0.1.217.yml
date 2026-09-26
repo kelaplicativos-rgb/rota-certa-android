@@ -1,0 +1,239 @@
+name: Validate Stage44 semantic final lease 0.1.217
+on:
+  pull_request:
+    branches: [agent/stage43-manual-toggle-runtime-sync-0.1.215]
+    paths:
+      - '.github/workflows/stage44-semantic-final-lease-0.1.217.yml'
+      - 'scripts/apply_stage44_semantic_final_lease.py'
+      - 'scripts/apply_stage44_version.py'
+      - 'stage44/FarolStage44SemanticFinalLeaseTest.kt'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  validate-stage44-semantic-final-lease:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: '${{ secrets.GOOGLE_MAPS_API_KEY }}'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          path: source
+          fetch-depth: 1
+      - uses: actions/checkout@v4
+        with:
+          ref: '${{ github.event.pull_request.head.sha || github.sha }}'
+          path: patches
+          fetch-depth: 1
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore exact Stage32 materialized runtime
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: |
+          set -euo pipefail
+          mkdir -p bootstrap evidence
+          gh run download 31703841694 --repo kelaplicativos-rgb/rota-certa-android --name rota-certa-stage34-bootstrap-materialized-stage32-source --dir bootstrap
+          TGZ=$(find bootstrap -name stage32-materialized-source.tgz -print -quit)
+          test -f "$TGZ"
+          test "$(sha256sum "$TGZ" | awk '{print $1}')" = aa251a173e425b075f5f0508d6f042b4881949ed76e3f638f10ccab63417c5e3
+          rm -rf source/app/src/main/java source/app/src/test/java
+          tar -xzf "$TGZ" -C source
+
+      - name: Materialize Stage34 Stage36 Stage38
+        run: |
+          set -euo pipefail
+          python patches/scripts/apply_stage34_semantic.py source
+          python patches/scripts/apply_stage34_precollect.py source
+          python patches/scripts/apply_stage34_binding.py source
+          python patches/scripts/apply_stage34_test_semantic_contract.py source
+          python patches/scripts/apply_stage34_test_candidate_contract.py source
+          python patches/scripts/apply_stage34_test_frame_contract.py source
+          cp patches/stage34/FarolStage34Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage34Test.kt
+          python patches/scripts/apply_stage34_test_root_fix.py source
+          python patches/scripts/apply_stage36_prepare.py source
+          python patches/scripts/apply_stage36_farol_core.py source
+          python patches/scripts/apply_stage36_report_compile_fix.py source
+          cp patches/stage36/FarolStage36Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage36Test.kt
+          cp patches/stage36/FarolStage36FreshnessTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage36FreshnessTest.kt
+          cp patches/stage36/FarolStage36RuntimeTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage36RuntimeTest.kt
+          python patches/scripts/apply_stage36_test_runtime_fix.py source
+          python patches/scripts/apply_stage38_parser.py source
+          python patches/scripts/apply_stage38_evaluation.py source
+          python patches/scripts/apply_stage38_acquisition.py source
+          python patches/scripts/apply_stage38_ocr_request.py source
+          python patches/scripts/apply_stage38_ocr_result.py source
+          python patches/scripts/apply_stage38_downstream.py source
+          python patches/scripts/apply_stage38_report.py source
+          cp patches/stage38/FarolStage38Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage38Test.kt
+
+      - name: Materialize Stage40 Stage41 Stage42 Stage43
+        run: |
+          set -euo pipefail
+          python patches/scripts/apply_stage40_presence.py source
+          python patches/scripts/apply_stage40_visual.py source
+          cp patches/stage40/FarolStage40AuthorityRedContractTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage40AuthorityRedContractTest.kt
+          python patches/scripts/apply_stage40_version.py source
+          python patches/scripts/apply_stage40_precollect_bounded.py source
+          cp patches/stage40/FarolStage40PreCollectBootstrapTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage40PreCollectBootstrapTest.kt
+          python patches/scripts/apply_stage40_precollect_physical_version.py source
+          python patches/scripts/apply_stage41_subsecond_final_paint.py source
+          cp patches/stage41/FarolStage41SubsecondFinalPaintTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage41SubsecondFinalPaintTest.kt
+          python patches/scripts/apply_stage41_version.py source
+          python patches/scripts/apply_stage42_manual_universal_reading.py source
+          cp patches/stage42/FarolStage42ManualUniversalReadingTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage42ManualUniversalReadingTest.kt
+          python patches/scripts/apply_stage42_version.py source
+          python patches/scripts/apply_stage43_manual_toggle_runtime_sync.py source
+          cp patches/stage43/FarolStage43ManualToggleRuntimeSyncTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage43ManualToggleRuntimeSyncTest.kt
+          python patches/scripts/apply_stage43_version.py source
+          grep -q 'versionCode = 5500' source/app/build.gradle.kts
+          grep -q 'versionName = "0.1.216"' source/app/build.gradle.kts
+
+      - name: Materialize Stage44 0.1.217
+        run: |
+          set -euo pipefail
+          python patches/scripts/apply_stage44_semantic_final_lease.py source | tee evidence/materialize-stage44.txt
+          cp patches/stage44/FarolStage44SemanticFinalLeaseTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage44SemanticFinalLeaseTest.kt
+          python patches/scripts/apply_stage44_version.py source | tee evidence/materialize-stage44-version.txt
+          grep -q 'versionCode = 5501' source/app/build.gradle.kts
+          grep -q 'versionName = "0.1.217"' source/app/build.gradle.kts
+          test "$(grep -c '@Test' patches/stage44/FarolStage44SemanticFinalLeaseTest.kt)" -eq 14
+
+      - name: Static Stage44 causal order audit
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee evidence/static-stage44.txt
+          from pathlib import Path
+          p=Path('source/app/src/main/java/br/com/mapeiaia/rotacerta')
+          s=(p/'LiveRideAccessibilityService.kt').read_text()
+          h=(p/'FarolSemanticFinalLeaseStage44.kt').read_text()
+          for marker in (
+              'FAROL_SEMANTIC_FINAL_LEASE_STAGE44',
+              'RAW_STRUCTURAL_EVENT_CANNOT_REVOKE_FINAL_STAGE44',
+              'UNCHANGED_SNAPSHOT_PRESERVES_FINAL_STAGE44',
+              'SAME_ADDRESS_SIGNATURE_PRESERVES_FINAL_STAGE44',
+              'YELLOW_ONLY_AFTER_PROVEN_CARD_CHANGE_STAGE44',
+              'NO_POLLING_NO_CONTINUOUS_OCR_STAGE44',
+          ): assert marker in h, marker
+          lease=s.index('val finalLeaseStage44 = FarolSemanticFinalLeaseStage44.capture(')
+          collect=s.index('val collectionStage26 = collectUniversalAccessibilitySnapshotStage28(eventStage26)',lease)
+          visual=s.index('val visualDecisionStage23 = stage23VisualGate.observe(collectionStage26.snapshot.hash)',collect)
+          evaluate=s.index('val evaluationStage19 = FarolLatencyProbeStage9.measureValue(',visual)
+          invalidate=s.index('invalidateOldVisualBeforeCollectStage26(admissionStage26.visualGeneration, eventStartedNsStage26)',evaluate)
+          assert lease < collect < visual < evaluate < invalidate
+          pre=s[lease:evaluate]
+          assert 'currentDistanceKm = null' not in pre
+          assert 'universalActiveAddressSignature = null' not in pre
+          assert 'invalidateOldVisualBeforeCollectStage26(' not in pre
+          duplicate=s[s.index('if (!visualDecisionStage23.process) {',visual):evaluate]
+          assert 'S44_RAW_DUPLICATE_FINAL_PRESERVED' in duplicate
+          assert 'invalidateOldVisualBeforeCollectStage26(' not in duplicate
+          preserve=s[s.index('FarolSemanticFinalLeaseStage44.preservesSameSemanticCard',evaluate):invalidate]
+          assert 'S44_SEMANTIC_SAME_CARD_FINAL_PRESERVED' in preserve
+          assert 'return true' in preserve
+          assert 'S44_PROVEN_CARD_CHANGE_INVALIDATE' in s[invalidate:]
+          assert 'S43_MANUAL_OFF_RENDER_COMMIT' in s
+          assert 'FAROL_SUBSECOND_SAME_FRAME_FINAL_PAINT_STAGE41' in (p/'FarolFinalPaintFreshnessStage41.kt').read_text()
+          print('stage44_static_causal_order_audit=PASS')
+          PY
+
+      - name: Verify exact 1032 tests
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee evidence/test-inventory.txt
+          from pathlib import Path
+          n=sum(p.read_text(encoding='utf-8').count('@Test') for p in Path('source/app/src/test/java').rglob('*.kt'))
+          print('total_at_test='+str(n))
+          assert n==1032,n
+          PY
+
+      - name: Stage44 regression 14
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon testDebugUnitTest --tests br.com.mapeiaia.rotacerta.FarolStage44SemanticFinalLeaseTest | tee ../evidence/stage44-tests.log
+          python - <<'PY' | tee ../evidence/stage44-count.txt
+          import xml.etree.ElementTree as E
+          r=E.parse('app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.FarolStage44SemanticFinalLeaseTest.xml').getroot()
+          v={k:int(r.attrib.get(k,0)) for k in ('tests','failures','errors','skipped')}
+          print(v)
+          assert v=={'tests':14,'failures':0,'errors':0,'skipped':0},v
+          PY
+
+      - name: Stage43 Stage42 Stage41 regressions
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon testDebugUnitTest \
+            --tests br.com.mapeiaia.rotacerta.FarolStage43ManualToggleRuntimeSyncTest \
+            --tests br.com.mapeiaia.rotacerta.FarolStage42ManualUniversalReadingTest \
+            --tests br.com.mapeiaia.rotacerta.FarolStage41SubsecondFinalPaintTest \
+            --tests br.com.mapeiaia.rotacerta.FarolStage40PreCollectBootstrapTest \
+            --tests br.com.mapeiaia.rotacerta.FarolStage40AuthorityRedContractTest \
+            --tests br.com.mapeiaia.rotacerta.FarolStage38Test \
+            --tests br.com.mapeiaia.rotacerta.FarolStage36FreshnessTest | tee ../evidence/regressions.log
+
+      - name: Complete suite exact 1032
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --rerun-tasks testDebugUnitTest | tee ../evidence/full-tests.log
+          python - <<'PY' | tee ../evidence/full-count.txt
+          from pathlib import Path
+          import xml.etree.ElementTree as E
+          t=f=e=s=0
+          for p in Path('app/build/test-results/testDebugUnitTest').glob('TEST-*.xml'):
+              r=E.parse(p).getroot(); t+=int(r.attrib.get('tests',0)); f+=int(r.attrib.get('failures',0)); e+=int(r.attrib.get('errors',0)); s+=int(r.attrib.get('skipped',0))
+          print(t,f,e,s)
+          assert (t,f,e,s)==(1032,0,0,0),(t,f,e,s)
+          PY
+
+      - name: Lint and assemble Stage44 physical APK
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon lintDebug | tee ../evidence/lint.log
+          ./gradlew --no-daemon clean assembleDebug | tee ../evidence/assemble.log
+
+      - name: Validate Stage44 physical APK
+        run: |
+          set -euo pipefail
+          A=source/app/build/outputs/apk/debug/app-debug.apk
+          O=evidence/Rota-Certa-Stage44-Semantic-Final-Lease-0.1.217.apk
+          test -f "$A"
+          cp "$A" "$O"
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
+          SIGN=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          "$AAPT" dump badging "$O" | tee evidence/badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta' versionCode='5501' versionName='0.1.217'" evidence/badging.txt
+          "$SIGN" verify --verbose --print-certs "$O" | tee evidence/signature.txt
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' evidence/signature.txt
+          unzip -t "$O" | tee evidence/zip.txt
+          mkdir -p evidence/dex
+          unzip -Z1 "$O" | grep -E '^classes([0-9]+)?\.dex$' | tee evidence/dex-inventory.txt
+          while IFS= read -r dex; do unzip -p "$O" "$dex" > "evidence/dex/$dex"; done < evidence/dex-inventory.txt
+          cat evidence/dex/classes*.dex > evidence/all-classes.dex
+          for m in FAROL_SEMANTIC_FINAL_LEASE_STAGE44 RAW_STRUCTURAL_EVENT_CANNOT_REVOKE_FINAL_STAGE44 UNCHANGED_SNAPSHOT_PRESERVES_FINAL_STAGE44 SAME_ADDRESS_SIGNATURE_PRESERVES_FINAL_STAGE44 YELLOW_ONLY_AFTER_PROVEN_CARD_CHANGE_STAGE44 MANUAL_OFF_PHYSICAL_VIEW_COMMIT_STAGE43 FAROL_MANUAL_READING_AUTHORITY_STAGE42 FAROL_SUBSECOND_SAME_FRAME_FINAL_PAINT_STAGE41 FAROL_FINAL_VISUAL_STATE_AUTHORITY_STAGE40 FAROL_MAXIMUM_FORENSICS_STAGE38; do
+            grep -a -q "$m" evidence/all-classes.dex
+          done
+          sha256sum "$O" | tee evidence/apk-sha256.txt
+          sha512sum "$O" | tee evidence/apk-sha512.txt
+          stat -c 'apk_bytes=%s' "$O" | tee evidence/apk-size.txt
+          printf 'versionName=0.1.217\nversionCode=5501\npackage=br.com.mapeiaia.rotacerta\nhead=%s\n' '${{ github.event.pull_request.head.sha || github.sha }}' | tee evidence/build-identity.txt
+          echo 'stage44_semantic_final_lease_apk_validation=PASS' | tee evidence/apk-validation.txt
+
+      - name: Upload Stage44 physical artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.217-stage44-semantic-final-lease
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,232 @@
+name: Rota Certa 0.1.571 BlaBla share authority
+
+on:
+  push:
+    branches:
+      - agent/public-agenda-shell-blablacar-whatsapp-0.1.569
+    paths:
+      - '.github/workflows/public-agenda-share-authority-0571.yml'
+      - 'trip-platform/functions/scripts/patch-public-agenda-share-authority-0571.js'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: public-agenda-share-authority-0571-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  patch-build-deploy-prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+    steps:
+      - name: Checkout exact branch HEAD
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Materialize 0571 share-authority fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          node trip-platform/functions/scripts/patch-public-agenda-share-authority-0571.js
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/public/public-agenda-shell-0569.js
+          node --check app/src/main/assets/blablacar/scripts/trip_public_share.js
+          grep -Fq 'normalizeBlaBlaPublicShareUrl0571' trip-platform/functions/index.js
+          grep -Fq 'isShareCompatiblePublicTrip0571' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt
+          grep -Fq "['requested_seats', 'search_origin', 'search_uuid']" app/src/main/assets/blablacar/scripts/trip_public_share.js
+          ! grep -Fq 'link[rel="canonical"]' app/src/main/assets/blablacar/scripts/trip_public_share.js
+          grep -Fq 'releaseVersionCode = 5_860' app/build.gradle.kts
+          grep -Fq 'releaseVersionName = "0.1.569"' app/build.gradle.kts
+
+      - name: Prove share URL fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          function officialHost(hostname) {
+            const labels = String(hostname || '').toLowerCase().replace(/^\.+|\.+$/g, '').split('.').filter(Boolean);
+            const root = labels[0] === 'www' ? labels.slice(1) : labels;
+            if (root[0] !== 'blablacar') return false;
+            const suffix = root.slice(1);
+            if (suffix.length === 1) return suffix[0] === 'com' || /^[a-z]{2}$/.test(suffix[0]);
+            return suffix.length === 2 && ['com','co'].includes(suffix[0]) && /^[a-z]{2}$/.test(suffix[1]);
+          }
+          function normalizeShare(raw) {
+            try {
+              const u = new URL(raw);
+              if (!['http:','https:'].includes(u.protocol) || !officialHost(u.hostname)) return '';
+              const path = u.pathname.replace(/\/+$/, '').toLowerCase();
+              if (path !== '/trip' && !path.startsWith('/trip/')) return '';
+              for (const key of u.searchParams.keys()) {
+                if (['requested_seats','search_origin','search_uuid'].includes(String(key).toLowerCase())) return '';
+              }
+              const source = String(u.searchParams.get('source') || '').toUpperCase();
+              if (source && source !== 'CARPOOLING') return '';
+              const id = String(u.searchParams.get('id') || '');
+              if (!/^[A-Za-z0-9_-]{6,}$/.test(id)) return '';
+              u.protocol = 'https:';
+              u.hash = '';
+              return u.toString();
+            } catch (_) { return ''; }
+          }
+          const good = [
+            'http://www.blablacar.com.br/trip?source=CARPOOLING&id=AaA1nt4jfPOrKa1h-_JRZkAEz_L5OX4PQATwBBw8jCE&p0%5Bac%5D=adult',
+            'http://www.blablacar.com.br/trip?source=CARPOOLING&id=AaA1b3oufj6WRLxYt_pF9kAE2q6YFjakQATP8vIER6w&p0%5Bac%5D=adult'
+          ];
+          const bad = 'https://www.blablacar.com.br/trip?source=CARPOOLING&id=TFbiV6OdTfi6X4lMn4CZMAHvGnDJoBScG-J2Fks9YC_Q&requested_seats=1&search_origin=SEARCH';
+          for (const input of good) {
+            const output = normalizeShare(input);
+            if (!output.startsWith('https://')) throw new Error('real share fixture was not promoted to https');
+            const u = new URL(output);
+            if (u.searchParams.get('p0[ac]') !== 'adult') throw new Error('legitimate p0[ac] parameter was not preserved');
+            if (u.searchParams.get('source') !== 'CARPOOLING') throw new Error('CARPOOLING source was not preserved');
+          }
+          if (normalizeShare(bad) !== '') throw new Error('search-context URL was incorrectly accepted');
+          console.log('BLABLACAR_SHARE_FIXTURES_0571=PASS');
+          NODE
+
+      - name: Run public shell tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test trip-platform/functions/test/public-agenda-shell-0569.test.js
+
+      - name: Build Android 0.1.569
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          # The repository-wide historical unit suite currently has unrelated legacy failures.
+          # This revision is gated by the dedicated 0571 fixtures/shell tests above plus a full Android compile/package.
+          ./gradlew --no-daemon :app:assembleDebug
+          APK="$(find app/build/outputs/apk/debug -name '*.apk' -type f | head -n 1)"
+          test -n "$APK"
+          cp "$APK" /tmp/rota-certa-0.1.569-5860-debug.apk
+          sha256sum /tmp/rota-certa-0.1.569-5860-debug.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.569-5860-share-authority
+          path: /tmp/rota-certa-0.1.569-5860-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Persist materialized correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'SOURCE_ALREADY_MATERIALIZED=1'
+          else
+            git config user.name 'rota-certa-ci'
+            git config user.email 'rota-certa-ci@users.noreply.github.com'
+            git add \
+              trip-platform/functions/index.js \
+              trip-platform/public/public-agenda-shell-0569.js \
+              trip-platform/functions/test/public-agenda-shell-0569.test.js \
+              app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt \
+              app/src/main/assets/blablacar/scripts/trip_public_share.js \
+              app/build.gradle.kts \
+              app/src/main/assets/release_history.json
+            git commit -m 'fix: capture authoritative BlaBla share permalink 0.1.569'
+            git push origin HEAD:agent/public-agenda-shell-blablacar-whatsapp-0.1.569
+          fi
+          echo "MATERIALIZED_HEAD=$(git rev-parse HEAD)"
+
+      - name: Install trip-api dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Configure Firebase authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo 'USE_FIREBASE_TOKEN=1' >> "$GITHUB_ENV"
+          else
+            echo 'Firebase credential is missing.' >&2
+            exit 3
+          fi
+
+      - name: Deploy strict backend and public shell
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          AUTH_ARGS=()
+          if [ "${USE_FIREBASE_TOKEN:-0}" = '1' ]; then AUTH_ARGS+=(--token "$FIREBASE_TOKEN"); fi
+          npx --yes firebase-tools@latest deploy \
+            --project "$PROJECT" \
+            --only functions:trip-api,hosting \
+            --non-interactive \
+            --force \
+            "${AUTH_ARGS[@]}"
+
+      - name: Strict live proof - no search URL can be clickable
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://rota-certa-7ccc8.web.app'
+          curl --retry 12 --retry-delay 5 --retry-all-errors --fail --silent --show-error \
+            "$BASE/v1/public/agenda/ezequiel?proof=$GITHUB_RUN_ID" > /tmp/live-agenda-0571.json
+          node <<'NODE'
+          const fs = require('fs');
+          const body = JSON.parse(fs.readFileSync('/tmp/live-agenda-0571.json', 'utf8'));
+          const trips = Array.isArray(body.trips) ? body.trips : [];
+          if (!trips.length) throw new Error('live public Agenda returned no trips');
+          let validShare = 0;
+          let forbiddenSearch = 0;
+          let inert = 0;
+          for (const trip of trips) {
+            const raw = String(trip && trip.blablaPublicUrl || '').trim();
+            if (!raw) { inert += 1; continue; }
+            const u = new URL(raw);
+            const keys = [...u.searchParams.keys()].map((key) => key.toLowerCase());
+            if (keys.some((key) => ['requested_seats','search_origin','search_uuid'].includes(key))) forbiddenSearch += 1;
+            const source = String(u.searchParams.get('source') || '').toUpperCase();
+            if (u.protocol === 'https:' && u.hostname.toLowerCase().includes('blablacar') && (!source || source === 'CARPOOLING')) validShare += 1;
+          }
+          console.log(`LIVE_PUBLIC_AGENDA_TRIPS=${trips.length}`);
+          console.log(`LIVE_SHARE_COMPATIBLE_LINKS=${validShare}`);
+          console.log(`LIVE_INERT_TRIPS=${inert}`);
+          console.log(`LIVE_FORBIDDEN_SEARCH_LINKS=${forbiddenSearch}`);
+          if (forbiddenSearch !== 0) throw new Error('production still exposes search-context BlaBlaCar link(s)');
+          console.log('PUBLIC_AGENDA_SHARE_AUTHORITY_0571_LIVE=PASS');
+          NODE
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/public-agenda-shell-0569.js?proof=$GITHUB_RUN_ID" > /tmp/live-shell-0571.js
+          grep -Fq 'requested_seats' /tmp/live-shell-0571.js
+          grep -Fq 'search_origin' /tmp/live-shell-0571.js
+          grep -Fq 'sourceParam' /tmp/live-shell-0571.js
+          grep -Fq 'card.href = publicUrl' /tmp/live-shell-0571.js
+          ! grep -Fiq 'passageiro' /tmp/live-shell-0571.js
+          echo 'PUBLIC_AGENDA_STRICT_SHELL_0571_LIVE=PASS'

@@ -1,0 +1,168 @@
+name: Exact Card Refresh Return 0.1.645 APK
+
+on:
+  push:
+    branches:
+      - 'agent/card-target-refresh-return-0.1.645'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: exact-card-refresh-0645-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      GOOGLE_MAPS_API_KEY: ''
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove exact-card refresh source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "ROTA_CERTA_GIT_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          grep -Fq 'releaseVersionName = "0.1.645"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 5_936' app/build.gradle.kts
+          grep -Fq 'TargetedTripRefreshEvents0645.notifyCanonicalCommitted(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'TIMELINE_CARD_TARGET_LOCAL_COMMIT_0645' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'requestedAction=TARGET_HTML_REFRESH_0607 accepted=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'reloadLocalCanonicalProjection0645("FOREGROUND_RETURN")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'TargetedTripRefreshEvents0645.commit.collectAsState()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq '⟳ Atualizando somente esta viagem…' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'PROXIMITY_ALERTS_ENABLED_IS_SOLE_ALERT_AUTHORITY_STAGE644' app/src/main/java/br/com/mapeiaia/rotacerta/AlertRuntimePolicy0644.kt
+          git diff --check
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure Firebase Android app
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Exact-card refresh regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TargetedCardRefreshReturn0645Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaLiveHtmlCommit0617Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTripControl0407Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TimelineAgendaAtomicSync0632Test' \
+            --tests 'br.com.mapeiaia.rotacerta.AlertRuntimeIndependent0644Test' \
+            --no-daemon --max-workers=2 --stacktrace | tee /tmp/card-refresh-0645-tests.log
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/card-refresh-0645-assemble.log
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Prove APK identity and signing
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/card-refresh-0645-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/card-refresh-0645-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/card-refresh-0645-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5936'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.645'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/card-refresh-0645-apksigner.txt
+          grep -Fq 'Verified' /tmp/card-refresh-0645-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/card-refresh-0645-dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/card-refresh-0645-dex-strings.txt
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.645-5936-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.645"
+            echo "versionCode=5936"
+            echo "branch=$GITHUB_REF_NAME"
+            echo "commit=$GITHUB_SHA"
+            echo "variant=debug"
+            echo "deviceTarget=Samsung SM-S911B / Android 16 / API 36"
+            echo "exactCardAcquisitionOnly=PASS"
+            echo "localCanonicalCommitBeforePublicProjection=PASS"
+            echo "foregroundReturnLocalFirst=PASS"
+            echo "duplicateSingleFlightFalsePositive=BLOCKED"
+            echo "alertsIndependent0644Regression=PASS"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee exact-card-refresh-0645-proof.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-exact-card-refresh-0.1.645-${{ github.sha }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            exact-card-refresh-0645-proof.txt
+            /tmp/card-refresh-0645-tests.log
+            /tmp/card-refresh-0645-assemble.log
+            /tmp/card-refresh-0645-aapt.txt
+            /tmp/card-refresh-0645-apksigner.txt
+            /tmp/card-refresh-0645-zip-integrity.txt
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30

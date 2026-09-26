@@ -1,0 +1,128 @@
+name: Agenda public booking E2E smoke
+
+on:
+  push:
+    branches:
+      - agent/agenda-public-capacity-fidelity-0.1.303
+    paths:
+      - '.github/workflows/agenda-public-booking-e2e-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Simulate one booking and cancel it
+        shell: bash
+        env:
+          BASE: https://rota-certa-7ccc8.web.app
+          DRIVER: viagem-certa
+          AGENDA: WlaYvVil5AlaNHbEthN-oBbb5JSIIQgJ
+        run: |
+          set -euo pipefail
+
+          cleanup() {
+            if [ -s /tmp/cancel.json ] && [ -s /tmp/selected.json ]; then
+              TRIP_ID="$(node -p "require('/tmp/selected.json').tripId")"
+              BOOKING_ID="$(node -p "require('/tmp/cancel.json').bookingId")"
+              CANCEL_TOKEN="$(node -p "require('/tmp/cancel.json').cancellationToken")"
+              curl --silent --show-error --fail                 -X POST "$BASE/v1/public/trips/$TRIP_ID/bookings/$BOOKING_ID/cancel"                 -H 'Content-Type: application/json'                 --data-binary "$(node -e 'console.log(JSON.stringify({cancellationToken:process.argv[1]}))' "$CANCEL_TOKEN")"                 >/tmp/cleanup-response.json || true
+            fi
+          }
+          trap cleanup EXIT
+
+          curl --retry 5 --retry-delay 2 --fail --silent --show-error             "$BASE/v1/public/drivers/$DRIVER/$AGENDA/agenda"             -H 'Accept: application/json' > /tmp/agenda.json
+
+          node <<'NODE'
+          const fs = require('fs');
+          const agenda = JSON.parse(fs.readFileSync('/tmp/agenda.json','utf8'));
+          const trips = Array.isArray(agenda.trips) ? agenda.trips : [];
+          const candidates = trips
+            .filter(t => t && t.isFull !== true && t.canReserve !== false)
+            .filter(t => Number(t.availableSeatsMinimum ?? -1) >= 1)
+            .sort((a,b) => Number(a.departureAtMillis||0)-Number(b.departureAtMillis||0));
+          if (!candidates.length) {
+            console.error('NO_BOOKABLE_FULL_ROUTE_TRIP');
+            process.exit(4);
+          }
+          const t = candidates[0];
+          const stops = Array.isArray(t.stops) ? t.stops : [];
+          if (stops.length < 2) process.exit(5);
+          const selected = {
+            tripId: t.tripId || t.publicToken,
+            title: t.title,
+            departureAtMillis: Number(t.departureAtMillis||0),
+            beforeMin: Number(t.availableSeatsMinimum),
+            beforeMax: Number(t.availableSeatsMaximum),
+            capacity: Number(t.capacity||0),
+            boardingStopId: stops[0].id,
+            dropoffStopId: stops[stops.length-1].id
+          };
+          fs.writeFileSync('/tmp/selected.json', JSON.stringify(selected));
+          console.log('SELECTED_TRIP=' + selected.title);
+          console.log('BEFORE_AVAILABLE_MIN=' + selected.beforeMin);
+          console.log('BEFORE_AVAILABLE_MAX=' + selected.beforeMax);
+          NODE
+
+          TRIP_ID="$(node -p "require('/tmp/selected.json').tripId")"
+          BOARD="$(node -p "require('/tmp/selected.json').boardingStopId")"
+          DROP="$(node -p "require('/tmp/selected.json').dropoffStopId")"
+          IDEM="chatgpt_e2e_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_$(date +%s)"
+
+          node -e 'const fs=require("fs");fs.writeFileSync("/tmp/request.json",JSON.stringify({passengerName:"Teste automático Rota Certa",passengerContact:"1100000000",boardingStopId:process.argv[1],dropoffStopId:process.argv[2],seats:1,idempotencyKey:process.argv[3]}))' "$BOARD" "$DROP" "$IDEM"
+
+          HTTP_CODE="$(curl --silent --show-error             -o /tmp/booking-response.json -w '%{http_code}'             -X POST "$BASE/v1/public/trips/$TRIP_ID/bookings"             -H 'Content-Type: application/json'             -H 'Accept: application/json'             -H "Idempotency-Key: $IDEM"             --data-binary @/tmp/request.json)"
+
+          if [ "$HTTP_CODE" != "201" ] && [ "$HTTP_CODE" != "200" ]; then
+            echo "BOOKING_HTTP=$HTTP_CODE"
+            node -e 'const x=require("/tmp/booking-response.json"); console.log("BOOKING_ERROR="+String(x.code||x.message||"unknown"))'
+            exit 6
+          fi
+
+          node <<'NODE'
+          const fs=require('fs');
+          const x=JSON.parse(fs.readFileSync('/tmp/booking-response.json','utf8'));
+          if(!x.bookingId || !x.cancellationToken) process.exit(7);
+          fs.writeFileSync('/tmp/cancel.json',JSON.stringify({bookingId:x.bookingId,cancellationToken:x.cancellationToken}));
+          console.log('BOOKING_CREATED=true');
+          console.log('BOOKING_REPLAYED='+(x.replayed===true));
+          NODE
+
+          curl --retry 4 --retry-delay 1 --fail --silent --show-error             "$BASE/v1/public/trips/$TRIP_ID" -H 'Accept: application/json' > /tmp/after-booking.json
+
+          node <<'NODE'
+          const before=require('/tmp/selected.json');
+          const after=require('/tmp/after-booking.json');
+          const afterMin=Number(after.availableSeatsMinimum);
+          console.log('AFTER_BOOKING_AVAILABLE_MIN='+afterMin);
+          if (afterMin !== before.beforeMin - 1) {
+            console.error('SEAT_DID_NOT_DECREMENT_EXACTLY_ONE');
+            process.exit(8);
+          }
+          NODE
+
+          BOOKING_ID="$(node -p "require('/tmp/cancel.json').bookingId")"
+          CANCEL_TOKEN="$(node -p "require('/tmp/cancel.json').cancellationToken")"
+          node -e 'require("fs").writeFileSync("/tmp/cancel-request.json",JSON.stringify({cancellationToken:process.argv[1]}))' "$CANCEL_TOKEN"
+
+          CANCEL_HTTP="$(curl --silent --show-error             -o /tmp/cancel-response.json -w '%{http_code}'             -X POST "$BASE/v1/public/trips/$TRIP_ID/bookings/$BOOKING_ID/cancel"             -H 'Content-Type: application/json'             --data-binary @/tmp/cancel-request.json)"
+          test "$CANCEL_HTTP" = "200"
+          rm -f /tmp/cancel.json
+
+          curl --retry 4 --retry-delay 1 --fail --silent --show-error             "$BASE/v1/public/trips/$TRIP_ID" -H 'Accept: application/json' > /tmp/after-cancel.json
+
+          node <<'NODE'
+          const before=require('/tmp/selected.json');
+          const after=require('/tmp/after-cancel.json');
+          const restored=Number(after.availableSeatsMinimum);
+          console.log('AFTER_CANCEL_AVAILABLE_MIN='+restored);
+          if (restored !== before.beforeMin) {
+            console.error('SEAT_DID_NOT_RESTORE');
+            process.exit(9);
+          }
+          console.log('E2E_RESULT=PASS');
+          NODE

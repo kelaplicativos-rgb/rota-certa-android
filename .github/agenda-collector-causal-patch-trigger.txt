@@ -1,0 +1,2 @@
+trigger=2026-08-24T19:06Z
+scope=agenda-network-first-seat-gate

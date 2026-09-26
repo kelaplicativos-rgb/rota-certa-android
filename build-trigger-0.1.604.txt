@@ -1,0 +1,1 @@
+Rota Certa 0.1.604 exact-SHA build trigger for BlaBlaCar published-link validation.

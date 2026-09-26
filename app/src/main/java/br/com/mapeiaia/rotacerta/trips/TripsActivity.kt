@@ -1,0 +1,1826 @@
+package br.com.mapeiaia.rotacerta.trips
+
+import android.Manifest
+import android.content.Intent
+import android.os.Build
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import br.com.mapeiaia.rotacerta.AppSettings
+import br.com.mapeiaia.rotacerta.DiagnosticEventContext0507
+import br.com.mapeiaia.rotacerta.DiagnosticModule0507
+import br.com.mapeiaia.rotacerta.DiagnosticSeverity0507
+import br.com.mapeiaia.rotacerta.MainActivity
+import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
+import br.com.mapeiaia.rotacerta.SettingsRepository
+import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
+import br.com.mapeiaia.rotacerta.date.RotaCertaDateSelection
+import br.com.mapeiaia.rotacerta.date.RotaCertaDateSelectionMode
+import br.com.mapeiaia.rotacerta.ui.RotaCertaDatePickerDialog
+import br.com.mapeiaia.rotacerta.ui.RotaCertaDateSelectionField
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+import java.util.UUID
+import kotlin.math.roundToLong
+import kotlinx.coroutines.launch
+
+class TripsActivity : ComponentActivity() {
+    private var agendaTimelineCrashGuard: AgendaTimelineCrashGuard? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        val createStartedNs = android.os.SystemClock.elapsedRealtimeNanos()
+        val createStartedWall = System.currentTimeMillis()
+        val traceId = AgendaTrace.adoptTrace(intent)
+        val openStartedNs = AgendaTrace.openStartNs(intent, traceId)
+        super.onCreate(savedInstanceState)
+        AgendaTrace.event(
+            this,
+            "TRIPS_ACTIVITY_ONCREATE_START",
+            "savedInstanceStatePresent=${savedInstanceState != null} launchAction=${intent?.action?.take(80).orEmpty()} coldWarm=unknown",
+            traceId,
+            wallMs = createStartedWall,
+            monotonicNs = createStartedNs,
+        )
+        agendaTimelineCrashGuard = AgendaTimelineCrashGuard.install(this)
+        AgendaSyncCrashTraceStore.checkpoint(this, "timeline_activity_created")
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 304)
+        }
+        TripShortcutInstaller.installDynamic(this)
+        AgendaSyncCrashTraceStore.checkpoint(this, "timeline_before_set_content")
+        AgendaTrace.event(this, "TRIPS_ACTIVITY_BEFORE_SET_CONTENT", "savedInstanceStatePresent=${savedInstanceState != null}", traceId)
+        AgendaTrace.installFirstRenderObservers(this, traceId, openStartedNs)
+        val contentOperation = AgendaTrace.operationStart(this, "AGENDA_SET_CONTENT", "TripsActivity.onCreate", traceId)
+        try {
+            setContent {
+                MaterialTheme {
+                    TripApp(
+                        activity = this,
+                        startCreating = intent?.action == TripActions.ACTION_NEW_TRIP,
+                        initialTripId = intent?.getStringExtra(TripActions.EXTRA_TRIP_ID),
+                        initialRemoteTripId = intent?.getStringExtra(TripActions.EXTRA_REMOTE_TRIP_ID),
+                        initialBookingId = intent?.getStringExtra(TripActions.EXTRA_BOOKING_ID),
+                        initialPendingOnly = intent?.getBooleanExtra(TripActions.EXTRA_PENDING_ONLY, false) == true,
+                        openReservationRequests = intent?.action == TripActions.ACTION_OPEN_RESERVATION_REQUESTS,
+                        openPassengers = intent?.action == TripActions.ACTION_OPEN_PASSENGERS,
+                    )
+                }
+            }
+            AgendaTrace.event(this, "TRIPS_ACTIVITY_AFTER_SET_CONTENT", "result=returned", traceId, contentOperation.operationId)
+            AgendaTrace.operationEnd(this, contentOperation)
+        } catch (error: Throwable) {
+            AgendaTrace.operationError(this, contentOperation, error)
+            throw error
+        }
+        AgendaSyncCrashTraceStore.checkpoint(this, "timeline_after_set_content")
+        val createDurationMs = ((android.os.SystemClock.elapsedRealtimeNanos() - createStartedNs).coerceAtLeast(0L)) / 1_000_000L
+        AgendaTrace.event(this, "TRIPS_ACTIVITY_ONCREATE_END", "durationMs=$createDurationMs", traceId)
+    }
+
+    override fun onDestroy() {
+        AgendaTrace.event(
+            this,
+            "TRIPS_ACTIVITY_DESTROY",
+            "changingConfigurations=$isChangingConfigurations finishing=$isFinishing",
+        )
+        AgendaSyncCrashTraceStore.checkpoint(this, "timeline_activity_destroy")
+        super.onDestroy()
+        agendaTimelineCrashGuard?.close()
+    }
+}
+
+private enum class TripScreen { LIST, CENTRAL_DAY, TIMELINE, RESERVATIONS, ASSISTANT, NOTIFICATIONS, PUBLIC_SEARCH, CREATE, SETTINGS, APP_SETTINGS, EXTRA_SEATS, PASSENGERS, AUTO_SYNC, SCRIPTS, DEBUG_REPORT }
+
+private fun TripScreen.isAgendaRoot0396(): Boolean =
+    this == TripScreen.CENTRAL_DAY ||
+        this == TripScreen.TIMELINE ||
+        this == TripScreen.RESERVATIONS ||
+        this == TripScreen.ASSISTANT ||
+        this == TripScreen.PUBLIC_SEARCH ||
+        this == TripScreen.PASSENGERS ||
+        this == TripScreen.SETTINGS ||
+        this == TripScreen.APP_SETTINGS ||
+        this == TripScreen.AUTO_SYNC ||
+        this == TripScreen.SCRIPTS
+
+private fun TripScreen.agendaRootSection0396(): AgendaRootSection0396 = when (this) {
+    TripScreen.CENTRAL_DAY -> AgendaRootSection0396.CENTRAL_DAY
+    TripScreen.ASSISTANT -> AgendaRootSection0396.ASSISTANT
+    TripScreen.AUTO_SYNC -> AgendaRootSection0396.AUTOMATIC_SYNC
+    TripScreen.SCRIPTS -> AgendaRootSection0396.SCRIPTS
+    TripScreen.PUBLIC_SEARCH -> AgendaRootSection0396.PUBLIC_SEARCH
+    TripScreen.RESERVATIONS -> AgendaRootSection0396.RESERVATIONS
+    TripScreen.PASSENGERS -> AgendaRootSection0396.PASSENGERS
+    TripScreen.SETTINGS -> AgendaRootSection0396.INTEGRATIONS
+    TripScreen.APP_SETTINGS -> AgendaRootSection0396.APP_SETTINGS
+    else -> AgendaRootSection0396.ALL_TRIPS
+}
+
+private fun TripScreen.diagnosticModule0507(): DiagnosticModule0507 = when (this) {
+    TripScreen.CENTRAL_DAY -> DiagnosticModule0507.CENTRAL_DAY
+    TripScreen.TIMELINE -> DiagnosticModule0507.ALL_TRIPS
+    TripScreen.RESERVATIONS -> DiagnosticModule0507.PASSENGERS
+    TripScreen.ASSISTANT -> DiagnosticModule0507.ASSISTANT
+    TripScreen.AUTO_SYNC -> DiagnosticModule0507.BLABLACAR
+    TripScreen.SCRIPTS -> DiagnosticModule0507.SCRIPTS
+    TripScreen.PUBLIC_SEARCH -> DiagnosticModule0507.PUBLIC_QUERY
+    TripScreen.PASSENGERS -> DiagnosticModule0507.PASSENGERS
+    TripScreen.SETTINGS -> DiagnosticModule0507.INTEGRATIONS
+    TripScreen.APP_SETTINGS -> DiagnosticModule0507.SETTINGS
+    else -> DiagnosticModule0507.UNKNOWN
+}
+
+private fun TripScreen.hasContextualDebugReport0507(): Boolean =
+    diagnosticModule0507() != DiagnosticModule0507.UNKNOWN
+
+private fun recordModuleObservation0507(
+    activity: ComponentActivity,
+    module: DiagnosticModule0507,
+    operation: String,
+    result: String = "OBSERVED",
+) {
+    val traceId0507 = AgendaTrace.currentTraceId()
+    UnifiedDebugEventStore.recordAlways(
+        "MODULE_OPERATION_0507",
+        activity.packageName,
+        "operation=$operation result=$result",
+        diagnosticContext = DiagnosticEventContext0507(
+            parentModule = module,
+            originModule = module,
+            executorModule = module,
+            component = "TripsActivity",
+            operation = operation,
+            severity = DiagnosticSeverity0507.INFO,
+            correlationId = traceId0507,
+            traceId = traceId0507,
+            result = result,
+        ),
+    )
+}
+
+private fun TripScreen.agendaHeaderLabel0396(): String = when (this) {
+    TripScreen.CENTRAL_DAY -> "Central do Dia"
+    TripScreen.TIMELINE -> "Viagens"
+    TripScreen.RESERVATIONS -> "Reservas"
+    TripScreen.ASSISTANT -> "Assistente Rota Certa"
+    TripScreen.NOTIFICATIONS -> "Notificações"
+    TripScreen.AUTO_SYNC -> "BlaBlaCar"
+    TripScreen.SCRIPTS -> "Scripts"
+    TripScreen.APP_SETTINGS -> "Configurações"
+    TripScreen.EXTRA_SEATS -> "Vagas extra"
+    TripScreen.PUBLIC_SEARCH -> "Consulta pública"
+    TripScreen.PASSENGERS -> "Passageiros"
+    TripScreen.CREATE -> "Nova viagem"
+    TripScreen.SETTINGS -> "Integrações"
+    TripScreen.LIST -> "Gerenciar viagem"
+    TripScreen.DEBUG_REPORT -> "Relatório de depuração"
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TripApp(
+    activity: ComponentActivity,
+    startCreating: Boolean,
+    initialTripId: String?,
+    initialRemoteTripId: String?,
+    initialBookingId: String?,
+    initialPendingOnly: Boolean,
+    openReservationRequests: Boolean,
+    openPassengers: Boolean,
+) {
+    val traceId = AgendaTrace.currentTraceId()
+    val firstCompositionOperation = remember {
+        AgendaTrace.operationStart(activity, "AGENDA_FIRST_COMPOSITION", "TripApp", traceId)
+    }
+    val firstCompositionEnded = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    val timelineStartupOperation = remember {
+        AgendaTrace.operationStart(activity, "TIMELINE_STARTUP", "TripApp", traceId)
+    }
+    val timelineStartupEnded = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    androidx.compose.runtime.DisposableEffect(timelineStartupOperation) {
+        onDispose {
+            if (timelineStartupEnded.compareAndSet(false, true)) {
+                AgendaTrace.operationCancelled(
+                    activity,
+                    timelineStartupOperation,
+                    result = "activity_disposed_before_visual_ready",
+                )
+            }
+        }
+    }
+    val store = remember { TripStore(activity) }
+    val settingsRepository = remember(activity) { SettingsRepository(activity) }
+    val settingsObservationStartedNs = remember {
+        AgendaTrace.event(activity, "CAPACITY_LOCAL_SETTINGS_REQUEST", "source=local_settings", traceId)
+        android.os.SystemClock.elapsedRealtimeNanos()
+    }
+    val appSettingsState by settingsRepository.settings.collectAsState(initial = null)
+    val settingsLoaded = appSettingsState != null
+    val appSettings = appSettingsState ?: AppSettings()
+    val capacityFirstValueReported = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    val capacityInitialReported = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    if (capacityInitialReported.compareAndSet(false, true)) {
+        val present = settingsLoaded && appSettings.rotaCertaSeatAllocation in 0..999
+        val source = when {
+            !settingsLoaded -> "awaiting_local_settings"
+            present -> "local_settings"
+            else -> "local_settings_unconfigured"
+        }
+        AgendaTrace.event(
+            activity,
+            "CAPACITY_INITIAL_STATE",
+            "source=$source valuePresent=$present value=${appSettings.rotaCertaSeatAllocation.takeIf { present } ?: 0}",
+            traceId,
+        )
+    }
+    var trips by remember {
+        val operation = AgendaTrace.operationStart(activity, "TIMELINE_LOCAL_TRIPS_LOAD", "TripApp", traceId)
+        try {
+            val loaded = store.trips().filter(Trip::htmlAuthorityVisible0607)
+            AgendaTrace.operationEnd(activity, operation, processedCount = loaded.size)
+            mutableStateOf(loaded)
+        } catch (error: Throwable) {
+            AgendaTrace.operationError(activity, operation, error)
+            throw error
+        }
+    }
+    var bookings by remember {
+        val operation = AgendaTrace.operationStart(activity, "TIMELINE_LOCAL_BOOKINGS_LOAD", "TripApp", traceId)
+        try {
+            val loaded = store.bookings()
+            AgendaTrace.operationEnd(activity, operation, processedCount = loaded.size)
+            mutableStateOf(loaded)
+        } catch (error: Throwable) {
+            AgendaTrace.operationError(activity, operation, error)
+            throw error
+        }
+    }
+    val sortedManageTrips0648 = remember(trips) { trips.sortedBy { it.departureAtMillis } }
+    val bookingsByTripId0648 = remember(bookings) { bookings.groupBy { it.tripId } }
+    var localCapacityIncrementalBaseline by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    val timelineListState = rememberLazyListState()
+    var pendingCreateForPassengerId by remember { mutableStateOf("") }
+    var addPassengerResumePassengerId by remember { mutableStateOf<String?>(null) }
+    var addPassengerResumeTripId by remember { mutableStateOf<String?>(null) }
+    var addPassengerResumeToken by remember { mutableStateOf(0) }
+    val initialScreen0396 = when {
+        startCreating -> TripScreen.CREATE
+        openPassengers -> TripScreen.PASSENGERS
+        openReservationRequests || initialBookingId != null || initialPendingOnly -> TripScreen.RESERVATIONS
+        initialTripId != null -> TripScreen.LIST
+        else -> TripScreen.TIMELINE
+    }
+    var screen by rememberSaveable { mutableStateOf(initialScreen0396) }
+    var parentRootScreen0396 by rememberSaveable { mutableStateOf(TripScreen.TIMELINE) }
+    var passengerSubscreenOpen0396 by rememberSaveable { mutableStateOf(false) }
+    var passengerExternalBackToken0396 by remember { mutableStateOf(0) }
+    var timelineUiCommand0396 by remember { mutableStateOf<AgendaTimelineCommand0396?>(null) }
+    var timelineUiCommandToken0396 by remember { mutableStateOf(0) }
+    var operationalTimelineDownloadToken0616 by remember { mutableStateOf(0) }
+    var scriptsUiCommand0488 by remember { mutableStateOf<BlaBlaScriptsCommand0488?>(null) }
+    var scriptsUiCommandToken0488 by remember { mutableStateOf(0) }
+    var debugReportModule0507 by rememberSaveable { mutableStateOf(DiagnosticModule0507.ALL_TRIPS.name) }
+    var selectedId by remember { mutableStateOf(initialTripId) }
+    var editingTripId0633 by remember { mutableStateOf<String?>(null) }
+    var focusedTripId by remember { mutableStateOf(initialTripId.takeIf { openReservationRequests }) }
+    var focusedRemoteTripId by remember { mutableStateOf(initialRemoteTripId) }
+    var focusedBookingId by remember { mutableStateOf(initialBookingId) }
+    var reservationPendingOnly by remember { mutableStateOf(initialPendingOnly) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var timelineGlobalRefreshToken0540 by rememberSaveable { mutableStateOf(0) }
+    var timelineGlobalRefreshHandledToken0540 by rememberSaveable { mutableStateOf(0) }
+    var timelineGlobalRefreshBusy0540 by rememberSaveable { mutableStateOf(false) }
+    val notificationProjection0416 by DriverNotificationProjection0416.state.collectAsState()
+    val activeNotificationTenant0416 = RotaCertaTenantRegistry(activity).activeScope().tenantId
+    val driverNotifications = if (notificationProjection0416.tenantId == activeNotificationTenant0416) {
+        notificationProjection0416.notifications
+    } else {
+        emptyList()
+    }
+    val driverUnreadCount = if (notificationProjection0416.tenantId == activeNotificationTenant0416) {
+        notificationProjection0416.unreadCount.coerceAtLeast(0)
+    } else {
+        0
+    }
+    val shareScope = rememberCoroutineScope()
+
+    val refreshDriverNotifications: suspend () -> Unit = {
+        DriverNotificationProjection0416.refresh(activity)
+        Unit
+    }
+
+    androidx.compose.runtime.SideEffect {
+        AgendaTrace.markContentMounted(activity, loading = false)
+        if (firstCompositionEnded.compareAndSet(false, true)) {
+            AgendaTrace.operationEnd(activity, firstCompositionOperation, result = "content_mounted")
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(
+        settingsLoaded,
+        appSettings.rotaCertaSeatAllocation,
+        appSettings.rotaCertaSeatAllocationVersion,
+    ) {
+        if (!settingsLoaded) {
+            AgendaTrace.event(
+                activity,
+                "INVENTORY_LOCAL_SETTINGS_WAITING",
+                "source=awaiting_local_settings",
+                traceId,
+            )
+            return@LaunchedEffect
+        }
+        val fanOut = AgendaBackgroundSync0392.reconcileTenantSeatAllocation0395(
+            context = activity,
+            rotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+            seatAllocationVersion = appSettings.rotaCertaSeatAllocationVersion,
+        )
+        if (fanOut.localCanonicalUpdated > 0) {
+            trips = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.trips() }
+        } else {
+            UnifiedDebugEventStore.record(
+                "OPERATIONAL_INVENTORY_RENDER_INVALIDATION_SKIPPED_0493",
+                activity.packageName,
+                "reason=canonical_state_unchanged localCanonicalUpdated=0 avoidsNoOpTimelineRecomposition=true",
+            )
+        }
+        UnifiedDebugEventStore.record(
+            "OPERATIONAL_INVENTORY_RECONCILED",
+            activity.packageName,
+            "rotaCertaSeatAllocation=" + appSettings.rotaCertaSeatAllocation +
+                " configVersion=" + appSettings.rotaCertaSeatAllocationVersion +
+                " localCanonicalUpdated=" + fanOut.localCanonicalUpdated +
+                " localPublicationQueued=" + fanOut.localPublicationQueued +
+                " externalPublicationQueued=" + fanOut.externalPublicationQueued +
+                " externalRetryPending=" + fanOut.externalRetryPending +
+                " fullSyncRequested=false legacyVehicleCapacityIgnored=true",
+        )
+        AgendaTrace.event(
+            activity,
+            "INVENTORY_LOCAL_SETTINGS_RECEIVED",
+            "source=rota_certa_allocation value=" + appSettings.rotaCertaSeatAllocation +
+                " configVersion=" + appSettings.rotaCertaSeatAllocationVersion,
+            traceId,
+        )
+    }
+
+    androidx.compose.runtime.LaunchedEffect(screen) {
+        if (screen != TripScreen.TIMELINE && timelineStartupEnded.compareAndSet(false, true)) {
+            AgendaTrace.operationEnd(
+                activity,
+                timelineStartupOperation,
+                result = "non_timeline_destination",
+                processedCount = trips.size + bookings.size,
+            )
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(screen, trips.size, bookings.size, settingsLoaded, appSettings.rotaCertaSeatAllocation) {
+        AgendaTrace.event(
+            activity,
+            "AGENDA_RENDER_STATE",
+            "loading=false empty=${trips.isEmpty() && bookings.isEmpty()} items=${trips.size} capacityPresent=${settingsLoaded && appSettings.rotaCertaSeatAllocation in 0..999} settingsLoaded=$settingsLoaded syncRunning=false screen=${screen.name.lowercase()}",
+            traceId,
+        )
+    }
+    val refresh = {
+        trips = store.trips().filter(Trip::htmlAuthorityVisible0607)
+        bookings = store.bookings()
+        TripWidgetProvider.updateAll(activity)
+    }
+    // Records durable per-trip mutations only; delivery belongs to AgendaBackgroundSync0392.
+    val tripMutationCoordinator = remember(activity, store) { TripMutationCoordinator0387(activity, store) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        BookingRealtimeEvents0356.changes.collect {
+            refresh()
+            refreshDriverNotifications()
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(activity) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                refresh()
+                shareScope.launch { refreshDriverNotifications() }
+            }
+        }
+        activity.lifecycle.addObserver(observer)
+        onDispose { activity.lifecycle.removeObserver(observer) }
+    }
+    val requestTimelineGlobalRadarRefresh0540 = {
+        if (!timelineGlobalRefreshBusy0540) {
+            timelineGlobalRefreshBusy0540 = true
+            timelineGlobalRefreshToken0540 += 1
+            message = "📡 Atualizando todas as viagens: BlaBlaCar → Agenda → Timeline..."
+            UnifiedDebugEventStore.record(
+                "AGENDA_TIMELINE_GLOBAL_RADAR_REFRESH_0540",
+                activity.packageName,
+                "collectorBatch=true collectorToAgenda=true directTimelineCollectorRead=false trigger=TOP_FIXED_RADAR repeatedRequestBlocked=true",
+            )
+        } else {
+            UnifiedDebugEventStore.record(
+                "AGENDA_TIMELINE_GLOBAL_RADAR_REFRESH_BLOCKED_0540",
+                activity.packageName,
+                "reason=previous_global_or_target_refresh_pending",
+            )
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        refreshDriverNotifications()
+    }
+
+    androidx.compose.runtime.LaunchedEffect(settingsLoaded, trips, bookings, appSettings.rotaCertaSeatAllocation) {
+        if (!settingsLoaded) return@LaunchedEffect
+        val current = trips
+            .filter(Trip::isCanonicalLocalPublishSource)
+            .associate { trip ->
+                trip.id to PublicAgendaAutoSync0300.localCapacitySnapshotRevision(
+                    trip = trip,
+                    bookings = bookings.filter { it.tripId == trip.id },
+                    rotaCertaSeatAllocation = trip.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0,
+                )
+            }
+        val previous = localCapacityIncrementalBaseline
+        localCapacityIncrementalBaseline = current
+        if (previous.isNotEmpty()) {
+            val changedIds = current.entries
+                .filter { (tripId, revision) -> previous[tripId] != revision }
+                .map { it.key }
+            changedIds.forEach { tripId ->
+                val failureTrip = trips.firstOrNull { it.id == tripId }
+                val failureBookings = bookings.filter { it.tripId == tripId }
+                val failureContext = failureTrip?.let { trip ->
+                    val withAllocation = trip.copy(
+                        rotaCertaSeatAllocation = trip.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0,
+                    )
+                    AgendaFailureEvidence.tripContext(
+                        trip = withAllocation.copy(
+                            capacity = operationalInventoryCapacity(withAllocation, failureBookings),
+                        ),
+                        bookings = failureBookings,
+                        tripKey = seatSyncDiagnosticKey(tripId),
+                        publicIdentity = trip.remoteId,
+                        origin = resolvedTripRecordOrigin(trip).name,
+                        revision = current[tripId].orEmpty(),
+                    )
+                }
+                runCatching {
+                    tripMutationCoordinator.recordLocalMutation(
+                        canonicalTripId = tripId,
+                        mutationType = "LOCAL_TRIP_SEMANTIC_CHANGE",
+                        source = "TIMELINE_STORE_OBSERVER",
+                        configuredRotaCertaSeatAllocation = failureTrip?.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0,
+                    )
+                    AgendaBackgroundSync0392.enqueueImmediate(activity, "trip_mutation")
+                }.onFailure { error ->
+                    UnifiedDebugEventStore.record(
+                        "PUBLIC_LOCAL_CAPACITY_INCREMENTAL_FAILED",
+                        activity.packageName,
+                        "fullSyncRequested=false failClosed=true " +
+                            AgendaFailureEvidence.describe(
+                                error = error,
+                                operation = "PUBLISH_INCREMENTAL_CAPACITY",
+                                component = "TripsActivity",
+                                method = "TripMutationCoordinator0387",
+                                trip = failureContext,
+                            ),
+                    )
+                }
+            }
+        }
+    }
+
+    val sendTimelineCommand0396: (AgendaTimelineCommand0396) -> Unit = { command ->
+        timelineUiCommand0396 = command
+        timelineUiCommandToken0396 += 1
+    }
+    val openNotifications0396 = {
+        if (screen != TripScreen.NOTIFICATIONS) {
+            if (screen.isAgendaRoot0396()) {
+                parentRootScreen0396 = screen
+            }
+            passengerSubscreenOpen0396 = false
+            screen = TripScreen.NOTIFICATIONS
+        }
+        shareScope.launch { refreshDriverNotifications() }
+        Unit
+    }
+    androidx.compose.runtime.LaunchedEffect(screen) {
+        val module0507 = screen.diagnosticModule0507()
+        if (module0507 != DiagnosticModule0507.UNKNOWN) {
+            UnifiedDebugEventStore.recordAlways(
+                "MODULE_VIEW_OPENED_0507",
+                activity.packageName,
+                "screen=${screen.name}",
+                diagnosticContext = DiagnosticEventContext0507(
+                    parentModule = module0507,
+                    originModule = module0507,
+                    executorModule = module0507,
+                    component = "TripsActivity",
+                    operation = "MODULE_VIEW",
+                    severity = DiagnosticSeverity0507.INFO,
+                    correlationId = traceId,
+                    traceId = traceId,
+                    result = "OPENED",
+                ),
+            )
+        }
+    }
+
+    val baseHeaderActions0396 = when (screen) {
+        TripScreen.SCRIPTS -> listOf(
+            AgendaHeaderAction0396("Novo script") {
+                scriptsUiCommand0488 = BlaBlaScriptsCommand0488.NEW_SCRIPT
+                scriptsUiCommandToken0488 += 1
+            },
+            AgendaHeaderAction0396("Restaurar seleção padrão") {
+                scriptsUiCommand0488 = BlaBlaScriptsCommand0488.RESTORE_SELECTION_DEFAULTS
+                scriptsUiCommandToken0488 += 1
+            },
+        )
+        TripScreen.TIMELINE -> listOf(
+            AgendaHeaderAction0396("Nova viagem") {
+                pendingCreateForPassengerId = ""
+                editingTripId0633 = null
+                parentRootScreen0396 = TripScreen.TIMELINE
+                screen = TripScreen.CREATE
+            },
+            AgendaHeaderAction0396("Adicionar passageiro") {
+                sendTimelineCommand0396(AgendaTimelineCommand0396.ADD_PASSENGER)
+            },
+            AgendaHeaderAction0396("Vagas extra") {
+                parentRootScreen0396 = TripScreen.TIMELINE
+                screen = TripScreen.EXTRA_SEATS
+            },
+            AgendaHeaderAction0396("Próximas / arquivadas") {
+                sendTimelineCommand0396(AgendaTimelineCommand0396.TOGGLE_ARCHIVED)
+            },
+            AgendaHeaderAction0396("Baixar Timeline") {
+                operationalTimelineDownloadToken0616 += 1
+            },
+            AgendaHeaderAction0396("Fixar atalho") {
+                val requested = TripShortcutInstaller.requestPinnedCreateShortcut(activity)
+                message = if (requested) "Pedido de atalho enviado ao Android." else "O launcher não permite fixar atalhos automaticamente."
+            },
+        )
+        else -> emptyList()
+    }
+    val headerActions0396 = if (screen.hasContextualDebugReport0507()) {
+        baseHeaderActions0396 + AgendaHeaderAction0396("Relatório de depuração") {
+            val module0507 = screen.diagnosticModule0507()
+            debugReportModule0507 = module0507.name
+            parentRootScreen0396 = screen
+            UnifiedDebugEventStore.recordAlways(
+                "DEBUG_REPORT_OPENED_0507",
+                activity.packageName,
+                "module=${module0507.name}",
+                diagnosticContext = DiagnosticEventContext0507(
+                    parentModule = module0507,
+                    originModule = module0507,
+                    executorModule = module0507,
+                    component = "TripsActivity",
+                    operation = "OPEN_DEBUG_REPORT",
+                    severity = DiagnosticSeverity0507.INFO,
+                    correlationId = traceId,
+                    traceId = traceId,
+                    result = "OPENED",
+                ),
+            )
+            screen = TripScreen.DEBUG_REPORT
+        }
+    } else {
+        baseHeaderActions0396
+    }
+    val passengerSubscreenActive0396 = screen == TripScreen.PASSENGERS && passengerSubscreenOpen0396
+    val headerIsRoot0396 = screen.isAgendaRoot0396() && !passengerSubscreenActive0396
+    val activeDebugModule0507 = runCatching { DiagnosticModule0507.valueOf(debugReportModule0507) }
+        .getOrDefault(DiagnosticModule0507.ALL_TRIPS)
+    val headerLabel0396 = when {
+        passengerSubscreenActive0396 -> "Histórico do passageiro"
+        screen == TripScreen.DEBUG_REPORT -> "Relatório de depuração — ${activeDebugModule0507.label}"
+        screen == TripScreen.CREATE && editingTripId0633 != null -> "Editar viagem"
+        else -> screen.agendaHeaderLabel0396()
+    }
+    val currentRootScreen0396 = if (screen.isAgendaRoot0396()) screen else parentRootScreen0396
+    val drawerOnlineSettings0397 = store.onlineSettings()
+
+    AgendaModuleDrawer0396(
+        currentSection = currentRootScreen0396.agendaRootSection0396(),
+        publicAgendaEnabled = drawerOnlineSettings0397.configured &&
+            !drawerOnlineSettings0397.publicAgendaUrl.isNullOrBlank(),
+        onOpenPublicAgenda = {
+            message = openPublicAgenda0397(activity, store)
+        },
+        onSelect = { section ->
+            when (section) {
+                AgendaRootSection0396.CENTRAL_DAY -> {
+                    parentRootScreen0396 = TripScreen.CENTRAL_DAY
+                    passengerSubscreenOpen0396 = false
+                    screen = TripScreen.CENTRAL_DAY
+                }
+                AgendaRootSection0396.ALL_TRIPS -> {
+                    parentRootScreen0396 = TripScreen.TIMELINE
+                    passengerSubscreenOpen0396 = false
+                    screen = TripScreen.TIMELINE
+                }
+                AgendaRootSection0396.ASSISTANT -> {
+                    parentRootScreen0396 = TripScreen.ASSISTANT
+                    passengerSubscreenOpen0396 = false
+                    screen = TripScreen.ASSISTANT
+                }
+                AgendaRootSection0396.AUTOMATIC_SYNC -> {
+                    parentRootScreen0396 = currentRootScreen0396
+                    passengerSubscreenOpen0396 = false
+                    screen = TripScreen.AUTO_SYNC
+                }
+                AgendaRootSection0396.SCRIPTS -> {
+                    parentRootScreen0396 = TripScreen.SCRIPTS
+                    passengerSubscreenOpen0396 = false
+                    screen = TripScreen.SCRIPTS
+                }
+                AgendaRootSection0396.PUBLIC_SEARCH -> {
+                    parentRootScreen0396 = TripScreen.PUBLIC_SEARCH
+                    passengerSubscreenOpen0396 = false
+                    screen = TripScreen.PUBLIC_SEARCH
+                }
+                AgendaRootSection0396.RESERVATIONS -> {
+                    parentRootScreen0396 = TripScreen.RESERVATIONS
+                    passengerSubscreenOpen0396 = false
+                    focusedBookingId = null
+                    reservationPendingOnly = false
+                    screen = TripScreen.RESERVATIONS
+                }
+                AgendaRootSection0396.PASSENGERS -> {
+                    parentRootScreen0396 = TripScreen.PASSENGERS
+                    passengerSubscreenOpen0396 = false
+                    screen = TripScreen.PASSENGERS
+                }
+                AgendaRootSection0396.INTEGRATIONS -> {
+                    parentRootScreen0396 = currentRootScreen0396
+                    passengerSubscreenOpen0396 = false
+                    screen = TripScreen.SETTINGS
+                }
+                AgendaRootSection0396.APP_SETTINGS -> {
+                    parentRootScreen0396 = TripScreen.APP_SETTINGS
+                    passengerSubscreenOpen0396 = false
+                    screen = TripScreen.APP_SETTINGS
+                }
+            }
+        },
+    ) { openDrawer0396 ->
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            topBar = {
+                AgendaModuleHeader0396(
+                    sectionLabel = headerLabel0396,
+                    root = headerIsRoot0396,
+                    onNavigationClick = {
+                        when {
+                            passengerSubscreenActive0396 -> passengerExternalBackToken0396 += 1
+                            screen.isAgendaRoot0396() -> openDrawer0396()
+                            else -> screen = parentRootScreen0396
+                        }
+                    },
+                    overflowActions = headerActions0396,
+                    notificationUnreadCount = driverUnreadCount,
+                    onNotificationsClick = openNotifications0396,
+                )
+            },
+        ) { padding ->
+            Column(
+                modifier = if (screen == TripScreen.TIMELINE || screen == TripScreen.DEBUG_REPORT || screen == TripScreen.LIST) {
+                    Modifier
+                        .padding(padding)
+                        .padding(16.dp)
+                        .fillMaxSize()
+                } else {
+                    Modifier
+                        .padding(padding)
+                        .padding(16.dp)
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                },
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+            message?.takeIf {
+                screen != TripScreen.TIMELINE &&
+                    screen != TripScreen.ASSISTANT &&
+                    screen != TripScreen.NOTIFICATIONS
+            }?.let {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Text(it, modifier = Modifier.padding(12.dp))
+                }
+            }
+            when (screen) {
+                TripScreen.CENTRAL_DAY -> CentralDoDiaScreen0552(
+                    trips = trips,
+                    bookings = bookings,
+                    localProfileLabel = drawerOnlineSettings0397.driverDisplayName.ifBlank { "Agenda" },
+                    onRefreshLocal = { refresh() },
+                    onOpenTimeline = { tripId, bookingId ->
+                        focusedTripId = tripId
+                        focusedBookingId = bookingId
+                        reservationPendingOnly = false
+                        parentRootScreen0396 = TripScreen.RESERVATIONS
+                        screen = TripScreen.RESERVATIONS
+                    },
+                    onMessage = { message = it },
+                )
+                TripScreen.DEBUG_REPORT -> ContextualDebugReportScreen0507(activeDebugModule0507)
+                TripScreen.CREATE -> TripEditor(
+                    defaultOrigin = appSettings.tripDepartureAddress,
+                    defaultRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+                    initialTrip0633 = editingTripId0633?.let { id -> trips.firstOrNull { it.id == id } },
+                    onCancel = {
+                        pendingCreateForPassengerId = ""
+                        editingTripId0633 = null
+                        screen = parentRootScreen0396
+                    },
+                    onSave = { trip ->
+                        val online0494 = store.onlineSettings()
+                        if (!online0494.configured) {
+                            message = "Backend canônico indisponível. Nada foi alterado para evitar fonte paralela."
+                        } else {
+                            val editingExisting0633 = editingTripId0633?.let { id -> trips.firstOrNull { it.id == id } }
+                            shareScope.launch {
+                                runCatching {
+                                    val api0633 = TripRemoteApi(online0494)
+                                    if (editingExisting0633 == null) {
+                                        val published0494 = api0633.publish(trip)
+                                        require(!published0494.stale) { "O backend rejeitou a criação como revisão obsoleta." }
+                                        trip.copy(
+                                            remoteId = published0494.tripId,
+                                            publicToken = published0494.publicToken,
+                                            publicUrl = published0494.publicUrl.takeIf(String::isNotBlank),
+                                            publicationRevision = maxOf(trip.publicationRevision, published0494.entityRevision),
+                                        ) to published0494
+                                    } else {
+                                        require(resolvedTripRecordOrigin(editingExisting0633) == TripRecordOrigin.LOCAL) {
+                                            "Viagens da BlaBlaCar devem ser alteradas na fonte externa."
+                                        }
+                                        val mutation0633 = trip.copy(
+                                            id = editingExisting0633.id,
+                                            remoteId = editingExisting0633.remoteId,
+                                            publicToken = editingExisting0633.publicToken,
+                                            publicUrl = editingExisting0633.publicUrl,
+                                            createdAtMillis = editingExisting0633.createdAtMillis,
+                                            canonicalRevision = editingExisting0633.canonicalRevision,
+                                            canonicalStateHash = editingExisting0633.canonicalStateHash,
+                                            publicationRevision = editingExisting0633.publicationRevision.coerceAtLeast(0L) + 1L,
+                                            publicationEventId = UUID.randomUUID().toString(),
+                                        ).withCanonicalAgendaVisibility0581()
+                                        require(!mutation0633.remoteId.isNullOrBlank()) {
+                                            "Identidade remota da viagem indisponível."
+                                        }
+                                        val published0494 = api0633.update(mutation0633)
+                                        require(!published0494.stale) {
+                                            "A viagem mudou em outro dispositivo. Atualize antes de editar novamente."
+                                        }
+                                        mutation0633.copy(
+                                            remoteId = published0494.tripId.takeIf(String::isNotBlank) ?: mutation0633.remoteId,
+                                            publicToken = published0494.publicToken.ifBlank { mutation0633.publicToken },
+                                            publicUrl = published0494.publicUrl.takeIf(String::isNotBlank) ?: mutation0633.publicUrl,
+                                            publicationRevision = maxOf(mutation0633.publicationRevision, published0494.entityRevision),
+                                        ) to published0494
+                                    }
+                                }.onSuccess { (canonicalCache0494, published0494) ->
+                                    store.saveTrip(canonicalCache0494)
+                                    refresh()
+                                    selectedId = canonicalCache0494.id
+                                    val wasEdit0633 = editingExisting0633 != null
+                                    editingTripId0633 = null
+                                    val resumePassengerId = if (wasEdit0633) null else pendingCreateForPassengerId.takeIf(String::isNotBlank)
+                                    pendingCreateForPassengerId = ""
+                                    if (resumePassengerId != null) {
+                                        addPassengerResumePassengerId = resumePassengerId
+                                        addPassengerResumeTripId = canonicalCache0494.id
+                                        addPassengerResumeToken++
+                                        message = "Viagem criada no backend canônico. Continue a inclusão do passageiro já selecionado."
+                                    } else if (wasEdit0633) {
+                                        message = "Viagem atualizada no backend canônico e refletida na Agenda Pública."
+                                    } else {
+                                        message = "Viagem Rota Certa publicada no backend canônico e disponível na Agenda Pública."
+                                    }
+                                    UnifiedDebugEventStore.record(
+                                        if (wasEdit0633) "NATIVE_TRIP_CANONICAL_UPDATED_0633" else "MANUAL_TRIP_CANONICAL_CREATED_0494",
+                                        activity.packageName,
+                                        "canonicalTripId=${passengerDebugIdentityHash(canonicalCache0494.id)} remoteTripPresent=${published0494.tripId.isNotBlank()} blablaTripPresent=${!canonicalCache0494.blablaTripId.isNullOrBlank()} publicBookingEnabled=${canonicalCache0494.publicBookingEnabled} status=${canonicalCache0494.status.name} source=ROTA_CERTA_NATIVE authority=CANONICAL_BACKEND",
+                                    )
+                                    screen = parentRootScreen0396
+                                }.onFailure { error ->
+                                    message = "Nada foi alterado: ${error.message ?: "falha no backend canônico"}"
+                                }
+                            }
+                        }
+                    },
+                )
+                TripScreen.TIMELINE -> OperationalAllTripsBrowserScreen0563(
+                    trips = trips,
+                    bookings = bookings,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    onMessage = { text -> message = text },
+                    onCreateTrip = {
+                        pendingCreateForPassengerId = ""
+                        editingTripId0633 = null
+                        parentRootScreen0396 = TripScreen.TIMELINE
+                        screen = TripScreen.CREATE
+                    },
+                    onManageCanonicalTrip = { tripId ->
+                        selectedId = tripId
+                        parentRootScreen0396 = TripScreen.TIMELINE
+                        screen = TripScreen.LIST
+                    },
+                    onRefreshLocal = { refresh() },
+                    onOpenTripIntegrity = { tripId ->
+                        focusedTripId = tripId
+                        parentRootScreen0396 = TripScreen.TIMELINE
+                        screen = TripScreen.CENTRAL_DAY
+                    },
+                    downloadTriggerToken0616 = operationalTimelineDownloadToken0616,
+                    onFirstUsableFrame = { renderedItems ->
+                        AgendaTrace.reportTimelineFirstUsableFrame(
+                            activity = activity,
+                            traceId = traceId,
+                            renderedItems = renderedItems,
+                        ) {
+                            if (timelineStartupEnded.compareAndSet(false, true)) {
+                                AgendaTrace.operationEnd(
+                                    activity,
+                                    timelineStartupOperation,
+                                    result = "operational_browser_ready",
+                                    processedCount = renderedItems,
+                                )
+                            }
+                        }
+                    },
+                )
+                TripScreen.RESERVATIONS -> ReservationManagementScreen0631(
+                    trips = trips,
+                    bookings = bookings,
+                    store = store,
+                    initialBookingId = focusedBookingId,
+                    initialPendingOnly = reservationPendingOnly,
+                    onChanged = { text ->
+                        recordModuleObservation0507(activity, DiagnosticModule0507.PASSENGERS, "RESERVATION_MANAGEMENT_UPDATE_0631")
+                        refresh()
+                        message = text
+                    },
+                    onOpenTimeline = { tripId, bookingId ->
+                        selectedId = tripId
+                        focusedTripId = tripId
+                        focusedBookingId = bookingId
+                        parentRootScreen0396 = TripScreen.RESERVATIONS
+                        screen = TripScreen.LIST
+                    },
+                )
+                TripScreen.ASSISTANT -> RotaCertaAssistantPanel0410(
+                    trips = trips,
+                    bookings = bookings,
+                    store = store,
+                    onChanged = { text -> refresh(); message = text },
+                )
+                TripScreen.NOTIFICATIONS -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Central de Notificações", style = MaterialTheme.typography.titleMedium)
+                        if (driverUnreadCount > 0) {
+                            TextButton(onClick = {
+                                shareScope.launch {
+                                    val online = store.onlineSettings()
+                                    if (online.configured) {
+                                        runCatching { TripRemoteApi(online).markAllDriverNotificationsRead() }
+                                        refreshDriverNotifications()
+                                    }
+                                }
+                            }) { Text("Marcar todas como lidas") }
+                        }
+                    }
+                    if (driverNotifications.isEmpty()) {
+                        Text("Nenhuma notificação.", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        driverNotifications.take(20).forEach { item ->
+                            TextButton(
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = {
+                                    shareScope.launch {
+                                        val online = store.onlineSettings()
+                                        if (online.configured && item.id.isNotBlank()) {
+                                            runCatching { TripRemoteApi(online).markDriverNotificationRead(item.id) }
+                                        }
+                                        val localTrip = trips.firstOrNull {
+                                            it.remoteId == item.tripId || it.id == item.tripId
+                                        }
+                                        if (localTrip != null) {
+                                            focusedTripId = localTrip.id
+                                            focusedRemoteTripId = item.tripId
+                                            focusedBookingId = item.bookingId.takeIf(String::isNotBlank)
+                                            reservationPendingOnly = false
+                                            if (focusedBookingId != null) {
+                                                parentRootScreen0396 = TripScreen.RESERVATIONS
+                                                screen = TripScreen.RESERVATIONS
+                                            } else {
+                                                parentRootScreen0396 = TripScreen.TIMELINE
+                                                screen = TripScreen.TIMELINE
+                                            }
+                                        }
+                                        refreshDriverNotifications()
+                                    }
+                                },
+                            ) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        (if (!item.read) "● " else "") + item.title,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                    Text(item.message, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
+                    }
+                }
+                TripScreen.PUBLIC_SEARCH -> AgendaPublicSearchRoot0396(
+                    trips = trips,
+                    onChanged = { text ->
+                        recordModuleObservation0507(activity, DiagnosticModule0507.PUBLIC_QUERY, "PUBLIC_QUERY_UI_UPDATE")
+                        message = text
+                    },
+                )
+                TripScreen.PASSENGERS -> PassengerAdminScreen(
+                    store = store,
+                    onBack = { screen = TripScreen.TIMELINE },
+                    onChanged = { text ->
+                        recordModuleObservation0507(activity, DiagnosticModule0507.PASSENGERS, "PASSENGER_ADMIN_UPDATE_0650")
+                        // Passenger administration owns its local snapshot. Avoid decoding every trip/booking
+                        // and rebuilding widgets for password/access-only mutations.
+                        message = text
+                    },
+                    showHeader = false,
+                    externalBackToken = passengerExternalBackToken0396,
+                    onHierarchyChanged = { passengerSubscreenOpen0396 = it },
+                )
+                TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397(
+                    trips = trips,
+                    store = store,
+                    onChanged = { text ->
+                        recordModuleObservation0507(activity, DiagnosticModule0507.BLABLACAR, "BLABLACAR_SYNC_UI_UPDATE")
+                        message = text
+                    },
+                )
+                TripScreen.SCRIPTS -> BlaBlaScriptsScreen0486(
+                    onChanged = { text ->
+                        recordModuleObservation0507(activity, DiagnosticModule0507.SCRIPTS, "SCRIPT_WORKSPACE_UPDATE")
+                        message = text
+                    },
+                    uiCommand0488 = scriptsUiCommand0488,
+                    uiCommandToken0488 = scriptsUiCommandToken0488,
+                )
+                TripScreen.APP_SETTINGS -> AgendaAppSettingsScreen0416(
+                    initial = store.onlineSettings(),
+                    onSave = { saved ->
+                        store.saveOnlineSettings(saved)
+                        recordModuleObservation0507(activity, DiagnosticModule0507.SETTINGS, "APP_SETTINGS_SAVE", "COMMITTED")
+                        message = "Configurações salvas."
+                    },
+                )
+                TripScreen.EXTRA_SEATS -> TripExtraSeatsScreen0416(
+                    activity = activity,
+                    settingsRepository = settingsRepository,
+                    appSettings = appSettings,
+                    onChanged = { text ->
+                        refresh()
+                        message = text
+                    },
+                )
+                TripScreen.SETTINGS -> OnlineSettingsEditor(
+                    initial = store.onlineSettings(),
+                    onSave = { saved ->
+                        store.saveOnlineSettings(saved)
+                        recordModuleObservation0507(activity, DiagnosticModule0507.INTEGRATIONS, "INTEGRATION_SETTINGS_SAVE", "COMMITTED_LOCAL")
+                        screen = parentRootScreen0396
+                        if (saved.configured) {
+                            message = "Salvando Integração online…"
+                            shareScope.launch {
+                                runCatching {
+                                    val resolvedProfile = PublicDriverProfileResolver(activity).resolve(saved)
+                                    val response = TripRemoteApi(saved).ensurePublicAgenda(saved.publicCalendarToken, resolvedProfile)
+                                    val validated = saved.copy(
+                                        driverDisplayName = response.displayName.ifBlank { saved.driverDisplayName },
+                                        driverUsername = response.username.ifBlank { saved.driverUsername },
+                                    )
+                                    store.saveOnlineSettings(validated)
+                                    validated
+                                }.onSuccess {
+                                    message = "Integração online salva e perfil público atualizado."
+                                }.onFailure {
+                                    message = "Configuração salva no aparelho, mas o perfil público ainda não sincronizou: ${it.message ?: "erro de conexão"}"
+                                }
+                            }
+                        } else {
+                            message = "Configuração salva; modo online ainda desativado."
+                        }
+                    },
+                    onRotateLink = { expected, replacement ->
+                        store.replacePublicAgendaLinkAfterConfirmedRotation(expected, replacement)
+                    },
+                    onCancel = { screen = parentRootScreen0396 },
+                )
+                TripScreen.LIST -> {
+                    val onlineSettings = store.onlineSettings()
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        if (onlineSettings.publicAgendaUrl != null) {
+                            item(key = "share_public_agenda_0648") {
+                                OutlinedButton(onClick = {
+                                    if (!onlineSettings.configured) {
+                                        message = "A integração online precisa da chave privada do motorista antes de compartilhar."
+                                    } else {
+                                        message = "Validando seu link público…"
+                                        shareScope.launch {
+                                            runCatching {
+                                                val resolvedProfile = PublicDriverProfileResolver(activity).resolve(onlineSettings)
+                                                val response = TripRemoteApi(onlineSettings).ensurePublicAgenda(onlineSettings.publicCalendarToken, resolvedProfile)
+                                                val validated = onlineSettings.copy(
+                                                    driverDisplayName = response.displayName.ifBlank { onlineSettings.driverDisplayName },
+                                                    driverUsername = response.username.ifBlank { onlineSettings.driverUsername },
+                                                )
+                                                store.saveOnlineSettings(validated)
+                                                response to validated
+                                            }.onSuccess { (response, validated) ->
+                                                if (TripCalendarBridge.sharePublicAgenda(activity, validated)) {
+                                                    message = "Link da Agenda Pública validado e pronto para compartilhar."
+                                                } else {
+                                                    message = "Não foi possível montar o link público validado."
+                                                }
+                                            }.onFailure {
+                                                message = "Não foi possível validar o link público: ${it.message ?: "erro de conexão"}"
+                                            }
+                                        }
+                                    }
+                                }) { Text("Compartilhar minha agenda") }
+                            }
+                        }
+                        if (onlineSettings.googleCalendarMirrorUrl != null) {
+                            item(key = "share_google_agenda_0648") {
+                                OutlinedButton(onClick = {
+                                    if (TripCalendarBridge.shareGoogleCalendarFallback(activity, onlineSettings)) {
+                                        message = "Link do Google Agenda pronto para compartilhar."
+                                    }
+                                }) { Text("Compartilhar Google Agenda") }
+                            }
+                        }
+                        if (sortedManageTrips0648.isEmpty()) {
+                            item(key = "empty_manage_trips_0648") {
+                                Text("Nenhuma viagem local neste aparelho. A Timeline continua exibindo publicações sincronizadas.")
+                            }
+                        } else {
+                            items(
+                                items = sortedManageTrips0648,
+                                key = { trip -> trip.id },
+                            ) { trip ->
+                                TripCard(
+                                    activity = activity,
+                                    store = store,
+                                    trip = trip,
+                                    bookings = bookingsByTripId0648[trip.id].orEmpty(),
+                                    expanded = selectedId == trip.id,
+                                    onToggle = {
+                                        val opening = selectedId != trip.id
+                                        if (opening && requestAgendaTripHtmlRefresh0607(activity, trip)) {
+                                            message = "Capturando o HTML somente desta viagem na BlaBlaCar."
+                                        }
+                                        selectedId = if (opening) trip.id else null
+                                    },
+                                    onChanged = { text -> refresh(); message = text },
+                                    onEditNativeTrip = {
+                                        editingTripId0633 = trip.id
+                                        parentRootScreen0396 = TripScreen.TIMELINE
+                                        screen = TripScreen.CREATE
+                                    },
+                                    onRequestBlaBlaSync = {},
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        }
+    }
+}
+
+@Composable
+private fun TripExtraSeatsScreen0416(
+    activity: ComponentActivity,
+    settingsRepository: SettingsRepository,
+    appSettings: AppSettings,
+    onChanged: (String) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var value by remember(appSettings.rotaCertaSeatAllocation) {
+        mutableStateOf(appSettings.rotaCertaSeatAllocation.coerceIn(0, 999).toString())
+    }
+    var localError by remember { mutableStateOf<String?>(null) }
+    var saving by remember { mutableStateOf(false) }
+
+    Text("Vagas extra", style = MaterialTheme.typography.titleLarge)
+    Text(
+        "Um único valor para todas as viagens atuais e futuras. Ele é somado às vagas do BlaBlaCar.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedTextField(
+                value = value,
+                onValueChange = { value = it.filter(Char::isDigit).take(3) },
+                label = { Text("Vagas extra em todas as viagens") },
+                supportingText = {
+                    Text("Exemplo: 4 vagas BlaBlaCar + 2 extras = 6 vagas no Rota Certa. O valor 0 é válido.")
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Button(
+                onClick = {
+                    val parsed = value.toIntOrNull()
+                    if (parsed == null || parsed !in 0..999) {
+                        localError = "Informe um valor entre 0 e 999."
+                        return@Button
+                    }
+                    if (saving) return@Button
+                    localError = null
+                    saving = true
+                    scope.launch {
+                        try {
+                            settingsRepository.saveGlobalExtraSeats0520(parsed)
+                            onChanged("Vagas extra atualizadas e enviadas imediatamente para a Agenda.")
+                        } catch (error: Throwable) {
+                            localError = error.message ?: "Não foi possível atualizar as vagas extra."
+                        } finally {
+                            saving = false
+                        }
+                    }
+                },
+                enabled = !saving,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (saving) "Salvando e atualizando Agenda…" else "Salvar para todas as viagens")
+            }
+            localError?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        }
+    }
+}
+
+@Composable
+private fun AgendaPublicSearchRoot0396(
+    trips: List<Trip>,
+    onChanged: (String) -> Unit,
+) {
+    val context = LocalContext.current
+    val publicSearchStore = remember(context) { BlaBlaPublicSearchStore(context) }
+    var response by remember(context) { mutableStateOf(publicSearchStore.lastResponse()) }
+
+    BlaBlaPublicSearchPanel(
+        trips = trips,
+        currentResponse = response,
+        onResult = { response = it },
+        onChanged = onChanged,
+        showTitle = false,
+        showCollectionActions = false,
+    )
+    response?.let { result ->
+        Text(
+            "Resultado desta consulta pública",
+            style = MaterialTheme.typography.titleMedium,
+        )
+        if (result.cards.isEmpty()) {
+            Text("Nenhum card público encontrado nesta consulta.", style = MaterialTheme.typography.bodySmall)
+        } else {
+            result.cards
+                .sortedBy(::publicSearchCardDepartureSortMillis)
+                .forEach { card ->
+                    BlaBlaPublicTimelineCard(
+                        card = card,
+                        response = result,
+                    )
+                }
+        }
+        Text(
+            "Esta consulta possui Timeline própria e não é misturada à Timeline operacional.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        BlaBlaAuditableCollectionActions(
+            snapshot = BlaBlaAuditableCollectionBuilder.build(context, result),
+            onChanged = onChanged,
+        )
+    }
+}
+
+
+internal fun tripEditorDepartureMillis(
+    selection: RotaCertaDateSelection,
+    timeText: String,
+    zoneId: ZoneId = ZoneId.systemDefault(),
+): Long? {
+    val date = selection.normalizedDates.singleOrNull() ?: return null
+    val time = runCatching {
+        LocalTime.parse(timeText.trim(), DateTimeFormatter.ofPattern("HH:mm"))
+    }.getOrNull() ?: return null
+    return date.atTime(time).atZone(zoneId).toInstant().toEpochMilli()
+}
+
+@Composable
+private fun TripEditor(
+    defaultOrigin: String,
+    defaultRotaCertaSeatAllocation: Int,
+    initialTrip0633: Trip? = null,
+    onCancel: () -> Unit,
+    onSave: (Trip) -> Unit,
+) {
+    val initialStops0633 = remember(initialTrip0633) {
+        initialTrip0633?.stops?.sortedBy(TripStop::order).orEmpty()
+    }
+    val initialDeparture = remember(initialTrip0633) {
+        if (initialTrip0633 != null) {
+            val zoned = Instant.ofEpochMilli(initialTrip0633.departureAtMillis).atZone(ZoneId.systemDefault())
+            zoned.toLocalDate() to zoned.toLocalTime().withSecond(0).withNano(0)
+        } else {
+            val tomorrow = LocalDate.now().plusDays(1)
+            val hour = LocalTime.now().plusHours(1).withMinute(0).withSecond(0).withNano(0)
+            tomorrow to hour
+        }
+    }
+    var origin by remember(defaultOrigin, initialTrip0633?.id) {
+        mutableStateOf(initialStops0633.firstOrNull()?.name ?: defaultOrigin.trim())
+    }
+    var destination by remember(initialTrip0633?.id) {
+        mutableStateOf(initialStops0633.lastOrNull()?.name.orEmpty())
+    }
+    var intermediate by remember(initialTrip0633?.id) {
+        mutableStateOf(initialStops0633.drop(1).dropLast(1).joinToString("\n", transform = TripStop::name))
+    }
+    var departureDate by remember(initialTrip0633?.id) {
+        mutableStateOf(
+            RotaCertaDateSelection(
+                mode = RotaCertaDateSelectionMode.SINGLE,
+                dates = listOf(initialDeparture.first),
+            ),
+        )
+    }
+    var departureTime by remember(initialTrip0633?.id) {
+        mutableStateOf(initialDeparture.second.format(DateTimeFormatter.ofPattern("HH:mm")))
+    }
+    var showDepartureDatePicker by remember { mutableStateOf(false) }
+    var notes by remember(initialTrip0633?.id) { mutableStateOf(initialTrip0633?.notes.orEmpty()) }
+    var segmentPrices by remember(initialTrip0633?.id) {
+        mutableStateOf(
+            initialStops0633.dropLast(1).joinToString("\n") { stop ->
+                if (stop.priceToNextCents > 0L) {
+                    String.format(Locale("pt", "BR"), "%.2f", stop.priceToNextCents / 100.0)
+                } else {
+                    "0,00"
+                }
+            },
+        )
+    }
+    var passengerSeats by remember(defaultRotaCertaSeatAllocation, initialTrip0633?.id) {
+        val initialSeats = initialTrip0633?.rotaCertaSeatAllocation
+            ?.takeIf { it in 1..99 }
+            ?: initialTrip0633?.capacity?.takeIf { it in 1..99 }
+            ?: defaultRotaCertaSeatAllocation.takeIf { it in 1..99 }
+            ?: 3
+        mutableStateOf(initialSeats.toString())
+    }
+    var error by remember { mutableStateOf<String?>(null) }
+    var routePlan by remember { mutableStateOf<TripRoutePlan?>(null) }
+
+    Text(if (initialTrip0633 == null) "Criar viagem" else "Editar viagem", style = MaterialTheme.typography.titleLarge)
+    OutlinedTextField(origin, { origin = it }, label = { Text("Origem") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(destination, { destination = it }, label = { Text("Destino") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(
+        value = passengerSeats,
+        onValueChange = { passengerSeats = it.filter(Char::isDigit).take(2) },
+        label = { Text("Vagas para passageiros") },
+        supportingText = { Text("Capacidade própria desta viagem. Não depende das vagas da BlaBlaCar.") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    OutlinedTextField(
+        intermediate,
+        { intermediate = it },
+        label = { Text("Paradas intermediárias — uma por linha") },
+        modifier = Modifier.fillMaxWidth(),
+        minLines = 3,
+    )
+    OutlinedTextField(
+        segmentPrices,
+        { segmentPrices = it },
+        label = { Text("Valores por trecho em R$ — uma linha por trecho") },
+        modifier = Modifier.fillMaxWidth(),
+        minLines = 2,
+    )
+    Text("Ex.: origem → parada = 20,00; parada → destino = 25,00. Deixe vazio para não publicar valor.", style = MaterialTheme.typography.bodySmall)
+    RotaCertaDateSelectionField(
+        selection = departureDate,
+        onClick = { showDepartureDatePicker = true },
+        label = "Data da saída",
+        emptySummary = "Selecione a data da saída",
+        modifier = Modifier.fillMaxWidth(),
+    )
+    OutlinedTextField(
+        value = departureTime,
+        onValueChange = { raw ->
+            departureTime = raw.filter { it.isDigit() || it == ':' }.take(5)
+        },
+        label = { Text("Horário da saída — HH:mm") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    OutlinedTextField(notes, { notes = it }, label = { Text("Observações públicas opcionais") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+    val planningNames = buildList {
+        if (origin.isNotBlank()) add(origin.trim())
+        addAll(intermediate.lines().map(String::trim).filter(String::isNotBlank))
+        if (destination.isNotBlank()) add(destination.trim())
+    }
+    val planningDepartureMillis = tripEditorDepartureMillis(departureDate, departureTime)
+    TripRoutePlannerControl(
+        stopNames = planningNames,
+        departureAtMillis = planningDepartureMillis,
+        onPlan = { routePlan = it },
+    )
+    error?.let { Text(it) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = {
+            runCatching {
+                require(origin.isNotBlank()) { "Informe a origem." }
+                require(destination.isNotBlank()) { "Informe o destino." }
+                val allocatedSeats = passengerSeats.toIntOrNull()
+                    ?.takeIf { it in 1..99 }
+                    ?: throw IllegalArgumentException("Informe de 1 a 99 vagas para passageiros.")
+                val departureMillis = tripEditorDepartureMillis(departureDate, departureTime)
+                    ?: throw IllegalArgumentException("Selecione a data e informe o horário da saída no formato HH:mm.")
+                val names = buildList {
+                    add(origin.trim())
+                    addAll(intermediate.lines().map(String::trim).filter(String::isNotBlank))
+                    add(destination.trim())
+                }
+                require(names.size >= 2) { "A viagem precisa de origem e destino." }
+                val rawPrices = segmentPrices.lines().map(String::trim).filter(String::isNotBlank)
+                val prices = if (rawPrices.isEmpty()) List(names.size - 1) { 0L } else {
+                    require(rawPrices.size == names.size - 1) { "Informe exatamente ${names.size - 1} valor(es), um para cada trecho." }
+                    rawPrices.map { raw -> parseFareCents(raw) ?: throw IllegalArgumentException("Valor inválido: $raw") }
+                }
+                val planned = routePlan?.takeIf { plan ->
+                    plan.stops.map(TripStop::name) == names &&
+                        plan.stops.firstOrNull()?.plannedDepartureMillis == departureMillis
+                }
+                val existingNames0633 = initialStops0633.map(TripStop::name)
+                val baseStops0633 = when {
+                    planned != null && existingNames0633 == names -> planned.stops.mapIndexed { index, stop ->
+                        stop.copy(id = initialStops0633[index].id, order = index)
+                    }
+                    planned != null -> planned.stops
+                    initialTrip0633 != null && existingNames0633 == names -> {
+                        val shift = departureMillis - initialTrip0633.departureAtMillis
+                        initialStops0633.mapIndexed { index, stop ->
+                            stop.copy(
+                                order = index,
+                                plannedArrivalMillis = stop.plannedArrivalMillis?.plus(shift),
+                                plannedDepartureMillis = stop.plannedDepartureMillis?.plus(shift),
+                            )
+                        }
+                    }
+                    else -> names.mapIndexed { index, name ->
+                        TripStop(
+                            order = index,
+                            name = name,
+                            address = name,
+                            plannedDepartureMillis = if (index == 0) departureMillis else null,
+                            plannedArrivalMillis = if (index == 0) departureMillis else null,
+                        )
+                    }
+                }
+                val stops = baseStops0633.mapIndexed { index, stop ->
+                    stop.copy(priceToNextCents = prices.getOrElse(index) { 0L })
+                }
+                val existing0633 = initialTrip0633
+                (existing0633?.copy(
+                    title = "${origin.trim()} → ${destination.trim()}",
+                    departureAtMillis = departureMillis,
+                    capacity = allocatedSeats,
+                    status = TripStatus.PUBLISHED,
+                    rotaCertaSeatAllocation = allocatedSeats,
+                    stops = stops,
+                    notes = notes.trim(),
+                    publicBookingEnabled = existing0633.publicBookingEnabled,
+                    capacityReliable = true,
+                    itineraryAuthoritative = true,
+                    recordOrigin = TripRecordOrigin.LOCAL,
+                ) ?: Trip(
+                    title = "${origin.trim()} → ${destination.trim()}",
+                    departureAtMillis = departureMillis,
+                    capacity = allocatedSeats,
+                    status = TripStatus.PUBLISHED,
+                    rotaCertaSeatAllocation = allocatedSeats,
+                    stops = stops,
+                    notes = notes.trim(),
+                    publicBookingEnabled = true,
+                    capacityReliable = true,
+                    itineraryAuthoritative = true,
+                    recordOrigin = TripRecordOrigin.LOCAL,
+                )).withCanonicalAgendaVisibility0581()
+            }.onSuccess(onSave).onFailure {
+                error = it.message ?: if (initialTrip0633 == null) "Não foi possível criar a viagem." else "Não foi possível editar a viagem."
+            }
+        }) { Text(if (initialTrip0633 == null) "Publicar viagem" else "Salvar alterações") }
+        TextButton(onClick = onCancel) { Text("Cancelar") }
+    }
+
+    if (showDepartureDatePicker) {
+        RotaCertaDatePickerDialog(
+            selection = departureDate,
+            onDismiss = { showDepartureDatePicker = false },
+            onConfirm = {
+                departureDate = it
+                showDepartureDatePicker = false
+            },
+            minDate = LocalDate.now(),
+            allowedModes = setOf(RotaCertaDateSelectionMode.SINGLE),
+            allowEmptySelection = false,
+            emptyConfirmLabel = "Selecione uma data",
+            title = "Data da saída",
+            description = "Escolha a data da viagem. Dias passados ficam indisponíveis.",
+        )
+    }
+}
+
+private fun requestAgendaTripHtmlRefresh0607(
+    activity: ComponentActivity,
+    trip: Trip,
+): Boolean {
+    val profileUuid = trip.blablaProfileUuid?.trim()?.takeIf(String::isNotEmpty) ?: return false
+    val tripId = trip.blablaTripId?.trim()?.takeIf(String::isNotEmpty) ?: return false
+    val tripHref = trip.blablaManageUrl?.trim()?.takeIf(String::isNotEmpty) ?: return false
+    if (BlaBlaCollectorUrlModule.tripId(tripHref) != tripId) return false
+    val account = BlaBlaDynamicAccountRegistry(activity).list().singleOrNull { candidate ->
+        candidate.profileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true
+    } ?: return false
+    val tenantId = br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry(activity).activeScope().tenantId
+    val target = BlaBlaTripTarget0407(
+        tenantId = tenantId,
+        accountId = account.id,
+        profileUuid = profileUuid.lowercase(),
+        tripId = tripId,
+        tripHref = tripHref,
+    )
+    val command = BlaBlaCommand0407.forTarget(
+        target = target,
+        operation = BlaBlaTripCapability0407.REVERIFY_TRIP,
+        origin = BlaBlaCommandOrigin0407.CARD,
+    )
+    val queued = AgendaBackgroundSync0392.enqueueTripCollectorRefresh0517(
+        context = activity,
+        target = target,
+        commandId = command.commandId,
+        requestedAtMillis = command.requestedAtMillis,
+    )
+    if (queued) {
+        UnifiedDebugEventStore.recordAlways(
+            "AGENDA_CARD_TARGET_HTML_REFRESH_REQUESTED_0607",
+            activity.packageName,
+            "canonicalTripId=${seatSyncDiagnosticKey(trip.tripKey.ifBlank { trip.id })} tripIdPresent=true profileUuidPresent=true authority=HTML_DIRECT_0607",
+        )
+    }
+    return queued
+}
+
+private fun settingsConfiguredForNativeTrip0633(store: TripStore, trip: Trip): Boolean =
+    store.onlineSettings().configured && !trip.remoteId.isNullOrBlank()
+
+@Composable
+private fun TripCard(
+    activity: ComponentActivity,
+    store: TripStore,
+    trip: Trip,
+    bookings: List<Booking>,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onChanged: (String) -> Unit,
+    onEditNativeTrip: () -> Unit = {},
+    onRequestBlaBlaSync: () -> Unit,
+) {
+    val formatter = remember { DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm") }
+    val scope = rememberCoroutineScope()
+    val mutationCoordinator = remember(activity, store) { TripMutationCoordinator0387(activity, store) }
+    val nativeRotaCerta0633 = trip.isNativeRotaCertaTrip0633()
+    val seatRange = SeatAvailabilityEngine.availableSeatRange(trip, bookings)
+    val availabilityText = if (seatRange.variesBySegment) {
+        "vagas por trecho ${seatRange.minimum}–${seatRange.maximum}/${trip.capacity}"
+    } else {
+        "${seatRange.maximum}/${trip.capacity} vagas livres"
+    }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(trip.title, style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (nativeRotaCerta0633) "Origem: Rota Certa" else "Origem: BlaBlaCar",
+                style = MaterialTheme.typography.labelSmall,
+            )
+            Text("${formatter.format(Instant.ofEpochMilli(trip.departureAtMillis).atZone(ZoneId.systemDefault()))} • ${trip.status} • $availabilityText")
+            OutlinedButton(onClick = onToggle) { Text(if (expanded) "Fechar" else "Gerenciar") }
+            if (expanded) {
+                HorizontalDivider()
+                trip.stops.sortedBy(TripStop::order).forEachIndexed { index, stop ->
+                    Text("${index + 1}. ${stop.name}")
+                }
+                val loads = SeatAvailabilityEngine.segmentLoads(trip, bookings)
+                if (loads.isNotEmpty()) {
+                    Text("Ocupação por trecho", style = MaterialTheme.typography.titleSmall)
+                    loads.forEach { load ->
+                        val price = load.from.priceToNextCents
+                        Text(buildString {
+                            append("${load.from.name} → ${load.to.name}: ${load.occupiedSeats}/${trip.capacity} ocupadas")
+                            if (price > 0L) append(" • ${formatFare(price)} por pessoa")
+                        })
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (nativeRotaCerta0633 && trip.status !in setOf(TripStatus.CANCELLED, TripStatus.COMPLETED)) {
+                        OutlinedButton(onClick = onEditNativeTrip) { Text("Editar viagem") }
+                    }
+                    if (trip.status == TripStatus.DRAFT) {
+                        Button(onClick = {
+                            store.saveTrip(trip.copy(status = TripStatus.PUBLISHED))
+                            onChanged("Viagem publicada localmente.")
+                        }) { Text("Publicar") }
+                    }
+                    if (trip.status !in setOf(TripStatus.CANCELLED, TripStatus.COMPLETED)) {
+                        OutlinedButton(onClick = {
+                            if (nativeRotaCerta0633 && settingsConfiguredForNativeTrip0633(store, trip)) {
+                                scope.launch {
+                                    runCatching {
+                                        val settings0633 = store.onlineSettings()
+                                        val mutation0633 = trip.copy(
+                                            status = TripStatus.CANCELLED,
+                                            publicationRevision = trip.publicationRevision.coerceAtLeast(0L) + 1L,
+                                            publicationEventId = UUID.randomUUID().toString(),
+                                        ).withCanonicalAgendaVisibility0581()
+                                        val ack0633 = TripRemoteApi(settings0633).update(mutation0633)
+                                        require(!ack0633.stale) { "A viagem mudou em outro dispositivo. Atualize antes de cancelar." }
+                                        mutation0633.copy(
+                                            publicationRevision = maxOf(mutation0633.publicationRevision, ack0633.entityRevision),
+                                            publicUrl = ack0633.publicUrl.takeIf(String::isNotBlank) ?: mutation0633.publicUrl,
+                                        )
+                                    }.onSuccess { saved0633 ->
+                                        store.saveTrip(saved0633)
+                                        BookingRealtimeEvents0356.notifyChanged()
+                                        onChanged("Viagem cancelada no estado canônico e removida da Agenda Pública.")
+                                    }.onFailure { error ->
+                                        onChanged("Nada foi alterado: ${error.message ?: "falha ao cancelar viagem"}")
+                                    }
+                                }
+                            } else if (nativeRotaCerta0633) {
+                                onChanged("Backend canônico indisponível. Nada foi alterado.")
+                            } else {
+                                store.saveTrip(trip.copy(status = TripStatus.CANCELLED))
+                                onChanged("Viagem externa marcada como cancelada no Rota Certa.")
+                            }
+                        }) { Text("Cancelar viagem") }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { TripCalendarBridge.shareTrip(activity, trip) }) { Text("Compartilhar") }
+                    OutlinedButton(onClick = { TripCalendarBridge.addToDeviceCalendar(activity, trip) }) { Text("Google/Agenda") }
+                    OutlinedButton(onClick = { TripCalendarBridge.shareIcs(activity, trip) }) { Text("ICS") }
+                }
+                val settings = store.onlineSettings()
+                if (trip.status !in setOf(TripStatus.CANCELLED, TripStatus.COMPLETED)) {
+                    OutlinedButton(onClick = {
+                        val next = trip.copy(publicBookingEnabled = !trip.publicBookingEnabled)
+                        if (nativeRotaCerta0633) {
+                            if (!settings.configured || next.remoteId.isNullOrBlank()) {
+                                onChanged("Backend canônico indisponível. Nada foi alterado.")
+                            } else {
+                                scope.launch {
+                                    runCatching {
+                                        val mutation0633 = next.copy(
+                                            publicationRevision = trip.publicationRevision.coerceAtLeast(0L) + 1L,
+                                            publicationEventId = UUID.randomUUID().toString(),
+                                        ).withCanonicalAgendaVisibility0581()
+                                        val ack0633 = TripRemoteApi(settings).update(mutation0633)
+                                        require(!ack0633.stale) { "A viagem mudou em outro dispositivo. Atualize e tente novamente." }
+                                        mutation0633.copy(
+                                            publicationRevision = maxOf(mutation0633.publicationRevision, ack0633.entityRevision),
+                                            publicUrl = ack0633.publicUrl.takeIf(String::isNotBlank) ?: mutation0633.publicUrl,
+                                        )
+                                    }.onSuccess { saved0633 ->
+                                        store.saveTrip(saved0633)
+                                        BookingRealtimeEvents0356.notifyChanged()
+                                        onChanged(if (saved0633.publicBookingEnabled) "Reservas ativadas e Agenda Pública atualizada." else "Reservas desativadas e Agenda Pública atualizada.")
+                                    }.onFailure { error ->
+                                        onChanged("Nada foi alterado: ${error.message ?: "falha ao atualizar reservas"}")
+                                    }
+                                }
+                            }
+                        } else {
+                            store.saveTrip(next)
+                            if (settings.configured && next.remoteId != null) {
+                                scope.launch {
+                                    runCatching {
+                                        mutationCoordinator.recordLocalMutation(
+                                            canonicalTripId = next.id,
+                                            mutationType = "PUBLIC_BOOKING_TOGGLE",
+                                            source = "TIMELINE_CARD",
+                                        )
+                                        AgendaBackgroundSync0392.enqueueImmediate(activity, "trip_mutation")
+                                    }
+                                        .onSuccess { onChanged(if (next.publicBookingEnabled) "Reservas pelo link ativadas para esta viagem." else "Reservas pelo link desativadas para esta viagem.") }
+                                        .onFailure { onChanged("Estado salvo no Rota Certa; o delta desta viagem ficou pendente: ${it.message}") }
+                                }
+                            } else {
+                                onChanged(if (next.publicBookingEnabled) "Reservas pelo link ativadas localmente." else "Reservas pelo link desativadas.")
+                            }
+                        }
+                    }) { Text(if (trip.publicBookingEnabled) "Reservas pelo link: ATIVADAS" else "Reservas pelo link: DESATIVADAS") }
+                    if (trip.publicBookingEnabled && !trip.publicUrl.isNullOrBlank()) {
+                        OutlinedButton(onClick = {
+                            if (!TripPublicBookingLink0296.share(activity, trip.publicUrl.orEmpty())) {
+                                onChanged("Link público ainda não está disponível.")
+                            }
+                        }) { Text("📲 Compartilhar reservas") }
+                    }
+                }
+                if (!settings.configured) {
+                    Text("Modo online não configurado. Compartilhamento local, Google Agenda e ICS continuam funcionando.", style = MaterialTheme.typography.bodySmall)
+                }
+                if (trip.status in setOf(TripStatus.PUBLISHED, TripStatus.FULL)) {
+                    QuickPassengerPanel(
+                        trip = trip,
+                        store = store,
+                        onChanged = onChanged,
+                        onBlaBlaSyncRequested = onRequestBlaBlaSync,
+                        canonicalBookings0494 = bookings,
+                    )
+                }
+                if (bookings.isNotEmpty()) {
+                    Text("Reservas locais", style = MaterialTheme.typography.titleSmall)
+                    bookings.forEach { booking ->
+                        val from = trip.stops.firstOrNull { it.id == booking.boardingStopId }?.name.orEmpty()
+                        val to = trip.stops.firstOrNull { it.id == booking.dropoffStopId }?.name.orEmpty()
+                        Text("${booking.passengerName}: $from → $to • ${booking.seats} vaga(s) • ${booking.status}")
+                    }
+                }
+                TextButton(onClick = {
+                    if (nativeRotaCerta0633) {
+                        val settings0633 = store.onlineSettings()
+                        if (!settings0633.configured || trip.remoteId.isNullOrBlank()) {
+                            onChanged("Backend canônico indisponível. A viagem não foi excluída para evitar ficar publicada sem controle.")
+                        } else {
+                            scope.launch {
+                                runCatching {
+                                    val tombstone0633 = trip.copy(
+                                        status = TripStatus.CANCELLED,
+                                        publicationTombstone = true,
+                                        publicationRevision = trip.publicationRevision.coerceAtLeast(0L) + 1L,
+                                        publicationEventId = UUID.randomUUID().toString(),
+                                    )
+                                    val ack0633 = TripRemoteApi(settings0633).update(tombstone0633)
+                                    require(!ack0633.stale) { "A viagem mudou em outro dispositivo. Atualize antes de excluir." }
+                                }.onSuccess {
+                                    store.deleteTrip(trip.id)
+                                    BookingRealtimeEvents0356.notifyChanged()
+                                    onChanged("Viagem removida do backend público e deste aparelho.")
+                                }.onFailure { error ->
+                                    onChanged("Nada foi excluído: ${error.message ?: "falha ao remover viagem"}")
+                                }
+                            }
+                        }
+                    } else {
+                        store.deleteTrip(trip.id)
+                        onChanged("Viagem externa removida apenas do aparelho.")
+                    }
+                }) { Text("Excluir viagem") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManualBookingEditor(
+    trip: Trip,
+    store: TripStore,
+    onChanged: (String) -> Unit,
+) {
+    val stops = trip.stops.sortedBy(TripStop::order)
+    if (stops.size < 2) return
+    var name by remember(trip.id) { mutableStateOf("") }
+    var contact by remember(trip.id) { mutableStateOf("") }
+    var seatsText by remember(trip.id) { mutableStateOf("1") }
+    var fromIndex by remember(trip.id) { mutableStateOf(0) }
+    var toIndex by remember(trip.id) { mutableStateOf(stops.lastIndex) }
+    val requested = seatsText.toIntOrNull()?.coerceIn(1, trip.capacity) ?: 1
+    val availability = runCatching {
+        SeatAvailabilityEngine.availability(trip, store.bookingsFor(trip.id), stops[fromIndex].id, stops[toIndex].id, requested)
+    }.getOrNull()
+
+    HorizontalDivider()
+    Text("Adicionar passageiro manualmente", style = MaterialTheme.typography.titleSmall)
+    OutlinedTextField(name, { name = it }, label = { Text("Nome") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(contact, { contact = it }, label = { Text("Contato opcional") }, modifier = Modifier.fillMaxWidth())
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = {
+            fromIndex = (fromIndex + 1).coerceAtMost(stops.lastIndex - 1)
+            if (toIndex <= fromIndex) toIndex = fromIndex + 1
+        }) { Text("Embarque: ${stops[fromIndex].name}") }
+        OutlinedButton(onClick = {
+            toIndex++
+            if (toIndex > stops.lastIndex) toIndex = fromIndex + 1
+        }) { Text("Desce: ${stops[toIndex].name}") }
+    }
+    OutlinedTextField(seatsText, { seatsText = it.filter(Char::isDigit).take(3) }, label = { Text("Lugares reservados") })
+    Text("Disponíveis nesse trecho: ${availability?.availableSeats ?: 0}")
+    val farePerSeat = runCatching { TripFareEngine.farePerSeatCents(trip, stops[fromIndex].id, stops[toIndex].id) }.getOrDefault(0L)
+    if (farePerSeat > 0L) Text("Valor: ${formatFare(farePerSeat)} por pessoa • total ${formatFare(farePerSeat * requested.toLong())}")
+    Button(
+        enabled = name.isNotBlank() && availability?.canBook == true,
+        onClick = {
+            store.saveBooking(
+                Booking(
+                    tripId = trip.id,
+                    passengerName = name.trim(),
+                    passengerContact = contact.trim(),
+                    boardingStopId = stops[fromIndex].id,
+                    dropoffStopId = stops[toIndex].id,
+                    seats = requested,
+                    status = BookingStatus.CONFIRMED,
+                ),
+            )
+            name = ""
+            contact = ""
+            seatsText = "1"
+            onChanged("Passageiro adicionado sem ultrapassar a capacidade do trecho.")
+        },
+    ) { Text("Confirmar reserva") }
+}
+
+private fun parseFareCents(value: String): Long? {
+    val normalized = value.trim().replace("R$", "", ignoreCase = true).replace(" ", "").replace(".", "").replace(",", ".")
+    val amount = normalized.toDoubleOrNull() ?: return null
+    if (!amount.isFinite() || amount < 0.0 || amount > 1_000_000.0) return null
+    return (amount * 100.0).roundToLong()
+}
+
+private fun formatFare(cents: Long): String = String.format(Locale("pt", "BR"), "R$ %.2f", cents.coerceAtLeast(0L) / 100.0)

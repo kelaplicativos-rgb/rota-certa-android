@@ -1,0 +1,222 @@
+name: Timeline live segment glance 0.1.602
+
+on:
+  push:
+    branches:
+      - agent/timeline-live-segment-glance-0.1.602
+    paths:
+      - '.github/workflows/timeline-live-segment-glance-0.1.602.yml'
+      - 'app/build.gradle.kts'
+      - 'app/src/main/assets/release_history.json'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalAllTripsBrowserUi0563.kt'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/OperationalTimelineLiveSegments0602Test.kt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: timeline-live-segment-glance-0602-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: timeline_live_segments_0602_ci_dummy_key
+      EXPECTED_VERSION_CODE: '5893'
+      EXPECTED_VERSION_NAME: '0.1.602'
+      BASE_SHA: '102295e72adfbe93dd012c3f7c148547024f914a'
+
+    steps:
+      - name: Checkout exact triggering HEAD
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove exact source and isolated diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --check "$BASE_SHA"...HEAD
+          grep -Fq 'val releaseVersionCode = 5_893' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.602"' app/build.gradle.kts
+          grep -Fq '"version": "0.1.602"' app/src/main/assets/release_history.json
+
+          TIMELINE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalAllTripsBrowserUi0563.kt'
+          grep -Fq 'Vagas por trecho' "$TIMELINE"
+          grep -Fq 'operationalTimelineSegmentLoads0602' "$TIMELINE"
+          grep -Fq 'canonicalTimelineSegmentLoads0494(entry, trip)' "$TIMELINE"
+          grep -Fq 'row.segmentLoads0602.forEach' "$TIMELINE"
+          grep -Fq 'load0602.availableSeats' "$TIMELINE"
+          grep -Fq 'load0602.passengerSeats' "$TIMELINE"
+          grep -Fq 'LOTADO' "$TIMELINE"
+          if grep -Fq 'Reserve Já' "$TIMELINE"; then
+            echo "Passenger reservation CTA leaked into driver Timeline" >&2
+            exit 1
+          fi
+          if grep -Fq 'SeatAvailabilityEngine.segmentLoads' "$TIMELINE"; then
+            echo "Timeline introduced a parallel vacancy calculation" >&2
+            exit 1
+          fi
+
+          git diff --name-only "$BASE_SHA"...HEAD | sort | tee /tmp/changed.txt
+          cat > /tmp/allowed.txt <<'EOF'
+          .github/workflows/timeline-live-segment-glance-0.1.602.yml
+          app/build.gradle.kts
+          app/src/main/assets/release_history.json
+          app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalAllTripsBrowserUi0563.kt
+          app/src/test/java/br/com/mapeiaia/rotacerta/trips/OperationalTimelineLiveSegments0602Test.kt
+          EOF
+          sort -o /tmp/allowed.txt /tmp/allowed.txt
+          comm -23 /tmp/changed.txt /tmp/allowed.txt | tee /tmp/unexpected-changed.txt
+          test ! -s /tmp/unexpected-changed.txt
+          printf '%s\n' "$GITHUB_SHA" | tee /tmp/source-head.txt
+          printf '%s\n' "$GITHUB_REF_NAME" | tee /tmp/source-branch.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify hosted Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK_ROOT"
+          test -d "$SDK_ROOT/platforms/android-35"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run targeted Timeline regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew \
+            :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTimelineLiveSegments0602Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripAutoArchive0566Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.OperationalAllTripsBrowser0563Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.UnifiedSegmentAvailability0596Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.CentralDriverSegmentGlance0601Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace \
+            | tee /tmp/targeted-tests.log
+
+      - name: Compare full unit-test failures against exact 0.1.601 base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add --detach /tmp/rc-0601 "$BASE_SHA"
+          chmod +x /tmp/rc-0601/gradlew
+
+          set +e
+          (
+            cd /tmp/rc-0601
+            ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ) > /tmp/base-tests.log 2>&1
+          BASE_EXIT=$?
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace > /tmp/head-tests.log 2>&1
+          HEAD_EXIT=$?
+          set -e
+
+          python3 - <<'PY'
+          import pathlib
+          import xml.etree.ElementTree as ET
+
+          def failures(root):
+              result = set()
+              d = pathlib.Path(root) / "app/build/test-results/testDebugUnitTest"
+              for f in d.glob("*.xml"):
+                  tree = ET.parse(f)
+                  for case in tree.getroot().iter("testcase"):
+                      if case.find("failure") is not None or case.find("error") is not None:
+                          result.add(f"{case.attrib.get('classname','')}::{case.attrib.get('name','')}")
+              return result
+
+          base = failures("/tmp/rc-0601")
+          head = failures(".")
+          new = sorted(head - base)
+          fixed = sorted(base - head)
+          pathlib.Path("/tmp/base-failures.txt").write_text("\n".join(sorted(base)) + ("\n" if base else ""))
+          pathlib.Path("/tmp/head-failures.txt").write_text("\n".join(sorted(head)) + ("\n" if head else ""))
+          pathlib.Path("/tmp/new-failures.txt").write_text("\n".join(new) + ("\n" if new else ""))
+          pathlib.Path("/tmp/fixed-baseline-failures.txt").write_text("\n".join(fixed) + ("\n" if fixed else ""))
+          print(f"baseline_failures={len(base)}")
+          print(f"head_failures={len(head)}")
+          print(f"new_failures={len(new)}")
+          print(f"fixed_baseline_failures={len(fixed)}")
+          if new:
+              print("\n".join(new))
+              raise SystemExit(1)
+          PY
+
+          echo "base_gradle_exit=$BASE_EXIT" | tee /tmp/unit-regression-summary.txt
+          echo "head_gradle_exit=$HEAD_EXIT" | tee -a /tmp/unit-regression-summary.txt
+          echo "new_failure_count=$(wc -l < /tmp/new-failures.txt)" | tee -a /tmp/unit-regression-summary.txt
+
+      - name: Assemble exact-head installable APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ROTA_CERTA_GIT_SHA="$GITHUB_SHA"
+          export ROTA_CERTA_GIT_BRANCH="$GITHUB_REF_NAME"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          unzip -t "$APK" > /tmp/zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -Fq 'Verified' /tmp/apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
+
+      - name: Package evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/0602
+          mkdir -p "$OUT"
+          SHORT_SHA="${GITHUB_SHA:0:12}"
+          FINAL="$OUT/rota-certa-$EXPECTED_VERSION_NAME-$EXPECTED_VERSION_CODE-$SHORT_SHA.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$FINAL"
+          sha256sum "$FINAL" | tee "$OUT/apk.sha256"
+          cp /tmp/targeted-tests.log /tmp/unit-regression-summary.txt /tmp/base-failures.txt /tmp/head-failures.txt /tmp/new-failures.txt /tmp/fixed-baseline-failures.txt /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed.txt /tmp/unexpected-changed.txt "$OUT/"
+          cat > "$OUT/final-status.txt" <<EOF
+          package=br.com.mapeiaia.rotacerta
+          version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
+          source_head=$GITHUB_SHA
+          source_branch=$GITHUB_REF_NAME
+          exact_base=$BASE_SHA
+          timeline_segment_source=canonicalTimelineSegmentLoads0494
+          timeline_parallel_seat_engine=ABSENT
+          timeline_segment_route=VISIBLE
+          timeline_segment_occupancy=VISIBLE
+          timeline_segment_capacity=VISIBLE
+          timeline_segment_vacancies=VISIBLE
+          timeline_lotado_state=VISIBLE
+          timeline_reservation_cta=ABSENT
+          unreliable_capacity_false_lotado_guard=PASS_BY_TEST
+          no_new_unit_failures_vs_0601=PASS_BY_TEST
+          apk_signature=PASS
+          apk_embeds_exact_sha=PASS
+          physical_install_test=PENDING_SAMSUNG_SM_S911B_ANDROID_16
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.602-5893-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0602

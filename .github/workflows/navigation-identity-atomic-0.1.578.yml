@@ -1,0 +1,118 @@
+name: Navigation identity atomic 0.1.578
+
+on:
+  push:
+    branches:
+      - agent/navigation-identity-atomic-0.1.578
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: navigation-identity-atomic-0.1.578-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GOOGLE_MAPS_API_KEY: navigation_identity_validation_dummy_key
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      ANDROID_HOME: /usr/local/lib/android/sdk
+
+    steps:
+      - name: Checkout exact triggering SHA
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove exact source and version
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          git diff --check 339860052352822f0d7c6baa29eb1d2e4e14dbe9...HEAD
+          grep -Fq 'val releaseVersionCode = 5_869' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.578"' app/build.gradle.kts
+          grep -Fq '"version": "0.1.578"' app/src/main/assets/release_history.json
+          grep -Fq 'reconciledCollectorNavigationIdentity0578' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'SPECIFIC_TRIP_HREF_COVERAGE_MISSING_0578' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          git rev-parse HEAD | tee validated-source-head.txt
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify preinstalled Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "$ANDROID_SDK_ROOT"
+          test -d "$ANDROID_SDK_ROOT/platforms/android-35"
+          find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1 | tee android-build-tools-dir.txt
+          test -s android-build-tools-dir.txt
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run targeted Android regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.NavigationIdentityAtomic0578Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaAutoSync0300Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTimelineTemporalCutoff0548Test' \
+            --tests 'br.com.mapeiaia.rotacerta.monitoring.OperationalHealthEngineTest' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace | tee navigation-identity-tests.log
+
+      - name: Assemble exact debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace | tee assemble-debug.log
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee aapt-badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta'" aapt-badging.txt
+          grep -q "versionCode='5869'" aapt-badging.txt
+          grep -q "versionName='0.1.578'" aapt-badging.txt
+          cp "$APK" rota-certa-0.1.578-navigation-identity-atomic.apk
+          stat -c '%s' rota-certa-0.1.578-navigation-identity-atomic.apk | tee apk-size-bytes.txt
+          sha256sum rota-certa-0.1.578-navigation-identity-atomic.apk | tee apk-sha256.txt
+
+      - name: Upload validation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.578-navigation-identity-atomic-${{ github.sha }}
+          retention-days: 90
+          if-no-files-found: error
+          path: |
+            rota-certa-0.1.578-navigation-identity-atomic.apk
+            validated-source-head.txt
+            navigation-identity-tests.log
+            assemble-debug.log
+            apksigner.txt
+            aapt-badging.txt
+            apk-size-bytes.txt
+            apk-sha256.txt
+            app/build/reports/tests/testDebugUnitTest
+
+      - name: Confirm exact SHA artifact publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s rota-certa-0.1.578-navigation-identity-atomic.apk
+          test -s apk-sha256.txt
+          test -s validated-source-head.txt
+          test "$(cat validated-source-head.txt)" = "$GITHUB_SHA"
+          echo "APK published for exact SHA $GITHUB_SHA"

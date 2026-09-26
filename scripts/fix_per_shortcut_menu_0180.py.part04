@@ -1,0 +1,166 @@
+    """        assertTrue(defaults.all { it.enabled })
+        assertTrue(defaults.all { it.quickAction0180 == ShortcutGestureAction0180.PRIMARY_ACTION })
+        assertTrue(defaults.all { it.holdAction0180 == ShortcutGestureAction0180.OPEN_MODULE })""",
+)
+contract = "app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomizationContract0179Test.kt"
+replace_once(
+    contract,
+    """    fun shortAndLongGesturesHaveSeparateDeterministicActions() {
+        assertTrue(overlay.contains("SHORTCUT_LONG_PRESS_MILLIS"))
+        assertTrue(service.contains("onShortcut = ::executeShortcutModule"))
+        assertTrue(service.contains("onShortcutLongPress = ::executeShortcutLongPress0179"))
+        assertTrue(service.contains("openShortcutModule0171(spec)"))
+        assertFalse(service.contains("private fun executeShortcutLongPress0173"))
+    }""",
+    """    fun quickHoldAndFiveSecondEditorAreSeparateDeterministicActions() {
+        assertTrue(overlay.contains("SHORTCUT_LONG_PRESS_MILLIS"))
+        assertTrue(overlay.contains("SHORTCUT_CUSTOMIZATION_HOLD_MILLIS"))
+        assertTrue(overlay.contains("onShortcut(entry0179)"))
+        assertTrue(overlay.contains("onShortcutLongPress(entry0179)"))
+        assertTrue(service.contains("onShortcut = ::executeShortcutQuickTap0180"))
+        assertTrue(service.contains("onShortcutLongPress = ::executeShortcutHold0180"))
+        assertTrue(service.contains("onShortcutCustomize = ::openShortcutEntryCustomization0180"))
+        assertFalse(service.contains("private fun executeShortcutLongPress0179"))
+    }""",
+)
+legacy_contract = "app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutLongPressContract0171Test.kt"
+replace_once(
+    legacy_contract,
+    """    fun floatingOverlayUsesPersonalizedEntriesAndLongPressOpensModule() {
+        assertTrue(overlay.contains("ResolvedShortcutGridEntry0179"))
+        assertTrue(overlay.contains("shortcut_add_0179"))
+        assertFalse(overlay.contains("(doubleAction ?: singleAction).invoke()"))
+        assertTrue(service.contains("executeShortcutLongPress0179"))
+        assertTrue(service.contains("SHORTCUT_LONG_PRESS_OPEN_MODULE_0179"))
+        assertTrue(service.contains("openShortcutModule0171(spec)"))
+        assertFalse(service.contains("private fun executeShortcutLongPress0173"))
+    }""",
+    """    fun floatingOverlayKeepsEntryIdentityAndThreeIndependentGestures() {
+        assertTrue(overlay.contains("ResolvedShortcutGridEntry0179"))
+        assertTrue(overlay.contains("shortcut_add_0179"))
+        assertFalse(overlay.contains("(doubleAction ?: singleAction).invoke()"))
+        assertTrue(service.contains("executeShortcutQuickTap0180"))
+        assertTrue(service.contains("executeShortcutHold0180"))
+        assertTrue(service.contains("openShortcutEntryCustomization0180"))
+        assertFalse(service.contains("private fun executeShortcutLongPress0179"))
+    }""",
+)
+replace_once(
+    legacy_contract,
+    """        assertTrue(service.contains("ShortcutGridPreferenceStore0179"))
+        assertTrue(service.contains("openShortcutCustomization0179"))
+        assertTrue(service.contains("MAIN_CUSTOMIZATION_HOLD_MILLIS"))""",
+    """        assertTrue(service.contains("ShortcutGridPreferenceStore0179"))
+        assertTrue(service.contains("openShortcutCustomization0179"))
+        assertTrue(service.contains("EXTRA_EDIT_SHORTCUT_ENTRY_ID_0180"))""",
+)
+replace_once(
+    "app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutActivityLaunchContract0176Test.kt",
+    'assertTrue(overlay.contains("onShortcut(entry0179.spec)"))',
+    'assertTrue(overlay.contains("onShortcut(entry0179)"))',
+)
+
+write(
+    "app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutPerEntryMenu0180Test.kt",
+    """package br.com.mapeiaia.rotacerta
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class ShortcutPerEntryMenu0180Test {
+    @Test
+    fun defaultsMatchAlertExampleAndCanBeInverted() {
+        val original = ShortcutGridCustomizationPolicy0179.defaults().first()
+        assertEquals(ShortcutGestureAction0180.PRIMARY_ACTION, original.quickAction0180)
+        assertEquals(ShortcutGestureAction0180.OPEN_MODULE, original.holdAction0180)
+
+        val inverted = original.copy(
+            quickAction0180 = ShortcutGestureAction0180.OPEN_MODULE,
+            holdAction0180 = ShortcutGestureAction0180.PRIMARY_ACTION,
+        )
+        val resolved = ShortcutGridCustomizationPolicy0179.resolve(listOf(inverted)).single()
+        assertEquals(ShortcutGestureAction0180.OPEN_MODULE, resolved.quickAction0180)
+        assertEquals(ShortcutGestureAction0180.PRIMARY_ACTION, resolved.holdAction0180)
+    }
+
+    @Test
+    fun eitherGestureCanBeConfiguredToDoNothing() {
+        val original = ShortcutGridCustomizationPolicy0179.defaults().first()
+        val disabledGestures = original.copy(
+            quickAction0180 = ShortcutGestureAction0180.NONE,
+            holdAction0180 = ShortcutGestureAction0180.NONE,
+        )
+        val resolved = ShortcutGridCustomizationPolicy0179.resolve(listOf(disabledGestures)).single()
+        assertEquals(ShortcutGestureAction0180.NONE, resolved.quickAction0180)
+        assertEquals(ShortcutGestureAction0180.NONE, resolved.holdAction0180)
+    }
+
+    @Test
+    fun thresholdsMatchUserContract() {
+        assertEquals(1_500L, ShortcutGesturePolicy0179.SHORTCUT_LONG_PRESS_MILLIS)
+        assertEquals(5_000L, ShortcutGesturePolicy0179.SHORTCUT_CUSTOMIZATION_HOLD_MILLIS)
+        assertTrue(
+            ShortcutGesturePolicy0179.SHORTCUT_CUSTOMIZATION_HOLD_MILLIS >
+                ShortcutGesturePolicy0179.SHORTCUT_LONG_PRESS_MILLIS,
+        )
+    }
+}
+""",
+)
+
+write(
+    "app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutPerEntryMenuContract0180Test.kt",
+    """package br.com.mapeiaia.rotacerta
+
+import java.io.File
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class ShortcutPerEntryMenuContract0180Test {
+    private val overlay = File("src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt").readText()
+    private val service = File("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").readText()
+    private val main = File("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt").readText()
+    private val policy = File("src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt").readText()
+
+    @Test
+    fun fiveSecondsCannotTriggerTheOnePointFiveSecondActionFirst() {
+        assertTrue(overlay.contains("val heldMillis"))
+        assertTrue(overlay.contains("SHORTCUT_CUSTOMIZATION_HOLD_MILLIS"))
+        assertTrue(overlay.contains("if (!movedOutsideGesture && !customizationTriggered)"))
+        assertFalse(overlay.contains("postDelayed(longPressAction, ShortcutGesturePolicy0179.SHORTCUT_LONG_PRESS_MILLIS)"))
+    }
+
+    @Test
+    fun overlaySendsTheExactEntryForAllThreeGestures() {
+        assertTrue(overlay.contains("onShortcut(entry0179)"))
+        assertTrue(overlay.contains("onShortcutLongPress(entry0179)"))
+        assertTrue(overlay.contains("onShortcutCustomize(entry0179)"))
+        assertFalse(overlay.contains("onShortcutLongPress(entry0179.spec)"))
+    }
+
+    @Test
+    fun individualMenuContainsRequestedControlsAndChoices() {
+        assertTrue(main.contains("Toque rápido:"))
+        assertTrue(main.contains("Segurar 1,5 s:"))
+        assertTrue(main.contains("Não fazer nada"))
+        assertTrue(main.contains("Excluir da grade"))
+        assertTrue(main.contains("ShortcutGestureAction0180.values()"))
+        assertTrue(policy.contains("Executar ação imediatamente"))
+        assertTrue(policy.contains("Abrir módulo"))
+    }
+
+    @Test
+    fun fiveSecondHoldOpensOnlyTheSelectedEntryEditor() {
+        assertTrue(service.contains("openShortcutEntryCustomization0180"))
+        assertTrue(service.contains("openShortcutCustomization0179(entry0180.entryId)"))
+        assertTrue(service.contains("EXTRA_EDIT_SHORTCUT_ENTRY_ID_0180"))
+        assertTrue(main.contains("selectedEntryId0180"))
+        assertTrue(main.contains("Configurar bolinha"))
+    }
+}
+""",
+)
+
+print(MARKER)

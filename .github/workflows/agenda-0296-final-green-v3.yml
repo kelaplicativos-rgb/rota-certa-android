@@ -1,0 +1,162 @@
+name: Agenda 0.1.296 final green v3
+
+on:
+  push:
+    branches:
+      - agent/agenda-public-booking-0.1.296
+    paths:
+      - '.github/workflows/agenda-0296-final-green-v3.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agenda-0296-final-green-v3-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  final-green-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/agenda-public-booking-0.1.296
+
+      - name: Prove baseline and explicit location permission guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionCode = 5588' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.295"' app/build.gradle.kts
+          grep -Fq '@SuppressLint("MissingPermission")' app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt
+          grep -Fq 'if (!hasLocationPermission()) return null' app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - name: Materialize final 0.1.296
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/scripts/agenda_0296_public_booking.py')
+          text = p.read_text(encoding='utf-8')
+          old = 'reserve_end = "function recomputeLoadsAfterBooking(loads, booking) {\\n"'
+          new = 'reserve_end = "async function cancelReservation() {\\n"'
+          if text.count(old) != 1:
+              raise SystemExit(f'broken reserve boundary count={text.count(old)}')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          python3 .github/scripts/agenda_0296_public_booking.py
+          python3 .github/scripts/agenda_0296_multi_profile_driver_ui.py
+          python3 .github/scripts/agenda_0296_final_contract_repair_bootstrap.py
+          git checkout -- .github/scripts/agenda_0296_public_booking.py .github/scripts/agenda_0296_final_contract_repair.py
+          git diff --check
+          grep -Fq 'versionCode = 5589' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.296"' app/build.gradle.kts
+          grep -Fq 'Text("Conta do motorista"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'Text("Perfis vinculados"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'BlaBlaDynamicAccountRegistry(context).list()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'capacity > 999' trip-platform/functions/index.js
+          ! grep -Fq 'capacity > 8' trip-platform/functions/index.js
+          grep -Fq 'seats > 999' trip-platform/functions/index.js
+          grep -Fq 'priceToNextCents' trip-platform/functions/index.js
+          grep -Fq 'function fareFor' trip-platform/public/app.js
+          grep -Fq 'seatsInput.max = String(Math.max(1, available))' trip-platform/public/app.js
+          grep -Fq 'tripDrivers' trip-platform/calendar-functions/index.js
+          grep -Fq 'driverUsername' trip-platform/calendar-functions/index.js
+          grep -Fq 'agendaTokenHash' trip-platform/calendar-functions/index.js
+          grep -Fq 'async function cancelReservation()' trip-platform/public/app.js
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Test public API web and calendar
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/calendar-functions/index.js
+          node --check trip-platform/public/app.js
+          node --test trip-platform/functions/test/*.test.js | tee /tmp/backend-tests.txt
+          grep -Fq 'allow read, write: if false' trip-platform/firestore.rules
+          grep -Fq '"/v1/**"' trip-platform/firebase.json
+          grep -Fq '"/calendar/**"' trip-platform/firebase.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit test lint and build installable APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --stacktrace | tee /tmp/gradle.txt
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /tmp/apk.sha256
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - name: Commit exactly tested 0.1.296 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/build.gradle.kts \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicBookingSync0296.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt \
+                  app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicBooking0296Test.kt \
+                  trip-platform/calendar-functions/index.js \
+                  trip-platform/functions/index.js \
+                  trip-platform/functions/test/public-booking-0296.test.js \
+                  trip-platform/public/app.js \
+                  trip-platform/public/index.html
+          git commit -m 'feat(agenda): finalize public passenger booking 0.1.296'
+          git push origin HEAD:agent/agenda-public-booking-0.1.296
+          git rev-parse HEAD | tee /tmp/source-head.txt
+
+      - name: Package final evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/agenda-0296
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0296/rota-certa-0.1.296-debug.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0296/apk.sha256
+          cp /tmp/source-head.txt /tmp/agenda-0296/source-head.txt
+          cp /tmp/backend-tests.txt /tmp/agenda-0296/backend-tests.txt
+          cp /tmp/gradle.txt /tmp/agenda-0296/gradle-validation.txt
+          tar -czf /tmp/agenda-0296/rota-certa-public-booking-platform-0.1.296.tar.gz trip-platform
+          printf '%s\n' \
+            'versionName=0.1.296' \
+            'versionCode=5589' \
+            'onePhysicalDriver=true' \
+            'linkedProfilesDynamic=true' \
+            'publicAgendaTokenSharedAcrossProfiles=true' \
+            'publicCalendarScopedByDriverAndToken=true' \
+            'dynamicPublicBookingSeats=true' \
+            'segmentFarePersisted=true' \
+            'segmentFareShownToPassenger=true' \
+            'idempotentBooking=true' \
+            'selfCancellationReturnsCapacity=true' \
+            'locationPermissionExplicitlyGuarded=true' \
+            'farolUntouched=true' \
+            'firebaseProductionDeployNotPerformed=true' \
+            'physicalTestPending=true' > /tmp/agenda-0296/public-booking-contract.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-agenda-0.1.296-final-green-v3-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: /tmp/agenda-0296

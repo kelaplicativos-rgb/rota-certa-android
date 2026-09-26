@@ -1,0 +1,17 @@
+name: Stage47 Step7 legacy fast APK dispatcher (disabled)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  legacy-fast-dispatch-disabled:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Explain disabled dispatcher
+        run: |
+          echo 'legacy_stage47_fast_dispatch=DISABLED'
+          echo 'reason=Do not dispatch the synthetic physical APK while Stage47 source is being persisted.'
+          echo 'apk_dispatched=false'

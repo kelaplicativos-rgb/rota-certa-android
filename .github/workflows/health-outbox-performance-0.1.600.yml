@@ -1,0 +1,216 @@
+name: Health outbox performance 0.1.600
+
+on:
+  push:
+    branches:
+      - agent/health-outbox-performance-0.1.600
+    paths:
+      - '.github/workflows/health-outbox-performance-0.1.600.yml'
+      - 'app/build.gradle.kts'
+      - 'app/src/main/assets/release_history.json'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/UnifiedDebugLog.kt'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/monitoring/OperationalHealthCenter.kt'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/UnifiedDebugRetention0600Test.kt'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/OperationalOutboxCompaction0600Test.kt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: health-outbox-performance-0600-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: health_outbox_0600_ci_dummy_key
+      EXPECTED_VERSION_CODE: '5891'
+      EXPECTED_VERSION_NAME: '0.1.600'
+      BASE_SHA: 'ba389d78ee281be594f8bf826545a0527b60db27'
+
+    steps:
+      - name: Checkout exact triggering HEAD
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove exact source and isolated diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --check "$BASE_SHA"...HEAD
+          grep -Fq 'val releaseVersionCode = 5_891' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.600"' app/build.gradle.kts
+          grep -Fq '"version": "0.1.600"' app/src/main/assets/release_history.json
+          grep -Fq 'compactTripPublicationOutbox0600' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'routineThrottleKey0600' app/src/main/java/br/com/mapeiaia/rotacerta/UnifiedDebugLog.kt
+          grep -Fq 'BOOKING_OUTBOX_ENQUEUE' app/src/main/java/br/com/mapeiaia/rotacerta/monitoring/OperationalHealthCenter.kt
+          git diff --name-only "$BASE_SHA"...HEAD | sort | tee /tmp/changed.txt
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          sha256sum "$FAROL" | tee /tmp/farol-before.sha256
+          if grep -Fqx "$FAROL" /tmp/changed.txt; then
+            echo "Protected FAROL changed unexpectedly" >&2
+            exit 1
+          fi
+          printf '%s\n' "$GITHUB_SHA" | tee /tmp/source-head.txt
+          printf '%s\n' "$GITHUB_REF_NAME" | tee /tmp/source-branch.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify hosted Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK_ROOT"
+          test -d "$SDK_ROOT/platforms/android-35"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run targeted root-cause regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew \
+            :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.UnifiedDebugRetention0600Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.OperationalOutboxCompaction0600Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.ItineraryBoundarySerialization0599Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace \
+            | tee /tmp/targeted-tests.log
+
+      - name: Compare full unit-test failures against exact 0.1.599 base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add --detach /tmp/rc-0599 "$BASE_SHA"
+          chmod +x /tmp/rc-0599/gradlew
+
+          set +e
+          (
+            cd /tmp/rc-0599
+            ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ) > /tmp/base-tests.log 2>&1
+          BASE_EXIT=$?
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace > /tmp/head-tests.log 2>&1
+          HEAD_EXIT=$?
+          set -e
+
+          python3 - <<'PY'
+          import pathlib
+          import xml.etree.ElementTree as ET
+
+          def failures(root):
+              result = set()
+              d = pathlib.Path(root) / "app/build/test-results/testDebugUnitTest"
+              for f in d.glob("*.xml"):
+                  tree = ET.parse(f)
+                  for case in tree.getroot().iter("testcase"):
+                      if case.find("failure") is not None or case.find("error") is not None:
+                          result.add(f"{case.attrib.get('classname','')}::{case.attrib.get('name','')}")
+              return result
+
+          base = failures("/tmp/rc-0599")
+          head = failures(".")
+          new = sorted(head - base)
+          fixed = sorted(base - head)
+          pathlib.Path("/tmp/base-failures.txt").write_text("\n".join(sorted(base)) + ("\n" if base else ""))
+          pathlib.Path("/tmp/head-failures.txt").write_text("\n".join(sorted(head)) + ("\n" if head else ""))
+          pathlib.Path("/tmp/new-failures.txt").write_text("\n".join(new) + ("\n" if new else ""))
+          pathlib.Path("/tmp/fixed-baseline-failures.txt").write_text("\n".join(fixed) + ("\n" if fixed else ""))
+          print(f"baseline_failures={len(base)}")
+          print(f"head_failures={len(head)}")
+          print(f"new_failures={len(new)}")
+          print(f"fixed_baseline_failures={len(fixed)}")
+          if new:
+              print("\n".join(new))
+              raise SystemExit(1)
+          PY
+
+          echo "base_gradle_exit=$BASE_EXIT" | tee /tmp/unit-regression-summary.txt
+          echo "head_gradle_exit=$HEAD_EXIT" | tee -a /tmp/unit-regression-summary.txt
+          echo "new_failure_count=$(wc -l < /tmp/new-failures.txt)" | tee -a /tmp/unit-regression-summary.txt
+
+      - name: Assemble exact-head installable APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ROTA_CERTA_GIT_SHA="$GITHUB_SHA"
+          export ROTA_CERTA_GIT_BRANCH="$GITHUB_REF_NAME"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          unzip -t "$APK" > /tmp/zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -Fq 'Verified' /tmp/apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
+
+      - name: Package evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          sha256sum "$FAROL" | tee /tmp/farol-after.sha256
+          diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
+          OUT=/tmp/0600
+          mkdir -p "$OUT"
+          SHORT_SHA="${GITHUB_SHA:0:12}"
+          FINAL="$OUT/rota-certa-$EXPECTED_VERSION_NAME-$EXPECTED_VERSION_CODE-$SHORT_SHA.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$FINAL"
+          sha256sum "$FINAL" | tee "$OUT/apk.sha256"
+          cp /tmp/targeted-tests.log /tmp/unit-regression-summary.txt /tmp/base-failures.txt /tmp/head-failures.txt /tmp/new-failures.txt /tmp/fixed-baseline-failures.txt /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed.txt "$OUT/"
+          cat > "$OUT/root-cause-0598.txt" <<'EOF'
+          source_health_package=rota-certa-saude-0.1.598-completo-20260921-064729.zip
+          observed_booking_reconcile_ms=33423
+          observed_booking_post_import_ms=27210
+          observed_booking_outbox_enqueue_ms=26898
+          observed_health_buffer_capacity=6000
+          observed_health_dropped_events_gt=12000
+          observed_health_record_p95_ms_approx=10.4
+          root_cause_1=canonical outbox rewrote redundant terminal full snapshots on every synchronous SharedPreferences commit
+          root_cause_2=high-frequency healthy diagnostics saturated the central 6000-event ring and increased lock contention
+          remediation_1=retain every actionable outbox event plus only latest DELIVERED/SUPERSEDED proof per canonical trip
+          remediation_2=sample only known healthy routine telemetry in central health ring while preserving full Farol recording and every failure/performance signal
+          canonical_authority_changed=false
+          timeline_collector_dependency_added=false
+          EOF
+          cat > "$OUT/final-status.txt" <<EOF
+          package=br.com.mapeiaia.rotacerta
+          version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
+          source_head=$GITHUB_SHA
+          source_branch=$GITHUB_REF_NAME
+          exact_base=$BASE_SHA
+          outbox_actionable_preservation=PASS_BY_TEST
+          terminal_history_compaction=PASS_BY_TEST
+          priority_health_evidence_preserved=PASS_BY_TEST
+          no_new_unit_failures_vs_0599=PASS_BY_TEST
+          farol_untouched=PASS
+          physical_approval=PENDING_SAMSUNG_SM_S911B_ANDROID_16
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.600-5891-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0600

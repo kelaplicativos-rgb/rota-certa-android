@@ -1,0 +1,35 @@
+name: Agenda 0.1.296 public booking smoke
+
+on:
+  push:
+    branches:
+      - agent/agenda-public-booking-0.1.296
+    paths:
+      - '.github/workflows/agenda-0296-materialize-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  materialize-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/agenda-public-booking-0.1.296
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Materialize and syntax-check
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/agenda_0296_public_booking.py
+          git diff --check
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/public/app.js
+          node --test trip-platform/functions/test/*.test.js
+          grep -Fq 'versionName = "0.1.296"' app/build.gradle.kts
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"

@@ -1,0 +1,35 @@
+name: Inspect Rota Certa 0.1.184 transform
+
+on:
+  pull_request:
+    branches: [agent/contextual-shortcut-menu-0.1.183]
+    paths:
+      - .github/workflows/inspect-rota-certa-0.1.184-transform.yml
+      - scripts/fix_home_action_shortcuts_0184.py.gz.b64
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/home-catalog-directional-shortcuts-0.1.184
+          persist-credentials: false
+      - name: Record received transform
+        run: |
+          wc -c scripts/fix_home_action_shortcuts_0184.py.gz.b64 | tee transform-size.txt
+          sha256sum scripts/fix_home_action_shortcuts_0184.py.gz.b64 | tee transform-sha256.txt
+      - name: Upload exact received transform
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.184-received-transform
+          path: |
+            scripts/fix_home_action_shortcuts_0184.py.gz.b64
+            transform-size.txt
+            transform-sha256.txt
+          retention-days: 7
+          if-no-files-found: error

@@ -1,0 +1,593 @@
+from pathlib import Path
+
+
+def replace_once(path: str, old: str, new: str) -> None:
+    p = Path(path)
+    text = p.read_text()
+    if new in text:
+        return
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"{path}: expected 1 occurrence, found {count}: {old[:120]!r}")
+    p.write_text(text.replace(old, new, 1))
+
+
+p = 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPhysicalRideConsolidator.kt'
+replace_once(
+    p,
+    'blablaPassengers = group.flatMap(TripTimelineEntry::blablaPassengers).distinctBy { it.booking_href ?: "${it.name}|${it.boarding}|${it.dropoff}" },',
+    'blablaPassengers = BlaBlaCollectorPassengerModule.coalesceDuplicateEvidence(group.flatMap(TripTimelineEntry::blablaPassengers)),',
+)
+
+p = 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt'
+replace_once(
+    p,
+    '    var autoSyncProfileUuid by remember { mutableStateOf<String?>(null) }\n    var searchQuery by remember { mutableStateOf("") }',
+    '    var autoSyncProfileUuid by remember { mutableStateOf<String?>(null) }\n    var autoSyncTripId by remember { mutableStateOf<String?>(null) }\n    var showPublisher by remember { mutableStateOf(false) }\n    var searchQuery by remember { mutableStateOf("") }',
+)
+replace_once(
+    p,
+    '''    val today = LocalDate.now(ZoneId.systemDefault()).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    val entries = remember(physical, archiveRevision, showArchived, today) {
+        physical.filter { it.departureAtMillis >= today }
+            .filter { archiveStore.isArchived(it) == showArchived }
+            .sortedBy(TripTimelineEntry::departureAtMillis)
+    }''',
+    '''    val entries = remember(physical, archiveRevision, showArchived) {
+        physical.filter { archiveStore.isArchived(it) == showArchived }
+            .sortedBy(TripTimelineEntry::departureAtMillis)
+    }''',
+)
+replace_once(
+    p,
+    '        Text(if (showArchived) "Arquivadas" else "Próximas viagens", style = MaterialTheme.typography.titleLarge)',
+    '        Text(if (showArchived) "Arquivadas" else "Todas as viagens", style = MaterialTheme.typography.titleLarge)',
+)
+replace_once(
+    p,
+    '''        onTargetSync = { profileUuid ->
+            autoSyncProfileUuid = profileUuid
+            onRequestBlaBlaSync()
+        },''',
+    '''        onTargetSync = { profileUuid ->
+            autoSyncProfileUuid = profileUuid
+            autoSyncTripId = null
+            onRequestBlaBlaSync()
+        },''',
+)
+replace_once(
+    p,
+    '            ResponsiveTripAction("Nova viagem", onClick = onCreateTrip),',
+    '            ResponsiveTripAction("Nova viagem", onClick = onCreateTrip),\n            ResponsiveTripAction(if (showPublisher) "Fechar publicação" else "Publicar agenda") { showPublisher = !showPublisher },',
+)
+replace_once(
+    p,
+    '''    if (showSync) {
+        BlaBlaCollectorPanel(''',
+    '''    if (showPublisher) {
+        AgendaBatchPublisherPanel(onChanged = onChanged)
+    }
+
+    if (showSync) {
+        BlaBlaCollectorPanel(''',
+)
+replace_once(
+    p,
+    '''            autoSyncToken = autoSyncToken,
+            autoSyncProfileUuid = autoSyncProfileUuid,
+        )''',
+    '''            autoSyncToken = autoSyncToken,
+            autoSyncProfileUuid = autoSyncProfileUuid,
+            autoSyncTripId = autoSyncTripId,
+        )''',
+)
+replace_once(
+    p,
+    '        Text(if (showArchived) "Nenhuma viagem arquivada." else "Nenhuma viagem futura.")',
+    '        Text(if (showArchived) "Nenhuma viagem arquivada." else "Nenhuma viagem sincronizada.")',
+)
+replace_once(
+    p,
+    '''            currentCoordinate = currentCoordinate,
+        ) {''',
+    '''            currentCoordinate = currentCoordinate,
+            onSyncExactCard = {
+                val profileUuid = entry.blablaProfileUuid?.trim().orEmpty()
+                val tripId = entry.blablaTripId?.trim().orEmpty()
+                if (profileUuid.isNotBlank() && tripId.isNotBlank()) {
+                    autoSyncProfileUuid = profileUuid
+                    autoSyncTripId = tripId
+                    onRequestBlaBlaSync()
+                } else {
+                    onChanged("Sincronização individual indisponível: identidade forte da publicação ausente.")
+                }
+            },
+        ) {''',
+)
+replace_once(
+    p,
+    '''    currentCoordinate: Coordinate?,
+    onArchive: () -> Unit,''',
+    '''    currentCoordinate: Coordinate?,
+    onSyncExactCard: () -> Unit,
+    onArchive: () -> Unit,''',
+)
+replace_once(
+    p,
+    '''                currentCoordinate = currentCoordinate,
+                onChanged = onChanged,
+            )''',
+    '''                currentCoordinate = currentCoordinate,
+                onChanged = onChanged,
+                onSyncExactCard = onSyncExactCard,
+            )''',
+)
+
+p = 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt'
+replace_once(
+    p,
+    '    val probableMatch: Boolean = false,\n)',
+    '    val probableMatch: Boolean = false,\n    val externalPassengerId: String? = null,\n)',
+)
+replace_once(
+    p,
+    '''    currentCoordinate: Coordinate?,
+    onChanged: (String) -> Unit,
+) {''',
+    '''    currentCoordinate: Coordinate?,
+    onChanged: (String) -> Unit,
+    onSyncExactCard: (() -> Unit)? = null,
+) {''',
+)
+replace_once(p, '        TripBlaBlaTripActionRow(entry)', '        TripBlaBlaTripActionRow(entry, onSyncExactCard)')
+replace_once(
+    p,
+    '''                OutlinedButton(
+                    onClick = {
+                        if (passenger.fareMinorUnits != null) {
+                            copyPassengerFareValue(context, passenger)
+                        } else {
+                            fareEditRow = passenger
+                        }
+                    },
+                    contentPadding = COMPACT_ACTION_PADDING,
+                    modifier = Modifier.heightIn(min = 36.dp),
+                ) {
+                    Text("💰", maxLines = 1)
+                }''',
+    '''                OutlinedButton(
+                    onClick = { copyPassengerConfirmationMessage(context, entry, passenger) },
+                    contentPadding = COMPACT_ACTION_PADDING,
+                    modifier = Modifier.heightIn(min = 36.dp),
+                ) {
+                    Text("💬", maxLines = 1)
+                }''',
+)
+replace_once(
+    p,
+    '''            Text(
+                "$source • $seats$identity",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.fillMaxWidth(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )''',
+    '''            Text(
+                "$source • $seats$identity",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.fillMaxWidth(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val canonicalProfile = passenger.passengerId?.let(passengerStore::profile)
+                ?: passengerStore.profileByExternalPassengerId(passenger.externalPassengerId)
+            val rideHistory = canonicalProfile?.let { passengerStore.rideHistory(it.id) }
+            val identityLabel = when {
+                canonicalProfile?.blocked == true -> "🚫 PASSAGEIRO BLOQUEADO"
+                rideHistory != null && rideHistory.totalRides > 0 -> "${rideHistory.totalRides} carona(s) registrada(s)"
+                passenger.externalPassengerId != null -> "Identidade BlaBlaCar disponível"
+                else -> null
+            }
+            identityLabel?.let { label ->
+                TextButton(
+                    onClick = {
+                        if (canonicalProfile != null) profileRow = passenger.copy(passengerId = canonicalProfile.id)
+                        else createProfileRow = passenger
+                    },
+                    contentPadding = COMPACT_NAME_PADDING,
+                ) { Text(label, style = MaterialTheme.typography.bodySmall) }
+            }''',
+)
+replace_once(
+    p,
+    '''            fareCurrencyCode = metadata?.fareCurrencyCode.orEmpty(),
+            boardingAddress = metadata?.boardingAddress.orEmpty(),''',
+    '''            fareCurrencyCode = metadata?.fareCurrencyCode.orEmpty(),
+            boardingAddress = metadata?.boardingAddress.orEmpty(),
+            externalPassengerId = metadata?.externalPassengerId?.takeIf(String::isNotBlank),''',
+)
+replace_once(
+    p,
+    '''                    val profile = exact ?: passengerStore.createProfile(row.name, row.phone.orEmpty())
+                    if (linkPassengerProfile(row, profile.id, store, passengerStore)) {''',
+    '''                    var profile = exact ?: passengerStore.createProfile(row.name, row.phone.orEmpty())
+                    row.externalPassengerId?.let { externalId ->
+                        passengerStore.linkExternalPassengerId(profile.id, externalId)?.let { linked -> profile = linked }
+                    }
+                    if (linkPassengerProfile(row, profile.id, store, passengerStore)) {''',
+)
+replace_once(p, 'private fun TripBlaBlaTripActionRow(entry: TripTimelineEntry) {', 'private fun TripBlaBlaTripActionRow(entry: TripTimelineEntry, onSyncExactCard: (() -> Unit)?) {')
+replace_once(
+    p,
+    '''    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(''',
+    '''    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (onSyncExactCard != null && !entry.blablaProfileUuid.isNullOrBlank() && !entry.blablaTripId.isNullOrBlank()) {
+            TextButton(
+                onClick = {
+                    UnifiedDebugEventStore.record(
+                        "AGENDA_EXACT_CARD_SYNC_REQUESTED",
+                        context.packageName,
+                        "profileUuidPresent=true tripIdPresent=true",
+                    )
+                    onSyncExactCard()
+                },
+                contentPadding = COMPACT_ACTION_PADDING,
+            ) { Text("🔄") }
+        }
+        IconButton(''',
+)
+marker = 'private fun copyPassengerFareValue(context: Context, row: EnhancedPassengerCardRow) {'
+addition = '''internal fun passengerConfirmationMessage(
+    entry: TripTimelineEntry,
+    row: EnhancedPassengerCardRow,
+    context: Context? = null,
+): String {
+    val zone = java.time.ZoneId.systemDefault()
+    val departure = java.time.Instant.ofEpochMilli(entry.departureAtMillis).atZone(zone)
+    val date = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy").format(departure)
+    val time = java.time.format.DateTimeFormatter.ofPattern("HH:mm").format(departure)
+    val origin = row.boarding?.trim()?.takeIf(String::isNotEmpty) ?: entry.origin.trim()
+    val destination = row.dropoff?.trim()?.takeIf(String::isNotEmpty) ?: entry.destination.trim()
+    val boarding = row.boardingAddress.trim().takeIf(String::isNotEmpty) ?: row.boarding?.trim().orEmpty()
+    val dropoff = row.dropoffAddress.trim().takeIf(String::isNotEmpty) ?: row.dropoff?.trim().orEmpty()
+    val lines = mutableListOf<String>()
+    lines += "Olá, ${row.name.ifBlank { "passageiro" }}! Sua viagem está confirmada ✅"
+    lines += ""
+    if (origin.isNotBlank() && destination.isNotBlank()) lines += "🚗 $origin → $destination"
+    lines += "📅 $date"
+    lines += "🕒 Saída: $time"
+    if (boarding.isNotBlank()) lines += "📍 Embarque: $boarding"
+    if (dropoff.isNotBlank()) lines += "🏁 Destino: $dropoff"
+    lines += if (row.seats == 1) "💺 1 vaga" else "💺 ${row.seats} vagas"
+    if (row.fareMinorUnits != null && context != null) {
+        val formatted = passengerTimelineFareClipboardText(row.fareMinorUnits, row.fareCurrencyCode, PassengerMoney.spec(context).localeTag)
+        lines += "💰 $formatted"
+    }
+    lines += ""
+    lines += "Se precisar ajustar o ponto de embarque ou destino, me avise por aqui. Quando eu estiver a caminho, envio a localização. 👍"
+    return lines.joinToString("\\n")
+}
+
+private fun copyPassengerConfirmationMessage(context: Context, entry: TripTimelineEntry, row: EnhancedPassengerCardRow) {
+    val message = passengerConfirmationMessage(entry, row, context)
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText("Confirmação da viagem", message))
+    UnifiedDebugEventStore.record(
+        "PASSENGER_CONFIRMATION_MESSAGE_COPIED",
+        context.packageName,
+        "timeline=true seats=${row.seats} farePresent=${row.fareMinorUnits != null} boardingPresent=${row.boarding?.isNotBlank() == true} dropoffPresent=${row.dropoff?.isNotBlank() == true}",
+    )
+    Toast.makeText(context, "Mensagem de confirmação copiada.", Toast.LENGTH_SHORT).show()
+}
+
+'''
+replace_once(p, marker, addition + marker)
+replace_once(
+    p,
+    '''        val profile = passengerStore.profile(row.passengerId)
+        AlertDialog(''',
+    '''        val profile = passengerStore.profile(row.passengerId)
+            ?: passengerStore.profileByExternalPassengerId(row.externalPassengerId)
+        val history = profile?.let { passengerStore.rideHistory(it.id) }
+        AlertDialog(''',
+)
+replace_once(
+    p,
+    '                    Text("Identidade canônica vinculada", style = MaterialTheme.typography.bodySmall)',
+    '                    Text("Identidade canônica vinculada", style = MaterialTheme.typography.bodySmall)\n                    history?.let { Text("${it.totalRides} carona(s) registrada(s)", style = MaterialTheme.typography.bodySmall) }\n                    if (profile?.blocked == true) Text("🚫 PASSAGEIRO BLOQUEADO", color = MaterialTheme.colorScheme.error)',
+)
+replace_once(
+    p,
+    '            confirmButton = { TextButton(onClick = { profileRow = null }) { Text("Fechar") } },',
+    '''            confirmButton = {
+                TextButton(onClick = {
+                    profile?.let { passengerStore.setBlocked(it.id, !it.blocked, if (!it.blocked) "Bloqueado pelo motorista" else "") }
+                    profileRow = null
+                    onChanged(if (profile?.blocked == true) "Passageiro desbloqueado." else "Passageiro bloqueado; futuras reservas com a mesma identidade serão sinalizadas e retiradas quando possível.")
+                }) { Text(if (profile?.blocked == true) "Desbloquear" else "Bloquear") }
+            },
+            dismissButton = { TextButton(onClick = { profileRow = null }) { Text("Fechar") } },''',
+)
+
+p = 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt'
+replace_once(
+    p,
+    '''    autoSyncToken: Int = 0,
+    autoSyncProfileUuid: String? = null,
+) {''',
+    '''    autoSyncToken: Int = 0,
+    autoSyncProfileUuid: String? = null,
+    autoSyncTripId: String? = null,
+) {''',
+)
+replace_once(p, '    var handledAutoSyncToken by remember { mutableIntStateOf(0) }', '    var handledAutoSyncToken by remember { mutableIntStateOf(0) }\n    var targetedSyncTripId by remember { mutableStateOf<String?>(null) }')
+replace_once(
+    p,
+    '            publishCombined("Sincronização + MHTML concluídos")',
+    '''            publishCombined("Sincronização + MHTML concluídos")
+            if (BlockedPassengerCancellationStore(context).list().isNotEmpty()) {
+                context.startActivity(BlaBlaBlockedPassengerCancellationIntents.process(context))
+            }''',
+)
+replace_once(
+    p,
+    '''            if (result.resultCode == Activity.RESULT_OK) {
+                val account = registry.get(accountId)
+                if (account != null) {
+                    archiving = true
+                    message = "${account.displayLabel}: leitura concluída • baixando MHTMLs necessários…"
+                    onChanged(message.orEmpty())
+                    archiveLauncher.launch(BlaBlaManualSeatAutomationIntents.harvest(context, account))
+                } else {
+                    advanceSyncQueue()
+                }
+            } else {''',
+    '''            if (result.resultCode == Activity.RESULT_OK) {
+                val account = registry.get(accountId)
+                if (targetedSyncTripId != null) {
+                    syncing = false
+                    archiving = false
+                    val exactTrip = targetedSyncTripId
+                    targetedSyncTripId = null
+                    stateStore.lastResponse()?.let(onResult)
+                    refresh()
+                    message = "${account?.displayLabel ?: "Conta"}: somente o card solicitado foi sincronizado ✅"
+                    onChanged(message.orEmpty())
+                    UnifiedDebugEventStore.record(
+                        "AGENDA_EXACT_CARD_SYNC_FINISHED",
+                        context.packageName,
+                        "tripIdPresent=${!exactTrip.isNullOrBlank()} accountPresent=${account != null} mhtmlFullAccountSkipped=true",
+                    )
+                    if (BlockedPassengerCancellationStore(context).list().isNotEmpty()) {
+                        context.startActivity(BlaBlaBlockedPassengerCancellationIntents.process(context))
+                    }
+                } else if (account != null) {
+                    archiving = true
+                    message = "${account.displayLabel}: leitura concluída • baixando MHTMLs necessários…"
+                    onChanged(message.orEmpty())
+                    archiveLauncher.launch(BlaBlaManualSeatAutomationIntents.harvest(context, account))
+                } else {
+                    advanceSyncQueue()
+                }
+            } else {''',
+)
+replace_once(
+    p,
+    '    LaunchedEffect(autoSyncToken, autoSyncProfileUuid, syncing, archiving, manualSeatSyncing, accounts.size) {',
+    '    LaunchedEffect(autoSyncToken, autoSyncProfileUuid, autoSyncTripId, syncing, archiving, manualSeatSyncing, accounts.size) {',
+)
+replace_once(
+    p,
+    '''        handledAutoSyncToken = autoSyncToken
+        syncQueue = selectedAccounts.map { it.id }
+        syncCursor = 0
+        syncing = true''',
+    '''        handledAutoSyncToken = autoSyncToken
+        targetedSyncTripId = autoSyncTripId?.trim()?.takeIf(String::isNotEmpty)
+        syncQueue = selectedAccounts.map { it.id }
+        syncCursor = 0
+        syncing = true''',
+)
+replace_once(
+    p,
+    '            sessionLauncher.launch(BlaBlaDynamicSessionIntents.sync(context, account))',
+    '''            val exactTripId = targetedSyncTripId
+            if (exactTripId != null) {
+                val currentTrip = stateStore.lastResponse()?.trips?.singleOrNull { trip ->
+                    trip.profile_uuid.equals(account.profileUuid, ignoreCase = true) && trip.trip_id == exactTripId
+                }
+                val href = currentTrip?.trip_href
+                if (href.isNullOrBlank()) {
+                    syncing = false
+                    targetedSyncTripId = null
+                    message = "Card exato sem link canônico; sincronização individual não iniciada."
+                    onChanged(message.orEmpty())
+                } else {
+                    sessionLauncher.launch(BlaBlaDynamicSessionIntents.syncExact(context, account, exactTripId, href))
+                }
+            } else {
+                sessionLauncher.launch(BlaBlaDynamicSessionIntents.sync(context, account))
+            }''',
+)
+replace_once(
+    p,
+    '''                        syncQueue = accounts.map { it.id }
+                        syncCursor = 0
+                        syncing = true''',
+    '''                        targetedSyncTripId = null
+                        syncQueue = accounts.map { it.id }
+                        syncCursor = 0
+                        syncing = true''',
+)
+
+p = 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
+replace_once(
+    p,
+    '    const val EXTRA_TARGET_URL = "blablacar_target_url"\n    const val MODE_LOGIN = "login"',
+    '    const val EXTRA_TARGET_URL = "blablacar_target_url"\n    const val EXTRA_TARGET_TRIP_ID = "blablacar_target_trip_id"\n    const val MODE_LOGIN = "login"',
+)
+replace_once(
+    p,
+    '''    fun sync(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_SYNC)
+    fun manage(context: Context, account: BlaBlaDynamicAccount, tripHref: String): Intent =''',
+    '''    fun sync(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_SYNC)
+    fun syncExact(context: Context, account: BlaBlaDynamicAccount, tripId: String, tripHref: String): Intent =
+        intent(context, account, MODE_SYNC)
+            .putExtra(EXTRA_TARGET_TRIP_ID, tripId)
+            .putExtra(EXTRA_TARGET_URL, tripHref)
+    fun manage(context: Context, account: BlaBlaDynamicAccount, tripHref: String): Intent =''',
+)
+replace_once(
+    p,
+    '    private var mode = BlaBlaDynamicSessionIntents.MODE_LOGIN\n    private var phase = Phase.IDLE',
+    '    private var mode = BlaBlaDynamicSessionIntents.MODE_LOGIN\n    private var targetTripId = ""\n    private var targetTripHref = ""\n    private var phase = Phase.IDLE',
+)
+replace_once(
+    p,
+    '''        mode = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_MODE) ?: BlaBlaDynamicSessionIntents.MODE_LOGIN
+        if (!WebViewFeature.isFeatureSupported''',
+    '''        mode = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_MODE) ?: BlaBlaDynamicSessionIntents.MODE_LOGIN
+        targetTripId = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_TARGET_TRIP_ID)?.trim().orEmpty()
+        targetTripHref = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_TARGET_URL)?.trim().orEmpty()
+        if (mode != BlaBlaDynamicSessionIntents.MODE_SYNC || BlaBlaCollectorUrlModule.tripId(targetTripHref) != targetTripId) {
+            targetTripId = ""
+            targetTripHref = ""
+        }
+        if (!WebViewFeature.isFeatureSupported''',
+)
+replace_once(
+    p,
+    '''            phase = Phase.RIDES
+            statusView.text = "${account.displayLabel} • lendo Suas viagens…"
+            loadTrackedUrl(RIDES_URL)''',
+    '''            if (targetTripId.isNotBlank() && targetTripHref.isNotBlank()) {
+                currentCardTraversalKey = "id|$targetTripId"
+                candidates = listOf(BlaBlaDomRideCandidate(href = targetTripHref))
+                candidateIndex = 0
+                phase = Phase.DETAIL
+                UnifiedDebugEventStore.record(
+                    "AGENDA_EXACT_CARD_SYNC_STARTED",
+                    packageName,
+                    "account=${account.displayLabel} profileUuidPresent=${!account.profileUuid.isNullOrBlank()} tripIdPresent=true directTarget=true",
+                )
+                loadCurrentCandidate()
+            } else {
+                phase = Phase.RIDES
+                statusView.text = "${account.displayLabel} • lendo Suas viagens…"
+                loadTrackedUrl(RIDES_URL)
+            }''',
+)
+replace_once(
+    p,
+    '''        persistDirectTripEvidence(tripId)
+        completedCardTraversalKeys += currentCardTraversalKey''',
+    '''        persistDirectTripEvidence(tripId)
+        if (targetTripId.isNotBlank()) {
+            completedCardTraversalKeys += currentCardTraversalKey
+            resolvedCardTraversalKeys += currentCardTraversalKey
+            publishTargetedTripToTimeline(tripId)
+            UnifiedDebugEventStore.record(
+                "CARD_TRAVERSAL_COMPLETE",
+                packageName,
+                "account=${account.displayLabel} order=1 tripId=$tripId passengers=${pendingTripPassengers.size} publishedSeats=${pendingPublishedSeats ?: -1} result=targeted_complete nextCardAllowed=false",
+            )
+            networkDiagnosticRecorder?.finishFirstCard("targeted_complete")
+            clearPendingCardState()
+            currentCardTraversalKey = ""
+            completeSync(collected.size)
+            return
+        }
+        completedCardTraversalKeys += currentCardTraversalKey''',
+)
+marker = '    private fun persistDirectTripEvidence(tripId: String) {'
+helper = '''    private fun publishTargetedTripToTimeline(tripId: String) {
+        val updatedTrip = collected.lastOrNull { it.trip_id == tripId } ?: return
+        val timelineStore = BlaBlaCollectorStateStore(this)
+        val previous = timelineStore.lastResponse() ?: return
+        val merged = previous.trips.filterNot { trip ->
+            trip.profile_uuid.equals(updatedTrip.profile_uuid, ignoreCase = true) && trip.trip_id == tripId
+        } + updatedTrip
+        timelineStore.saveResponse(
+            previous.copy(
+                status = "success",
+                trips = merged.sortedWith(compareBy<BlaBlaCollectorTrip> { it.date }.thenBy { it.departure_time.orEmpty() }),
+                coverage = previous.coverage.copy(
+                    complete_for_scope = false,
+                    global_profile_month_complete = false,
+                    reason = "targeted_exact_card_sync",
+                ),
+            ),
+            preserveOnPartial = false,
+        )
+        UnifiedDebugEventStore.record(
+            "AGENDA_EXACT_CARD_TIMELINE_UPDATED",
+            packageName,
+            "profileUuidPresent=true tripIdPresent=true passengers=${updatedTrip.passengers.size}",
+        )
+    }
+
+'''
+replace_once(p, marker, helper + marker)
+replace_once(
+    p,
+    '''            current.copy(
+                passengerId = booking.passengerId,
+                fareMinorUnits = booking.fareMinorUnits ?: current.fareMinorUnits,''',
+    '''            current.copy(
+                externalPassengerId = booking.passengerId,
+                externalTripId = resolution.tripId,
+                externalProfileUuid = account.profileUuid.orEmpty(),
+                fareMinorUnits = booking.fareMinorUnits ?: current.fareMinorUnits,''',
+)
+replace_once(
+    p,
+    '''        }
+    }
+
+    private fun saveCapturedPassengerBoardingEvidence(''',
+    '''        }
+        val blockedQueued = BlockedPassengerCancellationCoordinator.enqueueBlockedFromNetwork(this, account, resolution)
+        if (blockedQueued > 0) {
+            UnifiedDebugEventStore.record(
+                "BLOCKED_PASSENGER_CANCEL_QUEUED",
+                packageName,
+                "account=${account.displayLabel} tripId=${resolution.tripId} count=$blockedQueued",
+            )
+        }
+    }
+
+    private fun saveCapturedPassengerBoardingEvidence(''',
+)
+
+p = 'app/src/main/AndroidManifest.xml'
+replace_once(
+    p,
+    '''        <activity
+            android:name=".trips.BlaBlaReliableSeatSyncActivity"
+            android:exported="false" />''',
+    '''        <activity
+            android:name=".trips.BlaBlaReliableSeatSyncActivity"
+            android:exported="false" />
+        <activity
+            android:name=".trips.BlaBlaBlockedPassengerCancellationActivity"
+            android:exported="false" />
+        <activity
+            android:name=".trips.AgendaBatchPublisherActivity"
+            android:exported="false" />''',
+)
+
+p = 'app/build.gradle.kts'
+replace_once(
+    p,
+    '        versionCode = 5568\n        versionName = "0.1.275"',
+    '        versionCode = 5569\n        versionName = "0.1.276"',
+)

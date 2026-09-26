@@ -1,0 +1,24 @@
+(function(){
+  const expectedTripId={{EXPECTED_TRIP_ID}};
+  const desired={{DESIRED_ENABLED}};
+  const clean=(v)=>(v||'').replace(/\s+/g,' ').trim();
+  const norm=(v)=>clean(v).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const attr=(n,k)=>(n&&n.getAttribute&&n.getAttribute(k))||'';
+  const text=(n)=>norm((n&&(n.innerText||n.textContent))||'');
+  const marker=(n)=>norm([attr(n,'data-testid'),attr(n,'data-qa'),attr(n,'id'),attr(n,'name'),attr(n,'aria-label'),attr(n,'title'),text(n)].join(' '));
+  const evidence=[location.href||'',...Array.from(document.querySelectorAll('a[href],form[action],[data-href]')).map(n=>attr(n,'href')||attr(n,'action')||attr(n,'data-href'))].join('\n');
+  if(!expectedTripId||!evidence.toLowerCase().includes(String(expectedTripId).toLowerCase())) return JSON.stringify({found:false,clicked:false,reason:'trip_identity_not_bound'});
+  const controls=Array.from(document.querySelectorAll('input[type="checkbox"],input[type="radio"],[role="switch"],[role="checkbox"],[aria-checked]'));
+  const associated=(n)=>{let out=marker(n); if(n&&n.id){const label=document.querySelector('label[for="'+CSS.escape(n.id)+'"]');if(label)out+=' '+text(label);} let p=n&&n.parentElement,d=0;while(p&&d++<4){out+=' '+marker(p);p=p.parentElement;}return norm(out);};
+  const candidates=controls.filter(n=>/(^|\W)boost(\W|$)/.test(associated(n)) || (/(booking|reservation|reserva|pedido|request)/.test(associated(n))&&/boost/.test(associated(n))));
+  if(candidates.length!==1) return JSON.stringify({found:false,clicked:false,reason:candidates.length?'boost_control_ambiguous':'boost_control_missing'});
+  const target=candidates[0];
+  const read=()=>{if(typeof target.checked==='boolean')return target.checked;const a=attr(target,'aria-checked').toLowerCase();if(a==='true')return true;if(a==='false')return false;const s=attr(target,'data-state').toLowerCase();if(/checked|on|active|enabled/.test(s))return true;if(/unchecked|off|inactive|disabled/.test(s))return false;return null;};
+  const before=read();
+  if(before===null) return JSON.stringify({found:true,clicked:false,reason:'boost_state_unknown'});
+  if(before===desired) return JSON.stringify({found:true,clicked:false,reason:'already_desired',before:before,after:before});
+  if(target.disabled||attr(target,'aria-disabled')==='true'||typeof target.click!=='function') return JSON.stringify({found:true,clicked:false,reason:'boost_control_disabled',before:before});
+  target.click();
+  const after=read();
+  return JSON.stringify({found:true,clicked:true,reason:'state_selected',before:before,after:after});
+})();

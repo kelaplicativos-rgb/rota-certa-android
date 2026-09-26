@@ -1,0 +1,19 @@
+Rota Certa 0.1.183 (5440)
+branch=agent/contextual-shortcut-menu-0.1.183
+functional_commit=06129186a41b1aa85845138e6a4c9521b1f3a081
+workflow_run=30862120893
+artifact_name=rota-certa-0.1.183-contextual-shortcut-menu-validated
+artifact_id=8875362563
+artifact_digest=cf4f4f9eec19d5acdbdcdd14523d00222cdbe5ecfc84b60f30663aa6d6814d68
+artifact_url=https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/30862120893/artifacts/8875362563
+apk=rota-certa-0.1.183-menu-contextual-atalhos-validado.apk
+apk_size=56058831
+apk_sha256=d35964849443e3e74d5fd1aacafdb222d3f6b7fcf7dffa195675688059bfec33
+package=br.com.mapeiaia.rotacerta
+versionName=0.1.183
+versionCode=5440
+tests=passed
+lint=passed
+assembleDebug=passed
+signature_v2=valid
+real_device_validation=pending

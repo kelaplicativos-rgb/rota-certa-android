@@ -1,0 +1,218 @@
+name: Viagem Certa VIP 0.1.649 APK
+
+on:
+  push:
+    branches:
+      - 'agent/viagem-certa-vip-portal-0.1.649'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: viagem-certa-vip-0649-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-deploy-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      GOOGLE_MAPS_API_KEY: ''
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Prove exact 0.1.649 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "ROTA_CERTA_GIT_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          grep -Fq 'releaseVersionName = "0.1.649"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 5_940' app/build.gradle.kts
+          grep -Fq 'PASSENGER_KNOWN_DEVICE_COOKIE_0626 = "__session"' trip-platform/functions/index.js
+          grep -Fq 'VIP_AUTHENTICATED_0649' trip-platform/functions/index.js
+          grep -Fq 'vip_access_required_0649' trip-platform/functions/index.js
+          grep -Fq 'Você precisa ser VIP para entrar.' trip-platform/public/index.html
+          grep -Fq 'Área VIP — Acesso privado' trip-platform/public/index.html
+          grep -Fq 'vipCreditBalance0649' trip-platform/public/index.html
+          grep -Fq 'returnTripToken0649' trip-platform/public/minha-area.js
+          grep -Fq '0.1.649-vip-private' trip-platform/public/minha-area.html
+          git diff --check
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate Viagem Certa VIP source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/public/public-agenda-shell-0569.js
+          node --check trip-platform/public/minha-area.js
+          node --test             trip-platform/functions/test/viagem-certa-passenger-gate-0589.test.js             trip-platform/functions/test/viagem-certa-known-device-0626.test.js             trip-platform/functions/test/passenger-invites-credits-0314.test.js             trip-platform/functions/test/viagem-certa-self-booking-0623.test.js             trip-platform/functions/test/viagem-certa-trip-target-0628.test.js             trip-platform/functions/test/viagem-certa-exactly-once-0629.test.js             | tee /tmp/viagem-certa-vip-0649-tests.log
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Configure Firebase Android app
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Android regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.ManageTripInstantOpen0648Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineAgendaAtomicSync0632Test'             --tests 'br.com.mapeiaia.rotacerta.trips.CentralDoDia0552Test'             --tests 'br.com.mapeiaia.rotacerta.AlertPopupTimeout0647Test'             --tests 'br.com.mapeiaia.rotacerta.AlertRuntimeIndependent0644Test'             --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0649-tests.log
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0649-assemble.log
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Prove APK identity and signing
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/android-0649-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/android-0649-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/android-0649-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5940'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.649'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/android-0649-apksigner.txt
+          grep -Fq 'Verified' /tmp/android-0649-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0649-dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/android-0649-dex-strings.txt
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.649-5940-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.649"
+            echo "versionCode=5940"
+            echo "branch=$GITHUB_REF_NAME"
+            echo "commit=$GITHUB_SHA"
+            echo "deviceTarget=Samsung SM-S911B / Android 16 / API 36"
+            echo "vipNeutralLanding0649=PASS"
+            echo "vipServerGate0649=PASS"
+            echo "firebaseSessionCookie0649=PASS"
+            echo "privateAreaRoundTrip0649=PASS"
+            echo "creditsReferral0649=PASS"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee viagem-certa-vip-0649-proof.txt
+
+      - name: Authenticate Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy backend exact SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          gcloud functions deploy tripApi             --gen2             --project="$PROJECT"             --region=southamerica-east1             --runtime=nodejs20             --source=trip-platform/functions             --entry-point=tripApi             --trigger-http             --allow-unauthenticated             --clear-secrets             --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$GITHUB_SHA"             --quiet
+
+      - name: Deploy VIP portal exact SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+          chmod 600 /tmp/firebase-sa.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          npx --yes firebase-tools@14.12.0 deploy --only hosting --project "$PROJECT" --config trip-platform/firebase.json --non-interactive
+
+      - name: Smoke live exact SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 20 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health-0649.json
+          grep -Fq '"ok":true' /tmp/live-health-0649.json
+          grep -Fq "\"backendGitSha\":\"$GITHUB_SHA\"" /tmp/live-health-0649.json
+          curl --retry 10 --retry-delay 2 --fail --silent --show-error "$BASE/" | tee /tmp/live-index-0649.html
+          grep -Fq '<title>Área VIP — Acesso privado</title>' /tmp/live-index-0649.html
+          grep -Fq 'Você precisa ser VIP para entrar.' /tmp/live-index-0649.html
+          grep -Fq 'Espaço exclusivo para membros convidados.' /tmp/live-index-0649.html
+          curl --retry 10 --retry-delay 2 --fail --silent --show-error "$BASE/public-agenda-shell-0569.js?v=$GITHUB_SHA" | tee /tmp/live-shell-0649.js
+          grep -Fq 'VIP_AUTHENTICATED_0649' trip-platform/functions/index.js
+          grep -Fq 'loadVipCredits0649' /tmp/live-shell-0649.js
+          grep -Fq 'query.set("motorista", driverUsername0569)' /tmp/live-shell-0649.js
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-viagem-certa-vip-0.1.649-${{ github.sha }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            viagem-certa-vip-0649-proof.txt
+            /tmp/viagem-certa-vip-0649-tests.log
+            /tmp/android-0649-tests.log
+            /tmp/android-0649-assemble.log
+            /tmp/android-0649-aapt.txt
+            /tmp/android-0649-apksigner.txt
+            /tmp/android-0649-zip-integrity.txt
+            /tmp/live-health-0649.json
+            /tmp/live-index-0649.html
+            /tmp/live-shell-0649.js
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30

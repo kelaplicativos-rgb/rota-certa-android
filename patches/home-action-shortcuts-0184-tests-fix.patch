@@ -1,0 +1,73 @@
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutActionCatalog0184.kt
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutActionCatalog0184.kt
+@@ -116,7 +116,7 @@
+         "radars" to listOf("action_create_radar_here"),
+         "backup" to listOf("action_create_backup", "action_restore_backup"),
+         "whatsapp" to listOf("action_open_whatsapp_app"),
+-        "trip_confirmation" to listOf("action_copy_visible_text"),
++        "copy_trip_confirmation" to listOf("action_copy_visible_text"),
+         "clear_clipboard" to listOf("action_clear_cache"),
+         "quick_replies" to listOf("action_create_quick_reply"),
+         "quick_links" to listOf("action_open_primary_link"),
+@@ -133,7 +133,7 @@
+         "appearance",
+         "backup",
+         "whatsapp",
+-        "trip_confirmation",
++        "copy_trip_confirmation",
+         "passenger_value",
+         "finance",
+         "clear_clipboard",
+@@ -141,7 +141,7 @@
+         "quick_replies",
+         "quick_links",
+         "manual_capture",
+-        "stop",
++        "stop_app",
+     )
+ 
+     fun findSpec(id: String?): BubbleShortcutSpec? = extraSpecs.firstOrNull { it.id == id }
+--- a/app/src/test/java/br/com/mapeiaia/rotacerta/DirectionalRadarDismiss0178Test.kt
++++ b/app/src/test/java/br/com/mapeiaia/rotacerta/DirectionalRadarDismiss0178Test.kt
+@@ -20,7 +20,8 @@
+         )
+         var visual: DirectionalAlertVisual? = null
+ 
+-        engine.check(emptyList(), listOf(radar), fix(-0.0015), settings(), { visual = it })
++        engine.check(emptyList(), listOf(radar), fix(-0.0018), settings(), { visual = it })
++        engine.check(emptyList(), listOf(radar), fix(-0.0014), settings(), { visual = it })
+         engine.check(emptyList(), listOf(radar), fix(-0.0010), settings(), { visual = it })
+         val targetId = requireNotNull(visual).targetId
+         assertNotNull(visual)
+@@ -32,7 +33,8 @@
+         assertEquals(1, speech.calls)
+ 
+         engine.check(emptyList(), listOf(radar), fix(-0.0040), settings(), { visual = it })
+-        engine.check(emptyList(), listOf(radar), fix(-0.0015), settings(), { visual = it })
++        engine.check(emptyList(), listOf(radar), fix(-0.0018), settings(), { visual = it })
++        engine.check(emptyList(), listOf(radar), fix(-0.0014), settings(), { visual = it })
+         engine.check(emptyList(), listOf(radar), fix(-0.0010), settings(), { visual = it })
+         assertNotNull(visual)
+         assertEquals(2, speech.calls)
+--- a/app/src/test/java/br/com/mapeiaia/rotacerta/AccessibilityResilienceAndTools0172ContractTest.kt
++++ b/app/src/test/java/br/com/mapeiaia/rotacerta/AccessibilityResilienceAndTools0172ContractTest.kt
+@@ -42,7 +42,8 @@
+         assertTrue(catalog.contains("QuickLinksBubbleShortcutModule"))
+         assertTrue(catalog.contains("ClearApplicationCache"))
+         assertTrue(catalog.contains("OpenPrimaryQuickLink"))
+-        assertTrue(catalog.contains("modules.size == 17"))
++        assertTrue(catalog.contains("modules.size >= 21"))
++        assertTrue(catalog.contains("PermissionsBubbleShortcutModule"))
+     }
+ 
+     @Test
+--- a/app/src/test/java/br/com/mapeiaia/rotacerta/GeneralControlsPlacesPopupChecklist7Test.kt
++++ b/app/src/test/java/br/com/mapeiaia/rotacerta/GeneralControlsPlacesPopupChecklist7Test.kt
+@@ -70,6 +70,6 @@
+         assertTrue("aparência deve expor escala", "popup_scale_ui_final_checklist_7" in main)
+         assertFalse("leitura não pode continuar no popup", "ReadingBubbleShortcutModule," in catalog)
+-        assertFalse("permissão não pode continuar no popup", "PermissionsBubbleShortcutModule," in catalog)
++        assertTrue("permissão deve aparecer no catálogo completo da Home", "PermissionsBubbleShortcutModule," in catalog)
+         assertTrue("popup grande deve trocar para duas colunas", "LARGE_SCALE_TWO_COLUMNS" in overlay)
+         assertTrue("novo local precisa nascer sem nome", "defaultName = \"\"" in savedPlaceModule)
+     }

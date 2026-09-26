@@ -1,0 +1,95 @@
+name: Agenda 0.1.283 reliable seat read fix
+
+on:
+  push:
+    branches: [agent/agenda-ux-passenger-publisher-0.1.276]
+    paths:
+      - '.github/workflows/agenda-0283-reliable-seat-read-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/agenda-ux-passenger-publisher-0.1.276
+          fetch-depth: 0
+
+      - name: Prove failing physical-test baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionCode = 5575' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.282"' app/build.gradle.kts
+          grep -Fq 'state == null || state.seats < 0 || !state.savePresent' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'optionsReadAttempts < MAX_OPTIONS_READ_ATTEMPTS' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - name: Materialize causal fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/agenda_0283_reliable_seat_read_fix.py
+          git diff --check
+          grep -Fq 'private var beforeArchiveSaved = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'beforeReadAttempts < RELIABLE_OPTIONS_READ_MAX_RETRIES' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'EXTERNAL_SEAT_SYNC_RELIABLE_READ_RETRY' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'if (state == null || state.seats < 0)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          if grep -Fq 'state == null || state.seats < 0 || !state.savePresent' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt; then
+            exit 1
+          fi
+          grep -Fq 'versionCode = 5576' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.283"' app/build.gradle.kts
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+          git diff --name-only | sort > /tmp/changed.txt
+          printf '%s\n' 'app/build.gradle.kts' 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt' | sort > /tmp/expected.txt
+          cmp /tmp/expected.txt /tmp/changed.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests and debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /tmp/apk.sha256
+
+      - name: Commit tested source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/build.gradle.kts app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          git commit -m 'fix(agenda): retry reliable seat editor reads 0.1.283'
+          git push origin HEAD:agent/agenda-ux-passenger-publisher-0.1.276
+          git rev-parse HEAD | tee /tmp/source-head.txt
+
+      - name: Build evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/agenda-0283
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0283/rota-certa-0.1.283-debug.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0283/apk.sha256
+          cp /tmp/source-head.txt /tmp/agenda-0283/source-head.txt
+          printf '%s\n' 'versionName=0.1.283' 'versionCode=5576' 'fix=bounded reliable editor reread without save prerequisite' 'farolUntouched=true' > /tmp/agenda-0283/version.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-agenda-0.1.283-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: /tmp/agenda-0283

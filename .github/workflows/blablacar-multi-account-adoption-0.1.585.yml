@@ -1,0 +1,120 @@
+name: BlaBla multiprofile single-flight adoption 0.1.585
+
+on:
+  push:
+    branches:
+      - agent/multi-account-single-flight-adoption-0.1.585
+    paths:
+      - '.github/workflows/blablacar-multi-account-adoption-0.1.585.yml'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAutomaticCollection0400.kt'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaMultiAccountAdoption0585Test.kt'
+      - 'app/build.gradle.kts'
+      - 'app/src/main/assets/release_history.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blablacar-multiprofile-adoption-0585-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: multiprofile_adoption_0585_ci_dummy_key
+      EXPECTED_VERSION_CODE: '5876'
+      EXPECTED_VERSION_NAME: '0.1.585'
+      BASE_SHA: 'feb910be9b9f297c79b9a724355166848243fa25'
+
+    steps:
+      - name: Checkout exact SHA
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove surgical diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --check "$BASE_SHA"...HEAD
+          git diff --name-only "$BASE_SHA"...HEAD | sort > /tmp/changed.txt
+          cat > /tmp/allowed.txt <<'EOF'
+          .github/workflows/blablacar-multi-account-adoption-0.1.585.yml
+          app/build.gradle.kts
+          app/src/main/assets/release_history.json
+          app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAutomaticCollection0400.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaMultiAccountAdoption0585Test.kt
+          EOF
+          sort -o /tmp/allowed.txt /tmp/allowed.txt
+          diff -u /tmp/allowed.txt /tmp/changed.txt
+          grep -Fq 'val releaseVersionCode = 5_876' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.585"' app/build.gradle.kts
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify hosted Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK_ROOT"
+          test -d "$SDK_ROOT/platforms/android-35"
+          BUILD_TOOLS="$(find "$SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          test -n "$BUILD_TOOLS"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run multiprofile isolation and adoption regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaMultiAccountIsolation0584Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaMultiAccountAdoption0585Test'
+
+      - name: Assemble exact-head APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ROTA_CERTA_GIT_SHA="$GITHUB_SHA"
+          export ROTA_CERTA_GIT_BRANCH="$GITHUB_REF_NAME"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          unzip -t "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" > /tmp/aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > /tmp/apksigner.txt
+          grep -Fq 'Verified' /tmp/apksigner.txt
+          mkdir -p /tmp/0585
+          SHORT_SHA="${GITHUB_SHA:0:12}"
+          FINAL="/tmp/0585/rota-certa-$EXPECTED_VERSION_NAME-$EXPECTED_VERSION_CODE-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          sha256sum "$FINAL" | tee /tmp/0585/apk.sha256
+          cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/0585/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.585-5876-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0585

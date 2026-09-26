@@ -1,0 +1,87 @@
+name: Verify SET_TRIP_BOOST 0.1.562 candidate
+
+on:
+  push:
+    branches:
+      - agent/set-trip-boost-0.1.562
+  workflow_dispatch:
+
+concurrency:
+  group: set-trip-boost-01562-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact candidate SHA
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify Boost unit contract and canonical executor regressions
+        run: |
+          ./gradlew testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTripBoost0562Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTripScriptExecutor0558Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaScriptEditorPolicy0561Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaScriptPendingPolicy0561Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TimelineLocalPrimary0525Test'
+
+      - name: Verify Boost fail-closed wiring
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          req = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaBrowserRequest.kt').read_text()
+          controller = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTripBoostBrowserController0562.kt').read_text()
+          domain = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTripBoost0562.kt').read_text()
+          adapter = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTripBoostScriptAdapter0562.kt').read_text()
+          executor = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTripScriptExecutorActivity0558.kt').read_text()
+          catalog = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDateScopeScriptSelection0449.kt').read_text()
+          manifest = Path('app/src/main/AndroidManifest.xml').read_text()
+          for token in ['BOOST_STATE', 'BOOST_OPEN_EDIT', 'BOOST_OPEN_SECTION', 'BOOST_SET_STATE', 'BOOST_SAVE']:
+              assert token in req
+          assert 'BOOST_SET_STATE("boost_set_state.js", BlaBlaBrowserOperation.REMOTE_WRITE)' in req
+          assert 'BOOST_SAVE("boost_save.js", BlaBlaBrowserOperation.REMOTE_WRITE)' in req
+          assert 'executeRemoteWrite' in controller and 'executeCollectionStep' in controller
+          assert 'afterWriteReadback' in domain and 'WRITE_VERIFIED' in domain and 'WRITE_AMBIGUOUS' in domain
+          assert 'toggle/valor ambíguo é proibido' in domain
+          assert 'boostAdapter.execute()' in executor and 'boostAdapter.simulate()' in executor
+          assert 'AgendaTripBoostScriptAdapter0562' in adapter
+          assert 'all - seatFlowRequests0478 - boostFlowRequests0562' in catalog
+          boost_decl = 'android:name=".trips.BlaBlaTripBoostActivity0562"'
+          assert boost_decl in manifest
+          pos = manifest.index(boost_decl)
+          assert 'android:exported="false"' in manifest[pos:pos+180]
+          for asset in ['boost_state.js','boost_open_edit.js','boost_open_section.js','boost_set_state.js','boost_save.js']:
+              assert Path('app/src/main/assets/blablacar/scripts/' + asset).is_file()
+          PY
+
+      - name: Assemble installable debug APK
+        env:
+          ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+          ROTA_CERTA_GIT_BRANCH: ${{ github.ref_name }}
+        run: ./gradlew assembleDebug
+
+      - name: Record APK identity
+        run: |
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee app/build/outputs/apk/debug/app-debug.apk.sha256
+          echo "SOURCE_SHA=${{ github.sha }}"
+          echo "SOURCE_BRANCH=${{ github.ref_name }}"
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-boost-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

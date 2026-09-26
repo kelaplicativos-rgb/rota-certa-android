@@ -1,0 +1,153 @@
+name: Public Agenda link authority scan 0582
+
+on:
+  push:
+    branches:
+      - agent/agenda-canonical-visibility-0.1.581
+    paths:
+      - '.github/workflows/public-agenda-link-authority-scan-0582.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Firebase Admin dependency
+        shell: bash
+        run: npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Configure Firebase authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+          else
+            echo 'Firebase credential missing' >&2
+            exit 3
+          fi
+          chmod 600 /tmp/firebase-sa.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+
+      - name: Scan retained authoritative BlaBlaCar permalink evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}" node <<'NODE'
+          const crypto = require('crypto');
+          const admin = require('./trip-platform/functions/node_modules/firebase-admin');
+          if (!admin.apps.length) admin.initializeApp({ projectId: process.env.PROJECT });
+          const db = admin.firestore();
+          const sha = (v) => crypto.createHash('sha256').update(String(v || '')).digest('hex').slice(0, 12);
+          function officialTrip(raw) {
+            try {
+              const u = new URL(String(raw || ''));
+              const host = u.hostname.toLowerCase().replace(/^www\./,'');
+              const path = u.pathname.replace(/\/+$/,'').toLowerCase();
+              if (u.protocol !== 'https:' || !host.startsWith('blablacar.')) return null;
+              if (!(path === '/trip' || path.startsWith('/trip/'))) return null;
+              const id = path === '/trip' ? String(u.searchParams.get('id') || '') :
+                String((u.pathname.match(/\/trip\/([^/?#]+)/i) || [])[1] || '');
+              if (!/^[A-Za-z0-9_-]{6,}$/.test(id)) return null;
+              return { id, clean: u.origin + u.pathname + u.search };
+            } catch (_) { return null; }
+          }
+          function scan(value, path='', depth=0, out=[]) {
+            if (depth > 7 || value == null) return out;
+            if (typeof value === 'string') {
+              const hit = officialTrip(value);
+              if (hit) out.push({ path, publicIdHash: sha(hit.id) });
+              return out;
+            }
+            if (Array.isArray(value)) {
+              value.slice(0,100).forEach((child,i)=>scan(child, path+'['+i+']', depth+1, out));
+              return out;
+            }
+            if (typeof value === 'object') {
+              Object.entries(value).slice(0,250).forEach(([k,child])=>scan(child, path ? path+'.'+k : k, depth+1, out));
+            }
+            return out;
+          }
+          (async () => {
+            const publicUsername='ezequiel';
+            const direct=await db.collection('tripDrivers').doc(publicUsername).get();
+            let driverUsername=publicUsername;
+            if (!direct.exists) {
+              const alias=await db.collection('tripDriverAliases').doc(publicUsername).get();
+              driverUsername=alias.exists ? String(alias.data().canonicalUsername || publicUsername) : publicUsername;
+            }
+            const [tripSnap, mirrorSnap, eventSnap, debugSnap, outboxSnap] = await Promise.all([
+              db.collection('trips').where('driverUsername','==',driverUsername).limit(300).get(),
+              db.collection('tripPrivateMirrors0434').where('driverUsername','==',driverUsername).limit(300).get(),
+              db.collection('tripChangeEvents').where('driverUsername','==',driverUsername).limit(500).get(),
+              db.collection('tripPublicDebugEvents').where('driverUsername','==',driverUsername).limit(500).get(),
+              db.collection('tripPublicationOutbox').where('tenantId','==',driverUsername).limit(500).get(),
+            ]);
+            const mirrors=new Map(mirrorSnap.docs.map(d=>[String(d.data().canonicalTripId||''),d.data()]));
+            const events=eventSnap.docs.map(d=>d.data()||{});
+            const debug=debugSnap.docs.map(d=>d.data()||{});
+            const outbox=outboxSnap.docs.map(d=>d.data()||{});
+            const rows=[];
+            for (const doc of tripSnap.docs) {
+              const d=doc.data()||{};
+              const departure=Number(d.departureAtMillis||0);
+              if (d.deleted===true || d.publicationTombstone===true || departure < Date.parse('2026-09-19T00:00:00Z')) continue;
+              const canonical=String(d.canonicalTripId||d.localTripId||doc.id);
+              const aliases=new Set([doc.id,d.publicToken,d.canonicalTripId,d.localTripId].map(v=>String(v||'')).filter(Boolean));
+              const mirror=mirrors.get(canonical)||{};
+              const relatedEvents=events.filter(e=>aliases.has(String(e.tripId||'')) || aliases.has(String(e.publicToken||'')));
+              const relatedDebug=debug.filter(e=>aliases.has(String(e.tripId||'')) || aliases.has(String(e.publicToken||'')));
+              const relatedOutbox=outbox.filter(e=>String(e.canonicalTripId||'')===canonical);
+              const rootHits=scan(d);
+              const mirrorHits=scan(mirror);
+              const eventHits=scan(relatedEvents);
+              const debugHits=scan(relatedDebug);
+              const outboxHits=scan(relatedOutbox);
+              const all=[...rootHits,...mirrorHits,...eventHits,...debugHits,...outboxHits];
+              const paths=[...new Set(all.map(x=>x.path))].sort();
+              rows.push({
+                key:sha(canonical),
+                departureIso:new Date(departure).toISOString(),
+                status:String(d.status||''),
+                strongTrip:Boolean(String(d.blablaTripId||'')),
+                managePresent:Boolean(String(d.blablaManageUrl||'')),
+                externalSnapshotPresent:Boolean(d.externalSnapshot && typeof d.externalSnapshot==='object'),
+                externalSnapshotBinding:String(d.externalSnapshot?.public_trip_href_binding||'').slice(0,48),
+                directRootPublic:Boolean(officialTrip(d.blablaPublicUrl)),
+                rootCandidatePaths:[...new Set(rootHits.map(x=>x.path))].sort(),
+                mirrorCandidatePaths:[...new Set(mirrorHits.map(x=>x.path))].sort(),
+                eventCandidatePaths:[...new Set(eventHits.map(x=>x.path))].sort(),
+                debugCandidatePaths:[...new Set(debugHits.map(x=>x.path))].sort(),
+                outboxCandidatePaths:[...new Set(outboxHits.map(x=>x.path))].sort(),
+                candidateCount:all.length,
+                candidatePaths:paths,
+              });
+            }
+            rows.sort((a,b)=>a.departureIso.localeCompare(b.departureIso));
+            console.log('PUBLIC_LINK_RETAINED_EVIDENCE_0582='+JSON.stringify(rows));
+            console.log('PUBLIC_LINK_RETAINED_COUNTS_0582='+JSON.stringify({
+              total:rows.length,
+              anyCandidate:rows.filter(r=>r.candidateCount>0).length,
+              noCandidate:rows.filter(r=>r.candidateCount===0).length,
+              managePresent:rows.filter(r=>r.managePresent).length,
+              externalSnapshotPresent:rows.filter(r=>r.externalSnapshotPresent).length,
+            }));
+          })().then(()=>process.exit(0)).catch(e=>{console.error(e);process.exit(1);});
+          NODE

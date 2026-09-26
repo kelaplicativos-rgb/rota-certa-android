@@ -1,0 +1,170 @@
+                }
+                else -> true
+            }
+        }""",
+)
+
+# Service: dispatch each configured gesture and keep five seconds exclusively for editing.
+service = "app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
+replace_once(
+    service,
+    """            onShortcut = ::executeShortcutModule,
+            onShortcutLongPress = ::executeShortcutLongPress0179,
+            onCustomize = ::openShortcutCustomization0179,""",
+    """            onShortcut = ::executeShortcutQuickTap0180,
+            onShortcutLongPress = ::executeShortcutHold0180,
+            onShortcutCustomize = ::openShortcutEntryCustomization0180,
+            onCustomize = ::openShortcutCustomization0179,""",
+)
+replace_once(
+    service,
+    """    private fun executeShortcutLongPress0179(spec: BubbleShortcutSpec) {
+        UnifiedDebugEventStore.record(
+            "SHORTCUT_LONG_PRESS_OPEN_MODULE_0179",
+            universalResolvedForegroundPackage(),
+            "id=${spec.id}",
+        )
+        openShortcutModule0171(spec)
+    }
+
+""",
+    """    private fun executeShortcutQuickTap0180(entry0180: ResolvedShortcutGridEntry0179) {
+        dispatchShortcutGesture0180(entry0180, entry0180.quickAction0180, "quick")
+    }
+
+    private fun executeShortcutHold0180(entry0180: ResolvedShortcutGridEntry0179) {
+        dispatchShortcutGesture0180(entry0180, entry0180.holdAction0180, "hold_1500")
+    }
+
+    private fun dispatchShortcutGesture0180(
+        entry0180: ResolvedShortcutGridEntry0179,
+        action0180: ShortcutGestureAction0180,
+        gesture0180: String,
+    ) {
+        UnifiedDebugEventStore.record(
+            "SHORTCUT_GESTURE_0180",
+            universalResolvedForegroundPackage(),
+            "entry=${entry0180.entryId}; id=${entry0180.shortcutId}; gesture=$gesture0180; action=${action0180.name}",
+        )
+        when (action0180) {
+            ShortcutGestureAction0180.PRIMARY_ACTION -> executeShortcutModule(entry0180.spec)
+            ShortcutGestureAction0180.OPEN_MODULE -> openShortcutModule0171(entry0180.spec)
+            ShortcutGestureAction0180.NONE -> Unit
+        }
+    }
+
+    private fun openShortcutEntryCustomization0180(entry0180: ResolvedShortcutGridEntry0179) {
+        UnifiedDebugEventStore.record(
+            "SHORTCUT_HOLD_OPEN_EDITOR_0180",
+            universalResolvedForegroundPackage(),
+            "entry=${entry0180.entryId}; id=${entry0180.shortcutId}",
+        )
+        openShortcutCustomization0179(entry0180.entryId)
+    }
+
+""",
+)
+replace_once(
+    service,
+    """    private fun openShortcutCustomization0179() {
+        val intent0179 = Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra(EXTRA_OPEN_TAB, TAB_CONFIG)
+            .putExtra(EXTRA_OPEN_SHORTCUT_CUSTOMIZATION_0179, true)
+        launchShortcutActivity0176(""",
+    """    private fun openShortcutCustomization0179(entryId0180: String? = null) {
+        val intent0179 = Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra(EXTRA_OPEN_TAB, TAB_CONFIG)
+            .putExtra(EXTRA_OPEN_SHORTCUT_CUSTOMIZATION_0179, true)
+        entryId0180?.let { intent0179.putExtra(EXTRA_EDIT_SHORTCUT_ENTRY_ID_0180, it) }
+        launchShortcutActivity0176(""",
+)
+
+# Main Activity opens the exact entry and presents deterministic gesture choosers.
+main = "app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"
+replace_once(
+    main,
+    """    var shortcutCustomizationVisible0179 by remember { mutableStateOf(false) }
+    var moduleNavigationActive0172 by remember { mutableStateOf(false) }""",
+    """    var shortcutCustomizationVisible0179 by remember { mutableStateOf(false) }
+    var selectedShortcutEntryId0180 by remember { mutableStateOf<String?>(null) }
+    var moduleNavigationActive0172 by remember { mutableStateOf(false) }""",
+)
+replace_once(
+    main,
+    """        shortcutCustomizationVisible0179 = launchIntent?.getBooleanExtra(EXTRA_OPEN_SHORTCUT_CUSTOMIZATION_0179, false) == true
+        moduleNavigationActive0172 = shortcutCustomizationVisible0179 || highlightedShortcutModule0171 != null || tab != TAB_CONFIG || selectedBubbleGroup != BUBBLE_GROUP_GENERAL""",
+    """        shortcutCustomizationVisible0179 = launchIntent?.getBooleanExtra(EXTRA_OPEN_SHORTCUT_CUSTOMIZATION_0179, false) == true
+        selectedShortcutEntryId0180 = launchIntent?.getStringExtra(EXTRA_EDIT_SHORTCUT_ENTRY_ID_0180)
+        moduleNavigationActive0172 = shortcutCustomizationVisible0179 || highlightedShortcutModule0171 != null || tab != TAB_CONFIG || selectedBubbleGroup != BUBBLE_GROUP_GENERAL""",
+)
+replace_once(
+    main,
+    """        if (shortcutCustomizationVisible0179) {
+            shortcutCustomizationVisible0179 = false
+            moduleNavigationActive0172 = false""",
+    """        if (shortcutCustomizationVisible0179) {
+            shortcutCustomizationVisible0179 = false
+            selectedShortcutEntryId0180 = null
+            moduleNavigationActive0172 = false""",
+)
+replace_once(
+    main,
+    """                        ShortcutGridCustomizationScreen0179(
+                            onClose = {
+                                shortcutCustomizationVisible0179 = false
+                                moduleNavigationActive0172 = false
+                            },
+                        )""",
+    """                        ShortcutGridCustomizationScreen0179(
+                            selectedEntryId0180 = selectedShortcutEntryId0180,
+                            onClose = {
+                                shortcutCustomizationVisible0179 = false
+                                selectedShortcutEntryId0180 = null
+                                moduleNavigationActive0172 = false
+                            },
+                        )""",
+)
+replace_once(
+    main,
+    """                        onOpenCustomization = {
+                            shortcutCustomizationVisible0179 = true
+                            moduleNavigationActive0172 = true
+                        },""",
+    """                        onOpenCustomization = {
+                            selectedShortcutEntryId0180 = null
+                            shortcutCustomizationVisible0179 = true
+                            moduleNavigationActive0172 = true
+                        },""",
+)
+replace_once(
+    main,
+    """const val EXTRA_OPEN_SHORTCUT_CUSTOMIZATION_0179 = "open_shortcut_customization_0179"
+const val EXTRA_IMPORTED_RADAR_ID_0178""",
+    """const val EXTRA_OPEN_SHORTCUT_CUSTOMIZATION_0179 = "open_shortcut_customization_0179"
+const val EXTRA_EDIT_SHORTCUT_ENTRY_ID_0180 = "edit_shortcut_entry_id_0180"
+const val EXTRA_IMPORTED_RADAR_ID_0178""",
+)
+replace_once(
+    main,
+    """private fun ShortcutGridCustomizationScreen0179(
+    onClose: () -> Unit,
+) {""",
+    """private fun ShortcutGridCustomizationScreen0179(
+    selectedEntryId0180: String?,
+    onClose: () -> Unit,
+) {""",
+)
+replace_once(
+    main,
+    """                    replaceEntries0179(entries0179.filterNot { it.entryId == entryId0179 })
+                    pendingDeleteEntryId0179 = null""",
+    """                    val updated0180 = entries0179.filterNot { it.entryId == entryId0179 }
+                    replaceEntries0179(updated0180)
+                    pendingDeleteEntryId0179 = null
+                    if (selectedEntryId0180 == entryId0179) {
+                        store0179.write(updated0180)
+                        onClose()
+                    }""",
+)

@@ -1,0 +1,14 @@
+name: Agenda durability 0.1.275 materialize once (retired)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  retired:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Historical workflow retired
+        run: echo "Retired one-shot materializer for 0.1.275; preserved only as historical reference."

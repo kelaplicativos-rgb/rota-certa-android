@@ -1,0 +1,128 @@
+name: Rota Certa 0.1.625 deploy passenger timeline
+
+on:
+  push:
+    branches:
+      - agent/viagem-certa-passenger-timeline-0.1.625
+    paths:
+      - '.github/workflows/viagem-certa-passenger-timeline-deploy-0.1.625.yml'
+      - 'trip-platform/functions/**'
+      - 'trip-platform/public/**'
+      - 'trip-platform/firebase.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      SOURCE_SHA: ${{ github.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Verify exact web source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          grep -Fq 'val releaseVersionCode = 5_916' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.625"' app/build.gradle.kts
+          grep -Fq 'PUBLIC_READ_RESERVE_ON_DEMAND_0623' trip-platform/functions/index.js
+          grep -Fq 'passenger-password-session' trip-platform/functions/index.js
+          grep -Fq 'passengerDirectory0625' trip-platform/functions/index.js
+          grep -Fq 'bookingContactStep0625' trip-platform/public/index.html
+          grep -Fq '0.1.625-password-steps' trip-platform/public/index.html
+          grep -Fq 'timeline0625' trip-platform/public/minha-area.html
+          grep -Fq 'navigator.share' trip-platform/public/public-agenda-shell-0569.js
+          ! grep -Fq 'bookingPin0624' trip-platform/public/index.html
+          ! grep -Fq 'signInWithPhoneNumber' trip-platform/public/public-agenda-shell-0569.js
+          ! grep -Fq 'firebase-auth.js' trip-platform/public/index.html
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate web source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/public/public-agenda-shell-0569.js
+          node --check trip-platform/public/minha-area.js
+          node --test trip-platform/functions/test/reservation-approval-0356.test.js trip-platform/functions/test/public-booking-0296.test.js trip-platform/functions/test/viagem-certa-passenger-gate-0589.test.js trip-platform/functions/test/viagem-certa-passenger-timeline-0625.test.js
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Authenticate Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy backend exact SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          gcloud functions deploy tripApi \
+            --gen2 \
+            --project="$PROJECT" \
+            --region=southamerica-east1 \
+            --runtime=nodejs20 \
+            --source=trip-platform/functions \
+            --entry-point=tripApi \
+            --trigger-http \
+            --allow-unauthenticated \
+            --clear-secrets \
+            --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$SOURCE_SHA" \
+            --quiet
+
+      - name: Deploy public Agenda exact SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+          chmod 600 /tmp/firebase-sa.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          npx --yes firebase-tools@14.12.0 deploy --only hosting --project "$PROJECT" --config trip-platform/firebase.json --non-interactive
+
+      - name: Smoke live exact SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 20 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health.json
+          grep -Fq '"ok":true' /tmp/live-health.json
+          grep -Fq "\"backendGitSha\":\"$SOURCE_SHA\"" /tmp/live-health.json
+          curl --retry 10 --retry-delay 2 --fail --silent --show-error "$BASE/" | tee /tmp/live-index.html
+          grep -Fq 'bookingPhone0623' /tmp/live-index.html
+          grep -Fq 'bookingContactStep0625' /tmp/live-index.html
+          grep -Fq 'bookingPasswordStep0625' /tmp/live-index.html
+          grep -Fq 'bookingPasswordConfirmStep0625' /tmp/live-index.html
+          grep -Fq 'bookingReviewStep0625' /tmp/live-index.html
+          grep -Fq '0.1.625-password-steps' /tmp/live-index.html
+          ! grep -Fq 'bookingPin0624' /tmp/live-index.html
+          ! grep -Fq 'firebase-auth.js' /tmp/live-index.html
+          curl --retry 10 --retry-delay 2 --fail --silent --show-error "$BASE/public-agenda-shell-0569.js?v=$SOURCE_SHA" | tee /tmp/live-shell.js
+          grep -Fq 'passenger-password-session' /tmp/live-shell.js
+          grep -Fq 'passenger-access/status' /tmp/live-shell.js
+          ! grep -Fq 'passenger-pin-session' /tmp/live-shell.js
+          grep -Fq 'Ver anúncio na BlaBlaCar' /tmp/live-shell.js
+          grep -Fq 'navigator.share' /tmp/live-shell.js
+          curl --retry 10 --retry-delay 2 --fail --silent --show-error "$BASE/minha-area.html?v=$SOURCE_SHA" | tee /tmp/live-private.html
+          grep -Fq 'entryContactStep0625' /tmp/live-private.html
+          grep -Fq 'timeline0625' /tmp/live-private.html
+          grep -Fq 'Confirme sua senha' /tmp/live-private.html
+          curl --retry 10 --retry-delay 2 --fail --silent --show-error "$BASE/minha-area.js?v=$SOURCE_SHA" | tee /tmp/live-private.js
+          grep -Fq '/v1/passenger/me/timeline' /tmp/live-private.js
+          grep -Fq 'viagemCertaPassengerSession0625' /tmp/live-private.js

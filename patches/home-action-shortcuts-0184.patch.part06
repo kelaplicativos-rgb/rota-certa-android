@@ -1,0 +1,129 @@
++    /** Instalação nova: nenhuma ação é imposta ao usuário. */
++    fun defaults(): List<ShortcutGridEntry0179> = emptyList()
++
++    /** Atualização da 0.1.183: conserva exatamente os 17 atalhos que já existiam. */
++    fun legacyDefaults(): List<ShortcutGridEntry0179> =
++        ShortcutActionCatalog0184.legacyDefaultSpecs().map { spec ->
++            ShortcutGridEntry0179(
++                entryId = "legacy:${spec.id}",
++                shortcutId = spec.id,
++                label = spec.displayLabel,
++                emoji = spec.emoji,
++                enabled = true,
++            )
++        }
++
++    fun initialEntries(isUpgrade: Boolean): List<ShortcutGridEntry0179> =
++        if (isUpgrade) legacyDefaults() else defaults()
+ 
+     fun normalize(entries: List<ShortcutGridEntry0179>): List<ShortcutGridEntry0179> {
+-        val validIds = BubbleShortcutCatalog.modules.map { it.spec.id }.toSet()
++        val validIds = ShortcutActionCatalog0184.allSpecs().map { it.id }.toSet()
+         val usedEntryIds = mutableSetOf<String>()
++        val usedShortcutIds = mutableSetOf<String>()
+         return entries.asSequence()
+             .filter { it.shortcutId in validIds }
++            .filter { usedShortcutIds.add(it.shortcutId) }
+             .take(ShortcutGesturePolicy0179.MAX_GRID_ITEMS)
+             .mapIndexed { index, item ->
+                 val spec = requireNotNull(BubbleShortcutCatalog.findSpec(item.shortcutId))
+@@ -78,6 +88,8 @@ object ShortcutGridCustomizationPolicy0179 {
+                     entryId = entryId,
+                     label = sanitizeLabel(item.label, spec.displayLabel),
+                     emoji = sanitizeEmoji(item.emoji, spec.emoji),
++                    quickAction0180 = ShortcutGestureAction0180.PRIMARY_ACTION,
++                    holdAction0180 = ShortcutGestureAction0180.OPEN_MODULE,
+                 )
+             }
+             .toList()
+@@ -97,22 +109,27 @@ object ShortcutGridCustomizationPolicy0179 {
+                         label = entry.label,
+                         displayLabel = entry.label,
+                     ),
+-                    quickAction0180 = entry.quickAction0180,
+-                    holdAction0180 = entry.holdAction0180,
++                    quickAction0180 = ShortcutGestureAction0180.PRIMARY_ACTION,
++                    holdAction0180 = ShortcutGestureAction0180.OPEN_MODULE,
+                 )
+             }
+             .toList()
+ 
++    fun contains(entries: List<ShortcutGridEntry0179>, shortcutId: String): Boolean =
++        normalize(entries).any { it.shortcutId == shortcutId }
++
+     fun add(
+         entries: List<ShortcutGridEntry0179>,
+         shortcutId: String,
+         nowMillis: Long,
+     ): List<ShortcutGridEntry0179> {
+-        if (entries.size >= ShortcutGesturePolicy0179.MAX_GRID_ITEMS) return normalize(entries)
+-        val spec = BubbleShortcutCatalog.findSpec(shortcutId) ?: return normalize(entries)
++        val normalized = normalize(entries)
++        if (normalized.size >= ShortcutGesturePolicy0179.MAX_GRID_ITEMS) return normalized
++        if (normalized.any { it.shortcutId == shortcutId }) return normalized
++        val spec = BubbleShortcutCatalog.findSpec(shortcutId) ?: return normalized
+         return normalize(
+-            entries + ShortcutGridEntry0179(
+-                entryId = "custom:${spec.id}:$nowMillis:${entries.size}",
++            normalized + ShortcutGridEntry0179(
++                entryId = "action:${spec.id}:$nowMillis:${normalized.size}",
+                 shortcutId = spec.id,
+                 label = spec.displayLabel,
+                 emoji = spec.emoji,
+@@ -121,6 +138,9 @@ object ShortcutGridCustomizationPolicy0179 {
+         )
+     }
+ 
++    fun remove(entries: List<ShortcutGridEntry0179>, shortcutId: String): List<ShortcutGridEntry0179> =
++        normalize(entries).filterNot { it.shortcutId == shortcutId }
++
+     fun move(
+         entries: List<ShortcutGridEntry0179>,
+         fromIndex: Int,
+@@ -129,13 +149,11 @@ object ShortcutGridCustomizationPolicy0179 {
+         if (fromIndex !in entries.indices || toIndex !in entries.indices || fromIndex == toIndex) {
+             return entries
+         }
+-        return entries.toMutableList().apply {
+-            add(toIndex, removeAt(fromIndex))
+-        }
++        return entries.toMutableList().apply { add(toIndex, removeAt(fromIndex)) }
+     }
+ 
+     fun nextShortcutId(currentId: String): String {
+-        val ids = BubbleShortcutCatalog.modules.map { it.spec.id }
++        val ids = ShortcutActionCatalog0184.allSpecs().map { it.id }
+         if (ids.isEmpty()) return currentId
+         val index = ids.indexOf(currentId).coerceAtLeast(0)
+         return ids[(index + 1) % ids.size]
+@@ -162,11 +180,16 @@ object ShortcutGridCustomizationPolicy0179 {
+ }
+ 
+ class ShortcutGridPreferenceStore0179(context: Context) {
+-    private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
++    private val appContext = context.applicationContext
++    private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+ 
+     fun read(): List<ShortcutGridEntry0179> {
+-        if (!prefs.contains(KEY_GRID)) return ShortcutGridCustomizationPolicy0179.defaults()
+-        val raw = prefs.getString(KEY_GRID, null) ?: return ShortcutGridCustomizationPolicy0179.defaults()
++        if (!prefs.contains(KEY_GRID)) {
++            val initial = ShortcutGridCustomizationPolicy0179.initialEntries(isUpgradeInstallation())
++            persist(initial)
++            return initial
++        }
++        val raw = prefs.getString(KEY_GRID, null) ?: return emptyList()
+         return runCatching {
+             val array = JSONArray(raw)
+             val entries = buildList {
+@@ -179,60 +202,62 @@ class ShortcutGridPreferenceStore0179(context: Context) {
+                             label = item.optString("label"),
+                             emoji = item.optString("emoji"),
+                             enabled = item.optBoolean("enabled", true),
+-                            quickAction0180 = parseGestureAction0180(
+-                                item.optString("quickAction0180"),
+-                                ShortcutGestureAction0180.PRIMARY_ACTION,
+-                            ),
+-                            holdAction0180 = parseGestureAction0180(
+-                                item.optString("holdAction0180"),
+-                                ShortcutGestureAction0180.OPEN_MODULE,

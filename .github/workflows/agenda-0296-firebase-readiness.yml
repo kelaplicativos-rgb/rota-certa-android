@@ -1,0 +1,126 @@
+name: Agenda 0.1.296 Firebase readiness
+
+on:
+  push:
+    branches:
+      - agent/agenda-public-booking-0.1.296
+    paths:
+      - '.github/workflows/agenda-0296-firebase-readiness.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firebase-readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/agenda-public-booking-0.1.296
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate deployable source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionName = "0.1.296"' app/build.gradle.kts
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/calendar-functions/index.js
+          node --check trip-platform/public/app.js
+          test -f trip-platform/firebase.json
+
+      - name: Detect configured Firebase credential path safely
+        id: readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          method='none'
+          project=''
+          if [ -n "${FIREBASE_PROJECT_ID:-}" ]; then project="$FIREBASE_PROJECT_ID"; fi
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            method='service-account'
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            parsed="$(python3 - <<'PY'
+          import json
+          try:
+              print(json.load(open('/tmp/firebase-sa.json')).get('project_id',''))
+          except Exception:
+              print('')
+          PY
+          )"
+            if [ -z "$project" ] && [ -n "$parsed" ]; then project="$parsed"; fi
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            method='service-account'
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            parsed="$(python3 - <<'PY'
+          import json
+          try:
+              print(json.load(open('/tmp/firebase-sa.json')).get('project_id',''))
+          except Exception:
+              print('')
+          PY
+          )"
+            if [ -z "$project" ] && [ -n "$parsed" ]; then project="$parsed"; fi
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            method='firebase-token'
+          fi
+          echo "method=$method" >> "$GITHUB_OUTPUT"
+          echo "project=$project" >> "$GITHUB_OUTPUT"
+          echo "Firebase credential method configured: $method"
+          echo "Explicit/embedded project id present: $([ -n "$project" ] && echo yes || echo no)"
+
+      - name: Discover project from Firebase token when needed
+        if: steps.readiness.outputs.method == 'firebase-token'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes firebase-tools@latest projects:list --token "$FIREBASE_TOKEN" --json > /tmp/firebase-projects.json
+          python3 - <<'PY'
+          import json
+          data=json.load(open('/tmp/firebase-projects.json'))
+          rows=data.get('result', data if isinstance(data,list) else [])
+          if isinstance(rows,dict): rows=rows.get('projects',[])
+          candidates=[]
+          for p in rows or []:
+              pid=str(p.get('projectId',''))
+              name=str(p.get('displayName',''))
+              if 'rota' in (pid+' '+name).lower() or 'certa' in (pid+' '+name).lower():
+                  candidates.append(pid)
+          print(f'firebase_projects_visible={len(rows or [])}')
+          print(f'rota_certa_candidates={len(candidates)}')
+          if len(candidates)==1:
+              open('/tmp/discovered-project.txt','w').write(candidates[0])
+          elif len(rows or [])==1:
+              open('/tmp/discovered-project.txt','w').write(str((rows or [])[0].get('projectId','')))
+          PY
+
+      - name: Confirm readiness without deploying
+        shell: bash
+        run: |
+          set -euo pipefail
+          method='${{ steps.readiness.outputs.method }}'
+          project='${{ steps.readiness.outputs.project }}'
+          if [ -z "$project" ] && [ -s /tmp/discovered-project.txt ]; then project="$(cat /tmp/discovered-project.txt)"; fi
+          if [ "$method" = 'none' ]; then
+            echo 'FIREBASE_DEPLOY_READY=false reason=no_supported_github_secret'
+            exit 2
+          fi
+          if [ -z "$project" ]; then
+            echo 'FIREBASE_DEPLOY_READY=false reason=project_not_uniquely_resolved'
+            exit 3
+          fi
+          echo 'FIREBASE_DEPLOY_READY=true'
+          echo "project=$project"
+          echo "method=$method"

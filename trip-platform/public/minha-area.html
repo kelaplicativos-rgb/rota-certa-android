@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
+  <title>Área VIP — Minha área</title>
+  <meta name="description" content="Espaço privado para membros convidados.">
+  <style>
+    :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#171717;background:#f5f6f8;--muted:#60656d;--line:#dde1e6}
+    *{box-sizing:border-box}body{margin:0;background:#f5f6f8}.hidden{display:none!important}
+    main{max-width:760px;margin:0 auto;padding:22px 16px 80px}
+    .top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
+    .brand{font-size:18px;font-weight:950;letter-spacing:.06em}.back{color:#176f98;font-weight:850;text-decoration:none}
+    h1{font-size:32px;line-height:1.15;margin:10px 0 6px}h2{font-size:21px;margin:0 0 12px}
+    .lead,.muted{color:var(--muted);line-height:1.45}
+    .card{background:#fff;border:1px solid #e9ecef;border-radius:22px;padding:20px;margin-top:16px;box-shadow:0 5px 20px #0000000a}
+    label{display:grid;gap:7px;margin-top:14px;font-weight:800}
+    input{width:100%;min-height:52px;border:1px solid #cfd4da;border-radius:14px;padding:12px 14px;font:inherit}
+    button{width:100%;min-height:50px;border:0;border-radius:14px;padding:11px 15px;font:inherit;font-weight:900;cursor:pointer}
+    .primary{background:#176f98;color:#fff}.secondary{background:#eef3f7;color:#17344a}
+    .error{color:#9b1c1c;font-weight:850}.success{color:#176a34;font-weight:800}
+    .trip{border:1px solid var(--line);border-radius:18px;padding:16px;margin-top:12px}
+    .tripDate{font-weight:950;font-size:19px}.route{font-weight:900;font-size:20px;margin-top:7px}
+    .facts{display:grid;gap:5px;margin-top:9px;color:#343a40}
+    .pill{display:inline-flex;margin-top:9px;padding:6px 10px;border-radius:999px;background:#edf3f7;font-size:14px;font-weight:900}
+    .notice{border-left:4px solid #176f98;padding:10px 12px;margin-top:10px;background:#f7fafc}
+    .noticeUnread{background:#edf7ff}.noticeTitle{font-weight:900}.noticeTime{font-size:13px;color:var(--muted);margin-top:4px}
+    .sectionHeader{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .sectionHeader button{width:auto;min-height:42px;font-size:14px}
+    .tripActions0498{display:grid;gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+    .tripEdit0498{display:grid;gap:10px}
+    .tripEdit0498 label{margin-top:0}
+    select{width:100%;min-height:52px;border:1px solid #cfd4da;border-radius:14px;padding:12px 14px;background:#fff;font:inherit}
+    .danger0498{background:#fff0f0;color:#8f1d1d;border:1px solid #e7b5b5}
+    .actionMessage0498{margin:0;font-size:14px;font-weight:800;line-height:1.35}
+    .step0625{min-height:150px}.stepProgress0625{font-size:13px;color:var(--muted);font-weight:800}
+    .timeline0625{display:grid;gap:0}.timelineItem0625{position:relative;padding:2px 0 20px 28px;border-left:3px solid #dce3e8;margin-left:7px}
+    .timelineItem0625::before{content:"";position:absolute;left:-8px;top:3px;width:13px;height:13px;border-radius:50%;background:#176f98;border:2px solid #fff}
+    .timelineTime0625{font-size:13px;color:var(--muted);font-weight:750}.timelineTitle0625{font-size:18px;font-weight:950;margin-top:4px}
+    .timelineMessage0625{margin-top:4px;color:#3f454b;line-height:1.4}.hello0625{font-weight:900;font-size:19px}
+    .vipBadge0649{display:inline-flex;padding:6px 10px;border-radius:999px;background:#ede7fb;color:#50388e;font-size:12px;font-weight:950;letter-spacing:.06em}
+    .creditBalance0649{font-size:28px;font-weight:950;letter-spacing:-.02em;margin:7px 0}
+    .creditGrid0649{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  </style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div id="privateBrand0649" class="brand">ÁREA VIP</div>
+    <a id="backToAgenda0491" class="back" href="/">Voltar ao acesso</a>
+  </div>
+
+  <h1 id="privateTitle0649">Minha área</h1>
+  <p id="privateLead0649" class="lead">Seu espaço pessoal e protegido.</p>
+
+  <section id="contextError0491" class="card error hidden" role="alert"></section>
+
+  <section id="authLoading0492" class="card hidden" aria-live="polite">
+    <p id="authLoadingMessage0492" class="muted">Carregando sua sessão...</p>
+  </section>
+
+  <section id="loginPanel0491" class="card hidden">
+    <div id="entryContactStep0625" class="step0625">
+      <div class="stepProgress0625">Uma etapa por vez</div>
+      <h2>Qual é o seu WhatsApp?</h2>
+      <label>WhatsApp
+        <input id="contact0491" autocomplete="tel" inputmode="tel" maxlength="24" placeholder="(11) 99999-9999">
+      </label>
+      <button id="entryContactContinue0625" class="primary" type="button">Continuar</button>
+    </div>
+
+    <div id="entryPasswordStep0625" class="step0625 hidden">
+      <h2 id="entryPasswordTitle0625">Digite sua senha</h2>
+      <label>Senha
+        <input id="password0491" type="password" inputmode="numeric" autocomplete="current-password" minlength="4" maxlength="4" placeholder="••••">
+      </label>
+      <p class="muted">Sua senha tem 4 números.</p>
+      <button id="entryPasswordContinue0625" class="primary" type="button">Continuar</button>
+      <button class="secondary entryBack0625" type="button">Voltar</button>
+    </div>
+
+    <div id="entryConfirmStep0625" class="step0625 hidden">
+      <h2>Confirme sua senha</h2>
+      <label>Confirme sua senha
+        <input id="passwordConfirm0625" type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="4" placeholder="••••">
+      </label>
+      <button id="entryConfirmContinue0625" class="primary" type="button">Entrar</button>
+      <button class="secondary entryBack0625" type="button">Voltar</button>
+    </div>
+    <p id="loginMessage0491" class="error hidden" role="alert"></p>
+  </section>
+  <section id="privatePanel0491" class="hidden">
+    <div id="passwordPanel0491" class="card hidden">
+      <h2>Defina uma nova senha</h2>
+      <p class="muted">Sua credencial temporária precisa ser substituída.</p>
+      <label>Nova senha
+        <input id="newPassword0491" type="password" autocomplete="new-password" minlength="4" maxlength="4">
+      </label>
+      <label>Confirme a nova senha
+        <input id="newPasswordConfirm0491" type="password" autocomplete="new-password" minlength="4" maxlength="4">
+      </label>
+      <p id="passwordMessage0491" class="error hidden" role="alert"></p>
+      <button id="changePassword0491" class="primary" type="button">Salvar nova senha</button>
+    </div>
+
+    <section class="card">
+      <span class="vipBadge0649">MEMBRO VIP</span>
+      <div id="hello0625" class="hello0625" style="margin-top:10px">Sua área</div>
+      <p class="muted">Seu histórico permanece ligado ao mesmo passageiro.</p>
+    </section>
+
+    <section class="card">
+      <h2>Créditos e indicações</h2>
+      <div id="privateCreditBalance0649" class="creditBalance0649">—</div>
+      <p id="privateCreditSummary0649" class="muted">Carregando seus créditos...</p>
+      <div class="creditGrid0649">
+        <button id="privateInvite0649" class="primary" type="button">Indicar amigo</button>
+        <button id="privateRefreshCredits0649" class="secondary" type="button">Atualizar</button>
+      </div>
+      <p id="privateCreditMessage0649" class="muted"></p>
+    </section>
+
+    <section class="card">
+      <h2>Próximas viagens</h2>
+      <div id="upcoming0491"><p class="muted">Nenhuma próxima viagem.</p></div>
+    </section>
+
+    <section class="card">
+      <div class="sectionHeader">
+        <h2>Seu histórico</h2>
+        <button id="markRead0491" class="secondary" type="button">Marcar atualizações como lidas</button>
+      </div>
+      <p class="muted">Os acontecimentos mais recentes aparecem primeiro.</p>
+      <div id="timeline0625" class="timeline0625"><p class="muted">Nenhum histórico ainda.</p></div>
+      <div id="notifications0491" class="hidden"></div>
+      <div id="history0491" class="hidden"></div>
+    </section>
+
+    <section class="card">
+      <p id="refreshMessage0491" class="muted">Dados protegidos e sincronizados pelo Viagem Certa.</p>
+      <button id="logout0491" class="secondary" type="button">Sair</button>
+    </section>
+  </section>
+</main>
+<script src="/minha-area.js?v=0.1.651-password-recovery" defer></script>
+</body>
+</html>

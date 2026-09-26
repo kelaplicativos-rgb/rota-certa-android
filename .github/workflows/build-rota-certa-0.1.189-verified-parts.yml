@@ -1,0 +1,183 @@
+name: Build Rota Certa 0.1.189 verified parts
+
+on:
+  pull_request:
+    branches: [agent/fix-farol-real-device-0.1.188]
+    paths:
+      - .github/workflows/build-rota-certa-0.1.189-verified-parts.yml
+      - scripts/build_rota_certa_0189_parts.sh
+      - scripts/build_rota_certa_0189.sh
+      - scripts/harden_farol_priority_latency_0189.py
+      - scripts/register_farol_0189_status.py
+      - patches/0189/**
+      - tools/farol_visual_priority_lab_0189.py
+      - tests/test_farol_visual_priority_0189.py
+  workflow_dispatch:
+
+concurrency:
+  group: rota-certa-0.1.189-verified-parts-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  actions: read
+  pull-requests: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout protected source
+        uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+
+      - name: Verify protected source commit
+        working-directory: source
+        run: test "$(git rev-parse HEAD)" = "32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42"
+
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+          path: patches
+
+      - name: Verify cumulative patch commit
+        working-directory: patches
+        env:
+          EXPECTED_PATCH_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_PATCH_SHA"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run deterministic visual-priority oracle
+        working-directory: patches
+        run: python3 -m unittest tests.test_farol_visual_priority_0189 -v
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and validate 0.1.189 from verified parts
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-0189-parts
+        run: |
+          set -o pipefail
+          bash ../patches/scripts/build_rota_certa_0189_parts.sh ../patches 2>&1 | tee build-0.1.189-parts.log
+
+      - name: Upload failure diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.189-verified-parts-failure
+          path: |
+            source/build-0.1.189-parts.log
+            source/app/build/reports/tests/
+            source/app/build/reports/lint-results-debug.html
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload validated CI artifact
+        id: artifact_upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.189-release-candidate
+          path: source/artifact-0.1.189/
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Publish isolated prerelease candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VALIDATED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          APK_SOURCE='source/artifact-0.1.189/rota-certa-0.1.189-priority-latency-validado-em-ci.apk'
+          APK_CANDIDATE="${RUNNER_TEMP}/rota-certa-0.1.189-candidate.apk"
+          cp "$APK_SOURCE" "$APK_CANDIDATE"
+          EXPECTED_SHA="$(awk '{print $1}' source/artifact-0.1.189/sha256.txt)"
+          ACTUAL_SHA="$(sha256sum "$APK_CANDIDATE" | awk '{print $1}')"
+          test "$EXPECTED_SHA" = "$ACTUAL_SHA"
+          TEST_COUNT="$(awk -F= '/^tests=/{print $2}' source/artifact-0.1.189/test-count.txt)"
+          cat > "${RUNNER_TEMP}/candidate-notes.md" <<NOTES
+          Rota Certa 0.1.189 — candidato de teste em aparelho
+
+          Candidato isolado. Não substitui o link permanente latest e só pode ser promovido depois da validação física.
+
+          - pacote: br.com.mapeiaia.rotacerta
+          - versão: 0.1.189
+          - versionCode: 5473
+          - head validado em CI: ${VALIDATED_HEAD}
+          - testes: ${TEST_COUNT}; falhas: 0
+          - Android Lint: aprovado
+          - clean assembleDebug: aprovado
+          - assinatura APK v2: conferida
+          - SHA-256: ${ACTUAL_SHA}
+          - amarelo: pacote selecionado ativo sem destino confirmado
+          - laranja: destino final confirmado e rota em cálculo
+          - verde/vermelho: somente rota real + DecisionEngine
+          NOTES
+          if gh release view ci-0.1.189 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete ci-0.1.189 --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          fi
+          gh release create ci-0.1.189 "$APK_CANDIDATE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$VALIDATED_HEAD" \
+            --title 'Rota Certa 0.1.189 — candidato de teste' \
+            --notes-file "${RUNNER_TEMP}/candidate-notes.md" \
+            --prerelease
+
+      - name: Verify public candidate byte for byte
+        run: |
+          set -euo pipefail
+          URL='https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/ci-0.1.189/rota-certa-0.1.189-candidate.apk'
+          curl --fail --location --retry 6 --retry-all-errors --output downloaded-candidate.apk "$URL"
+          test "$(sha256sum downloaded-candidate.apk | awk '{print $1}')" = "$(awk '{print $1}' source/artifact-0.1.189/sha256.txt)"
+
+      - name: Register validated evidence and comment PR
+        if: success() && github.event_name == 'pull_request'
+        working-directory: patches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+          VALIDATED_HEAD: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ARTIFACT_ID: ${{ steps.artifact_upload.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.artifact_upload.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          TEST_COUNT="$(awk -F= '/^tests=/{print $2}' ../source/artifact-0.1.189/test-count.txt)"
+          APK_SHA="$(awk '{print $1}' ../source/artifact-0.1.189/sha256.txt)"
+          APK_SIZE="$(stat -c%s ../source/artifact-0.1.189/rota-certa-0.1.189-priority-latency-validado-em-ci.apk)"
+          python3 scripts/register_farol_0189_status.py \
+            --head "$VALIDATED_HEAD" \
+            --run-id "$RUN_ID" \
+            --tests "$TEST_COUNT" \
+            --apk-sha "$APK_SHA" \
+            --apk-size "$APK_SIZE" \
+            --artifact-id "$ARTIFACT_ID" \
+            --artifact-digest "$ARTIFACT_DIGEST"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/PROJECT_STATUS.md docs/DECISIONS.md
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record 0.1.189 CI candidate pending device [skip ci]'
+            git push origin "HEAD:${HEAD_REF}"
+          fi
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "CI 0.1.189 concluída no run ${RUN_ID}. Candidato publicado sem substituir latest. SHA-256: ${APK_SHA}. Estado laranja e prioridade visual incluídos; validação física continua obrigatória."

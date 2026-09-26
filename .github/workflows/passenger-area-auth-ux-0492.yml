@@ -1,0 +1,272 @@
+name: Rota Certa 0.1.493 post-build booking forensics
+
+on:
+  push:
+    branches:
+      - agent/postbuild-0492-booking-forensics
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: postbuild-booking-forensics-0493-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      GOOGLE_MAPS_API_KEY: postbuild_0493_ci_dummy_key
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Prove exact source lineage and protected boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=8e22f674f61334bd1d4b00b8c90b958f768f128e
+          SOURCE_SHA="${GITHUB_SHA}"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git merge-base --is-ancestor "$BASE" HEAD
+          grep -Fq 'versionCode = 5785' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.493"' app/build.gradle.kts
+
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          test -s "$FAROL"
+          git diff --exit-code "$BASE"..HEAD -- "$FAROL"
+          git show "$BASE:$FAROL" | sha256sum | awk '{print $1}' > /tmp/farol-base.sha256
+          sha256sum "$FAROL" | awk '{print $1}' > /tmp/farol-head.sha256
+          cmp -s /tmp/farol-base.sha256 /tmp/farol-head.sha256
+
+          git diff --name-only "$BASE"..HEAD | tee /tmp/changed-files.txt
+          if git diff "$BASE"..HEAD -- app/src/main trip-platform/functions/index.js | grep -Eiq 'Ezequiel|Barbosa|Santo André|São Thomé das Letras|timeline-ext-fc2ab95908a2ad8fe0f28b52|fbd7250a6aca'; then
+            echo "Scenario-specific hardcode detected" >&2
+            exit 1
+          fi
+
+          printf '%s\n' "$SOURCE_SHA" > /tmp/source-head.txt
+          printf '%s\n' "$GITHUB_REF_NAME" > /tmp/source-branch.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verify retained backend protection contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --test trip-platform/functions/test/deterministic-trip-outbox-0387.test.js
+          node --test trip-platform/functions/test/canonical-trips-passenger-area-0491.test.js
+          grep -Fq 'protected_booking_required' trip-platform/functions/index.js
+          grep -Fq 'protectedBookings' trip-platform/functions/index.js
+          grep -Fq 'publication_revision_conflict' trip-platform/functions/index.js
+
+      - name: Configure Firebase Android app
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run post-build focused regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          export ROTA_CERTA_GIT_SHA="$GITHUB_SHA"
+          export ROTA_CERTA_GIT_BRANCH="$GITHUB_REF_NAME"
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PostBuild0493IntegrityTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PublicBooking0296Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaForensicBlackBox0345Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalIntegrity0406Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedOccupancyStage47R4Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/focused-tests.log
+
+      - name: Compare complete debug unit suite against 0.1.492 baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=8e22f674f61334bd1d4b00b8c90b958f768f128e
+          CURRENT_SHA="$GITHUB_SHA"
+
+          rm -rf /tmp/rotacerta-baseline
+          git worktree add --detach /tmp/rotacerta-baseline "$BASE"
+          cp app/google-services.json /tmp/rotacerta-baseline/app/google-services.json
+
+          set +e
+          (
+            cd /tmp/rotacerta-baseline
+            export ROTA_CERTA_GIT_SHA="$BASE"
+            export ROTA_CERTA_GIT_BRANCH="agent/passenger-area-auth-ux-0.1.492"
+            ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ) 2>&1 | tee /tmp/baseline-full-tests.log
+          BASE_STATUS=${PIPESTATUS[0]}
+
+          export ROTA_CERTA_GIT_SHA="$CURRENT_SHA"
+          export ROTA_CERTA_GIT_BRANCH="$GITHUB_REF_NAME"
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee /tmp/full-tests.log
+          CURRENT_STATUS=${PIPESTATUS[0]}
+          set -e
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          def failures(root: Path):
+              out = set()
+              if not root.exists():
+                  return out
+              for xml in root.rglob("TEST-*.xml"):
+                  try:
+                      tree = ET.parse(xml)
+                  except Exception:
+                      continue
+                  for case in tree.getroot().iter("testcase"):
+                      if case.find("failure") is not None or case.find("error") is not None:
+                          out.add(f"{case.attrib.get('classname','')}#{case.attrib.get('name','')}")
+              return out
+
+          baseline = failures(Path("/tmp/rotacerta-baseline/app/build/test-results/testDebugUnitTest"))
+          current = failures(Path("app/build/test-results/testDebugUnitTest"))
+          Path("/tmp/baseline-failures.txt").write_text("\n".join(sorted(baseline)) + ("\n" if baseline else ""))
+          Path("/tmp/current-failures.txt").write_text("\n".join(sorted(current)) + ("\n" if current else ""))
+          Path("/tmp/new-failures.txt").write_text("\n".join(sorted(current - baseline)) + ("\n" if current - baseline else ""))
+          Path("/tmp/resolved-baseline-failures.txt").write_text("\n".join(sorted(baseline - current)) + ("\n" if baseline - current else ""))
+          print(f"baseline_failures={len(baseline)}")
+          print(f"current_failures={len(current)}")
+          print(f"new_failures={len(current - baseline)}")
+          print(f"resolved_baseline_failures={len(baseline - current)}")
+          if current - baseline:
+              print("NEW FAILURES:")
+              print("\n".join(sorted(current - baseline)))
+              raise SystemExit(2)
+          PY
+
+          echo "baseline_gradle_status=$BASE_STATUS"
+          echo "current_gradle_status=$CURRENT_STATUS"
+          test ! -s /tmp/new-failures.txt
+          echo "FULL_SUITE_NO_NEW_FAILURES_VS_0_1_492=PASS"
+
+          git worktree remove --force /tmp/rotacerta-baseline
+
+      - name: Lint and assemble installable exact-SHA APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/lint.log
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/assemble.log
+
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/zip-integrity.txt
+
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
+          grep -Fq "versionCode='5785'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.493'" /tmp/aapt.txt
+
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
+
+          mkdir -p /tmp/0493
+          cp "$APK" /tmp/0493/rota-certa-0.1.493-postbuild-booking-forensics.apk
+          sha256sum /tmp/0493/rota-certa-0.1.493-postbuild-booking-forensics.apk | tee /tmp/0493/apk.sha256
+          cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt /tmp/0493/
+          cp /tmp/farol-base.sha256 /tmp/farol-head.sha256 /tmp/0493/
+          cp /tmp/focused-tests.log /tmp/full-tests.log /tmp/baseline-full-tests.log /tmp/lint.log /tmp/assemble.log /tmp/0493/
+          cp /tmp/baseline-failures.txt /tmp/current-failures.txt /tmp/new-failures.txt /tmp/resolved-baseline-failures.txt /tmp/0493/
+          cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/0493/
+
+          cat > /tmp/0493/final-status.txt <<EOF
+          source_sha=$GITHUB_SHA
+          source_branch=$GITHUB_REF_NAME
+          versionName=0.1.493
+          versionCode=5785
+          package=br.com.mapeiaia.rotacerta
+          farol_untouched=true
+          backend_protection_retained=true
+          unit_tests=PASS
+          lint=PASS
+          assemble=PASS
+          merge=false
+          release=false
+          deploy=false
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.493-postbuild-booking-forensics-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0493
+
+      - name: Upload failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.493-postbuild-failure-${{ github.sha }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            /tmp/source-head.txt
+            /tmp/source-branch.txt
+            /tmp/changed-files.txt
+            /tmp/focused-tests.log
+            /tmp/full-tests.log
+            /tmp/lint.log
+            /tmp/assemble.log
+            app/build/reports
+            app/build/test-results

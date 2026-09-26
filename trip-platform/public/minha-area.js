@@ -1,0 +1,804 @@
+"use strict";
+
+const $ = (id) => document.getElementById(id);
+const params0491 = new URLSearchParams(location.search);
+
+function normalizeDriver0491(value) {
+  return String(value || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32);
+}
+
+const driverUsername0491 = normalizeDriver0491(params0491.get("motorista") || "");
+const returnTripToken0649 = String(params0491.get("viagem") || "").replace(/[^A-Za-z0-9_-]/g, "");
+const sessionKey0625 = "viagemCertaPassengerSession0625";
+const legacySessionKey0491 = "rotaCertaPassengerSession0491:" + driverUsername0491;
+const contextKey0491 = "rotaCertaPassengerContext0491:" + (driverUsername0491 || "global");
+let sessionToken0491 = sessionStorage.getItem(sessionKey0625) || sessionStorage.getItem(legacySessionKey0491) || "";
+let passengerAuthenticated0626 = false;
+let entryContact0625 = "";
+let entryPasswordCreated0625 = false;
+let refreshInFlight0491 = false;
+let pollHandle0491 = 0;
+let changeCursor0495 = 0;
+let changeWatchGeneration0495 = 0;
+let changeWatchRunning0495 = false;
+
+function show0491(id, visible = true) {
+  const node = $(id);
+  if (node) node.classList.toggle("hidden", !visible);
+}
+
+function message0491(id, text, success = false) {
+  const node = $(id);
+  if (!node) return;
+  node.textContent = text || "";
+  node.classList.toggle("hidden", !text);
+  node.classList.toggle("success", Boolean(text && success));
+  node.classList.toggle("error", Boolean(text && !success));
+}
+
+function sessionContext0491() {
+  let value = sessionStorage.getItem(contextKey0491) || "";
+  if (!/^[A-Za-z0-9_-]{16,120}$/.test(value)) {
+    value = crypto.randomUUID().replace(/-/g, "");
+    sessionStorage.setItem(contextKey0491, value);
+  }
+  return value;
+}
+
+async function request0491(path, options = {}) {
+  const headers = { Accept: "application/json", ...(options.headers || {}) };
+  if (sessionToken0491) headers.Authorization = "Bearer " + sessionToken0491;
+  let body = options.body;
+  if (body && typeof body !== "string") {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify(body);
+  }
+  const response = await fetch(path, {
+    ...options,
+    headers,
+    body,
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  let payload = {};
+  try { payload = await response.json(); } catch (_) {}
+  if (!response.ok) {
+    const error = new Error(payload.message || "Não foi possível concluir esta operação.");
+    error.status = response.status;
+    error.code = payload.code || "";
+    throw error;
+  }
+  return payload;
+}
+
+function formatDateTime0491(ms) {
+  const value = Number(ms || 0);
+  if (!value) return "";
+  return new Intl.DateTimeFormat("pt-BR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatShortTime0491(ms) {
+  const value = Number(ms || 0);
+  if (!value) return "";
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function bookingStatusLabel0491(booking) {
+  const operational = String(booking?.operationalStatus || "").toUpperCase();
+  const status = String(booking?.status || "").toUpperCase();
+  const payment = String(booking?.paymentStatus || "").toUpperCase();
+  if (status === "CANCELLED" || operational === "CANCELLED") return "Cancelada";
+  if (operational === "COMPLETED") return "Concluída";
+  if (operational === "IN_CAR") return "Em viagem";
+  if (operational === "AT_LOCATION") return "Motorista no local";
+  if (payment === "PAID") return "Pagamento confirmado";
+  if (status === "REQUESTED" || operational === "PENDING") return "Aguardando confirmação";
+  return "Confirmada";
+}
+
+function isHistorical0491(entry) {
+  const status = String(entry?.booking?.status || "").toUpperCase();
+  const operational = String(entry?.booking?.operationalStatus || "").toUpperCase();
+  const tripStatus = String(entry?.trip?.status || "").toUpperCase();
+  return status === "CANCELLED" ||
+    operational === "CANCELLED" ||
+    operational === "COMPLETED" ||
+    tripStatus === "CANCELLED" ||
+    Number(entry?.trip?.departureAtMillis || 0) < Date.now() - 6 * 60 * 60 * 1000;
+}
+
+function passengerBookingLocked0498(booking) {
+  const status = String(booking?.status || "").toUpperCase();
+  const operational = String(booking?.operationalStatus || "").toUpperCase();
+  return status === "CANCELLED" ||
+    status === "EXPIRED" ||
+    operational === "CANCELLED" ||
+    operational === "IN_CAR" ||
+    operational === "COMPLETED";
+}
+
+function passengerMutationPath0498(entry, suffix = "") {
+  const mutation = entry?.mutation || {};
+  const tripToken = String(mutation.tripToken || "").trim();
+  const bookingId = String(mutation.bookingId || "").trim();
+  if (!tripToken || !bookingId) return "";
+  return "/v1/passenger/me/bookings/" + encodeURIComponent(tripToken) + "/" +
+    encodeURIComponent(bookingId) + suffix;
+}
+
+function passengerActionMessage0498(root, text, success = false) {
+  root.textContent = text || "";
+  root.classList.toggle("hidden", !text);
+  root.classList.toggle("success", Boolean(text && success));
+  root.classList.toggle("error", Boolean(text && !success));
+}
+
+async function savePassengerBooking0498(entry, controls) {
+  const mutation = entry?.mutation || {};
+  const stops = Array.isArray(mutation.stops) ? mutation.stops : [];
+  const passengerName = controls.name.value.trim();
+  const boardingStopId = controls.boarding.value;
+  const dropoffStopId = controls.dropoff.value;
+  const seats = Number(controls.seats.value);
+  const fromIndex = stops.findIndex((stop) => String(stop?.id || "") === boardingStopId);
+  const toIndex = stops.findIndex((stop) => String(stop?.id || "") === dropoffStopId);
+
+  if (!passengerName) {
+    return passengerActionMessage0498(controls.message, "Informe seu nome.");
+  }
+  if (!Number.isInteger(seats) || seats < 1) {
+    return passengerActionMessage0498(controls.message, "Informe uma quantidade válida de lugares.");
+  }
+  if (fromIndex < 0 || toIndex <= fromIndex) {
+    return passengerActionMessage0498(
+      controls.message,
+      "O desembarque precisa ficar depois do embarque no trajeto desta viagem.",
+    );
+  }
+
+  const path = passengerMutationPath0498(entry);
+  if (!path) return passengerActionMessage0498(controls.message, "Contexto seguro da reserva indisponível.");
+
+  controls.save.disabled = true;
+  controls.cancel.disabled = true;
+  passengerActionMessage0498(controls.message, "Salvando alterações...", true);
+  try {
+    const result = await request0491(path, {
+      method: "PUT",
+      body: { passengerName, boardingStopId, dropoffStopId, seats },
+    });
+    passengerActionMessage0498(
+      controls.message,
+      result?.changed === false ? "Nenhuma alteração necessária." : "Reserva atualizada.",
+      true,
+    );
+    await refreshPrivateArea0491(true);
+  } catch (error) {
+    passengerActionMessage0498(controls.message, error.message || "Não foi possível alterar a reserva.");
+  } finally {
+    controls.save.disabled = false;
+    controls.cancel.disabled = false;
+  }
+}
+
+async function cancelPassengerBooking0498(entry, controls) {
+  const path = passengerMutationPath0498(entry, "/cancel");
+  if (!path) return passengerActionMessage0498(controls.message, "Contexto seguro da reserva indisponível.");
+  if (!window.confirm("Cancelar esta reserva? As vagas serão atualizadas para o motorista e para a Agenda.")) return;
+
+  controls.save.disabled = true;
+  controls.cancel.disabled = true;
+  passengerActionMessage0498(controls.message, "Cancelando reserva...", true);
+  try {
+    await request0491(path, { method: "POST" });
+    passengerActionMessage0498(controls.message, "Reserva cancelada.", true);
+    await refreshPrivateArea0491(true);
+  } catch (error) {
+    passengerActionMessage0498(controls.message, error.message || "Não foi possível cancelar a reserva.");
+  } finally {
+    controls.save.disabled = false;
+    controls.cancel.disabled = false;
+  }
+}
+
+function passengerBookingActions0498(entry) {
+  const booking = entry?.booking || {};
+  const mutation = entry?.mutation || {};
+  const stops = Array.isArray(mutation.stops) ? mutation.stops : [];
+  const path = passengerMutationPath0498(entry);
+  if (!path || stops.length < 2 || isHistorical0491(entry)) return null;
+
+  const actions = document.createElement("div");
+  actions.className = "tripActions0498";
+
+  if (passengerBookingLocked0498(booking)) {
+    const locked = document.createElement("p");
+    locked.className = "muted actionMessage0498";
+    locked.textContent = "Alterações ficam bloqueadas após o embarque ou encerramento da viagem.";
+    actions.appendChild(locked);
+    return actions;
+  }
+
+  const editButton = document.createElement("button");
+  editButton.type = "button";
+  editButton.className = "secondary";
+  editButton.textContent = "Alterar reserva";
+
+  const panel = document.createElement("div");
+  panel.className = "tripEdit0498 hidden";
+
+  const nameLabel = document.createElement("label");
+  nameLabel.textContent = "Nome";
+  const name = document.createElement("input");
+  name.autocomplete = "name";
+  name.maxLength = 120;
+  name.value = String(mutation.passengerName || "").trim();
+  nameLabel.appendChild(name);
+
+  const boardingLabel = document.createElement("label");
+  boardingLabel.textContent = "Embarque";
+  const boarding = document.createElement("select");
+  boardingLabel.appendChild(boarding);
+
+  const dropoffLabel = document.createElement("label");
+  dropoffLabel.textContent = "Desembarque";
+  const dropoff = document.createElement("select");
+  dropoffLabel.appendChild(dropoff);
+
+  stops.forEach((stop) => {
+    const label = String(stop?.name || "").trim();
+    const id = String(stop?.id || "").trim();
+    if (!id || !label) return;
+    const boardingOption = document.createElement("option");
+    boardingOption.value = id;
+    boardingOption.textContent = label;
+    boardingOption.selected = id === String(mutation.boardingStopId || "");
+    boarding.appendChild(boardingOption);
+
+    const dropoffOption = document.createElement("option");
+    dropoffOption.value = id;
+    dropoffOption.textContent = label;
+    dropoffOption.selected = id === String(mutation.dropoffStopId || "");
+    dropoff.appendChild(dropoffOption);
+  });
+
+  const seatsLabel = document.createElement("label");
+  seatsLabel.textContent = "Lugares";
+  const seats = document.createElement("input");
+  seats.type = "number";
+  seats.inputMode = "numeric";
+  seats.min = "1";
+  seats.max = String(Math.max(1, Number(entry?.trip?.capacity || 1)));
+  seats.value = String(Math.max(1, Number(booking.seats || 1)));
+  seatsLabel.appendChild(seats);
+
+  const save = document.createElement("button");
+  save.type = "button";
+  save.className = "primary";
+  save.textContent = "Salvar alterações";
+
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "danger0498";
+  cancel.textContent = "Cancelar reserva";
+
+  const message = document.createElement("p");
+  message.className = "actionMessage0498 hidden";
+  message.setAttribute("role", "status");
+
+  const controls = { name, boarding, dropoff, seats, save, cancel, message };
+  save.addEventListener("click", () => savePassengerBooking0498(entry, controls));
+  cancel.addEventListener("click", () => cancelPassengerBooking0498(entry, controls));
+  editButton.addEventListener("click", () => {
+    panel.classList.toggle("hidden");
+    editButton.textContent = panel.classList.contains("hidden") ? "Alterar reserva" : "Fechar edição";
+  });
+
+  panel.append(nameLabel, boardingLabel, dropoffLabel, seatsLabel, save, cancel, message);
+  actions.append(editButton, panel);
+  return actions;
+}
+
+function renderBooking0491(entry) {
+  const trip = entry?.trip || {};
+  const booking = entry?.booking || {};
+  const card = document.createElement("article");
+  card.className = "trip";
+
+  const date = document.createElement("div");
+  date.className = "tripDate";
+  date.textContent = formatDateTime0491(trip.departureAtMillis) || "Data em atualização";
+
+  const route = document.createElement("div");
+  route.className = "route";
+  const from = String(booking.boarding || "").trim();
+  const to = String(booking.dropoff || "").trim();
+  route.textContent = from && to ? from + " → " + to : String(trip.title || "Sua viagem");
+
+  const facts = document.createElement("div");
+  facts.className = "facts";
+  const seats = Math.max(0, Number(booking.seats || 0));
+  const seatLine = document.createElement("span");
+  seatLine.textContent = seats === 1 ? "1 lugar" : seats + " lugares";
+  facts.appendChild(seatLine);
+
+  const boardingAddress = String(booking.boardingAddress || "").trim();
+  if (boardingAddress) {
+    const boardingLine = document.createElement("span");
+    boardingLine.textContent = "Embarque: " + boardingAddress;
+    facts.appendChild(boardingLine);
+  }
+  const dropoffAddress = String(booking.dropoffAddress || "").trim();
+  if (dropoffAddress) {
+    const dropoffLine = document.createElement("span");
+    dropoffLine.textContent = "Desembarque: " + dropoffAddress;
+    facts.appendChild(dropoffLine);
+  }
+
+  const status = document.createElement("span");
+  status.className = "pill";
+  status.textContent = bookingStatusLabel0491(booking);
+
+  card.append(date, route, facts, status);
+  const actions = passengerBookingActions0498(entry);
+  if (actions) card.appendChild(actions);
+  return card;
+}
+
+function renderBookings0491(entries) {
+  const upcoming = $("upcoming0491");
+  const history = $("history0491");
+  upcoming.innerHTML = "";
+  history.innerHTML = "";
+
+  const active = entries.filter((entry) => !isHistorical0491(entry))
+    .sort((a, b) => Number(a?.trip?.departureAtMillis || 0) - Number(b?.trip?.departureAtMillis || 0));
+  const past = entries.filter(isHistorical0491)
+    .sort((a, b) => Number(b?.trip?.departureAtMillis || 0) - Number(a?.trip?.departureAtMillis || 0));
+
+  const renderList = (root, list, emptyText) => {
+    if (!list.length) {
+      const empty = document.createElement("p");
+      empty.className = "muted";
+      empty.textContent = emptyText;
+      root.appendChild(empty);
+      return;
+    }
+    list.forEach((entry) => root.appendChild(renderBooking0491(entry)));
+  };
+
+  renderList(upcoming, active, "Nenhuma próxima viagem.");
+  renderList(history, past, "Nenhuma viagem anterior.");
+}
+
+function renderTimeline0625(items) {
+  const root = $("timeline0625");
+  if (!root) return;
+  root.innerHTML = "";
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "Nenhum histórico ainda.";
+    root.appendChild(empty);
+    return;
+  }
+  list.forEach((item) => {
+    const row = document.createElement("article");
+    row.className = "timelineItem0625";
+    const time = document.createElement("div");
+    time.className = "timelineTime0625";
+    time.textContent = formatDateTime0491(item?.occurredAtMillis);
+    const title = document.createElement("div");
+    title.className = "timelineTitle0625";
+    title.textContent = String(item?.title || "Atualização");
+    const message = document.createElement("div");
+    message.className = "timelineMessage0625";
+    message.textContent = String(item?.message || item?.tripTitle || "");
+    row.append(time, title);
+    if (message.textContent) row.appendChild(message);
+    root.appendChild(row);
+  });
+}
+
+function renderNotifications0491(items, unreadCount) {
+  const root = $("notifications0491");
+  root.innerHTML = "";
+  const visible = Array.isArray(items) ? items.slice(0, 30) : [];
+
+  if (!visible.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "Nenhuma atualização.";
+    root.appendChild(empty);
+  } else {
+    visible.forEach((item) => {
+      const notice = document.createElement("article");
+      notice.className = item?.read ? "notice" : "notice noticeUnread";
+
+      const title = document.createElement("div");
+      title.className = "noticeTitle";
+      title.textContent = String(item?.title || "Atualização da viagem");
+
+      const body = document.createElement("div");
+      body.textContent = String(item?.message || "");
+
+      const time = document.createElement("div");
+      time.className = "noticeTime";
+      time.textContent = formatShortTime0491(item?.createdAtMillis);
+
+      notice.append(title, body, time);
+      root.appendChild(notice);
+    });
+  }
+
+  $("markRead0491").classList.toggle("hidden", Number(unreadCount || 0) <= 0);
+}
+
+function renderAuthState0492(state) {
+  const loading = state === "loading";
+  const authenticated = state === "authenticated";
+  show0491("authLoading0492", loading);
+  show0491("loginPanel0491", state === "unauthenticated");
+  show0491("privatePanel0491", authenticated);
+}
+
+function setAuthLoadingMessage0492(text) {
+  const node = $("authLoadingMessage0492");
+  if (node) node.textContent = text || "Carregando sua sessão...";
+}
+
+function enterPrivateMode0491() {
+  passengerAuthenticated0626 = true;
+  renderAuthState0492("authenticated");
+  const brand = $("privateBrand0649");
+  const title = $("privateTitle0649");
+  const lead = $("privateLead0649");
+  const back = $("backToAgenda0491");
+  if (brand) brand.textContent = "VIAGEM CERTA";
+  if (title) title.textContent = "Minhas viagens";
+  if (lead) lead.textContent = "Acompanhe suas reservas, próximas viagens e atualizações em um só lugar.";
+  if (back) back.textContent = "Voltar às viagens";
+  document.title = "Viagem Certa — Minha área VIP";
+}
+
+function leavePrivateMode0491() {
+  passengerAuthenticated0626 = false;
+  sessionToken0491 = "";
+  sessionStorage.removeItem(sessionKey0625);
+  sessionStorage.removeItem(legacySessionKey0491);
+  renderAuthState0492("unauthenticated");
+  if (pollHandle0491) window.clearInterval(pollHandle0491);
+  pollHandle0491 = 0;
+  changeCursor0495 = 0;
+  changeWatchGeneration0495 += 1;
+  changeWatchRunning0495 = false;
+}
+
+async function watchPrivateCanonicalChanges0495() {
+  if (!passengerAuthenticated0626 || changeWatchRunning0495 || navigator.onLine === false) return;
+  changeWatchRunning0495 = true;
+  const generation = changeWatchGeneration0495;
+  try {
+    while (
+      passengerAuthenticated0626 &&
+      generation === changeWatchGeneration0495 &&
+      navigator.onLine !== false
+    ) {
+      const scoped =
+        "?driverUsername=" + encodeURIComponent(driverUsername0491) +
+        "&since=" + encodeURIComponent(String(changeCursor0495));
+      const result = await request0491("/v1/passenger/me/changes" + scoped);
+      if (generation !== changeWatchGeneration0495 || !passengerAuthenticated0626) break;
+      changeCursor0495 = Math.max(changeCursor0495, Number(result?.cursor || 0));
+      if (result?.degraded === true) break;
+      if (result?.changed === true) {
+        await refreshPrivateArea0491(true);
+      }
+    }
+  } catch (error) {
+    if (error.status === 401 || error.status === 403) leavePrivateMode0491();
+  } finally {
+    if (generation === changeWatchGeneration0495) changeWatchRunning0495 = false;
+  }
+}
+
+async function refreshPrivateArea0491(silent = false) {
+  if (refreshInFlight0491) return;
+  refreshInFlight0491 = true;
+  try {
+    if (!driverUsername0491) {
+      throw Object.assign(new Error("Este acesso privado não possui contexto válido."), { status: 400 });
+    }
+    const scoped = "?driverUsername=" + encodeURIComponent(driverUsername0491);
+    const me = await request0491("/v1/passenger/me" + scoped);
+    enterPrivateMode0491();
+    const passwordChangeRequired0651 = me?.mustChangePassword === true;
+    show0491("passwordPanel0491", passwordChangeRequired0651);
+    if ($("hello0625")) $("hello0625").textContent = me?.displayName ? "Olá, " + me.displayName : "Sua área";
+    if (passwordChangeRequired0651) {
+      if ($("refreshMessage0491")) {
+        $("refreshMessage0491").textContent = "Crie uma nova senha para concluir a recuperação antes de acessar seus dados.";
+      }
+      return;
+    }
+
+    const [bookings, notifications, timeline] = await Promise.all([
+      request0491("/v1/passenger/me/bookings" + scoped),
+      request0491("/v1/passenger/me/notifications" + scoped),
+      request0491("/v1/passenger/me/timeline"),
+    ]);
+    renderBookings0491(Array.isArray(bookings?.bookings) ? bookings.bookings : []);
+    renderNotifications0491(notifications?.notifications || [], notifications?.unreadCount || 0);
+    renderTimeline0625(timeline?.timeline || []);
+    changeCursor0495 = Math.max(changeCursor0495, Number(notifications?.changeCursor0495 || 0));
+    await loadPrivateCredits0649();
+    watchPrivateCanonicalChanges0495();
+    $("refreshMessage0491").textContent = "Atualizado às " + new Intl.DateTimeFormat("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date());
+
+    if (!pollHandle0491) {
+      pollHandle0491 = window.setInterval(() => {
+        if (document.visibilityState === "visible" && navigator.onLine !== false) {
+          refreshPrivateArea0491(true);
+        }
+      }, 10000);
+    }
+  } catch (error) {
+    if (error.status === 401 || error.status === 403) {
+      leavePrivateMode0491();
+      if (!silent) message0491("loginMessage0491", error.message || "Entre novamente.");
+    } else if (!silent) {
+      renderAuthState0492("loading");
+      setAuthLoadingMessage0492(error.message || "Não foi possível confirmar sua sessão agora. Tente novamente.");
+    }
+  } finally {
+    refreshInFlight0491 = false;
+  }
+}
+
+function showEntryStep0625(step) {
+  show0491("entryContactStep0625", step === "contact");
+  show0491("entryPasswordStep0625", step === "password");
+  show0491("entryConfirmStep0625", step === "confirm");
+  message0491("loginMessage0491", "");
+  const focus = step === "contact" ? "contact0491" : (step === "password" ? "password0491" : "passwordConfirm0625");
+  window.setTimeout(() => $(focus)?.focus(), 30);
+}
+
+async function startPassengerEntry0625() {
+  message0491("loginMessage0491", "");
+  const contact = $("contact0491").value.trim();
+  if (!contact) return message0491("loginMessage0491", "Informe seu WhatsApp.");
+  $("entryContactContinue0625").disabled = true;
+  try {
+    const status = await request0491("/v1/public/passenger-access/status", {
+      method: "POST",
+      body: {
+        passengerContact: contact,
+        driverUsername: driverUsername0491,
+        tripToken: returnTripToken0649 || undefined,
+      },
+    });
+    if (status?.vipActive !== true) {
+      return message0491("loginMessage0491", "Este acesso é exclusivo para membros VIP convidados.");
+    }
+    entryContact0625 = contact;
+    entryPasswordCreated0625 = status?.passwordCreated === true;
+    $("entryPasswordTitle0625").textContent = entryPasswordCreated0625 ? "Digite sua senha" : "Crie sua senha";
+    showEntryStep0625("password");
+  } catch (error) {
+    message0491("loginMessage0491", error.message || "Não foi possível localizar seu cadastro.");
+  } finally {
+    $("entryContactContinue0625").disabled = false;
+  }
+}
+
+function continuePassengerPassword0625() {
+  const password = $("password0491").value.trim();
+  if (!/^\d{4}$/.test(password)) return message0491("loginMessage0491", "Sua senha precisa ter exatamente 4 números.");
+  if (entryPasswordCreated0625) return finishPassengerEntry0625();
+  showEntryStep0625("confirm");
+}
+
+async function finishPassengerEntry0625() {
+  message0491("loginMessage0491", "");
+  const password = $("password0491").value.trim();
+  const confirmation = $("passwordConfirm0625").value.trim();
+  if (!/^\d{4}$/.test(password)) return message0491("loginMessage0491", "Sua senha precisa ter exatamente 4 números.");
+  if (!entryPasswordCreated0625) {
+    if (!/^\d{4}$/.test(confirmation)) return message0491("loginMessage0491", "Confirme sua senha de 4 números.");
+    if (password !== confirmation) return message0491("loginMessage0491", "As duas senhas precisam ser iguais.");
+  }
+  $("entryPasswordContinue0625").disabled = true;
+  $("entryConfirmContinue0625").disabled = true;
+  try {
+    const result = await request0491("/v1/public/passenger-password-session", {
+      method: "POST",
+      body: {
+        passengerContact: entryContact0625,
+        password,
+        passwordConfirmation: entryPasswordCreated0625 ? undefined : confirmation,
+        sessionContextId: sessionContext0491(),
+        driverUsername: returnTripToken0649 ? undefined : driverUsername0491,
+        tripToken: returnTripToken0649 || undefined,
+      },
+    });
+    sessionToken0491 = String(result?.sessionToken || "");
+    if (!sessionToken0491) throw new Error("Sessão não recebida.");
+    passengerAuthenticated0626 = true;
+    sessionStorage.removeItem(sessionKey0625);
+    sessionStorage.removeItem(legacySessionKey0491);
+    $("password0491").value = "";
+    $("passwordConfirm0625").value = "";
+    await refreshPrivateArea0491(false);
+  } catch (error) {
+    message0491("loginMessage0491", error.message || "Não foi possível entrar.");
+  } finally {
+    $("entryPasswordContinue0625").disabled = false;
+    $("entryConfirmContinue0625").disabled = false;
+  }
+}
+
+async function changePassword0491() {
+  message0491("passwordMessage0491", "");
+  const password = $("newPassword0491").value;
+  const confirmation = $("newPasswordConfirm0491").value;
+  if (!/^\d{4}$/.test(password) || password !== confirmation) {
+    return message0491("passwordMessage0491", "Use exatamente 4 números e confirme a mesma senha.");
+  }
+
+  $("changePassword0491").disabled = true;
+  try {
+    await request0491("/v1/passenger/me/password", {
+      method: "POST",
+      body: { password },
+    });
+    $("newPassword0491").value = "";
+    $("newPasswordConfirm0491").value = "";
+    show0491("passwordPanel0491", false);
+    await refreshPrivateArea0491(false);
+  } catch (error) {
+    message0491("passwordMessage0491", error.message || "Não foi possível alterar a senha.");
+  } finally {
+    $("changePassword0491").disabled = false;
+  }
+}
+
+function formatMoney0649(cents) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
+    .format(Math.max(0, Number(cents || 0)) / 100);
+}
+
+async function loadPrivateCredits0649() {
+  if (!passengerAuthenticated0626 || !driverUsername0491) return;
+  const balance = $("privateCreditBalance0649");
+  const summary = $("privateCreditSummary0649");
+  try {
+    const result = await request0491(
+      "/v1/passenger/me/credits?driverUsername=" + encodeURIComponent(driverUsername0491),
+    );
+    if (balance) balance.textContent = formatMoney0649(result?.balanceCents || 0);
+    if (summary) {
+      summary.textContent =
+        "Ganhos: " + formatMoney0649(result?.earnedCents || 0) +
+        " • Usados: " + formatMoney0649(result?.spentCents || 0);
+    }
+  } catch (error) {
+    if (summary) summary.textContent = error.message || "Créditos indisponíveis agora.";
+  }
+}
+
+async function sharePrivateInvite0649() {
+  const message = $("privateCreditMessage0649");
+  try {
+    const result = await request0491("/v1/passenger/me/referral", {
+      method: "POST",
+      body: { driverUsername: driverUsername0491 },
+    });
+    const code = String(result?.referralCode || "");
+    if (!code) throw new Error("Convite indisponível.");
+    const url = new URL("/" + encodeURIComponent(driverUsername0491), location.origin);
+    url.searchParams.set("convite", code);
+    const shareData = {
+      title: "Área VIP",
+      text: "Você recebeu um convite para uma área privada.",
+      url: url.toString(),
+    };
+    if (navigator.share) await navigator.share(shareData);
+    else {
+      await navigator.clipboard.writeText(url.toString());
+      if (message) message.textContent = "Convite VIP copiado.";
+    }
+  } catch (error) {
+    if (error?.name !== "AbortError" && message) {
+      message.textContent = error.message || "Não foi possível compartilhar o convite.";
+    }
+  }
+}
+
+async function markRead0491() {
+  try {
+    await request0491(
+      "/v1/passenger/me/notifications/read-all?driverUsername=" + encodeURIComponent(driverUsername0491),
+      { method: "POST" },
+    );
+    await refreshPrivateArea0491(true);
+  } catch (_) {}
+}
+
+async function logout0491() {
+  try {
+    await request0491("/v1/passenger/logout", {
+      method: "POST",
+      body: {},
+    });
+  } catch (_) {}
+  leavePrivateMode0491();
+}
+
+function init0491() {
+  const back = $("backToAgenda0491");
+  if (driverUsername0491) {
+    const query = new URLSearchParams();
+    if (returnTripToken0649) query.set("viagem", returnTripToken0649);
+    back.href = "/" + encodeURIComponent(driverUsername0491) + (query.toString() ? "?" + query.toString() : "");
+  } else {
+    back.href = "/";
+    show0491("contextError0491", true);
+    $("contextError0491").textContent = "Este acesso privado não possui contexto válido.";
+  }
+  $("entryContactContinue0625").addEventListener("click", startPassengerEntry0625);
+  $("entryPasswordContinue0625").addEventListener("click", continuePassengerPassword0625);
+  $("entryConfirmContinue0625").addEventListener("click", finishPassengerEntry0625);
+  document.querySelectorAll(".entryBack0625").forEach((node) => node.addEventListener("click", () => showEntryStep0625("contact")));
+  $("contact0491").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") startPassengerEntry0625();
+  });
+  $("password0491").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") continuePassengerPassword0625();
+  });
+  $("passwordConfirm0625").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") finishPassengerEntry0625();
+  });
+  $("changePassword0491").addEventListener("click", changePassword0491);
+  $("markRead0491").addEventListener("click", markRead0491);
+  $("privateInvite0649")?.addEventListener("click", sharePrivateInvite0649);
+  $("privateRefreshCredits0649")?.addEventListener("click", loadPrivateCredits0649);
+  $("logout0491").addEventListener("click", logout0491);
+  window.addEventListener("online", () => {
+    refreshPrivateArea0491(true);
+    watchPrivateCanonicalChanges0495();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && navigator.onLine !== false) {
+      refreshPrivateArea0491(true);
+    }
+  });
+
+  renderAuthState0492("loading");
+  setAuthLoadingMessage0492("Carregando sua sessão...");
+  refreshPrivateArea0491(false);
+}
+
+init0491();

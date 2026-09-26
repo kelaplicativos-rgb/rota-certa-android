@@ -1,0 +1,71 @@
+name: Public Trip Navigation Capture APK
+
+on:
+  push:
+    branches:
+      - agent/public-trip-navigation-capture-0.1.570
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify checked-out SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git rev-parse HEAD)"
+          test "$ACTUAL" = "$GITHUB_SHA"
+          echo "FINAL_SHA=$ACTUAL" >> "$GITHUB_ENV"
+
+      - name: Assemble installable APK
+        shell: bash
+        env:
+          ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+          ROTA_CERTA_GIT_BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Package exact-SHA APK and evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          SHORT="${GITHUB_SHA:0:12}"
+          OUT="rota-certa-${SHORT}.apk"
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee "${OUT}.sha256"
+          printf 'sha=%s\nbranch=%s\nsource_apk=%s\n' "$GITHUB_SHA" "$GITHUB_REF_NAME" "$APK" > build-evidence.txt
+          ls -lh "$OUT" "${OUT}.sha256" build-evidence.txt
+
+      - name: Publish APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-apk-${{ github.sha }}
+          path: |
+            rota-certa-*.apk
+            rota-certa-*.apk.sha256
+            build-evidence.txt
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,209 @@
+name: Reading proximity 0.1.545 final APK
+
+on:
+  push:
+    branches:
+      - agent/reading-proximity-fix-0.1.545
+    paths:
+      - '.github/triggers/reading-proximity-0545.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reading-proximity-0545-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  materialize-test-final-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: reading_proximity_0545_ci_dummy_key
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/reading-proximity-fix-0.1.545
+
+      - name: Prove exact 0.1.544 baseline and protected scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionCode = 5836' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.544"' app/build.gradle.kts
+          grep -Fq 'applyWorkModeRuntime0162(enabledStage43, force0162 = true)' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'hardClearUniversalTwoAddress(' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'requestAddressRouteMatrix(body, apiKey, missingDestinations.size)' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
+          test -f .github/scripts/reading_proximity_0545.py
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt > /tmp/timeline.before
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt > /tmp/agenda-sync.before
+
+      - name: Materialize surgical reading and proximity fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/reading_proximity_0545.py
+          git diff --check
+          grep -Fq 'versionCode = 5837' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.545"' app/build.gradle.kts
+          grep -Fq 'applyManualReadingRuntimeStage43(enabledStage43)' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          ! grep -Fq 'applyWorkModeRuntime0162(enabledStage43, force0162 = true)' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'S44_TRANSIENT_NO_CANDIDATE_FINAL_PRESERVED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'ROUTE_MATRIX_HTTP_ERROR' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
+          grep -Fq 'ROUTE_MATRIX_FALLBACK_RESOLVED' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
+
+      - name: Prove unrelated operational modules untouched
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt > /tmp/timeline.after
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt > /tmp/agenda-sync.after
+          cmp /tmp/timeline.before /tmp/timeline.after
+          cmp /tmp/agenda-sync.before /tmp/agenda-sync.after
+          { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u > /tmp/changed.txt
+          printf '%s\n' \
+            'app/build.gradle.kts' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt' \
+            'app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage43ManualToggleRuntimeSyncTest.kt' \
+            'app/src/test/java/br/com/mapeiaia/rotacerta/ReadingProximity0545ContractTest.kt' | sort > /tmp/expected.txt
+          cmp /tmp/expected.txt /tmp/changed.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure Firebase Android app for build only
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Focused reading/proximity tests and pre-commit APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.ReadingProximity0545ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolStage42ManualUniversalReadingTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolStage44SemanticFinalLeaseTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolStage46ImmediateAddressRouteR7Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Commit tested 0.1.545 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            app/build.gradle.kts \
+            app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt \
+            app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage43ManualToggleRuntimeSyncTest.kt \
+            app/src/test/java/br/com/mapeiaia/rotacerta/ReadingProximity0545ContractTest.kt
+          git commit -m 'fix(farol): decouple reading proximity and recover route distance 0.1.545'
+          git push origin HEAD:agent/reading-proximity-fix-0.1.545
+          FINAL_SHA="$(git rev-parse HEAD)"
+          printf '%s\n' "$FINAL_SHA" | tee /tmp/source-head.txt
+          echo "FINAL_SHA=$FINAL_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_SHA=$FINAL_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=agent/reading-proximity-fix-0.1.545" >> "$GITHUB_ENV"
+          git diff --exit-code
+
+      - name: Rebuild exact final SHA and verify APK identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$FINAL_SHA"
+          ./gradlew :app:clean :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5837'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.545'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -Fq 'Verified' /tmp/apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "$FINAL_SHA" /tmp/dex-strings.txt
+          grep -Fq 'MANUAL_READING_RUNTIME_STAGE43' /tmp/dex-strings.txt
+          grep -Fq 'S44_TRANSIENT_NO_CANDIDATE_FINAL_PRESERVED' /tmp/dex-strings.txt
+          grep -Fq 'ROUTE_MATRIX_HTTP_ERROR' /tmp/dex-strings.txt
+          grep -Fq 'ROUTE_MATRIX_FALLBACK_RESOLVED' /tmp/dex-strings.txt
+          sha256sum "$APK" | tee /tmp/apk.sha256
+
+      - name: Prepare final-SHA evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/reading-proximity-0545
+          mkdir -p "$OUT"
+          cp app/build/outputs/apk/debug/app-debug.apk "$OUT/rota-certa-0.1.545-debug.apk"
+          cp /tmp/apk.sha256 "$OUT/apk.sha256"
+          cp /tmp/source-head.txt "$OUT/source-head.txt"
+          cp /tmp/aapt.txt /tmp/apksigner.txt "$OUT/"
+          printf '%s\n' \
+            'package=br.com.mapeiaia.rotacerta' \
+            'versionName=0.1.545' \
+            'versionCode=5837' \
+            "sourceSha=$FINAL_SHA" \
+            'readingToggle=reading-only-runtime' \
+            'proximityRuntimePreserved=true' \
+            'transientFinalLease=stage44' \
+            'routeMatrixErrorBody=sanitized' \
+            'routeFallback=existing-geocode-computeRoutes' \
+            'physicalApproval=PENDING_SAMSUNG_SM_S911B_ANDROID_16' > "$OUT/version.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-reading-proximity-0.1.545-${{ env.FINAL_SHA }}
+          path: /tmp/reading-proximity-0545
+          if-no-files-found: error
+          retention-days: 14

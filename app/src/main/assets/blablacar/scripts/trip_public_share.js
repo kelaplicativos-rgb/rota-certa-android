@@ -1,0 +1,450 @@
+(function() {
+  const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+  const normalize = (value) => clean(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  let tripId = '';
+  try {
+    const current = new URL(location.href);
+    tripId = clean(current.searchParams.get('id'));
+    if (!tripId) {
+      const currentMatch = current.pathname.match(/\/ride-plan\/trip-edit\/([^/?#]+)/i);
+      tripId = clean(currentMatch && currentMatch[1]);
+    }
+    if (!tripId) {
+      const match = current.pathname.match(/\/rides\/offer\/(?!edit(?:\/|$)|passenger(?:\/|$))([^/?#]+)/i);
+      tripId = clean(match && match[1]);
+    }
+  } catch (_) {}
+
+  const isOfficialBlaBlaHost = (hostname) => {
+    const labels = clean(hostname).toLowerCase().replace(/^\.+|\.+$/g, '').split('.').filter(Boolean);
+    const root = labels[0] === 'www' ? labels.slice(1) : labels;
+    if (root[0] !== 'blablacar') return false;
+    const suffix = root.slice(1);
+    if (suffix.length === 1) return suffix[0] === 'com' || /^[a-z]{2}$/.test(suffix[0]);
+    if (suffix.length === 2) return ['com', 'co'].includes(suffix[0]) && /^[a-z]{2}$/.test(suffix[1]);
+    return false;
+  };
+
+  const publicTripUrl = (raw, requireAdministrativeId) => {
+    if (!tripId) return '';
+    try {
+      const url = new URL(raw || '', location.href);
+      if (!['http:', 'https:'].includes(url.protocol) || !isOfficialBlaBlaHost(url.hostname)) return '';
+      if (url.username || url.password || (url.port && !['80', '443'].includes(url.port))) return '';
+      const path = url.pathname.replace(/\/+$/, '').toLowerCase();
+      if (path !== '/trip' && !path.startsWith('/trip/')) return '';
+      if (['requested_seats', 'search_origin', 'search_uuid'].some((key) => url.searchParams.has(key))) return '';
+      const sourceParam = clean(url.searchParams.get('source')).toUpperCase();
+      if (sourceParam && sourceParam !== 'CARPOOLING') return '';
+      let id = clean(url.searchParams.get('id'));
+      if (!id) {
+        const match = url.pathname.match(/\/trip\/([^/?#]+)/i);
+        id = clean(match && match[1]);
+      }
+      if (!/^[A-Za-z0-9_-]{6,}$/.test(id)) return '';
+      if (requireAdministrativeId && id !== tripId) return '';
+      url.protocol = 'https:';
+      if (url.port === '80' || url.port === '443') url.port = '';
+      url.hash = '';
+      return url.href;
+    } catch (_) {
+      return '';
+    }
+  };
+
+  const exactPublicTripUrl = (raw) => publicTripUrl(raw, true);
+  const authoritativeSharedPublicTripUrl = (raw) => publicTripUrl(raw, false);
+
+  const urlsFrom = (value) => {
+    const text = String(value || '');
+    const matches = text.match(/https?:\/\/[^\s<>"']+/gi) || [];
+    return matches.map((item) => item.replace(/[)\],.;!?]+$/, ''));
+  };
+
+  const publishedOfferMarkerFor = (node) => normalize(
+    ((node && (node.innerText || node.textContent)) || '') + ' ' +
+    ((node && node.getAttribute && node.getAttribute('aria-label')) || '') + ' ' +
+    ((node && node.getAttribute && node.getAttribute('title')) || '') + ' ' +
+    ((node && node.getAttribute && node.getAttribute('data-testid')) || '')
+  );
+
+  const isPublishedOfferLink = (node) => {
+    const marker = publishedOfferMarkerFor(node);
+    if (!marker) return false;
+    return marker.includes('ver sua carona publicada') ||
+      marker.includes('ver a sua carona publicada') ||
+      marker.includes('view your published ride') ||
+      marker.includes('see your published ride') ||
+      marker.includes('view published ride') ||
+      marker.includes('published ride') ||
+      marker.includes('voir votre covoiturage publie') ||
+      marker.includes('voir le covoiturage publie') ||
+      marker.includes('ver tu viaje publicado') ||
+      marker.includes('ver viaje publicado') ||
+      marker.includes('vedi il tuo viaggio pubblicato');
+  };
+
+  const stateKey = '__rotaCertaTripPublicShareCapture';
+  let state = window[stateKey];
+  if (!state || state.tripId !== tripId) {
+    state = {
+      tripId: tripId,
+      publicTripHref: '',
+      interceptInstalled: false,
+      shareInvoked: false,
+      clicks: 0,
+      payloadText: '',
+      copyClicks: 0,
+      menuClicks: 0,
+      clipboardInterceptInstalled: false
+    };
+    window[stateKey] = state;
+  }
+
+  // 0.1.604: strongest authority is the literal href exposed by the exact
+  // administrative offer page as "Ver sua carona publicada". The public token
+  // is not derived from the administrative UUID and may legitimately differ.
+  let publishedOfferHref = '';
+  let publishedOfferMarker = '';
+  const publishedOfferNodes = Array.from(document.querySelectorAll(
+    'a[href], [role="link"][href], [data-href]'
+  )).filter(isPublishedOfferLink);
+  publishedOfferNodes.some((node) => {
+    const raw = (node.href || (node.getAttribute && node.getAttribute('href')) ||
+      (node.getAttribute && node.getAttribute('data-href')) || '');
+    const resolved = authoritativeSharedPublicTripUrl(raw);
+    if (!resolved) return false;
+    publishedOfferHref = resolved;
+    publishedOfferMarker = publishedOfferMarkerFor(node).slice(0, 240);
+    state.publicTripHref = resolved;
+    return true;
+  });
+
+  const acceptCandidate = (raw, authoritativeSharePayload) => {
+    const resolved = authoritativeSharePayload
+      ? authoritativeSharedPublicTripUrl(raw)
+      : exactPublicTripUrl(raw);
+    if (resolved) {
+      state.publicTripHref = resolved;
+      return resolved;
+    }
+    return '';
+  };
+
+  // 0.1.569/0571: generic page links are not public-share authority.
+  // A public token may differ from the administrative trip id, so capture the
+  // actual share payload instead of accepting a search/navigation URL.
+  if (state.publicTripHref && !authoritativeSharedPublicTripUrl(state.publicTripHref)) {
+    state.publicTripHref = '';
+  }
+
+  const capturePayload = (payload) => {
+    state.shareInvoked = true;
+    const pieces = [];
+    if (payload && typeof payload === 'object') {
+      pieces.push(payload.url || '', payload.text || '', payload.title || '');
+    } else {
+      pieces.push(payload || '');
+    }
+    state.payloadText = pieces.map(String).join(' ').slice(0, 4000);
+    pieces.some((piece) => {
+      if (acceptCandidate(piece, true)) return true;
+      return urlsFrom(piece).some((candidate) => acceptCandidate(candidate, true));
+    });
+    return Promise.resolve();
+  };
+
+  const installClipboardIntercept = () => {
+    if (state.clipboardInterceptInstalled) return true;
+    const captureClipboard = (value) => {
+      const raw = String(value || '');
+      state.payloadText = (state.payloadText + ' ' + raw).slice(0, 4000);
+      if (!acceptCandidate(raw, true)) {
+        urlsFrom(raw).some((candidate) => acceptCandidate(candidate, true));
+      }
+      return Promise.resolve();
+    };
+    try {
+      if (navigator.clipboard) {
+        Object.defineProperty(navigator.clipboard, 'writeText', {
+          configurable: true,
+          writable: true,
+          value: captureClipboard
+        });
+        state.clipboardInterceptInstalled = navigator.clipboard.writeText === captureClipboard;
+      }
+    } catch (_) {}
+    if (!state.clipboardInterceptInstalled) {
+      try {
+        const clipboard = navigator.clipboard;
+        const proto = clipboard && Object.getPrototypeOf(clipboard);
+        if (proto) {
+          Object.defineProperty(proto, 'writeText', {
+            configurable: true,
+            writable: true,
+            value: captureClipboard
+          });
+          state.clipboardInterceptInstalled = clipboard.writeText === captureClipboard;
+        }
+      } catch (_) {}
+    }
+    return state.clipboardInterceptInstalled;
+  };
+
+  const installShareIntercept = () => {
+    if (state.interceptInstalled) return true;
+    try {
+      Object.defineProperty(navigator, 'share', {
+        configurable: true,
+        writable: true,
+        value: capturePayload
+      });
+      state.interceptInstalled = navigator.share === capturePayload;
+    } catch (_) {}
+    if (!state.interceptInstalled) {
+      try {
+        const proto = Object.getPrototypeOf(navigator);
+        Object.defineProperty(proto, 'share', {
+          configurable: true,
+          writable: true,
+          value: capturePayload
+        });
+        state.interceptInstalled = navigator.share === capturePayload;
+      } catch (_) {}
+    }
+    if (state.interceptInstalled) {
+      try {
+        Object.defineProperty(navigator, 'canShare', {
+          configurable: true,
+          writable: true,
+          value: function() { return true; }
+        });
+      } catch (_) {}
+    }
+    return state.interceptInstalled;
+  };
+
+  const visible = (node) => {
+    if (!node || !node.isConnected) return false;
+    const style = window.getComputedStyle ? window.getComputedStyle(node) : null;
+    if (style && (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0')) return false;
+    return !node.getClientRects || node.getClientRects().length > 0;
+  };
+
+  const markerFor = (node) => normalize(
+    (node.innerText || node.textContent || '') + ' ' +
+    ((node.getAttribute && node.getAttribute('aria-label')) || '') + ' ' +
+    ((node.getAttribute && node.getAttribute('data-testid')) || '') + ' ' +
+    ((node.getAttribute && node.getAttribute('title')) || '') + ' ' +
+    ((node.getAttribute && node.getAttribute('name')) || '')
+  );
+
+  const enabledShareControl = (node) => {
+    if (!node || !node.isConnected) return false;
+    if (node.disabled === true) return false;
+    const ariaDisabled = normalize(
+      (node.getAttribute && node.getAttribute('aria-disabled')) || ''
+    );
+    return ariaDisabled !== 'true';
+  };
+
+  const shareMarkerMatches = (node) => {
+    const marker = markerFor(node);
+    if (marker.includes('perfil') || marker.includes('profile')) return false;
+    return marker.includes('compartilhar esta carona') ||
+      marker.includes('compartilhar carona') ||
+      marker.includes('compartilhar') ||
+      marker.includes('share this ride') ||
+      marker.includes('share-ride') ||
+      marker.includes('share_ride') ||
+      marker.includes('ride-share') ||
+      marker.includes('trip-share') ||
+      marker.includes('share-trip') ||
+      marker.includes('e2e-share') ||
+      marker.includes('share');
+  };
+
+  // 0.1.582: a real share action can remain connected to the current trip
+  // while WebView layout/CSS makes it non-visible. Visibility is an ordering
+  // preference, not an authority requirement. The candidate must still be
+  // enabled, connected and explicitly identified as a share action.
+  const allShareControls = Array.from(document.querySelectorAll(
+    'button, a, [role="button"], [data-testid], [aria-label], [title]'
+  )).filter((node) => enabledShareControl(node) && shareMarkerMatches(node));
+  const visibleShareControls = allShareControls.filter(visible);
+  const hiddenShareControls = allShareControls.filter((node) => !visible(node));
+  const shareControls = visibleShareControls.concat(hiddenShareControls);
+
+  const shareSurfaces = Array.from(document.querySelectorAll(
+    '[role="dialog"], [aria-modal="true"], [data-testid*="share" i], [class*="share" i]'
+  )).filter(visible);
+
+  const menuMarkerMatches = (node) => {
+    const marker = markerFor(node);
+    const context = normalize(
+      ((node.parentElement && node.parentElement.innerText) || '') + ' ' +
+      ((node.parentElement && node.parentElement.getAttribute &&
+        node.parentElement.getAttribute('data-testid')) || '')
+    );
+    if (
+      marker.includes('perfil') ||
+      marker.includes('profile') ||
+      marker.includes('conta') ||
+      marker.includes('account') ||
+      marker.includes('passageiro') ||
+      marker.includes('passenger') ||
+      context.includes('passageiro') ||
+      context.includes('passenger')
+    ) return false;
+    const popup = normalize(
+      (node.getAttribute && node.getAttribute('aria-haspopup')) || ''
+    );
+    const semanticMenu =
+      marker.includes('mais opcoes') ||
+      marker.includes('mais acoes') ||
+      marker.includes('outras opcoes') ||
+      marker.includes('more options') ||
+      marker.includes('more actions') ||
+      marker.includes('trip actions') ||
+      marker.includes('ride actions') ||
+      marker.includes('overflow menu');
+    return semanticMenu || (
+      popup === 'menu' &&
+      (
+        marker.includes('mais') ||
+        marker.includes('more') ||
+        marker.includes('acoes') ||
+        marker.includes('actions') ||
+        marker.includes('opcoes') ||
+        marker.includes('options')
+      )
+    );
+  };
+
+  const menuControls = Array.from(document.querySelectorAll(
+    'button, [role="button"], [aria-haspopup="menu"], [data-testid], [aria-label], [title]'
+  )).filter((node) =>
+    visible(node) &&
+    enabledShareControl(node) &&
+    menuMarkerMatches(node) &&
+    !node.closest('header, nav')
+  );
+
+
+  const copyControls = Array.from(document.querySelectorAll(
+    'button, a, [role="button"], [data-testid], [aria-label], [title]'
+  )).filter((node) => {
+    if (!visible(node)) return false;
+    const marker = markerFor(node);
+    return marker.includes('copiar link') ||
+      marker.includes('copie o link') ||
+      marker.includes('copy link') ||
+      marker.includes('copy-link') ||
+      marker.includes('copy_link') ||
+      marker.includes('e2e-copy');
+  });
+
+  if (!state.publicTripHref) {
+    shareControls.some((node) => {
+      const candidates = [
+        node.href,
+        node.getAttribute && node.getAttribute('href'),
+        node.getAttribute && node.getAttribute('data-href'),
+        node.getAttribute && node.getAttribute('data-share-url'),
+        node.getAttribute && node.getAttribute('data-url')
+      ];
+      return candidates.some((candidate) => acceptCandidate(candidate, true));
+    });
+  }
+
+  if (!state.publicTripHref && state.clicks > 0) {
+    shareSurfaces.some((surface) => {
+      const nodes = [surface].concat(Array.from(surface.querySelectorAll(
+        'a, button, input, textarea, [data-href], [data-url], [data-share-url], [value]'
+      )));
+      return nodes.some((node) => {
+        const candidates = [
+          node.href,
+          node.value,
+          node.getAttribute && node.getAttribute('href'),
+          node.getAttribute && node.getAttribute('value'),
+          node.getAttribute && node.getAttribute('data-href'),
+          node.getAttribute && node.getAttribute('data-share-url'),
+          node.getAttribute && node.getAttribute('data-url')
+        ];
+        if (candidates.some((candidate) => acceptCandidate(candidate, true))) return true;
+        return urlsFrom(node.innerText || node.textContent || '').some((candidate) =>
+          acceptCandidate(candidate, true)
+        );
+      });
+    });
+  }
+
+  const shareInterceptReady = installShareIntercept();
+  const clipboardInterceptReady = installClipboardIntercept();
+  const canCaptureWithoutOpeningSystemShare =
+    shareInterceptReady || clipboardInterceptReady;
+
+  // 0.1.583: some BlaBlaCar trip pages materialize the share action only
+  // after opening the trip-level overflow/actions menu. Open only a visible,
+  // enabled, semantically identified trip actions control, then let the native
+  // retry pass rescan the newly materialized DOM before public-search fallback.
+  if (
+    !state.publicTripHref &&
+    canCaptureWithoutOpeningSystemShare &&
+    shareControls.length === 0 &&
+    menuControls.length > 0 &&
+    state.menuClicks < 2
+  ) {
+    state.menuClicks += 1;
+    try {
+      menuControls[0].click();
+    } catch (_) {}
+  }
+
+  if (
+    !state.publicTripHref &&
+    canCaptureWithoutOpeningSystemShare &&
+    shareControls.length > 0 &&
+    state.clicks < 3
+  ) {
+    state.clicks += 1;
+    try {
+      shareControls[0].click();
+    } catch (_) {}
+  }
+
+  if (
+    !state.publicTripHref &&
+    state.clicks > 0 &&
+    copyControls.length > 0 &&
+    state.copyClicks < 3
+  ) {
+    state.copyClicks += 1;
+    try {
+      copyControls[0].click();
+    } catch (_) {}
+  }
+
+  if (!state.publicTripHref && state.payloadText) {
+    urlsFrom(state.payloadText).some((candidate) => acceptCandidate(candidate, true));
+  }
+
+  return JSON.stringify({
+    tripId: tripId,
+    shareControlPresent: shareControls.length > 0,
+    menuControlPresent: menuControls.length > 0,
+    menuInvoked: (state.menuClicks || 0) > 0,
+    menuClickCount: state.menuClicks || 0,
+    shareInterceptInstalled: !!state.interceptInstalled || !!state.clipboardInterceptInstalled,
+    shareInvoked: !!state.shareInvoked,
+    clickCount: state.clicks || 0,
+    publishedOfferLinkPresent: !!publishedOfferHref,
+    publishedOfferHref: publishedOfferHref || '',
+    publishedOfferMarker: publishedOfferMarker || '',
+    publicTripHref: state.publicTripHref || ''
+  });
+})();

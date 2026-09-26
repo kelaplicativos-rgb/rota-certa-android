@@ -1,0 +1,830 @@
+package br.com.mapeiaia.rotacerta.trips
+
+import java.io.File
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+class PublicAgendaAutoSync0300Test {
+    private val zone = ZoneId.of("America/Sao_Paulo")
+
+    @Test
+    fun collectorTripBecomesPermanentPublicAgendaTrip() {
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "profile-ezequiel",
+            profile_name = "Ezequiel S",
+            date = "2030-09-10",
+            departure_time = "11:00",
+            arrival_time = "16:00",
+            actual_departure = "Santo André, SP",
+            actual_arrival = "São Thomé das Letras, MG",
+            price = "R$ 93,00",
+            trip_href = "https://www.blablacar.com.br/rides/offer/trip-123",
+            public_trip_href = "https://www.blablacar.com.br/trip?id=trip-123&search_uuid=private-noise",
+            trip_id = "trip-123",
+            booked_seats = 2,
+            passenger_roster_complete = true,
+        )
+        val trip = PublicAgendaAutoSync0300.toPublicTrip(
+            source = source,
+            capacity = 4,
+            nowMillis = 0L,
+            zoneId = zone,
+        )
+        assertNotNull(trip)
+        assertEquals(4, trip.trip.capacity)
+        assertEquals(TripStatus.PUBLISHED, trip.trip.status)
+        assertEquals(2, trip.bookedSeats)
+        assertEquals(9_300L, trip.trip.stops.first().priceToNextCents)
+        assertEquals("trip-123", trip.sourceReference)
+        assertTrue(trip.trip.publicBookingEnabled)
+        assertTrue(trip.trip.publicToken.startsWith("bb"))
+        assertEquals("profile-ezequiel", trip.trip.blablaProfileUuid)
+        assertEquals("Ezequiel S", trip.trip.blablaProfileName)
+        assertEquals("trip-123", trip.trip.blablaTripId)
+        assertEquals("https://www.blablacar.com.br/rides/offer/trip-123", trip.trip.blablaManageUrl)
+        assertEquals("https://www.blablacar.com.br/trip?id=trip-123", trip.trip.blablaPublicUrl)
+        assertEquals("https://www.blablacar.com.br/trip?id=trip-123", trip.blablaPublicHref)
+        assertEquals("", trip.trip.notes)
+    }
+
+    @Test
+    fun collectorTripRemainsPublishableAfterDepartureUntilArrivalPlusGrace() {
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "profile-operational-0577",
+            date = "2030-09-10",
+            departure_time = "11:00",
+            arrival_time = "16:00",
+            actual_departure = "Santo André",
+            actual_arrival = "São Tomé das Letras",
+            trip_href = "https://www.blablacar.com.br/rides/offer/trip-0577",
+            public_trip_href = "https://www.blablacar.com.br/trip?id=trip-0577",
+            trip_id = "trip-0577",
+            passenger_roster_complete = true,
+        )
+        val departure = LocalDate.parse(source.date)
+            .atTime(LocalTime.parse(source.departure_time))
+            .atZone(zone)
+            .toInstant()
+            .toEpochMilli()
+        val arrival = LocalDate.parse(source.date)
+            .atTime(LocalTime.parse(source.arrival_time))
+            .atZone(zone)
+            .toInstant()
+            .toEpochMilli()
+
+        assertNotNull(
+            PublicAgendaAutoSync0300.toPublicTrip(
+                source = source,
+                capacity = 4,
+                nowMillis = departure + 60L * 60L * 1000L,
+                zoneId = zone,
+            ),
+        )
+        assertNotNull(
+            PublicAgendaAutoSync0300.toPublicTrip(
+                source = source,
+                capacity = 4,
+                nowMillis = arrival + OPERATIONAL_TRIP_ARRIVAL_GRACE_MILLIS_0577,
+                zoneId = zone,
+            ),
+        )
+        assertNull(
+            PublicAgendaAutoSync0300.toPublicTrip(
+                source = source,
+                capacity = 4,
+                nowMillis = arrival + OPERATIONAL_TRIP_ARRIVAL_GRACE_MILLIS_0577 + 1L,
+                zoneId = zone,
+            ),
+        )
+    }
+
+    @Test
+    fun blablaBookedEvidenceRemainsOccupancyAndNeverBecomesPhysicalCapacity() {
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "profile-barbosa",
+            date = "2030-09-11",
+            departure_time = "19:00",
+            search_from = "São Thomé das Letras",
+            search_to = "Santo André",
+            availability = "full",
+            booked_seats = 7,
+        )
+        val trip = PublicAgendaAutoSync0300.toPublicTrip(
+            source = source,
+            capacity = 4,
+            rotaCertaSeatAllocation = 4,
+            nowMillis = 0L,
+            zoneId = zone,
+        )
+        assertNotNull(trip)
+        assertEquals(4, trip.trip.capacity)
+        assertEquals(4, trip.trip.rotaCertaSeatAllocation)
+        assertEquals(7, trip.bookedSeats)
+        assertEquals(7, trip.capacityClaims.sumOf(Booking::seats))
+        assertTrue(trip.capacityClaims.all { it.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY })
+    }
+
+    @Test
+    fun localCapacityMirrorsArePrivateStableAndExcludePublicLinkBookings() {
+        val trip = Trip(
+            id = "local-trip-1",
+            title = "Santo André → São Tomé das Letras",
+            departureAtMillis = 4_000_000_000_000L,
+            capacity = 4,
+            status = TripStatus.FULL,
+            stops = listOf(
+                TripStop(id = "sa", order = 0, name = "Santo André"),
+                TripStop(id = "sp", order = 1, name = "São Paulo"),
+                TripStop(id = "stl", order = 2, name = "São Tomé das Letras"),
+            ),
+        )
+        val blabla = Booking(
+            id = "blabla-booking-1",
+            tripId = trip.id,
+            passengerName = "Nome real não deve subir",
+            passengerContact = "(11) 99999-9999",
+            boardingStopId = "sa",
+            dropoffStopId = "stl",
+            seats = 3,
+            status = BookingStatus.CONFIRMED,
+            source = BookingSource.BLABLACAR,
+        )
+        val publicLink = Booking(
+            id = "public-booking-1",
+            tripId = trip.id,
+            passengerName = "Reserva do link",
+            boardingStopId = "sp",
+            dropoffStopId = "stl",
+            seats = 1,
+            status = BookingStatus.CONFIRMED,
+            source = BookingSource.ROTA_CERTA,
+            sourceReference = "PUBLIC_LINK:public-booking-1",
+        )
+
+        val mirrors = PublicAgendaAutoSync0300.localCapacityMirrors(trip, listOf(blabla, publicLink))
+
+        assertEquals(1, mirrors.size)
+        val mirror = mirrors.single()
+        assertTrue(mirror.id.startsWith("mirror-"))
+        assertEquals("Ocupação sincronizada", mirror.passengerName)
+        assertEquals("", mirror.passengerContact)
+        assertEquals(3, mirror.seats)
+        assertEquals("sa", mirror.boardingStopId)
+        assertEquals("stl", mirror.dropoffStopId)
+        assertEquals(BookingSource.BLABLACAR, mirror.source)
+        assertTrue(mirror.sourceReference.startsWith("LOCAL_MIRROR:"))
+    }
+    @Test
+    fun channelAllocationsBuildOperationalTotalWithoutChangingPhysicalCapacity() {
+        val breakdown = tripChannelAllocationBreakdown(
+            physicalPassengerCapacity = 7,
+            blablaPublishedSeats = 3,
+            rotaCertaSeatAllocation = 4,
+        )
+        assertEquals(3, breakdown.blablaQuota)
+        assertEquals(4, breakdown.rotaCertaQuota)
+        assertEquals(7, breakdown.operationalInventory)
+    }
+
+    @Test
+    fun externalTripPropagatesItineraryAuthorityAndFailsClosedUntilSeatClaimsReconcile() {
+        val authoritative = BlaBlaCollectorTrip(
+            profile_uuid = "profile",
+            date = "2030-09-12",
+            departure_time = "11:00",
+            actual_departure = "Santo André",
+            actual_arrival = "São Tomé das Letras",
+            itinerary_stops = listOf("Santo André", "Três Corações", "São Tomé das Letras"),
+            itinerary_authoritative = true,
+            published_seats = 3,
+        )
+        val published = PublicAgendaAutoSync0300.toPublicTrip(authoritative, 4, 0L, zone)
+        assertNotNull(published)
+        assertTrue(published.trip.itineraryAuthoritative)
+        assertEquals(3, published.trip.publishedSeats)
+        assertEquals(false, published.trip.capacityReliable)
+
+        val unknown = authoritative.copy(published_seats = null)
+        val unknownPublished = PublicAgendaAutoSync0300.toPublicTrip(unknown, 4, 0L, zone)
+        assertNotNull(unknownPublished)
+        assertNull(unknownPublished.publishedSeats)
+        assertEquals(false, unknownPublished.trip.capacityReliable)
+    }
+
+    @Test
+    fun publicProjectionKeepsBlaBlaFreeSeatsAndExternalPassengersSeparate() {
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "profile",
+            date = "2030-09-13",
+            departure_time = "11:00",
+            actual_departure = "Santo André",
+            actual_arrival = "São Tomé das Letras",
+            published_seats = 3,
+            booked_seats = 3,
+            passengers = listOf(
+                BlaBlaCollectorPassenger(name = "P1", seats = 1, booking_href = "https://www.blablacar.com.br/rides/offer/trip/passenger/p1"),
+                BlaBlaCollectorPassenger(name = "P2", seats = 1, booking_href = "https://www.blablacar.com.br/rides/offer/trip/passenger/p2"),
+                BlaBlaCollectorPassenger(name = "P3", seats = 1, booking_href = "https://www.blablacar.com.br/rides/offer/trip/passenger/p3"),
+            ),
+        )
+        val external = PublicAgendaAutoSync0300.toPublicTrip(
+            source = source,
+            capacity = 7,
+            rotaCertaSeatAllocation = 4,
+            nowMillis = 0L,
+            zoneId = zone,
+        )
+        assertNotNull(external)
+        assertEquals(7, external.trip.capacity)
+        assertEquals(3, external.trip.publishedSeats)
+        assertEquals(4, external.trip.rotaCertaSeatAllocation)
+        assertEquals(3, external.capacityClaims.sumOf(Booking::seats))
+        assertTrue(external.capacityClaims.all { it.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY })
+        val summary = operationalSeatSummary(external.trip, external.capacityClaims)
+        assertEquals(3, summary.blablaQuotaSeats)
+        assertEquals(4, summary.rotaCertaQuotaSeats)
+        assertEquals(7, summary.operationalInventorySeats)
+        assertEquals(4, summary.totalAvailableSeats)
+        assertEquals(3, summary.confirmedPassengerSeats)
+        assertEquals(4, summary.availableSeats)
+    }
+
+    @Test
+    fun canonicalReplayUsesAuthoritativeTripEvenWhenRawCollectorIsNoLongerDiscoverable() {
+        val canonical = Trip(
+            id = "canonical-trip-1",
+            title = "Santo André → São Tomé das Letras",
+            departureAtMillis = 1_000L,
+            capacity = 4,
+            status = TripStatus.PUBLISHED,
+            stops = listOf(
+                TripStop(id = "canonical-sa", order = 0, name = "Santo André"),
+                TripStop(id = "canonical-stl", order = 1, name = "São Tomé das Letras"),
+            ),
+            publicToken = "bbcanonicaltoken",
+            remoteId = "remote-existing",
+            blablaProfileUuid = "profile-canonical",
+            blablaTripId = "trip-canonical",
+            publishedSeats = 3,
+            rotaCertaSeatAllocation = 1,
+            recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
+            canonicalRevision = 10,
+            publicationRevision = 3,
+            tripKey = "tripkey:canonical",
+            canonicalStateHash = "tripstate-v1:canonical",
+            externalSnapshotFingerprint = "bbcap-v2:canonical",
+        )
+        val staleRawSnapshot = BlaBlaCollectorTrip(
+            profile_uuid = "profile-canonical",
+            trip_id = "trip-canonical",
+            date = "invalid-date",
+            departure_time = "11:00",
+            booked_seats = 1,
+            published_seats = 3,
+            passenger_roster_complete = true,
+            passengers = listOf(
+                BlaBlaCollectorPassenger(
+                    name = "Passageiro",
+                    seats = 1,
+                    boarding = "Santo André",
+                    dropoff = "São Tomé das Letras",
+                ),
+            ),
+        )
+
+        assertNull(
+            PublicAgendaAutoSync0300.toPublicTrip(
+                source = staleRawSnapshot,
+                capacity = 4,
+                nowMillis = 2_000L,
+                zoneId = zone,
+            ),
+        )
+
+        val projected = PublicAgendaAutoSync0300.toCanonicalExternalProjection0406(
+            canonical = canonical,
+            source = staleRawSnapshot,
+            nowMillis = 2_000L,
+        )
+
+        assertNotNull(projected)
+        assertEquals(canonical.id, projected.trip.id)
+        assertEquals(canonical.tripKey, projected.trip.tripKey)
+        assertEquals(canonical.departureAtMillis, projected.trip.departureAtMillis)
+        assertEquals(listOf("canonical-sa", "canonical-stl"), projected.trip.stops.map(TripStop::id))
+        assertEquals(1, projected.bookedSeats)
+        assertEquals("canonical-sa", projected.capacityClaims.single().boardingStopId)
+        assertEquals("canonical-stl", projected.capacityClaims.single().dropoffStopId)
+        assertEquals("bbcap-v2:canonical", projected.snapshotRevision)
+    }
+
+    @Test
+    fun departedCollectorTripWithoutArrivalUsesSafeOperationalRetention() {
+        val departure = LocalDate.of(2030, 9, 10)
+            .atTime(LocalTime.of(11, 0))
+            .atZone(zone)
+            .toInstant()
+            .toEpochMilli()
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "profile-ezequiel",
+            date = "2030-09-10",
+            departure_time = "11:00",
+            search_from = "Santo André",
+            search_to = "São Thomé das Letras",
+        )
+        assertNotNull(PublicAgendaAutoSync0300.toPublicTrip(source, 4, departure + 1L, zone))
+        assertNull(
+            PublicAgendaAutoSync0300.toPublicTrip(
+                source,
+                4,
+                departure + OPERATIONAL_TRIP_UNKNOWN_ARRIVAL_RETENTION_MILLIS_0577 + 1L,
+                zone,
+            ),
+        )
+    }
+
+    @Test
+    fun durableReplayCannotSilentlyAcceptPreTransportAbort() {
+        val source = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt",
+        ).readText()
+
+        assertTrue(source.contains("EXTERNAL_SOURCE_IDENTITY_CONFLICT"))
+        assertTrue(source.contains("AGENDA_ONLINE_NOT_CONFIGURED_DURABLE_REPLAY"))
+        assertTrue(source.contains("CANONICAL_PROJECTION_RESULT"))
+        assertTrue(source.contains("error(projectionReason0460)"))
+    }
+
+    @Test
+    fun externalPublicationFailuresExposeStageWithoutPassengerPii() {
+        val source = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt",
+        ).readText()
+
+        assertTrue(source.contains("EXTERNAL_CAPACITY_SNAPSHOT"))
+        assertTrue(source.contains("PUBLIC_AGENDA_EXTERNAL_SYNC_FAILED"))
+        assertTrue(source.contains("PUBLIC_CAPACITY_FAIL_CLOSED"))
+        assertTrue(source.contains("PUBLIC_CAPACITY_INCREMENTAL_PUBLISHED"))
+        assertTrue(source.contains("AgendaFailureEvidence.describe("))
+        assertTrue(!source.contains("reason=\${error.javaClass.simpleName}"))
+        assertTrue(source.contains("tripKey=\$diagnosticTripKey"))
+        assertTrue(source.contains("failures++"))
+        assertTrue(!source.contains("PUBLIC_AGENDA_EXTERNAL_SYNC_FAILED.*passengerName"))
+        assertTrue(!source.contains("PUBLIC_AGENDA_EXTERNAL_SYNC_FAILED.*passengerContact"))
+    }
+
+    @Test
+    fun immutableBookedTripShapeFailureIsRecognizedWithoutBroadeningOtherErrors() {
+        val protected = IllegalStateException(
+            "Servidor respondeu HTTP 400: {\"message\":\"Capacidade e estrutura de paradas não podem mudar depois da primeira reserva.\"}",
+        )
+        assertTrue(PublicAgendaAutoSync0300.isImmutablePublicTripShapeFailure(protected))
+        assertTrue(!PublicAgendaAutoSync0300.isImmutablePublicTripShapeFailure(IllegalStateException("HTTP 500")))
+    }
+
+    @Test
+    fun bookedExternalTripPreservesExistingBindingShapeAndRemapsClaims() {
+        val token = "bb123456789012345678901234567890"
+        val observed = Trip(
+            id = "public:$token",
+            title = "Santo André → São Thomé das Letras",
+            departureAtMillis = 4_000_000_000_000L,
+            capacity = 6,
+            status = TripStatus.PUBLISHED,
+            publicToken = token,
+            remoteId = token,
+            publicBookingEnabled = true,
+            stops = listOf(
+                TripStop(id = "new-sa", order = 0, name = "Santo André"),
+                TripStop(id = "new-pa", order = 1, name = "Pouso Alegre"),
+                TripStop(id = "new-cam", order = 2, name = "Camanducaia"),
+                TripStop(id = "new-stl", order = 3, name = "São Thomé das Letras"),
+            ),
+        )
+        val binding = PublicExternalTripBinding(
+            remoteTripId = token,
+            publicToken = token,
+            bookingTripId = "public-external:$token",
+            profileUuid = "profile",
+            blablaTripId = "trip",
+            title = observed.title,
+            departureAtMillis = observed.departureAtMillis,
+            capacity = 4,
+            stops = listOf(
+                TripStop(id = "old-sa", order = 0, name = "Santo André"),
+                TripStop(id = "old-pa", order = 1, name = "Pouso Alegre"),
+                TripStop(id = "old-stl", order = 2, name = "São Thomé das Letras"),
+            ),
+        )
+        val preserved = PublicAgendaAutoSync0300.preserveExternalBindingShape(observed, binding)
+        assertEquals(listOf("old-sa", "old-pa", "old-stl"), preserved.stops.map(TripStop::id))
+        assertEquals(6, preserved.capacity)
+
+        val matchingClaim = Booking(
+            id = "claim-1",
+            tripId = observed.id,
+            passengerName = "Ocupação",
+            boardingStopId = "new-pa",
+            dropoffStopId = "new-stl",
+            seats = 1,
+            status = BookingStatus.CONFIRMED,
+            source = BookingSource.BLABLACAR,
+        )
+        val newMiddleStopClaim = matchingClaim.copy(
+            id = "claim-2",
+            boardingStopId = "new-cam",
+            dropoffStopId = "new-stl",
+        )
+        val remapped = PublicAgendaAutoSync0300.remapExternalClaimsToBindingStructure(
+            claims = listOf(matchingClaim, newMiddleStopClaim),
+            observedStops = observed.stops,
+            preservedTrip = preserved,
+        )
+        assertEquals("old-pa", remapped[0].boardingStopId)
+        assertEquals("old-stl", remapped[0].dropoffStopId)
+        assertEquals("old-sa", remapped[1].boardingStopId)
+        assertEquals("old-stl", remapped[1].dropoffStopId)
+    }
+
+    @Test
+    fun canonicalBookedStopMigrationIsObservableWithoutChangingIdentityRules() {
+        val syncSource = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt",
+        ).readText()
+        val apiSource = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt",
+        ).readText()
+
+        assertTrue(apiSource.contains("stopShapeMigrationCount0439"))
+        assertTrue(syncSource.contains("PUBLIC_CAPACITY_CANONICAL_SHAPE_MIGRATED_0440"))
+        assertTrue(syncSource.contains("strongIdentity=true"))
+        assertTrue(syncSource.contains("canonicalStops=\${effectiveTrip.stops.size}"))
+    }
+
+    @Test
+    fun cancellationIsNeverCountedAsExternalPublicationFailure() {
+        val source = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt",
+        ).readText()
+        assertTrue(source.contains("catch (error: CancellationException)"))
+        assertTrue(source.contains("AgendaTrace.operationCancelled"))
+        assertTrue(source.contains("throw error"))
+        assertTrue(source.contains("if (error is CancellationException) throw error"))
+    }
+
+    @Test
+    fun externalPrivateMirrorEnrichmentRestoresExistingPassengerTimelineMetadata() {
+        val passengerHref = "https://www.blablacar.com.br/booking/passenger-private-1"
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "profile-private",
+            date = "2030-09-20",
+            actual_departure = "São Paulo",
+            actual_arrival = "São Tomé das Letras",
+            passengers = listOf(
+                BlaBlaCollectorPassenger(
+                    name = "Norma",
+                    seats = 1,
+                    boarding = "São Paulo",
+                    dropoff = "São Tomé das Letras",
+                    phone = "+5511999999999",
+                    booking_href = passengerHref,
+                ),
+            ),
+            booked_seats = 1,
+            passenger_roster_complete = true,
+        )
+        val trip = Trip(
+            id = "canonical-private",
+            title = "São Paulo → São Tomé das Letras",
+            publicToken = "canonical-private",
+            departureAtMillis = 4_000_000_000_000L,
+            capacity = 4,
+            stops = listOf(
+                TripStop(id = "sp", order = 0, name = "São Paulo"),
+                TripStop(id = "stl", order = 1, name = "São Tomé das Letras"),
+            ),
+        )
+        val claims = PublicAgendaAutoSync0300.externalCapacityClaims(source, trip, 1, "provider-trip")
+        val reservationKey = externalPassengerReservationKey(source.profile_uuid, passengerHref)!!
+        val enriched = PublicAgendaAutoSync0300.externalPrivateMirrorBookings0511(
+            source = source,
+            bookings = claims,
+            metadataLookup = { key ->
+                if (key == reservationKey) {
+                    ExternalPassengerMetadata(
+                        reservationKey = key,
+                        fareMinorUnits = 9_300L,
+                        fareCurrencyCode = "BRL",
+                        boardingAddress = "Terminal Rodoviário do Tietê, São Paulo",
+                        dropoffAddress = "Rodoviária de São Thomé das Letras",
+                        boardingLatitude = -23.5166,
+                        boardingLongitude = -46.6250,
+                        dropoffLatitude = -21.7218,
+                        dropoffLongitude = -44.9849,
+                    )
+                } else {
+                    null
+                }
+            },
+        ).single()
+
+        assertEquals("+5511999999999", enriched.passengerContact)
+        assertEquals(9_300L, enriched.fareMinorUnits)
+        assertEquals("BRL", enriched.fareCurrencyCode)
+        assertTrue(enriched.boardingAddress.contains("Tietê"))
+        assertTrue(enriched.dropoffAddress.contains("São Thomé"))
+        assertEquals(-23.5166, enriched.boardingLatitude)
+        assertEquals(-46.6250, enriched.boardingLongitude)
+        assertEquals(-21.7218, enriched.dropoffLatitude)
+        assertEquals(-44.9849, enriched.dropoffLongitude)
+        assertEquals(CapacityClaimType.EXTERNAL_OCCUPANCY, enriched.capacityClaimType)
+        assertEquals(1, enriched.seats)
+    }
+
+    @Test
+    fun localCanonicalSyncWritesPrivateMirrorOnlyAfterRemoteCanonicalAckAndCas() {
+        val source = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt",
+        ).readText()
+        val functionStart = source.indexOf("suspend fun syncLocalTripIncremental(")
+        val functionEnd = source.indexOf("internal fun localCapacitySnapshotRevision(", functionStart)
+        assertTrue(functionStart >= 0)
+        assertTrue(functionEnd > functionStart)
+        val body = source.substring(functionStart, functionEnd)
+
+        val reconcile = body.indexOf("var response = try")
+        val staleGuard = body.indexOf("if (response.stale)")
+        val canonicalCas = body.indexOf("adoptRemoteCanonicalAuthority0588(")
+        val privateMirror = body.indexOf("syncPrivateAgendaMirror0434(")
+
+        assertTrue(reconcile >= 0)
+        assertTrue(staleGuard > reconcile)
+        assertTrue(canonicalCas > staleGuard)
+        assertTrue(privateMirror > canonicalCas)
+        assertTrue(!body.substring(0, reconcile).contains("syncPrivateAgendaMirror0434("))
+        assertTrue(body.contains("PRIVATE_MIRROR_DEFERRED_0588"))
+        assertTrue(body.contains("order=CANONICAL_ACK_THEN_PRIVATE_MIRROR"))
+    }
+
+    @Test
+    fun serverCanonicalIngestionWritesPrivateMirrorOnlyAfterCanonicalRevisionAck() {
+        val source = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt",
+        ).readText()
+        val ack = source.indexOf("if (serverCanonicalAuthority0468 && result.canonicalRevision > 0L)")
+        val write = source.indexOf("TIMELINE_PRIVATE_MIRROR_COMMITTED_0511")
+        assertTrue(ack >= 0)
+        assertTrue(write > ack)
+        assertTrue(source.contains("canonicalRevision = result.canonicalRevision"))
+        assertTrue(source.contains("bookings = privateMirrorBookings0434"))
+    }
+
+    @Test
+    fun priceParserAcceptsBrazilianFormatting() {
+        assertEquals(9_300L, PublicAgendaAutoSync0300.parsePriceCents("R$ 93,00"))
+        assertEquals(10_500L, PublicAgendaAutoSync0300.parsePriceCents("105"))
+        assertEquals(0L, PublicAgendaAutoSync0300.parsePriceCents(null))
+    }
+    @Test
+    fun cityOnlyPassengerLabelsResolveAgainstUniqueHtmlStopAddresses0612() {
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "profile-html-0612",
+            trip_id = "trip-html-0612",
+            date = "2030-09-25",
+            departure_time = "11:30",
+            arrival_time = "13:30",
+            actual_departure = "Terminal Rodoviario Tiete, Sao Paulo - SP",
+            actual_arrival = "Rodoviaria de Santo Andre, Santo Andre - SP",
+            itinerary_stops = listOf(
+                "Terminal Rodoviario Tiete, Sao Paulo - SP",
+                "Rodoviaria de Santo Andre, Santo Andre - SP",
+            ),
+            itinerary_authoritative = true,
+            published_seats = 4,
+            booked_seats = 1,
+            passenger_roster_complete = true,
+            passengers = listOf(
+                BlaBlaCollectorPassenger(
+                    name = "Passageiro",
+                    seats = 1,
+                    boarding = "Sao Paulo",
+                    dropoff = "Santo Andre",
+                ),
+            ),
+        )
+        val projected = PublicAgendaAutoSync0300.toPublicTrip(
+            source = source,
+            capacity = 4,
+            nowMillis = 0L,
+            zoneId = zone,
+        )
+        assertNotNull(projected)
+        assertTrue(PublicAgendaAutoSync0300.externalPassengerSegmentsResolved(source, projected.trip))
+        assertTrue(projected.sourceComplete)
+        val claim = projected.capacityClaims.single()
+        assertEquals(projected.trip.stops.first().id, claim.boardingStopId)
+        assertEquals(projected.trip.stops.last().id, claim.dropoffStopId)
+    }
+
+}
+
+
+class PublicAgendaCanonicalExternalResolution0507Test {
+    private fun canonical(
+        id: String,
+        profile: String,
+        canonicalProviderTripId: String,
+        snapshotProviderTripId: String,
+        publicHref: String,
+    ) = Trip(
+        id = id,
+        title = "Origin → Destination",
+        departureAtMillis = 4_000_000_000_000L,
+        status = TripStatus.PUBLISHED,
+        recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
+        blablaProfileUuid = profile,
+        blablaTripId = canonicalProviderTripId,
+        blablaPublicUrl = publicHref,
+        tripKey = "tripkey:$id",
+        stops = listOf(
+            TripStop(id = "$id-origin", order = 0, name = "Origin"),
+            TripStop(id = "$id-destination", order = 1, name = "Destination"),
+        ),
+        externalSnapshot = BlaBlaCollectorTrip(
+            profile_uuid = profile,
+            date = "2030-01-01",
+            trip_id = snapshotProviderTripId,
+            public_trip_href = publicHref,
+            trip_href = "https://www.blablacar.com/rides/offer/$canonicalProviderTripId",
+        ),
+    )
+
+    @kotlin.test.Test
+    fun snapshotNamespaceBindsCanonicalEvenWhenAdministrativeTripIdDiffers() {
+        val profile = "11111111-1111-4111-8111-111111111111"
+        val canonical = canonical(
+            id = "canonical-1",
+            profile = profile,
+            canonicalProviderTripId = "administrative-trip-id",
+            snapshotProviderTripId = "public-trip-id",
+            publicHref = "https://www.blablacar.com/trip?id=public-trip-id",
+        )
+        val source = canonical.externalSnapshot!!.copy(booked_seats = 4, availability = "full")
+        val resolution = PublicAgendaAutoSync0300.resolveCanonicalExternalSource0507(listOf(canonical), source)
+        kotlin.test.assertEquals("CONFIRMED_STRONG_IDENTITY", resolution.state)
+        kotlin.test.assertEquals(canonical.id, resolution.canonical?.id)
+    }
+
+    @kotlin.test.Test
+    fun missingProfileUuidStaysPendingAndNeverFallsBackToRouteOrName() {
+        val canonical = canonical(
+            id = "canonical-1",
+            profile = "11111111-1111-4111-8111-111111111111",
+            canonicalProviderTripId = "admin",
+            snapshotProviderTripId = "public",
+            publicHref = "https://www.blablacar.com/trip?id=public",
+        )
+        val source = canonical.externalSnapshot!!.copy(profile_uuid = "", actual_departure = canonical.title, actual_arrival = canonical.title)
+        val resolution = PublicAgendaAutoSync0300.resolveCanonicalExternalSource0507(listOf(canonical), source)
+        kotlin.test.assertEquals("PENDING_IDENTITY_ENRICHMENT", resolution.state)
+        kotlin.test.assertEquals(null, resolution.canonical)
+    }
+
+    @kotlin.test.Test
+    fun twoStrongCandidatesBecomeConflictInsteadOfSilentDropOrGuess() {
+        val profile = "11111111-1111-4111-8111-111111111111"
+        val a = canonical("a", profile, "admin-a", "public-shared", "https://www.blablacar.com/trip?id=public-shared")
+        val b = canonical("b", profile, "admin-b", "public-shared", "https://www.blablacar.com/trip?id=public-shared")
+        val resolution = PublicAgendaAutoSync0300.resolveCanonicalExternalSource0507(listOf(a, b), a.externalSnapshot!!)
+        kotlin.test.assertEquals("IDENTITY_CONFLICT", resolution.state)
+        kotlin.test.assertEquals(null, resolution.canonical)
+    }
+    private val zone0622 = ZoneId.of("America/Sao_Paulo")
+
+    @Test
+    fun completeHtmlProjectionMarksSaoPauloToTresCoracoesFullWithOnePlusThreePassengers0622() {
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "profile-outbound-0622",
+            profile_name = "Perfil Ida",
+            date = "2030-09-24",
+            departure_time = "10:30",
+            arrival_time = "16:00",
+            actual_departure = "Santo André",
+            actual_arrival = "São Tomé das Letras",
+            trip_href = "https://www.blablacar.com.br/rides/offer/trip-outbound-0622",
+            public_trip_href = "https://www.blablacar.com.br/trip?id=trip-outbound-0622",
+            trip_id = "trip-outbound-0622",
+            itinerary_stops = listOf("Santo André", "São Paulo", "Três Corações", "São Tomé das Letras"),
+            itinerary_authoritative = true,
+            published_seats = 4,
+            passenger_roster_complete = true,
+            passengers = listOf(
+                BlaBlaCollectorPassenger(
+                    name = "Passageiro A",
+                    seats = 1,
+                    boarding = "São Paulo",
+                    dropoff = "Três Corações",
+                ),
+                BlaBlaCollectorPassenger(
+                    name = "Passageiro B",
+                    seats = 3,
+                    boarding = "São Paulo",
+                    dropoff = "São Tomé das Letras",
+                ),
+            ),
+            booked_seats = 4,
+        )
+
+        val projected = PublicAgendaAutoSync0300.toPublicTrip(
+            source = source,
+            capacity = 4,
+            nowMillis = 0L,
+            zoneId = zone0622,
+        )
+        assertNotNull(projected)
+        assertTrue(projected.sourceComplete)
+        val loads = SeatAvailabilityEngine.segmentLoads(projected.trip, projected.capacityClaims)
+        assertEquals(
+            listOf("Santo André → São Paulo", "São Paulo → Três Corações", "Três Corações → São Tomé das Letras"),
+            loads.map { "${it.from.name} → ${it.to.name}" },
+        )
+        assertEquals(listOf(0, 4, 3), loads.map(SegmentLoad::occupiedSeats))
+        assertEquals(listOf(4, 0, 1), loads.map(SegmentLoad::availableSeats))
+    }
+
+    @Test
+    fun completeHtmlProjectionPreservesSaoGoncaloAndAccumulatesReturnPassengers0622() {
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "profile-return-0622",
+            profile_name = "Perfil Volta",
+            date = "2030-09-24",
+            departure_time = "18:00",
+            arrival_time = "22:30",
+            actual_departure = "Três Corações",
+            actual_arrival = "Santo André",
+            trip_href = "https://www.blablacar.com.br/rides/offer/trip-return-0622",
+            public_trip_href = "https://www.blablacar.com.br/trip?id=trip-return-0622",
+            trip_id = "trip-return-0622",
+            itinerary_stops = listOf(
+                "Três Corações",
+                "São Gonçalo do Sapucaí",
+                "Minas Gerais",
+                "Cachoeirinha",
+                "São Paulo",
+                "Santo André",
+            ),
+            itinerary_authoritative = true,
+            published_seats = 4,
+            passenger_roster_complete = true,
+            passengers = listOf(
+                BlaBlaCollectorPassenger(name = "P1", seats = 1, boarding = "São Gonçalo do Sapucaí", dropoff = "São Paulo"),
+                BlaBlaCollectorPassenger(name = "P2", seats = 1, boarding = "Minas Gerais", dropoff = "São Paulo"),
+                BlaBlaCollectorPassenger(name = "P3", seats = 1, boarding = "Cachoeirinha", dropoff = "São Paulo"),
+            ),
+            booked_seats = 3,
+        )
+
+        val projected = PublicAgendaAutoSync0300.toPublicTrip(
+            source = source,
+            capacity = 4,
+            nowMillis = 0L,
+            zoneId = zone0622,
+        )
+        assertNotNull(projected)
+        assertTrue(projected.sourceComplete)
+        assertEquals(
+            listOf("Três Corações", "São Gonçalo do Sapucaí", "Minas Gerais", "Cachoeirinha", "São Paulo", "Santo André"),
+            projected.trip.stops.sortedBy(TripStop::order).map(TripStop::name),
+        )
+        val loads = SeatAvailabilityEngine.segmentLoads(projected.trip, projected.capacityClaims)
+        assertEquals(listOf(0, 1, 2, 3, 0), loads.map(SegmentLoad::occupiedSeats))
+        assertEquals(listOf(4, 3, 2, 1, 4), loads.map(SegmentLoad::availableSeats))
+    }
+
+    @Test
+    fun rosterAndSeatCountWithoutAuthoritativeItineraryNeverQualifyAsComplete0622() {
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "profile-incomplete-0622",
+            date = "2030-09-24",
+            departure_time = "10:30",
+            actual_departure = "A",
+            actual_arrival = "C",
+            itinerary_stops = listOf("A", "B", "C"),
+            itinerary_authoritative = false,
+            published_seats = 4,
+            passenger_roster_complete = true,
+            passengers = listOf(
+                BlaBlaCollectorPassenger(name = "P", seats = 1, boarding = "B", dropoff = "C"),
+            ),
+        )
+        val projected = PublicAgendaAutoSync0300.toPublicTrip(source, 4, 0L, zone0622)
+        assertNotNull(projected)
+        assertEquals(false, projected.sourceComplete)
+    }
+}

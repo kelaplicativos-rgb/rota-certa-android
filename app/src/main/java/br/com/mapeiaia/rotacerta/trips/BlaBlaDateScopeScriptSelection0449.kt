@@ -1,0 +1,485 @@
+package br.com.mapeiaia.rotacerta.trips
+
+internal data class BlaBlaScriptGroup0449(
+    val title: String,
+    val description: String,
+    val requests: List<BlaBlaBrowserRequest>,
+)
+
+/**
+ * Complete UI inventory of the browser orchestrator.
+ *
+ * Every registered BlaBlaBrowserRequest is exposed exactly once. The date/period
+ * synchronization uses the selection as an execution/output permission set.
+ * Some selected downstream outputs need technical navigation/read prerequisites;
+ * those prerequisites never turn an unselected output into a committed field.
+ */
+internal object BlaBlaDateScopeScriptCatalog0449 {
+    val groups: List<BlaBlaScriptGroup0449> = listOf(
+        BlaBlaScriptGroup0449(
+            title = "Conta e perfil",
+            description = "Identidade autenticada, perfil do motorista e avaliações.",
+            requests = listOf(
+                BlaBlaBrowserRequest.SESSION_IDENTITY,
+                BlaBlaBrowserRequest.DRIVER_PROFILE,
+                BlaBlaBrowserRequest.DRIVER_REVIEWS,
+            ),
+        ),
+        BlaBlaScriptGroup0449(
+            title = "Viagem",
+            description = "Lista, abertura, detalhes, URL pública, itinerário e edição.",
+            requests = listOf(
+                BlaBlaBrowserRequest.RIDE_LIST,
+                BlaBlaBrowserRequest.TRIP_OPEN,
+                BlaBlaBrowserRequest.TRIP_DETAIL,
+                BlaBlaBrowserRequest.TRIP_PUBLIC_SHARE,
+                BlaBlaBrowserRequest.TRIP_ITINERARY,
+                BlaBlaBrowserRequest.TRIP_EDIT,
+            ),
+        ),
+        BlaBlaScriptGroup0449(
+            title = "Passageiros",
+            description = "Lista, abertura, identidade, contato, tarifa, trecho e endereços.",
+            requests = listOf(
+                BlaBlaBrowserRequest.PASSENGER_ROSTER,
+                BlaBlaBrowserRequest.PASSENGER_OPEN,
+                BlaBlaBrowserRequest.PASSENGER_IDENTITY,
+                BlaBlaBrowserRequest.PASSENGER_CONTACT,
+                BlaBlaBrowserRequest.PASSENGER_FARE,
+                BlaBlaBrowserRequest.PASSENGER_SEGMENT,
+                BlaBlaBrowserRequest.PASSENGER_ADDRESSES,
+            ),
+        ),
+        BlaBlaScriptGroup0449(
+            title = "Vagas",
+            description = "Leitura de vagas e operações remotas de alteração/salvamento.",
+            requests = listOf(
+                BlaBlaBrowserRequest.SEAT_OPTIONS,
+                BlaBlaBrowserRequest.SEAT_CHANGE,
+                BlaBlaBrowserRequest.SEAT_SAVE,
+            ),
+        ),
+        BlaBlaScriptGroup0449(
+            title = "Boost",
+            description = "Leitura, navegação e escrita controlada do Boost. Fora da coleta por data por padrão.",
+            requests = listOf(
+                BlaBlaBrowserRequest.BOOST_STATE,
+                BlaBlaBrowserRequest.BOOST_OPEN_EDIT,
+                BlaBlaBrowserRequest.BOOST_OPEN_SECTION,
+                BlaBlaBrowserRequest.BOOST_SET_STATE,
+                BlaBlaBrowserRequest.BOOST_SAVE,
+            ),
+        ),
+        BlaBlaScriptGroup0449(
+            title = "Pesquisa pública BlaBlaCar",
+            description = "Busca pública, abertura de resultado e perfil público.",
+            requests = listOf(
+                BlaBlaBrowserRequest.PUBLIC_SEARCH_FORM,
+                BlaBlaBrowserRequest.PUBLIC_SEARCH_SCROLL,
+                BlaBlaBrowserRequest.PUBLIC_SEARCH_RESULTS,
+                BlaBlaBrowserRequest.PUBLIC_RESULT_OPEN,
+                BlaBlaBrowserRequest.PUBLIC_DRIVER_PROFILE_OPEN,
+                BlaBlaBrowserRequest.PUBLIC_DRIVER_PROFILE,
+                BlaBlaBrowserRequest.PUBLIC_DRIVER_REVIEWS,
+            ),
+        ),
+        BlaBlaScriptGroup0449(
+            title = "Mensagens",
+            description = "Abertura do passageiro na conversa e leitura da thread.",
+            requests = listOf(
+                BlaBlaBrowserRequest.MESSAGE_PASSENGER_OPEN,
+                BlaBlaBrowserRequest.MESSAGE_THREAD,
+            ),
+        ),
+        BlaBlaScriptGroup0449(
+            title = "Viagens arquivadas",
+            description = "Lista e abertura de viagens arquivadas/passadas.",
+            requests = listOf(
+                BlaBlaBrowserRequest.ARCHIVED_RIDE_LIST,
+                BlaBlaBrowserRequest.ARCHIVED_RIDE_OPEN,
+            ),
+        ),
+        BlaBlaScriptGroup0449(
+            title = "Diagnóstico",
+            description = "Estado da página e snapshot do DOM para evidência técnica.",
+            requests = listOf(
+                BlaBlaBrowserRequest.PAGE_STATE,
+                BlaBlaBrowserRequest.DOM_SNAPSHOT,
+            ),
+        ),
+    )
+
+    val selectableRequests: List<BlaBlaBrowserRequest> = groups.flatMap(BlaBlaScriptGroup0449::requests)
+    val all: Set<BlaBlaBrowserRequest> = selectableRequests.toSet()
+
+    val remoteWriteRequests: Set<BlaBlaBrowserRequest> =
+        all.filterTo(linkedSetOf()) { it.operation == BlaBlaBrowserOperation.REMOTE_WRITE }
+
+    /** Public permalink acquisition path. */
+    val publicUrlRequests: Set<BlaBlaBrowserRequest> = setOf(
+        BlaBlaBrowserRequest.TRIP_PUBLIC_SHARE,
+        BlaBlaBrowserRequest.PUBLIC_SEARCH_FORM,
+        BlaBlaBrowserRequest.PUBLIC_SEARCH_SCROLL,
+        BlaBlaBrowserRequest.PUBLIC_SEARCH_RESULTS,
+        BlaBlaBrowserRequest.PUBLIC_RESULT_OPEN,
+    )
+
+    /** Passenger-related outputs. */
+    val passengerRequests: Set<BlaBlaBrowserRequest> = setOf(
+        BlaBlaBrowserRequest.PASSENGER_ROSTER,
+        BlaBlaBrowserRequest.PASSENGER_OPEN,
+        BlaBlaBrowserRequest.PASSENGER_IDENTITY,
+        BlaBlaBrowserRequest.PASSENGER_CONTACT,
+        BlaBlaBrowserRequest.PASSENGER_FARE,
+        BlaBlaBrowserRequest.PASSENGER_SEGMENT,
+        BlaBlaBrowserRequest.PASSENGER_ADDRESSES,
+    )
+
+    /** Read-only seat output used by "Só vagas". Writes remain separately authorized. */
+    val seatRequests: Set<BlaBlaBrowserRequest> = setOf(
+        BlaBlaBrowserRequest.SEAT_OPTIONS,
+    )
+
+    /** Entire seat-management group. Date/period listing must not depend on it by default. */
+    val seatFlowRequests0478: Set<BlaBlaBrowserRequest> = setOf(
+        BlaBlaBrowserRequest.SEAT_OPTIONS,
+        BlaBlaBrowserRequest.SEAT_CHANGE,
+        BlaBlaBrowserRequest.SEAT_SAVE,
+    )
+
+    /**
+     * Boost is a high-impact exact-trip mutation flow. It is never part of a
+     * generic date/period collection unless a caller explicitly selects it.
+     */
+    val boostFlowRequests0562: Set<BlaBlaBrowserRequest> = setOf(
+        BlaBlaBrowserRequest.BOOST_STATE,
+        BlaBlaBrowserRequest.BOOST_OPEN_EDIT,
+        BlaBlaBrowserRequest.BOOST_OPEN_SECTION,
+        BlaBlaBrowserRequest.BOOST_SET_STATE,
+        BlaBlaBrowserRequest.BOOST_SAVE,
+    )
+
+    /**
+     * Safe default for date/period collection.
+     *
+     * The public Agenda card is materialized from trip/passenger/canonical evidence. Seat management
+     * and Boost remain available only through their dedicated flows; neither is allowed to enter a
+     * normal date/period refresh simply because the browser request exists in the registry.
+     */
+    val dateScopeDefaultRequests0478: Set<BlaBlaBrowserRequest> by lazy {
+        all - seatFlowRequests0478 - boostFlowRequests0562
+    }
+
+    val coreTripRequests: Set<BlaBlaBrowserRequest> = setOf(
+        BlaBlaBrowserRequest.RIDE_LIST,
+        BlaBlaBrowserRequest.TRIP_OPEN,
+        BlaBlaBrowserRequest.TRIP_DETAIL,
+        BlaBlaBrowserRequest.TRIP_ITINERARY,
+    )
+
+    init {
+        check(selectableRequests.size == 37) { "Expected 37 orchestrator scripts, got ${selectableRequests.size}" }
+        check(selectableRequests.distinct().size == selectableRequests.size) { "Duplicate orchestrator script in UI catalog" }
+        check(all == BlaBlaBrowserRequest.values().toSet()) { "UI catalog must expose every registered browser request" }
+        check(dateScopeDefaultRequests0478.none(boostFlowRequests0562::contains)) { "Boost must stay outside date-scope defaults" }
+    }
+
+    fun label(request: BlaBlaBrowserRequest): String = when (request) {
+        BlaBlaBrowserRequest.SESSION_IDENTITY -> "Identidade da sessão"
+        BlaBlaBrowserRequest.DRIVER_PROFILE -> "Perfil do motorista"
+        BlaBlaBrowserRequest.DRIVER_REVIEWS -> "Avaliações do motorista"
+        BlaBlaBrowserRequest.RIDE_LIST -> "Lista de viagens"
+        BlaBlaBrowserRequest.TRIP_OPEN -> "Abrir viagem"
+        BlaBlaBrowserRequest.TRIP_DETAIL -> "Detalhes da viagem"
+        BlaBlaBrowserRequest.TRIP_PUBLIC_SHARE -> "URL pública · compartilhar"
+        BlaBlaBrowserRequest.TRIP_ITINERARY -> "Itinerário e paradas"
+        BlaBlaBrowserRequest.TRIP_EDIT -> "Edição da viagem"
+        BlaBlaBrowserRequest.PASSENGER_ROSTER -> "Lista de passageiros"
+        BlaBlaBrowserRequest.PASSENGER_OPEN -> "Abrir passageiro"
+        BlaBlaBrowserRequest.PASSENGER_IDENTITY -> "Identidade do passageiro"
+        BlaBlaBrowserRequest.PASSENGER_CONTACT -> "Contato do passageiro"
+        BlaBlaBrowserRequest.PASSENGER_FARE -> "Tarifa do passageiro"
+        BlaBlaBrowserRequest.PASSENGER_SEGMENT -> "Trecho do passageiro"
+        BlaBlaBrowserRequest.PASSENGER_ADDRESSES -> "Endereços do passageiro"
+        BlaBlaBrowserRequest.SEAT_OPTIONS -> "Vagas publicadas"
+        BlaBlaBrowserRequest.SEAT_CHANGE -> "Alterar vagas"
+        BlaBlaBrowserRequest.SEAT_SAVE -> "Salvar alteração de vagas"
+        BlaBlaBrowserRequest.BOOST_STATE -> "Estado do Boost"
+        BlaBlaBrowserRequest.BOOST_OPEN_EDIT -> "Abrir edição para Boost"
+        BlaBlaBrowserRequest.BOOST_OPEN_SECTION -> "Abrir seção Boost"
+        BlaBlaBrowserRequest.BOOST_SET_STATE -> "Alterar estado do Boost"
+        BlaBlaBrowserRequest.BOOST_SAVE -> "Salvar Boost"
+        BlaBlaBrowserRequest.PUBLIC_SEARCH_FORM -> "Formulário da busca pública"
+        BlaBlaBrowserRequest.PUBLIC_SEARCH_SCROLL -> "Scroll da busca pública"
+        BlaBlaBrowserRequest.PUBLIC_SEARCH_RESULTS -> "Resultados da busca pública"
+        BlaBlaBrowserRequest.PUBLIC_RESULT_OPEN -> "Abrir resultado público"
+        BlaBlaBrowserRequest.PUBLIC_DRIVER_PROFILE_OPEN -> "Abrir perfil público"
+        BlaBlaBrowserRequest.PUBLIC_DRIVER_PROFILE -> "Perfil público do motorista"
+        BlaBlaBrowserRequest.PUBLIC_DRIVER_REVIEWS -> "Avaliações públicas"
+        BlaBlaBrowserRequest.MESSAGE_PASSENGER_OPEN -> "Abrir conversa do passageiro"
+        BlaBlaBrowserRequest.MESSAGE_THREAD -> "Conversa / mensagens"
+        BlaBlaBrowserRequest.ARCHIVED_RIDE_LIST -> "Lista de viagens arquivadas"
+        BlaBlaBrowserRequest.ARCHIVED_RIDE_OPEN -> "Abrir viagem arquivada"
+        BlaBlaBrowserRequest.PAGE_STATE -> "Estado da página"
+        BlaBlaBrowserRequest.DOM_SNAPSHOT -> "Snapshot do DOM"
+    }
+
+    fun operationLabel(request: BlaBlaBrowserRequest): String = when (request.operation) {
+        BlaBlaBrowserOperation.CAPTURE -> "CAPTURE"
+        BlaBlaBrowserOperation.NAVIGATION -> "NAVIGATION"
+        BlaBlaBrowserOperation.REMOTE_WRITE -> "REMOTE_WRITE"
+    }
+}
+
+internal data class BlaBlaDateScopeScriptSelection0449(
+    val explicit: Boolean,
+    val requested: Set<BlaBlaBrowserRequest>,
+) {
+    val selective: Boolean
+        get() = explicit && requested != BlaBlaDateScopeScriptCatalog0449.all
+
+    fun requested(request: BlaBlaBrowserRequest): Boolean =
+        !explicit || request in requested
+
+    fun wantsPublicUrl(): Boolean =
+        !explicit || requested.any(BlaBlaDateScopeScriptCatalog0449.publicUrlRequests::contains)
+
+    fun wantsPassengerData(): Boolean =
+        !explicit || requested.any(BlaBlaDateScopeScriptCatalog0449.passengerRequests::contains)
+
+    fun wantsSeatData(): Boolean =
+        !explicit || requested.any(BlaBlaDateScopeScriptCatalog0449.seatRequests::contains)
+
+    fun wantsCoreTripData(): Boolean =
+        !explicit || requested.any(BlaBlaDateScopeScriptCatalog0449.coreTripRequests::contains)
+
+    fun wantsTripTraversal(): Boolean =
+        !explicit || requested.any { request ->
+            request in BlaBlaDateScopeScriptCatalog0449.coreTripRequests ||
+                request in BlaBlaDateScopeScriptCatalog0449.publicUrlRequests ||
+                request in BlaBlaDateScopeScriptCatalog0449.passengerRequests ||
+                request in BlaBlaDateScopeScriptCatalog0449.seatRequests
+        }
+
+    fun requestedNames(): List<String> =
+        requested.map(BlaBlaBrowserRequest::name).sorted()
+
+    companion object {
+        fun legacyAll(): BlaBlaDateScopeScriptSelection0449 =
+            BlaBlaDateScopeScriptSelection0449(
+                explicit = false,
+                requested = BlaBlaDateScopeScriptCatalog0449.all,
+            )
+
+        fun explicit(requested: Collection<BlaBlaBrowserRequest>): BlaBlaDateScopeScriptSelection0449 =
+            BlaBlaDateScopeScriptSelection0449(
+                explicit = true,
+                requested = requested.filter(BlaBlaDateScopeScriptCatalog0449.all::contains).toSet(),
+            )
+
+        fun fromNames(names: Collection<String>?): BlaBlaDateScopeScriptSelection0449 {
+            if (names == null) return legacyAll()
+            val parsed = names.mapNotNull { raw ->
+                runCatching { BlaBlaBrowserRequest.valueOf(raw.trim()) }.getOrNull()
+            }
+            return explicit(parsed)
+        }
+    }
+}
+
+internal fun reconcileCollectorItineraryRefresh0597(
+    previous: BlaBlaCollectorTrip?,
+    fresh: BlaBlaCollectorTrip,
+): BlaBlaCollectorTrip {
+    val prior = previous ?: return fresh
+    val priorTripId = prior.trip_id?.trim().orEmpty()
+    val freshTripId = fresh.trip_id?.trim().orEmpty()
+    val sameStrongIdentity =
+        prior.profile_uuid.trim().equals(fresh.profile_uuid.trim(), ignoreCase = true) &&
+            priorTripId.isNotBlank() &&
+            priorTripId == freshTripId
+    if (!sameStrongIdentity) return fresh
+
+    fun key(raw: String?): String = java.text.Normalizer
+        .normalize(raw.orEmpty().substringBefore(',').trim(), java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{M}+"), "")
+        .lowercase()
+        .replace(Regex("[^a-z0-9]+"), " ")
+        .trim()
+
+    fun origin(trip: BlaBlaCollectorTrip): String =
+        trip.actual_departure?.takeIf(String::isNotBlank)
+            ?: trip.search_from.orEmpty()
+
+    fun destination(trip: BlaBlaCollectorTrip): String =
+        trip.actual_arrival?.takeIf(String::isNotBlank)
+            ?: trip.search_to.orEmpty()
+
+    if (key(origin(prior)).isBlank() ||
+        key(destination(prior)).isBlank() ||
+        key(origin(prior)) != key(origin(fresh)) ||
+        key(destination(prior)) != key(destination(fresh))
+    ) {
+        return fresh
+    }
+
+    fun normalizedStops(trip: BlaBlaCollectorTrip): List<String> =
+        trip.itinerary_stops.map(String::trim).filter(String::isNotBlank)
+
+    fun isOrderedSubsequence(needle: List<String>, haystack: List<String>): Boolean {
+        if (needle.isEmpty()) return true
+        val haystackKeys = haystack.map(::key)
+        var cursor = 0
+        for (raw in needle) {
+            val wanted = key(raw)
+            var found = false
+            while (cursor < haystackKeys.size) {
+                if (haystackKeys[cursor] == wanted) {
+                    found = true
+                    cursor++
+                    break
+                }
+                cursor++
+            }
+            if (!found) return false
+        }
+        return true
+    }
+
+    val previousStops = normalizedStops(prior)
+    val freshStops = normalizedStops(fresh)
+
+    // Positive authoritative evidence can replace the old topology. Absence or a
+    // shorter non-authoritative observation cannot erase already observed stops.
+    if (fresh.itinerary_authoritative) return fresh
+    if (previousStops.size >= 2 && prior.itinerary_authoritative) {
+        return fresh.copy(
+            itinerary_stops = previousStops,
+            itinerary_authoritative = true,
+        )
+    }
+
+    val freshIsOnlyAWeakerView =
+        previousStops.size > freshStops.size &&
+            (freshStops.isEmpty() || isOrderedSubsequence(freshStops, previousStops))
+
+    return if (freshIsOnlyAWeakerView) {
+        fresh.copy(
+            itinerary_stops = previousStops,
+            itinerary_authoritative = prior.itinerary_authoritative,
+        )
+    } else {
+        fresh
+    }
+}
+
+/**
+ * Applies only the outputs explicitly requested by the date/period run.
+ *
+ * If a selective run requests only a downstream field (for example seats or public URL),
+ * an existing canonical collector trip is required so unselected fields can be preserved.
+ */
+internal fun mergeSelectiveCollectorTrip0449(
+    previous: BlaBlaCollectorTrip?,
+    fresh: BlaBlaCollectorTrip,
+    selection: BlaBlaDateScopeScriptSelection0449,
+): BlaBlaCollectorTrip? {
+    if (!selection.selective) return reconcileCollectorItineraryRefresh0597(previous, fresh)
+
+    val wantsCore = selection.wantsCoreTripData()
+    val base = previous ?: if (wantsCore) fresh.copy(
+        public_trip_href = null,
+        public_trip_href_source = "",
+        public_trip_href_binding = "",
+        passengers = emptyList(),
+        itinerary_stops = emptyList(),
+        itinerary_authoritative = false,
+        booked_seats = 0,
+        published_seats = null,
+        passenger_roster_complete = false,
+    ) else return null
+
+    var merged = if (wantsCore) fresh else base
+
+    merged = if (selection.wantsPublicUrl()) {
+        merged.copy(
+            public_trip_href = fresh.public_trip_href,
+            public_trip_href_source = fresh.public_trip_href_source,
+            public_trip_href_binding = fresh.public_trip_href_binding,
+        )
+    } else {
+        merged.copy(
+            public_trip_href = previous?.public_trip_href,
+            public_trip_href_source = previous?.public_trip_href_source.orEmpty(),
+            public_trip_href_binding = previous?.public_trip_href_binding.orEmpty(),
+        )
+    }
+
+    merged = if (selection.wantsPassengerData()) {
+        merged.copy(
+            passengers = fresh.passengers,
+            booked_seats = fresh.booked_seats,
+            passenger_roster_complete = fresh.passenger_roster_complete,
+        )
+    } else {
+        merged.copy(
+            passengers = previous?.passengers.orEmpty(),
+            booked_seats = previous?.booked_seats ?: 0,
+            passenger_roster_complete = previous?.passenger_roster_complete ?: false,
+        )
+    }
+
+    merged = if (selection.wantsSeatData()) {
+        merged.copy(
+            published_seats = fresh.published_seats,
+        )
+    } else {
+        merged.copy(
+            published_seats = previous?.published_seats,
+        )
+    }
+
+    return reconcileCollectorItineraryRefresh0597(previous, merged)
+}
+
+/**
+ * A collection that explicitly requested the passenger-facing BlaBlaCar permalink
+ * is not operationally complete while an accepted trip still lacks a validated link.
+ * The trip remains publishable: this signal only prevents a false COMPLETE state so
+ * the normal, rate-limited collector cycle can retry later.
+ */
+internal fun collectorMissingPublicLinks0585(
+    trips: List<BlaBlaCollectorTrip>,
+    selection: BlaBlaDateScopeScriptSelection0449,
+    persistedTrips: List<BlaBlaCollectorTrip> = emptyList(),
+): Int {
+    if (!selection.wantsPublicUrl()) return 0
+
+    fun strongIdentity(trip: BlaBlaCollectorTrip): String? {
+        val profileUuid = trip.profile_uuid.trim().lowercase().takeIf(String::isNotEmpty) ?: return null
+        val administrativeTripId = trip.trip_id?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        return "$profileUuid|$administrativeTripId"
+    }
+
+    fun hasValidatedPublicLink(trip: BlaBlaCollectorTrip): Boolean {
+        val administrativeTripId = trip.trip_id?.trim()?.takeIf(String::isNotEmpty) ?: return false
+        return BlaBlaCollectorUrlModule.publicTripForCollectorState(
+            raw = trip.public_trip_href,
+            expectedTripId = administrativeTripId,
+            binding = trip.public_trip_href_binding,
+        ) != null
+    }
+
+    val persistedByIdentity = persistedTrips.mapNotNull { persisted ->
+        strongIdentity(persisted)?.let { identity -> identity to persisted }
+    }.toMap()
+
+    return trips.count { fresh ->
+        val identity = strongIdentity(fresh) ?: return@count true
+        if (hasValidatedPublicLink(fresh)) {
+            false
+        } else {
+            persistedByIdentity[identity]?.let(::hasValidatedPublicLink) != true
+        }
+    }
+}

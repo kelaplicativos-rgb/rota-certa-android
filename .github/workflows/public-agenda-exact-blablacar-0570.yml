@@ -1,0 +1,150 @@
+name: Rota Certa 0.1.570 exact BlaBla public Agenda links
+
+on:
+  push:
+    branches:
+      - agent/public-agenda-shell-blablacar-whatsapp-0.1.569
+    paths:
+      - '.github/workflows/public-agenda-exact-blablacar-0570.yml'
+      - 'trip-platform/functions/scripts/patch-public-agenda-exact-blablacar-0570.js'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: public-agenda-exact-blablacar-0570-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  patch-deploy-prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+    steps:
+      - name: Checkout exact branch HEAD
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Materialize exact-link backend patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          node trip-platform/functions/scripts/patch-public-agenda-exact-blablacar-0570.js
+          node --check trip-platform/functions/index.js
+          grep -Fq 'async function publicAgendaExactBlaBlaLinks0570' trip-platform/functions/index.js
+          test "$(grep -Fc 'const exactLinkedTrips0570 = tester' trip-platform/functions/index.js)" -eq 1
+          grep -Fq 'canonicalTimelinePrivateMirrorCompatible0523' trip-platform/functions/index.js
+          grep -Fq 'canonicalTimelineExternalIdentity0523' trip-platform/functions/index.js
+          grep -Fq 'canonicalTimelinePublicUrl0524' trip-platform/functions/index.js
+
+      - name: Persist materialized source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- trip-platform/functions/index.js; then
+            echo 'INDEX_ALREADY_MATERIALIZED=1'
+          else
+            git config user.name 'rota-certa-ci'
+            git config user.email 'rota-certa-ci@users.noreply.github.com'
+            git add trip-platform/functions/index.js
+            git commit -m 'fix: bind public Agenda cards to exact BlaBlaCar trips 0.1.570'
+            git push origin HEAD:agent/public-agenda-shell-blablacar-whatsapp-0.1.569
+          fi
+          echo "MATERIALIZED_HEAD=$(git rev-parse HEAD)"
+
+      - name: Install trip-api dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+          node -e "require('./trip-platform/functions/node_modules/firebase-functions'); require('./trip-platform/functions/node_modules/firebase-admin'); console.log('TRIP_API_DEPENDENCIES=PASS')"
+
+      - name: Configure Firebase authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo 'USE_FIREBASE_TOKEN=1' >> "$GITHUB_ENV"
+          else
+            echo 'Firebase credential is missing.' >&2
+            exit 3
+          fi
+
+      - name: Deploy trip-api functions codebase only
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          AUTH_ARGS=()
+          if [ "${USE_FIREBASE_TOKEN:-0}" = '1' ]; then AUTH_ARGS+=(--token "$FIREBASE_TOKEN"); fi
+          npx --yes firebase-tools@latest deploy \
+            --project "$PROJECT" \
+            --only functions:trip-api \
+            --non-interactive \
+            "${AUTH_ARGS[@]}"
+
+      - name: Prove exact BlaBla links in live public Agenda
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://rota-certa-7ccc8.web.app'
+          curl --retry 12 --retry-delay 5 --retry-all-errors --fail --silent --show-error \
+            "$BASE/v1/public/agenda/ezequiel?proof=$GITHUB_RUN_ID" > /tmp/live-agenda-0570.json
+          node <<'NODE'
+          const fs = require('fs');
+          const body = JSON.parse(fs.readFileSync('/tmp/live-agenda-0570.json', 'utf8'));
+          const trips = Array.isArray(body.trips) ? body.trips : [];
+          if (!trips.length) throw new Error('live Agenda returned no trips');
+          function official(raw) {
+            try {
+              const u = new URL(String(raw || ''));
+              const labels = u.hostname.toLowerCase().replace(/^www\./, '').split('.');
+              if (u.protocol !== 'https:' || labels[0] !== 'blablacar') return false;
+              const path = u.pathname.replace(/\/+$/, '').toLowerCase();
+              if (path === '/trip') return /^[A-Za-z0-9_-]{6,}$/.test(String(u.searchParams.get('id') || ''));
+              if (path.startsWith('/trip/')) return /^\/trip\/[A-Za-z0-9_-]{6,}$/i.test(path);
+              return false;
+            } catch (_) { return false; }
+          }
+          const linked = trips.filter((trip) => official(trip && trip.blablaPublicUrl));
+          console.log(`LIVE_PUBLIC_AGENDA_TRIPS=${trips.length}`);
+          console.log(`LIVE_EXACT_BLABLA_LINKS=${linked.length}`);
+          if (linked.length !== trips.length) {
+            const missing = trips.length - linked.length;
+            throw new Error(`exact BlaBla permalink missing/invalid on ${missing} public trip(s)`);
+          }
+          console.log('PUBLIC_AGENDA_EXACT_BLABLACAR_0570_LIVE=PASS');
+          NODE
+
+      - name: Prove public shell still passenger-free
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://rota-certa-7ccc8.web.app'
+          curl --retry 5 --retry-delay 2 --fail --silent --show-error "$BASE/ezequiel?proof=$GITHUB_RUN_ID" > /tmp/live-index-0570.html
+          curl --retry 5 --retry-delay 2 --fail --silent --show-error "$BASE/public-agenda-shell-0569.js?proof=$GITHUB_RUN_ID" > /tmp/live-shell-0570.js
+          grep -Fq 'card.href = publicUrl' /tmp/live-shell-0570.js
+          ! grep -Fiq 'passageiro' /tmp/live-shell-0570.js
+          ! grep -Fiq 'confirmedPassengerSeats' /tmp/live-shell-0570.js
+          grep -Fq 'id="whatsappFab0569"' /tmp/live-index-0570.html
+          echo 'PUBLIC_AGENDA_SHELL_UNCHANGED_0570=PASS'

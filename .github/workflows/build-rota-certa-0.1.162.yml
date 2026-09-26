@@ -1,0 +1,214 @@
+name: Build Rota Certa 0.1.162
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/build-rota-certa-0.1.162.yml
+      - .github/validation/rota-certa-0.1.162.txt
+      - scripts/fix_gigu_work_mode_session_0162.py
+      - scripts/fix_gigu_work_mode_session_0162_rerun.py
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout correction source
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+          path: source
+      - name: Checkout isolated patch branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/rota-certa-0.1.159-validation
+          fetch-depth: 0
+          path: patches
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Materialize protected source through 0.1.161
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python scripts/fix_99_overlay_state_0151.py
+          python scripts/fix_selected_package_state_0152.py
+          python scripts/fix_transient_launcher_clear_0154.py
+          python scripts/fix_bounded_empty_read_preservation_0155.py
+          python scripts/fix_passive_churn_and_launcher_race_0156.py
+          python scripts/fix_subsecond_farol_0157.py
+          python scripts/remove_collector_completely_0158.py
+          python scripts/run_value_finance_0159.py
+          python scripts/fix_value_finance_0160.py
+          python scripts/fix_value_finance_0160_compile.py
+          python ../patches/scripts/fix_failed_card_autocapture_0161.py .
+          python ../patches/scripts/fix_failed_card_autocapture_0161_rerun.py .
+
+      - name: Snapshot protected 0.1.161 source
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+          import json
+          snapshot = {p.as_posix(): sha256(p.read_bytes()).hexdigest() for p in sorted(Path('app').rglob('*')) if p.is_file()}
+          Path('/tmp/rota-certa-0161-source-snapshot.json').write_text(json.dumps(snapshot, sort_keys=True, indent=2), encoding='utf-8')
+          PY
+          cp app/src/main/AndroidManifest.xml /tmp/AndroidManifest-0.1.161.xml
+          grep -q 'versionName = "0.1.161"' app/build.gradle.kts
+          grep -q 'versionCode = 5220' app/build.gradle.kts
+
+      - name: Apply explicit work mode and immutable sessions 0.1.162
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python ../patches/scripts/fix_gigu_work_mode_session_0162.py .
+          python ../patches/scripts/fix_gigu_work_mode_session_0162_rerun.py .
+
+      - name: Verify exact change boundary
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+          import json
+          before = json.loads(Path('/tmp/rota-certa-0161-source-snapshot.json').read_text(encoding='utf-8'))
+          after = {p.as_posix(): sha256(p.read_bytes()).hexdigest() for p in sorted(Path('app').rglob('*')) if p.is_file()}
+          modified = sorted(path for path in before.keys() & after.keys() if before[path] != after[path])
+          added = sorted(after.keys() - before.keys())
+          deleted = sorted(before.keys() - after.keys())
+          expected_modified = sorted([
+              'app/build.gradle.kts',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/InstalledRideAppPickerActivity.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/Models.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/Repositories.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/SelectedRideAppStore.kt',
+          ])
+          expected_added = sorted([
+              'app/src/main/java/br/com/mapeiaia/rotacerta/WorkModeSession0162.kt',
+              'app/src/test/java/br/com/mapeiaia/rotacerta/WorkModeSession0162Test.kt',
+              'app/src/test/java/br/com/mapeiaia/rotacerta/WorkModeSessionContract0162Test.kt',
+          ])
+          assert modified == expected_modified, (modified, expected_modified)
+          assert added == expected_added, (added, expected_added)
+          assert deleted == [], deleted
+          print('Modified:', *modified, sep='\n- ')
+          print('Added:', *added, sep='\n- ')
+          PY
+          cmp -s /tmp/AndroidManifest-0.1.161.xml app/src/main/AndroidManifest.xml
+
+      - name: Verify isolated 0.1.162 contracts
+        working-directory: source
+        run: |
+          set -euo pipefail
+          grep -q 'versionName = "0.1.162"' app/build.gradle.kts
+          grep -q 'versionCode = 5230' app/build.gradle.kts
+          grep -q 'Modo Trabalho' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          grep -q 'WorkModePolicy0162' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'DriverCardSessionGate0162' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'DriverCardEventResolver0162' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'event_driven_farol_0_1_162' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'immutable_package_required_0_1_162' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'bubble_drag_scan_pause_0_1_116' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'TransientOverlayPackagePolicy0161.shouldPreferSelectedRoot' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'com.openai.chatgpt' app/src/main/java/br/com/mapeiaia/rotacerta/WorkModeSession0162.kt
+          grep -q 'PassengerValueBubbleShortcutModule' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
+          grep -q 'FinanceBubbleShortcutModule' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
+          grep -q 'android:name=".FinancialActivity"' app/src/main/AndroidManifest.xml
+          test "$(grep -c '<service' app/src/main/AndroidManifest.xml)" -eq 2
+          test ! -e app/src/main/java/br/com/mapeiaia/rotacerta/BlaBlaCarCollectorActivity.kt
+          test ! -d app/src/main/java/br/com/mapeiaia/rotacerta/coletor
+          ! grep -R -n -E 'BlaBlaCarCollector|CollectorBubbleShortcutModule|OpenCollector|displayLabel = "Coletor"|label = "Coletor"' app/src/main app/src/test
+          python - <<'PY'
+          from pathlib import Path
+          source = Path('app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt').read_text(encoding='utf-8')
+          start = source.index('private fun startContinuousScan')
+          end = source.index('private fun', start + len('private fun startContinuousScan'))
+          section = source[start:end]
+          assert 'while (' not in section, section
+          assert 'event_driven_farol_0_1_162' in section
+          stop_start = source.index('private fun stopApplicationFromBubble')
+          stop_end = source.index('private fun', stop_start + len('private fun stopApplicationFromBubble'))
+          stop_section = source[stop_start:stop_end]
+          assert 'disableSelf()' not in stop_section
+          assert 'WorkModePolicy0162.setEnabled(currentSettings, false)' in stop_section
+          assert 'immutable_package_required_0_1_162' in source
+          assert '?: universalActiveRidePackageName?.takeIf' not in source
+          assert '?: normalizePackageName(universalForegroundPackageName)?.takeIf' not in source
+          assert Path('/tmp/AndroidManifest-0.1.161.xml').read_bytes() == Path('app/src/main/AndroidManifest.xml').read_bytes()
+          PY
+          test -n "${GOOGLE_MAPS_API_KEY:-}"
+
+      - name: Unit and contract tests
+        working-directory: source
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+      - name: Android lint
+        working-directory: source
+        run: ./gradlew lintDebug --no-daemon --stacktrace
+      - name: Build APK
+        working-directory: source
+        run: ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Validate APK and compare release boundary
+        working-directory: source
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          APKSIGNER=$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)
+          AAPT=$(find "$ANDROID_SDK_ROOT/build-tools" -name aapt -type f | sort -V | tail -1)
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee rota-certa-0.1.162-assinatura.txt
+          grep -qi 'd9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' rota-certa-0.1.162-assinatura.txt
+          BADGING=$($AAPT dump badging "$APK" | head -1)
+          echo "$BADGING"
+          echo "$BADGING" | grep -q "name='br.com.mapeiaia.rotacerta'"
+          echo "$BADGING" | grep -q "versionCode='5230'"
+          echo "$BADGING" | grep -q "versionName='0.1.162'"
+          $AAPT dump xmltree "$APK" AndroidManifest.xml > apk-manifest-tree.txt
+          grep -q 'FinancialActivity' apk-manifest-tree.txt
+          grep -q 'WorkTrackingService' apk-manifest-tree.txt
+          grep -q 'LiveRideAccessibilityService' apk-manifest-tree.txt
+          for dex in $(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$'); do unzip -p "$APK" "$dex"; done | strings > dex-strings.txt
+          grep -q 'WorkModePolicy0162' dex-strings.txt
+          grep -q 'DriverCardSessionGate0162' dex-strings.txt
+          grep -q 'DriverCardEventResolver0162' dex-strings.txt
+          grep -q 'DriverCardTextSanitizer0162' dex-strings.txt
+          grep -q 'PassengerValueFormatter' dex-strings.txt
+          grep -q 'FinancialActivity' dex-strings.txt
+          grep -E 'BlaBlaCarCollector|CollectorBubbleShortcutModule|OpenCollector' dex-strings.txt && exit 1 || true
+          cp "$APK" rota-certa-0.1.162-modo-trabalho-validado.apk
+          sha256sum rota-certa-0.1.162-modo-trabalho-validado.apk | tee rota-certa-0.1.162-sha256.txt
+          printf 'Base protegida: Rota Certa 0.1.161 (5220)\nNova versão: Rota Certa 0.1.162 (5230)\nReferência técnica: arquitetura event-driven do GigU; nenhum código proprietário copiado\nManifesto-fonte: idêntico à 0.1.161\nComponentes declarados novos: nenhum\nPermissões novas: nenhuma\nServiços declarados: 2 (inalterado)\nModo Trabalho: desligado por padrão em instalação/migração\nFarol contínuo: removido; processamento por evento relevante\n' > rota-certa-0.1.162-comparacao.txt
+
+      - name: Upload validated APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.162-work-mode-session-validated
+          path: |
+            source/rota-certa-0.1.162-modo-trabalho-validado.apk
+            source/rota-certa-0.1.162-sha256.txt
+            source/rota-certa-0.1.162-assinatura.txt
+            source/rota-certa-0.1.162-comparacao.txt
+          retention-days: 90
+          if-no-files-found: error

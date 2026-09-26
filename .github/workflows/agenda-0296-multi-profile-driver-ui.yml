@@ -1,0 +1,102 @@
+name: Agenda 0.1.296 one driver multi-profile UI
+
+on:
+  push:
+    branches:
+      - agent/agenda-public-booking-0.1.296
+    paths:
+      - '.github/scripts/agenda_0296_public_booking.py'
+      - '.github/scripts/agenda_0296_multi_profile_driver_ui.py'
+      - '.github/workflows/agenda-0296-multi-profile-driver-ui.yml'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agenda-0296-multi-profile-driver-ui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/agenda-public-booking-0.1.296
+          fetch-depth: 0
+
+      - name: Materialize public booking and one-driver multi-profile UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/agenda_0296_public_booking.py
+          python3 .github/scripts/agenda_0296_multi_profile_driver_ui.py
+          git diff --check
+          grep -Fq 'versionName = "0.1.296"' app/build.gradle.kts
+          grep -Fq 'Text("Conta do motorista"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'Text("Perfis vinculados"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'BlaBlaDynamicAccountRegistry(context).list()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'Cada perfil mantém sua identidade, sua posição e suas viagens de forma independente.' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'não gera outra chave privada ou outro token da agenda' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate public booking backend and web
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/public/app.js
+          node --test trip-platform/functions/test/*.test.js | tee /tmp/backend-tests.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Full Android tests lint and APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --stacktrace | tee /tmp/gradle-validation.txt
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /tmp/apk.sha256
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - name: Prepare installable evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/agenda-0296-multi-profile
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0296-multi-profile/rota-certa-0.1.296-one-driver-multi-profile-debug.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0296-multi-profile/apk.sha256
+          cp /tmp/backend-tests.txt /tmp/agenda-0296-multi-profile/backend-tests.txt
+          cp /tmp/gradle-validation.txt /tmp/agenda-0296-multi-profile/gradle-validation.txt
+          git rev-parse HEAD > /tmp/agenda-0296-multi-profile/source-head.txt
+          printf '%s\n' \
+            'versionName=0.1.296' \
+            'onePhysicalDriver=true' \
+            'linkedProfilesDynamic=true' \
+            'driverPrivateKeySharedAcrossProfiles=true' \
+            'publicAgendaTokenSharedAcrossProfiles=true' \
+            'profileIdentityIndependent=true' \
+            'profilePositionIndependent=true' \
+            'profileTripsIndependent=true' \
+            'farolUntouched=true' > /tmp/agenda-0296-multi-profile/driver-profile-contract.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-agenda-0.1.296-one-driver-multi-profile-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: /tmp/agenda-0296-multi-profile

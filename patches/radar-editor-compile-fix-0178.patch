@@ -1,0 +1,28 @@
+diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/RadarImport.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/RadarImport.kt
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/RadarImport.kt
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/RadarImport.kt
+@@ -16,6 +16,7 @@
+ import androidx.compose.material3.Card
+ import androidx.compose.material3.MaterialTheme
+ import androidx.compose.material3.OutlinedButton
++import androidx.compose.material3.OutlinedTextField
+ import androidx.compose.material3.Text
+ import androidx.compose.runtime.Composable
+ import androidx.compose.runtime.getValue
+@@ -336,14 +337,14 @@
+         Text("Editar radar selecionado", fontWeight = FontWeight.Bold)
+         OutlinedTextField(
+             value = draftName,
+-            onValueChange = { draftName = it },
++            onValueChange = { value: String -> draftName = value },
+             modifier = Modifier.fillMaxWidth(),
+             label = { Text("Nome do radar") },
+             singleLine = true,
+         )
+         OutlinedTextField(
+             value = draftSpeed,
+-            onValueChange = { value -> draftSpeed = value.filter(Char::isDigit).take(3) },
++            onValueChange = { value: String -> draftSpeed = value.filter(Char::isDigit).take(3) },
+             modifier = Modifier.fillMaxWidth(),
+             label = { Text("Velocidade em km/h") },
+             singleLine = true,

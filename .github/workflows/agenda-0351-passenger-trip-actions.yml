@@ -1,0 +1,195 @@
+name: Rota Certa 0.1.351 Passageiros e viagens
+
+on:
+  push:
+    branches:
+      - agent/agenda-passenger-trip-actions-0.1.351-r2
+  pull_request:
+    branches:
+      - agent/agenda-operational-status-my-trips-0.1.350
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agenda-0351-passenger-trip-actions-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate 0.1.351 causal scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=27f99b71379146fcd2a9c5a1a7639a18c9330ef4
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          grep -Fq 'versionCode = 5644' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.351"' app/build.gradle.kts
+          grep -Fq 'ResponsiveTripAction("👥 Passageiros", onClick = onOpenPassengers)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'ResponsiveTripAction("➕ Adicionar a uma viagem")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'ResponsiveTripAction("🛣️ Nova viagem", onClick = onCreateTrip)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq '1. Selecionar passageiro' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
+          grep -Fq '2. Selecionar viagem' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
+          grep -Fq '3. Dados da reserva' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
+          grep -Fq 'primaryActionLabel = "Adicionar à viagem"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
+          grep -Fq 'passengerStore.profile(canonicalPassengerId)?.blocked == true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripQuickPassengerUi.kt
+          grep -Fq 'addPassengerResumePassengerId = resumePassengerId' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'applyInternalCancellationTombstones(collectorResponse' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'var vehicleExpanded by remember { mutableStateOf(false) }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaSettingsUi.kt
+          grep -Fq 'Text(if (vehicleExpanded) "🚗 Veículo ▲" else "🚗 Veículo ▼")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaSettingsUi.kt
+          grep -Fq 'path = "/v1/driver/username"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          grep -Fq 'tripDriverAliases' trip-platform/functions/index.js
+          grep -Fq 'tripDriverAliases' trip-platform/calendar-functions/index.js
+
+          CHANGED_FAROL="$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' || true)"
+          test -z "$CHANGED_FAROL"
+
+          ALLOWED='^(.github/workflows/agenda-0351-passenger-trip-actions.yml|app/build.gradle.kts|app/src/main/java/br/com/mapeiaia/rotacerta/trips/(PassengerTimelineUi.kt|PublicAgendaSettingsUi.kt|TripGlobalPassengerFlow0256.kt|TripQuickPassengerUi.kt|TripRemoteApi.kt|TripTimelineUi.kt|TripsActivity.kt)|app/src/test/java/br/com/mapeiaia/rotacerta/trips/(AgendaCalendarDayLines0294Test.kt|OnlineSettingsVehicleUsername0351Test.kt|PassengerCanonical0317Test.kt|PassengerTripActions0351Test.kt)|trip-platform/calendar-functions/index.js|trip-platform/functions/index.js|trip-platform/functions/test/driver-username-alias-0351.test.js)$'
+          UNEXPECTED="$(git diff --name-only "$BASE"..HEAD | grep -Ev "$ALLOWED" || true)"
+          test -z "$UNEXPECTED"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Node syntax and backend regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/calendar-functions/index.js
+          node --check trip-platform/public/date-selection.js
+          node --check trip-platform/public/app.js
+          node --test trip-platform/functions/test/*.test.js
+
+      - name: Configure Firebase authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
+          else
+            echo "Firebase credential is missing."
+            exit 3
+          fi
+
+      - name: Generate Firebase Android config
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+          else
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+          fi
+          APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+          test -n "$APP_ID"
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests and installable APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace | tee /tmp/gradle.txt
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
+          grep -Fq "versionCode='5644'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.351'" /tmp/aapt.txt
+          mkdir -p /tmp/0351
+          cp "$APK" /tmp/0351/rota-certa-0.1.351-passenger-trip-actions.apk
+          sha256sum /tmp/0351/rota-certa-0.1.351-passenger-trip-actions.apk | tee /tmp/0351/apk.sha256
+          cp /tmp/aapt.txt /tmp/0351/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0351/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0351/gradle.txt
+          git rev-parse HEAD > /tmp/0351/source-head.txt
+          git diff --name-only 27f99b71379146fcd2a9c5a1a7639a18c9330ef4..HEAD > /tmp/0351/changed-files.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.351-passenger-trip-actions
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0351
+
+      - name: Install Firebase Functions dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+          npm --prefix trip-platform/calendar-functions install --no-audit --no-fund
+
+      - name: Deploy Agenda functions and hosting
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,functions:trip-calendar,hosting --non-interactive --force --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,functions:trip-calendar,hosting --non-interactive --force
+          fi
+
+      - name: Smoke deployed Agenda and stable public identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          DRIVER=viagem-certa
+          AGENDA=JA5o3L0KjPSbdM1m01jXhsNpoZZsXOiE
+          curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/v1/health" | grep -F '"ok":true'
+          curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/" -o /tmp/live-index.html
+          test -s /tmp/live-index.html
+
+          ACCESS_CODE="$(curl --silent --show-error -o /tmp/unknown-access.json -w '%{http_code}' -X POST "$BASE/v1/public/passenger-access" -H 'Content-Type: application/json' --data "{\"driverUsername\":\"$DRIVER\",\"agendaToken\":\"$AGENDA\",\"passengerContact\":\"+5511900000000\"}")"
+          test "$ACCESS_CODE" = "403"
+
+          RENAME_CODE="$(curl --silent --show-error -o /tmp/rename-unauth.json -w '%{http_code}' -X POST "$BASE/v1/driver/username" -H 'Content-Type: application/json' --data "{\"username\":\"ci-nao-alterar\",\"currentPublicAgendaToken\":\"$AGENDA\",\"requestId\":\"ci-smoke-request\"}")"
+          test "$RENAME_CODE" = "401"
+
+          CALENDAR_CODE="$(curl --silent --show-error -o /tmp/calendar.json -w '%{http_code}' "$BASE/calendar/$DRIVER/$AGENDA.json")"
+          test "$CALENDAR_CODE" = "200"
+          node -e 'const x=require("/tmp/calendar.json"); if(!x || typeof x!=="object") process.exit(1)'
+          echo "DEPLOY_SMOKE=PASS"

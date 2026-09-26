@@ -1,0 +1,175 @@
+name: BlaBla rides external timeline 0.1.535
+
+on:
+  push:
+    branches: [agent/blablacar-rides-external-timeline-0.1.535]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-build-prove:
+    runs-on: ubuntu-latest
+    env:
+      GOOGLE_MAPS_API_KEY: blablacar_external_timeline_0535_ci_dummy_key
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove exact HEAD, preserved capture and protected FAROL
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=29bfe3579e78366af577a5f5aa97b8e5c7bc1855
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'versionCode = 5827' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.535"' app/build.gradle.kts
+
+          # The physically validated 0.1.534 capture/evidence/export implementation stays byte-for-byte unchanged.
+          git diff --exit-code "$BASE" -- \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesForensicEvidence0528.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesPortableJson0531.kt
+
+          UI=app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAccountsBrowsersUi0399.kt
+          TIMELINE=app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesExternalTimeline0535.kt
+          TEST=app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesExternalTimeline0535Test.kt
+          grep -Fq 'Capturar Suas viagens de todos os perfis' "$UI"
+          grep -Fq 'BlaBlaRidesSnapshotCoordinator0526.captureAll' "$UI"
+          grep -Fq '📍 Ver linha do tempo externa' "$UI"
+          grep -Fq '📄 Baixar linha do tempo externa (.json)' "$UI"
+          grep -Fq 'rota-certa-blablacar-rides-external-timeline-v1' "$TIMELINE"
+          grep -Fq 'DUPLICATE_TRIP_ID' "$TIMELINE"
+          grep -Fq 'CONTINUITY_CONFLICT' "$TIMELINE"
+          grep -Fq 'ALTERNATING_BREAK' "$TIMELINE"
+          grep -Fq 'workDays = 4' "$UI"
+          grep -Fq 'restDays = 2' "$UI"
+
+          for forbidden in TRIP_OPEN TRIP_DETAIL PASSENGER_OPEN PASSENGER_CONTACT; do
+            ! grep -Fq "$forbidden" "$TIMELINE"
+            ! grep -Fq "$forbidden" "$UI"
+          done
+
+          # Identity remains profileUuid + tripId; list position is evidence only.
+          grep -Fq 'val profileUuid: String' "$TIMELINE"
+          grep -Fq 'val tripId: String' "$TIMELINE"
+          grep -Fq 'val listPosition: Int' "$TIMELINE"
+          grep -Fq 'arrivalTimeKnown' "$TIMELINE"
+          grep -Fq 'parseStatus' "$TIMELINE"
+          grep -Fq 'normalizedEvidenceText' "$TIMELINE"
+
+          FAROL=app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          git diff --exit-code "$BASE" -- "$FAROL"
+          sha256sum "$FAROL" | tee /tmp/farol-before.sha256
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure Firebase Android app for build only
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+          fi
+          [ ! -s /tmp/firebase-sa.json ] || { chmod 600 /tmp/firebase-sa.json; export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json; }
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run external timeline and 0.1.534 capture regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRidesExternalTimeline0535Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRidesSnapshot0526Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRidesPortableJson0531Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace
+
+      - name: Compile and build final-SHA APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ROTA_CERTA_GIT_SHA="$GITHUB_SHA"
+          export ROTA_CERTA_GIT_BRANCH="$GITHUB_REF_NAME"
+          export ROTA_CERTA_BUILD_TIME="$(TZ=America/Sao_Paulo date '+%d/%m/%Y %H:%M')"
+          ./gradlew :app:compileDebugKotlin :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          FAROL=app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          sha256sum "$FAROL" | tee /tmp/farol-after.sha256
+          diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/tmp/zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" > /tmp/aapt.txt
+          grep '^package:' /tmp/aapt.txt | grep -F "name='br.com.mapeiaia.rotacerta'" | grep -F "versionCode='5827'" | grep -F "versionName='0.1.535'"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > /tmp/apksigner.txt
+          grep -Fq 'Verified' /tmp/apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
+          sha256sum "$APK" | tee /tmp/apk.sha256
+
+      - name: Package evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cp app/build/outputs/apk/debug/app-debug.apk out/rota-certa-0.1.535-blablacar-rides-external-timeline.apk
+          cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/apk.sha256 /tmp/farol-before.sha256 /tmp/farol-after.sha256 out/
+          {
+            echo "branch=$GITHUB_REF_NAME"
+            echo "sha=$GITHUB_SHA"
+            echo "baseValidatedSha=29bfe3579e78366af577a5f5aa97b8e5c7bc1855"
+            echo "versionName=0.1.535"
+            echo "versionCode=5827"
+            echo "captureMode=INVENTORY_ONLY_PRESERVED"
+            echo "projection=EXTERNAL_TIMELINE_FROM_SAVED_RIDE_LIST_ARTIFACTS"
+            echo "deepTripEnrichment=false"
+            echo "automaticTripOpen=false"
+            echo "passengerPrivateData=false"
+            echo "physicalApproval=PENDING_SAMSUNG_SM-S911B_ANDROID_16"
+            echo "apkSha256=$(cut -d' ' -f1 /tmp/apk.sha256)"
+            echo "farolSha256=$(cut -d' ' -f1 /tmp/farol-after.sha256)"
+          } > out/build-evidence.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.535-blablacar-rides-external-timeline-${{ github.sha }}
+          path: out/
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,219 @@
+name: Timeline 0.1.538 global pull sync all
+
+on:
+  push:
+    branches:
+      - agent/timeline-pull-sync-all-0.1.538
+    paths:
+      - '.github/triggers/timeline-0538.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: timeline-0538-pull-sync-all-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  materialize-test-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: timeline_pull_sync_all_0538_ci_dummy_key
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/timeline-pull-sync-all-0.1.538
+
+      - name: Prove exact 0.1.537 baseline and protected invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionCode = 5829' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.537"' app/build.gradle.kts
+          grep -Fq 'onClickLabel = if (expanded) "Fechar viagem" else "Abrir viagem"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'AgendaBackgroundSync0392.enqueueTripCollectorRefresh0517(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'origin = BlaBlaCommandOrigin0407.CARD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'canRefreshAtGestureStart = { !timelineListState.canScrollBackward }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'val pickupTarget = passengerPickupMapTarget(passenger)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'openPassengerPickupMap(context, pickupTarget)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'val dropoffTarget = passengerDropoffMapTarget(passenger)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'openPassengerDropoffMap(context, dropoffTarget)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          ! grep -Fq 'Carregando passageiros' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          test -f .github/scripts/timeline_0538_pull_sync_all.py
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt > /tmp/farol.before
+
+      - name: Materialize global BlaBlaCar to Agenda to Timeline pull
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/timeline_0538_pull_sync_all.py
+          git diff --check
+          grep -Fq 'TIMELINE_PULL_REFRESH_ALL_COLLECTOR_0538' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'origin = BlaBlaCommandOrigin0407.SYSTEM_RECONCILIATION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          test "$(grep -Fc 'AgendaBackgroundSync0392.enqueueTripCollectorRefresh0517(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt)" -ge 2
+          grep -Fq 'origin = BlaBlaCommandOrigin0407.CARD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'slop * awayFromTopTriggerMultiplier.coerceAtLeast(1f)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaPullRefreshGesture0388.kt
+          grep -Fq 'AGENDA_TIMELINE_GLOBAL_PULL_REFRESH_0538' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'versionCode = 5830' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.538"' app/build.gradle.kts
+
+      - name: Protect FAROL and exact source scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt > /tmp/farol.after
+          cmp /tmp/farol.before /tmp/farol.after
+          { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u > /tmp/changed.txt
+          printf '%s\n' \
+            'app/build.gradle.kts' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaPullRefreshGesture0388.kt' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt' \
+            'app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaPullRefreshGesture0388Test.kt' \
+            'app/src/test/java/br/com/mapeiaia/rotacerta/trips/TimelineGlobalPullSync0538Test.kt' | sort > /tmp/expected.txt
+          cmp /tmp/expected.txt /tmp/changed.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure Firebase Android app for build only
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Focused global pull regression and pre-commit debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPullRefreshGesture0388Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TimelineGlobalPullSync0538Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TripTimelineProfile0536Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Commit tested materialized source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/build.gradle.kts \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaPullRefreshGesture0388.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt \
+                  app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaPullRefreshGesture0388Test.kt \
+                  app/src/test/java/br/com/mapeiaia/rotacerta/trips/TimelineGlobalPullSync0538Test.kt
+          git commit -m 'feat(timeline): pull sync all cards 0.1.538'
+          git push origin HEAD:agent/timeline-pull-sync-all-0.1.538
+          FINAL_SHA="$(git rev-parse HEAD)"
+          printf '%s\n' "$FINAL_SHA" | tee /tmp/source-head.txt
+          echo "FINAL_SHA=$FINAL_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_SHA=$FINAL_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=agent/timeline-pull-sync-all-0.1.538" >> "$GITHUB_ENV"
+          git diff --exit-code
+
+      - name: Rebuild exact final SHA APK and verify package
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$FINAL_SHA"
+          ./gradlew :app:clean :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5830'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.538'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -Fq 'Verified' /tmp/apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "$FINAL_SHA" /tmp/dex-strings.txt
+          grep -Fq 'TIMELINE_PULL_REFRESH_ALL_COLLECTOR_0538' /tmp/dex-strings.txt
+          grep -Fq 'TARGET_COLLECTOR_REFRESH_0517' /tmp/dex-strings.txt
+          sha256sum "$APK" | tee /tmp/apk.sha256
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt > /tmp/farol.final
+          cmp /tmp/farol.before /tmp/farol.final
+
+      - name: Prepare final-SHA APK evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$FINAL_SHA"
+          mkdir -p /tmp/timeline-0538
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/timeline-0538/rota-certa-0.1.538-debug.apk
+          cp /tmp/apk.sha256 /tmp/timeline-0538/apk.sha256
+          cp /tmp/source-head.txt /tmp/timeline-0538/source-head.txt
+          cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/dex-strings.txt /tmp/timeline-0538/
+          printf '%s\n' \
+            'package=br.com.mapeiaia.rotacerta' \
+            'versionName=0.1.538' \
+            'versionCode=5830' \
+            "sourceSha=$FINAL_SHA" \
+            'pullFlow=BlaBlaCar targeted collector -> canonical Agenda -> Timeline' \
+            'globalTargets=deduplicated strongIdentityKey' \
+            'perCardRadar=preserved' \
+            'pullAtTop=touchSlop threshold' \
+            'pullAwayFromTop=deliberate 4x touchSlop threshold' \
+            'ordinaryShortReverseScroll=preserved' \
+            'canonicalRemote=secondary refresh' \
+            'collectorDirectTimelineRead=false' \
+            'loadingPassengersVisible=false' \
+            'farolUntouched=true' \
+            'physicalApproval=PENDING_SAMSUNG_SM_S911B_ANDROID_16' > /tmp/timeline-0538/version.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-timeline-0.1.538-${{ env.FINAL_SHA }}
+          if-no-files-found: error
+          retention-days: 14
+          path: /tmp/timeline-0538

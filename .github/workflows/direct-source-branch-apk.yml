@@ -1,0 +1,410 @@
+name: Rota Certa 0.1.622 HTML authoritative convergence exact SHA
+# trigger: html-authoritative-convergence-0622-r5
+
+on:
+  push:
+    branches:
+      - agent/html-authoritative-convergence-0.1.622
+    paths:
+      - '.github/workflows/direct-source-branch-apk.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/direct-source-branch-apk.yml'
+      - 'app/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: html-authoritative-convergence-0622-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: html_card_authoritative_reset_0615_ci_dummy_key
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      EXPECTED_VERSION_CODE: '5913'
+      EXPECTED_VERSION_NAME: '0.1.622'
+      BASE_SHA: '6a7368175fded28c6562e9efd13acea9c7bd1fe8'
+      SOURCE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      SOURCE_BRANCH: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name }}
+
+    steps:
+      - name: Checkout exact triggering HEAD
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.SOURCE_SHA }}
+
+      - name: Prove exact source and unified acquisition contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          echo "ROTA_CERTA_GIT_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=$SOURCE_BRANCH" >> "$GITHUB_ENV"
+          printf '%s\n' "$SOURCE_SHA" | tee /tmp/source-head.txt
+          printf '%s\n' "$SOURCE_BRANCH" | tee /tmp/source-branch.txt
+
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          test -s "$FAROL"
+          sha256sum "$FAROL" | tee /tmp/farol-before.sha256
+          git diff --quiet "$BASE_SHA" HEAD -- "$FAROL"
+
+          grep -Fq 'val releaseVersionCode = 5_913' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.622"' app/build.gradle.kts
+          grep -Fq 'OPERATIONAL_BROWSER_AUTO_DISCOVERY_DISABLED_0616' app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalBrowserAutoDiscovery0567.kt
+          ! grep -Fq 'AgendaBackgroundSync0392.enqueueImmediate' app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalBrowserAutoDiscovery0567.kt
+          grep -Fq 'agendaTimelineWriteToDownloads0616' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineDownload0398.kt
+          grep -Fq 'MediaStore.Downloads.EXTERNAL_CONTENT_URI' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineDownload0398.kt
+          grep -Fq 'TimelineDownloadReceipt0619' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineDownload0398.kt
+          grep -Fq 'publishedRows == 1' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineDownload0398.kt
+          grep -Fq 'receipt.pending == 0' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineDownload0398.kt
+          grep -Fq 'TIMELINE_DOWNLOAD_COMPLETED_0619' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineDownload0398.kt
+          grep -Fq 'TIMELINE_DOWNLOAD_DIRECT_FAILED_0619' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineDownload0398.kt
+          grep -Fq 'fallback=document_picker' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineDownload0398.kt
+          grep -Fq 'modernAndroidDownloadIsVerifiedBeforeSuccessAndFallsBackToPicker0619' app/src/test/java/br/com/mapeiaia/rotacerta/trips/OperationalTimelineDownload0616Test.kt
+          grep -Fq 'downloadTriggerToken0616' app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalAllTripsBrowserUi0563.kt
+          grep -Fq 'fullMonthCardKeepsExplicitNextYear0616' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesExternalTimeline0535Test.kt
+          grep -Fq 'verifiedAccountSessionIsNotRejectedByPassengerProfileLinks0616' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDomNormalizationDiagnostic0274Test.kt
+          grep -Fq 'writeTripHtml0605' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
+          ! grep -Fq 'reverifyTripHeadless0407' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
+          ! grep -Fq 'BlaBlaAutomaticCollectionCoordinator0400' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          ! grep -Fq 'BlaBlaBrowserOrchestrator' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'published_offer_href' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'TRIP_READY_0606' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'capturePublishedSeats0606' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'strongPassengerLinks' app/src/main/assets/blablacar/scripts/trip_detail.js
+          grep -Fq 'fallbackItineraryStops' app/src/main/assets/blablacar/scripts/trip_detail.js
+          grep -Fq 'optionsHref' app/src/main/assets/blablacar/scripts/trip_detail.js
+          grep -Fq 'HTML_DIRECT_0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt
+          grep -Fq 'LEGACY_SESSION_WRITE_BLOCKED_0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt
+          grep -Fq 'LEGACY_COLLECTOR_RESPONSE_BLOCKED_0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt
+          grep -Fq 'NON_HTML_CANONICAL_INGEST_BLOCKED_0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'captureSingleTrip0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'captureSingleTrip0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          ! grep -Fq 'BlaBlaAutomaticCollectionCoordinator0400' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          ! grep -Fq 'runPendingHeadless' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'if (!expanded) queueTargetHtmlRefresh0607()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'requestAgendaTripHtmlRefresh0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'remoteIsBlaBla' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
+          grep -Fq 'externalSnapshotAuthority0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'htmlAuthorityVisible0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
+          grep -Fq 'htmlAuthorityVisible0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'existingHtmlAuthority0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'htmlBackedTripIds0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt
+          grep -Fq 'BlaBlaDirectAccountCapture0608.capture' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
+          ! grep -Fq 'BlaBlaDynamicAccountSessionController0401' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
+          grep -Fq 'oldController=false oldIdentityProbe=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
+          ! grep -Fq 'BlaBlaBrowserOrchestrator' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
+          ! grep -Fq 'BlaBlaAutomaticCollectionCoordinator0400' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
+          grep -Fq 'mhtmlSupported = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
+          grep -Fq 'directRidesStabilizer0613' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
+          grep -Fq 'RIDES_OBSERVED_INVENTORY_MISMATCH_0613' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
+          grep -Fq 'observedTripHrefs' app/src/main/assets/blablacar/scripts/ride_list.js
+          grep -Fq 'initialTenCardBottomCannotCompleteBeforeLazyListFinishes0613' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608Test.kt
+          grep -Fq 'sameDateDoesNotCollapseDistinctStrongTripIds0613' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608Test.kt
+          grep -Fq 'HTML_LEGACY_IDENTITY_PROMOTED_0614' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'htmlLegacyIdentityPromotionEligible0614' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'store.promoteExternalIdentity0472(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'legacyDeterministicBackingCanBePromotedOnlyWithMatchingPhysicalAndStrongIdentity0614' app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCanonicalCentralSync0403Test.kt
+          grep -Fq 'replaceAuthoritativeHtmlTarget0615' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorTimelineModule.kt
+          grep -Fq 'TARGETED_HTML_SESSION_WRITE_BLOCKED_0615' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt
+          grep -Fq 'TARGETED_HTML_INCOMPLETE_REJECTED_0615' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'saveResponse(response, preserveOnPartial = false)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'completeTargetedHtmlReplacesRosterAndSeatsWithoutMonotonicInheritance0615' app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCanonicalCentralSync0403Test.kt
+          grep -Fq 'targetedHtmlIncompleteCaptureIsBlockedBeforeSessionAndCanonicalWrite0615' app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCanonicalCentralSync0403Test.kt
+          grep -Fq 'globalHtmlAtomicCommitEligible0609' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'htmlCanonicalResponseStatusAccepted0611' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'status.lowercase() in setOf("validated", "complete")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          ! grep -Fq 'response.status != "complete"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'validatedStatusWithCompleteHtmlCoverageIsCommitEligible0611' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605Test.kt
+          grep -Fq 'existing?.deleted == true && incomingComplete' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'snapshotHtmlRollback0612' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt
+          grep -Fq 'snapshotHtmlRollback0612' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'BLABLACAR_GLOBAL_HTML_ROLLBACK_0612' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'BLABLACAR_GLOBAL_HTML_CANONICAL_IDENTITY_FAILED_0612' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'passengerSegmentsResolved' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'RELATIVE_YESTERDAY' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesExternalTimeline0535.kt
+          grep -Fq 'indexPayload.tripIds.isEmpty() && indexPayload.tripLinks.isEmpty()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesForensicEvidence0528.kt
+          ! grep -Fq 'indexPayload.tripLinks.isEmpty() ||' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesForensicEvidence0528.kt
+          grep -Fq 'currentRideRemainsCapturableThroughArrivalPlusOneHour0612' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605Test.kt
+          grep -Fq 'relativeRideDatesResolveFromCaptureDate0612' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesExternalTimeline0535Test.kt
+          grep -Fq 'cityOnlyPassengerLabelsResolveAgainstUniqueHtmlStopAddresses0612' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300Test.kt
+          grep -Fq 'nonEmptyInventoryRequiresExplicitValidatedTripLinks0612' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesForensicEvidence0528Test.kt
+          grep -Fq 'BLABLACAR_GLOBAL_HTML_COMMIT_0610' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'globalCommitFinalizer=true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'publishLiveHtmlCard0617' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'BLABLACAR_LIVE_CARD_COMMITTED_0617' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'liveCardCommitMutex0617.withLock' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'completeProfileUuids = emptySet()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'preserveSiblings=true tombstone=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'BookingRealtimeEvents0356.notifyChanged()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'visibleImmediately=true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'evaluateAbsentTrips0618 = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'skipPresentAlreadyCommittedGeneration0618 = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'EXTERNAL_CANONICAL_ABSENCE_SCAN_SKIPPED_0618' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'EXTERNAL_CANONICAL_FINALIZER_FASTPATH_0618' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'semanticMismatch06122' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'completeCanonicalIds06122' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'pendingParity06122' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'incomingProjection06122' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'source.itinerary_authoritative' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'completeHtmlProjectionMarksSaoPauloToTresCoracoesFullWithOnePlusThreePassengers0622' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300Test.kt
+          grep -Fq 'completeHtmlProjectionPreservesSaoGoncaloAndAccumulatesReturnPassengers0622' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300Test.kt
+          grep -Fq 'val committed = withContext(Dispatchers.IO)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
+          grep -Fq 'liveCardStaysIncrementalButCompleteFinalizerForcesSemanticConvergence0622' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaLiveHtmlCommit0617Test.kt
+          grep -Fq 'BLABLACAR_LIVE_CARD_PUBLIC_PARITY_0620' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'TripMutationCoordinator0387(app, tripStore).drainPending(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'canonicalTripIds = targetPublicationIds0620' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'waitForGlobalBatch=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'changedLiveHtmlCardDrainsOnlyItsPublicPublicationBeforeCommitCompletes0620' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaLiveHtmlCommit0617Test.kt
+          grep -Fq 'BLABLACAR_HTML_TRANSPORT_RECOVERY_0621' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'RECYCLE_WEBVIEW_RETRY_SAME_CARD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'STOP_PROFILE_PRESERVE_CANONICAL' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'transientHtmlTransportFailureRetriesSameCardAndPreventsCascade0621' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaLiveHtmlCommit0617Test.kt
+          grep -Fq 'preserveOnPartial = true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'accounts.mapIndexed' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
+          grep -Fq '.awaitAll()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
+          grep -Fq 'for ((index, ride) in futureRides.withIndex())' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'BLABLACAR_RIDES_STABILIZATION_RETRY_0617' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
+          grep -Fq 'BLABLACAR_RIDES_STABILIZATION_FAILED_0617' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
+          grep -Fq 'repeat(2) { attempt ->' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
+          grep -Fq 'BLABLACAR_HTML_CAPTURE_BUTTON_PRESSED_0617' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAccountsBrowsersUi0399.kt
+          grep -Fq 'BLABLACAR_HTML_CAPTURE_UI_FAILED_0617' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAccountsBrowsersUi0399.kt
+          grep -Fq 'globalCapturePublishesEachValidatedCardImmediately0617' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605Test.kt
+          grep -Fq 'liveCommitCannotTombstoneSiblingsAndRefreshesVisibleTimeline0617' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaLiveHtmlCommit0617Test.kt
+          grep -Fq 'BLABLACAR_GLOBAL_HTML_TRANSACTION_STARTED_0610' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
+          grep -Fq 'replaceHtmlSnapshotsAtomically0610' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt
+          grep -Fq 'effectiveSkippedTrips0610' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt
+          grep -Fq 'TARGETED_HTML_BLOCKED_BY_GLOBAL_TRANSACTION_0610' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'HTML_CANONICAL_RECONCILE_BLOCKED_0610' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'LEGACY_COLLECTOR_DELTA_DISABLED_0610' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'val reconcileCollectorSnapshot = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          ! grep -Fq 'stageProfile0609' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          ! grep -Fq 'persistProgress0605' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          test "$(grep -Fc 'AgendaBackgroundSync0392.enqueueCollectorDelta0431(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt)" -eq 0
+          grep -Fq 'perTrip.maxWithOrNull(order)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'burstOfRevisionsForSameTripCollapsesBeforeSerialization0609' app/src/test/java/br/com/mapeiaia/rotacerta/trips/OperationalOutboxCompaction0600Test.kt
+          git diff --check "$BASE_SHA" HEAD
+
+      - name: Configure Firebase Android app for build only
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run unified capture unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests '*AgendaCanonicalCentralSync0403Test' \
+            --tests '*BlaBlaDirectAccountCapture0608Test' \
+            --tests '*BlaBlaUnifiedHtmlCapture0605Test' \
+            --tests '*BlaBlaRidesExternalTimeline0535Test' \
+            --tests '*BlaBlaRidesForensicEvidence0528Test' \
+            --tests '*PublicAgendaAutoSync0300Test' \
+            --tests '*SegmentAvailabilityTruthGate0603Test' \
+            --tests '*OperationalOutboxCompaction0600Test' \
+            --tests '*OperationalBrowserAutoDiscovery0567Test' \
+            --tests '*OperationalBrowserVideoStyle0568Test' \
+            --tests '*BlaBlaDomNormalizationDiagnostic0274Test' \
+            --tests '*OperationalTimelineDownload0616Test' \
+            --tests '*BlaBlaLiveHtmlCommit0617Test' \
+            --tests '*PublicMirrorAttestation0411Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/tests.log
+
+      - name: Validate public Agenda and canonical backend syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/public/public-agenda-shell-0569.js
+          node --check trip-platform/functions/index.js
+          node --test trip-platform/functions/test/public-agenda-shell-0569.test.js | tee /tmp/public-shell-tests.log
+          grep -Fq '0.1.622-html-convergence' trip-platform/public/index.html
+          grep -Fq 'item?.blablaProfileName' trip-platform/public/public-agenda-shell-0569.js
+          grep -Fq '}, 2000);' trip-platform/public/public-agenda-shell-0569.js
+      - name: Assemble exact-head APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/assemble.log
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -Fq 'Verified' /tmp/apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "$SOURCE_SHA" /tmp/dex-strings.txt
+          sha256sum "$APK" | tee /tmp/apk.sha256
+
+      - name: Verify FAROL and package evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          sha256sum "$FAROL" | tee /tmp/farol-after.sha256
+          diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
+          OUT=/tmp/0622
+          mkdir -p "$OUT"
+          SHORT_SHA="${SOURCE_SHA:0:12}"
+          FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-$EXPECTED_VERSION_CODE-$SHORT_SHA.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$FINAL_APK"
+          sha256sum "$FINAL_APK" | tee "$OUT/apk.sha256"
+          cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/farol-before.sha256 /tmp/farol-after.sha256 "$OUT/"
+          cp /tmp/tests.log /tmp/assemble.log /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt "$OUT/"
+          cat > "$OUT/final-status.txt" <<EOF
+          package=br.com.mapeiaia.rotacerta
+          version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
+          source_head=$SOURCE_SHA
+          source_branch=$SOURCE_BRANCH
+          unified_html_capture=PASS
+          global_html_atomic_commit=PASS
+          html_validated_complete_contract=PASS
+          html_canonical_tombstone_revival=PASS
+          html_canonical_rollback=PASS
+          rides_index_full_coverage=PASS
+          relative_ride_dates=PASS
+          active_ride_arrival_plus_1h=PASS
+          passenger_segment_resolution_required=PASS
+          live_html_per_card_commit=PASS
+          live_card_tombstone=DISABLED
+          live_card_ui_invalidation=PASS
+          live_card_canonical_readback=PASS
+          global_semantic_fingerprint_readback=PASS
+          complete_snapshot_full_reconcile=PASS
+          complete_snapshot_public_parity_retry=PASS
+          authoritative_itinerary_required=PASS
+          exact_profile_name_per_card=PASS
+          public_agenda_refresh_2s=PASS
+          explicit_year_label=PASS
+          live_card_rollback=PASS
+          multi_profile_isolated_concurrency=PASS
+          single_profile_trip_navigation=SEQUENTIAL
+          rides_stability_fresh_webview_retry=PASS
+          blablacar_capture_contextual_diagnostics=PASS
+          global_finalizer_retained=PASS
+          global_finalizer_off_main=PASS
+          live_card_absence_scan=SKIPPED
+          finalizer_present_card_fastpath=DISABLED
+          skipped_history_reset_on_authoritative_complete=PASS
+          background_blablacar_canonical_write=DISABLED
+          targeted_refresh_during_global_capture=BLOCKED
+          direct_n_of_n_canonical_reconcile=FINALIZER_ONLY
+          per_trip_canonical_commit=PASS
+          outbox_revision_coalescing=PASS
+          current_dom_itinerary_fallback=PASS
+          current_dom_roster_fallback=PASS
+          spa_hydration_wait=PASS
+          direct_seat_options=PASS
+          html_authority_firewall=PASS
+          legacy_session_write=BLOCKED
+          legacy_persisted_response=BLOCKED
+          non_html_tripstore_ingest=BLOCKED
+          background_automatic_collector=DISABLED
+          targeted_card_refresh=HTML_ONLY
+          targeted_incomplete_html_canonical_write=BLOCKED
+          targeted_complete_html_card_reset=PASS
+          targeted_monotonic_inheritance=BLOCKED
+          remote_blablacar_trip_merge=BLOCKED
+          legacy_trip_render_without_html=BLOCKED
+          legacy_field_inheritance_into_html=BLOCKED
+          remote_blablacar_occupancy_merge=BLOCKED
+          direct_rides_page_capture=PASS
+          rides_list_exhaustion_probe=PASS
+          accumulated_trip_inventory_parity=PASS
+          transient_bottom_false_complete=BLOCKED
+          same_date_distinct_tripids=PASS
+          legacy_deterministic_identity_promotion=PASS
+          legacy_revision_collision_150=BLOCKED
+          legacy_public_binding_promotion=PASS
+          html_55_to_54_regression=BLOCKED
+          verified_session_passenger_profile_false_conflict=BLOCKED
+          explicit_future_year_full_month=PASS
+          all_trips_entry_immediate_sync=DISABLED
+          operational_timeline_download=PASS
+          timeline_download_mediastore_readback=PASS
+          timeline_download_pending_zero=PASS
+          timeline_download_size_verified=PASS
+          timeline_download_picker_fallback=PASS
+          timeline_download_root_downloads=PASS
+          live_html_public_parity=PASS
+          per_card_public_drain=PASS
+          public_readback_pipeline=PASS
+          no_global_batch_wait=PASS
+          html_transport_same_card_retry=PASS
+          webview_recycle_on_timeout=PASS
+          cascade_prevention=PASS
+          preserve_canonical_on_transport_exhaustion=PASS
+          timeline_download_direct_downloads=PASS
+          legacy_snapshot_controller=ABSENT
+          legacy_identity_probe=ABSENT
+          global_mhtml_requirement=DISABLED
+          old_snapshot_headless_reverify=ABSENT
+          automatic_collector_acquisition=ABSENT
+          browser_orchestrator_acquisition=ABSENT
+          per_trip_html_evidence=PASS
+          published_seat_fail_closed=PASS
+          farol_untouched=PASS
+          physical_approval=PENDING_SAMSUNG_SM_S911B_ANDROID_16
+          EOF
+          cat "$OUT/final-status.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.622-5913-${{ env.SOURCE_SHA }}
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0622

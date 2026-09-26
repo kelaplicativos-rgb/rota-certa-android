@@ -1,0 +1,19 @@
+name: Stage47 materialized source snapshot v2 (captured)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  captured-source-snapshot-disabled:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          echo 'stage47_source_snapshot_v2=CAPTURED_AND_DISABLED'
+          echo 'validated_run=32403049962'
+          echo 'artifact_id=9419230444'
+          echo 'artifact=rota-certa-stage47-materialized-source-0.1.238-v2'
+          echo 'farol_sha256=2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560'
+          echo 'apk_generated=false'

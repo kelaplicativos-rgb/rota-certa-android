@@ -1,0 +1,112 @@
++    private fun openWhatsAppAppFromBubble0184() {
++        val launch = packageManager.getLaunchIntentForPackage("com.whatsapp")
++            ?: packageManager.getLaunchIntentForPackage("com.whatsapp.w4b")
++        if (launch == null) {
++            toast("WhatsApp não encontrado")
++            return
++        }
++        launchShortcutActivity0176(
++            shortcutId = "action_open_whatsapp_app",
++            intent = launch,
++            failureMessage = "Não consegui abrir o WhatsApp.",
++        )
++    }
++
++    private fun openWorkTracking0184() {
++        launchShortcutActivity0176(
++            shortcutId = "action_open_work_tracking",
++            intent = Intent(this, WorkTrackingActivity::class.java),
++            failureMessage = "Não consegui abrir o rastreamento de trabalho.",
++        )
++    }
++
++    private fun setWorkTracking0184(start: Boolean) {
++        val intent0184 = Intent(this, WorkTrackingService::class.java).setAction(
++            if (start) WorkTrackingService.ACTION_START else WorkTrackingService.ACTION_STOP,
++        )
++        runCatching {
++            if (start) ContextCompat.startForegroundService(this, intent0184) else startService(intent0184)
++        }.onSuccess {
++            toast(if (start) "Rastreamento iniciado" else "Rastreamento encerrado")
++        }.onFailure {
++            toast(if (start) "Autorize a localização para iniciar o rastreamento." else "Não foi possível parar o rastreamento.")
++        }
++    }
++
+     private fun executeShortcutModule(spec: BubbleShortcutSpec) {
+         Unit /* diagnostics_off_checklist_4 */
+         Unit /* diagnostics_off_checklist_4 */
++        when (spec.id) {
++            "action_copy_visible_text" -> { copyAllVisibleTextFromBubble138(); return }
++            "action_clear_cache" -> { clearOwnCache0183(); return }
++            "action_create_alert_here" -> { saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert); return }
++            "action_save_place_here" -> { saveCurrentPlaceFromBubble(SavedPlaceType.Place); return }
++            "action_create_radar_here" -> { createManualRadarFromBubble138(); return }
++            "action_define_destination_here" -> { openDestinationConfirmationFromBubble138(); return }
++            "action_create_backup" -> { openBackupFileAction0184(create = true); return }
++            "action_restore_backup" -> { openBackupFileAction0184(create = false); return }
++            "action_create_quick_reply" -> { openQuickRepliesFromBubble(createNew = true); return }
++            "action_open_primary_link" -> { openPrimaryQuickLink0172(); return }
++            "action_open_whatsapp_app" -> { openWhatsAppAppFromBubble0184(); return }
++            "work_tracking", "action_open_work_tracking" -> { openWorkTracking0184(); return }
++            "action_start_work_tracking" -> { setWorkTracking0184(start = true); return }
++            "action_stop_work_tracking" -> { setWorkTracking0184(start = false); return }
++        }
+         when (spec.action) {
+             BubbleShortcutAction.CopyTripConfirmation -> copyTripConfirmationFromBubbleChecklist8() // trip_confirmation_action_checklist_8
+             BubbleShortcutAction.CopyPassengerValue -> copyPassengerValue159()
+@@ -3429,10 +3507,16 @@ class LiveRideAccessibilityService : AccessibilityService() {
+                 return@launch
+             }
+             val now = System.currentTimeMillis()
++            val capturedHeading0184 = lastDirectionalFix0184
++                ?.headingDegrees
++                ?.roundToInt()
++                ?.let { ((it % 360) + 360) % 360 }
+             val radar = ImportedRadar(
+                 id = "manual-radar-$now-${coordinate.latitude}-${coordinate.longitude}",
+                 coordinate = coordinate,
+                 type = 0,
++                directionType = capturedHeading0184?.let { 1 },
++                direction = capturedHeading0184,
+                 source = "Manual",
+                 createdAtMillis = now,
+             )
+diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+index 74f4e27..7021342 100644
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+@@ -406,6 +406,14 @@ fun RotaCertaApp(launchIntent: Intent?) {
+             confirmDestinationGps138 = true
+             launchIntent?.removeExtra(EXTRA_CONFIRM_DESTINATION_GPS_138)
+         }
++        if (launchIntent?.getBooleanExtra(EXTRA_CREATE_BACKUP_0184, false) == true) {
++            launchIntent.removeExtra(EXTRA_CREATE_BACKUP_0184)
++            backupFileCreator.launch("rota-certa-backup.json")
++        }
++        if (launchIntent?.getBooleanExtra(EXTRA_RESTORE_BACKUP_0184, false) == true) {
++            launchIntent.removeExtra(EXTRA_RESTORE_BACKUP_0184)
++            backupFilePicker.launch(arrayOf("application/json", "text/plain", "*/*"))
++        }
+         if (launchIntent?.getBooleanExtra("auto_export_report", false) == true) {
+             UnifiedDebugEventStore.record(
+                 "LEGACY_AUTO_REPORT_IGNORED",
+@@ -736,6 +744,24 @@ fun RotaCertaApp(launchIntent: Intent?) {
+                                     onEdit = { openShortcutModuleFromHome0171(spec) },
+                                 )
+ 
++                                BubbleShortcutAction.OpenSettings -> if (spec.id == "work_tracking") {
++                                    InlineModuleAction0174(
++                                        title = "Rastreamento de trabalho",
++                                        description = "Inicie, pare ou consulte o percurso GPS registrado localmente neste aparelho.",
++                                        buttonLabel = "Abrir rastreamento",
++                                        onClick = {
++                                            context.startActivity(Intent(context, WorkTrackingActivity::class.java))
++                                        },
++                                    )
++                                } else {
++                                    InlineModuleAction0174(
++                                        title = spec.displayLabel,
++                                        description = ShortcutGridPolicy0173.description(spec),
++                                        buttonLabel = "Abrir ${spec.displayLabel}",
++                                        onClick = { openShortcutModuleFromHome0171(spec) },

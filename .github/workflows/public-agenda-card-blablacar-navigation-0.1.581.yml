@@ -1,0 +1,251 @@
+name: Public Agenda BlaBla card navigation 0.1.581
+
+on:
+  push:
+    branches:
+      - agent/agenda-canonical-visibility-0.1.581
+    paths:
+      - '.github/workflows/public-agenda-card-blablacar-navigation-0.1.581.yml'
+      - 'trip-platform/functions/index.js'
+      - 'trip-platform/public/public-agenda-shell-0569.js'
+      - 'trip-platform/public/index.html'
+      - 'trip-platform/functions/test/public-agenda-card-blablacar-navigation-0582.test.js'
+      - 'trip-platform/functions/test/public-agenda-shell-0569.test.js'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-agenda-card-blablacar-navigation-0582-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-deploy-prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+    steps:
+      - name: Checkout exact SHA
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate public navigation contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/public/public-agenda-shell-0569.js
+          node --test \
+            trip-platform/functions/test/public-agenda-card-blablacar-navigation-0582.test.js \
+            trip-platform/functions/test/public-agenda-shell-0569.test.js
+          grep -Fq 'public-agenda-shell-0569.js?v=0.1.581.4' trip-platform/public/index.html
+          grep -Fq 'viewRide.href = publicUrl' trip-platform/public/public-agenda-shell-0569.js
+          grep -Fq 'segmentWhatsappHref0584' trip-platform/public/public-agenda-shell-0569.js
+          grep -Fq 'Reserve Já' trip-platform/public/public-agenda-shell-0569.js
+          grep -Fq 'unavailable.textContent = "Indisponível"' trip-platform/public/public-agenda-shell-0569.js
+          grep -Fq '.agendaSegmentReserve0584{grid-column:3' trip-platform/public/index.html
+          ! grep -Fq 'card.href = publicUrl' trip-platform/public/public-agenda-shell-0569.js
+
+      - name: Install trip-api dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Configure Firebase authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo 'USE_FIREBASE_TOKEN=1' >> "$GITHUB_ENV"
+          else
+            echo 'Firebase deployment credential is missing.' >&2
+            exit 3
+          fi
+
+      - name: Diagnose canonical public-link authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}" node <<'NODE'
+          const crypto = require('crypto');
+          const admin = require('./trip-platform/functions/node_modules/firebase-admin');
+          if (!admin.apps.length) admin.initializeApp({ projectId: process.env.PROJECT });
+          const db = admin.firestore();
+          const publicUsername = 'ezequiel';
+          const hash = (value) => crypto.createHash('sha256').update(String(value || '')).digest('hex').slice(0, 12);
+          const officialTrip = (raw) => {
+            try {
+              const u = new URL(String(raw || ''));
+              const host = u.hostname.toLowerCase().replace(/^www\./, '');
+              const path = u.pathname.replace(/\/+$/, '').toLowerCase();
+              return u.protocol === 'https:' && host.startsWith('blablacar.') &&
+                (path === '/trip' || path.startsWith('/trip/'));
+            } catch (_) { return false; }
+          };
+          (async () => {
+            let driverUsername = publicUsername;
+            const directDriver = await db.collection('tripDrivers').doc(publicUsername).get();
+            if (!directDriver.exists) {
+              const alias = await db.collection('tripDriverAliases').doc(publicUsername).get();
+              driverUsername = alias.exists ? String(alias.data().canonicalUsername || publicUsername) : publicUsername;
+            }
+            console.log('PUBLIC_LINK_DRIVER_KEY_0582=' + hash(driverUsername));
+            const [tripSnap, mirrorSnap] = await Promise.all([
+              db.collection('trips').where('driverUsername','==',driverUsername).limit(300).get(),
+              db.collection('tripPrivateMirrors0434').where('driverUsername','==',driverUsername).limit(300).get(),
+            ]);
+            const mirrors = new Map();
+            mirrorSnap.docs.forEach((doc) => {
+              const m = doc.data() || {};
+              const id = String(m.canonicalTripId || '');
+              if (id) mirrors.set(id, m);
+            });
+            const rows = tripSnap.docs.map((doc) => {
+              const d = doc.data() || {};
+              const canonicalId = String(d.canonicalTripId || d.localTripId || doc.id);
+              const projection = d.canonicalPublicProjection0434 && typeof d.canonicalPublicProjection0434 === 'object'
+                ? d.canonicalPublicProjection0434 : {};
+              const mirror = mirrors.get(canonicalId) || {};
+              const payload = mirror.payload && typeof mirror.payload === 'object' ? mirror.payload : {};
+              const rootUrl = String(d.blablaPublicUrl || '');
+              const projectionUrl = String(projection.blablaPublicUrl || '');
+              const mirrorUrl = String(payload.blablaPublicUrl || '');
+              return {
+                key: hash(canonicalId),
+                departure: Number(d.departureAtMillis || 0),
+                departureIso: Number(d.departureAtMillis || 0) > 0 ? new Date(Number(d.departureAtMillis)).toISOString() : '',
+                status: String(d.status || ''),
+                deleted: d.deleted === true,
+                tombstone: d.publicationTombstone === true,
+                strongProfile: Boolean(String(d.blablaProfileUuid || '')),
+                strongTrip: Boolean(String(d.blablaTripId || '')),
+                rootUrl: officialTrip(rootUrl),
+                projectionUrl: officialTrip(projectionUrl),
+                mirrorUrl: officialTrip(mirrorUrl),
+                mirrorPresent: Boolean(mirror.canonicalTripId),
+                mirrorCanonicalRevision: Number(mirror.canonicalRevision || 0),
+                canonicalRevision: Number(d.canonicalRevision || 0),
+                mirrorIdentityMatch:
+                  String(payload.canonicalTripId || '') === canonicalId &&
+                  String(payload.blablaProfileUuid || '').toLowerCase() === String(d.blablaProfileUuid || '').toLowerCase() &&
+                  String(payload.blablaTripId || '') === String(d.blablaTripId || ''),
+              };
+            }).filter((row) => !row.deleted && !row.tombstone && row.departure >= Date.parse('2026-09-19T00:00:00Z'))
+              .sort((a,b) => a.departure-b.departure);
+            console.log('PUBLIC_LINK_AUTHORITY_DIAGNOSTIC_0582=' + JSON.stringify(rows));
+            console.log('PUBLIC_LINK_AUTHORITY_COUNTS_0582=' + JSON.stringify({
+              total: rows.length,
+              root: rows.filter(r=>r.rootUrl).length,
+              projection: rows.filter(r=>r.projectionUrl).length,
+              mirror: rows.filter(r=>r.mirrorUrl).length,
+              noAuthority: rows.filter(r=>!r.rootUrl && !r.projectionUrl && !r.mirrorUrl).length,
+            }));
+          })().then(()=>process.exit(0)).catch((e)=>{ console.error(e); process.exit(1); });
+          NODE
+
+      - name: Deploy trip API and Hosting
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          AUTH_ARGS=()
+          if [ "${USE_FIREBASE_TOKEN:-0}" = '1' ]; then AUTH_ARGS+=(--token "$FIREBASE_TOKEN"); fi
+          npx --yes firebase-tools@latest deploy             --project "$PROJECT"             --only functions:trip-api,hosting             --non-interactive             --force             "${AUTH_ARGS[@]}"
+
+      - name: Prove live Ver carona actions use exact BlaBlaCar trips
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://rota-certa-7ccc8.web.app'
+          curl --retry 12 --retry-delay 5 --retry-all-errors --fail --silent --show-error             "$BASE/v1/health?proof=$GITHUB_RUN_ID" | tee live-health-0582.json
+          grep -Fq '"ok":true' live-health-0582.json
+
+          curl --retry 8 --retry-delay 3 --retry-all-errors --fail --silent --show-error             "$BASE/ezequiel?proof=$GITHUB_RUN_ID" > live-index-0582.html
+          curl --retry 8 --retry-delay 3 --retry-all-errors --fail --silent --show-error             "$BASE/public-agenda-shell-0569.js?proof=$GITHUB_RUN_ID" > live-shell-0582.js
+          grep -Fq 'public-agenda-shell-0569.js?v=0.1.581.4' live-index-0582.html
+          grep -Fq 'url.searchParams.delete(key)' live-shell-0582.js
+          grep -Fq 'viewRide.href = publicUrl' live-shell-0582.js
+          grep -Fq 'segmentWhatsappHref0584' live-shell-0582.js
+          grep -Fq 'Reserve Já' live-shell-0582.js
+          grep -Fq 'unavailable.textContent = "Indisponível"' live-shell-0582.js
+          grep -Fq '.agendaSegmentReserve0584{grid-column:3' live-index-0582.html
+          ! grep -Fq 'card.href = publicUrl' live-shell-0582.js
+          echo 'PUBLIC_AGENDA_COMPACT_SEGMENT_ACTION_0585_LIVE=PASS'
+
+          curl --retry 12 --retry-delay 5 --retry-all-errors --fail --silent --show-error             "$BASE/v1/public/agenda/ezequiel?proof=$GITHUB_RUN_ID" > live-agenda-0582.json
+          node <<'NODE'
+          const fs = require('fs');
+          const body = JSON.parse(fs.readFileSync('live-agenda-0582.json', 'utf8'));
+          const trips = Array.isArray(body.trips) ? body.trips : [];
+          if (!trips.length) throw new Error('live public Agenda returned no trips');
+          let linked = 0;
+          let missing = 0;
+          let invalid = 0;
+          let searchContext = 0;
+          for (const trip of trips) {
+            const raw = String(trip && trip.blablaPublicUrl || '').trim();
+            if (!raw) { missing += 1; continue; }
+            try {
+              const u = new URL(raw);
+              const host = u.hostname.toLowerCase().replace(/^www\./, '');
+              const path = u.pathname.replace(/\/+$/, '').toLowerCase();
+              const official = host.startsWith('blablacar.');
+              const publicPath = path === '/trip' || path.startsWith('/trip/');
+              const publicId = path === '/trip'
+                ? String(u.searchParams.get('id') || '')
+                : String((u.pathname.match(/\/trip\/([^/?#]+)/i) || [])[1] || '');
+              if (!official || u.protocol !== 'https:' || !publicPath || !/^[A-Za-z0-9_-]{6,}$/.test(publicId)) {
+                invalid += 1;
+                continue;
+              }
+              const keys = [...u.searchParams.keys()].map((key) => key.toLowerCase());
+              if (keys.some((key) => ['requested_seats','search_origin','search_uuid'].includes(key))) searchContext += 1;
+              linked += 1;
+            } catch (_) {
+              invalid += 1;
+            }
+          }
+          console.log('LIVE_PUBLIC_TRIPS=' + trips.length);
+          console.log('LIVE_BLABLA_VIEW_ACTION_LINKS=' + linked);
+          console.log('LIVE_MISSING_BLABLA_LINKS=' + missing);
+          console.log('LIVE_INVALID_BLABLA_LINKS=' + invalid);
+          console.log('LIVE_SEARCH_CONTEXT_LINKS=' + searchContext);
+          if (missing || invalid || searchContext || linked !== trips.length) {
+            throw new Error('not every public Agenda trip exposes a clean official BlaBlaCar trip permalink');
+          }
+          console.log('PUBLIC_AGENDA_BLABLA_VIEW_ACTION_0584_LIVE=PASS');
+          NODE
+
+      - name: Upload Firebase proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-agenda-blablacar-navigation-0582-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            live-health-0582.json
+            live-agenda-0582.json
+            live-index-0582.html
+            live-shell-0582.js

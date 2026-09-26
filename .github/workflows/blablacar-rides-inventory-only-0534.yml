@@ -1,0 +1,145 @@
+name: BlaBla rides inventory only 0.1.534
+
+on:
+  push:
+    branches: [agent/blablacar-rides-inventory-only-0.1.534]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-build-prove:
+    runs-on: ubuntu-latest
+    env:
+      GOOGLE_MAPS_API_KEY: blablacar_inventory_only_0534_ci_dummy_key
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove exact HEAD and inventory-only rollback scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=d6f888aafe42269f7115e63dacb66d2f6ee8ce13
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          unexpected="$(git diff --name-only "$BASE"...HEAD | grep -vE '^(app/build.gradle.kts|\.github/workflows/blablacar-rides-inventory-only-0534\.yml)$' || true)"
+          test -z "$unexpected" || { echo "$unexpected"; exit 1; }
+          grep -Fq 'versionCode = 5826' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.534"' app/build.gradle.kts
+          UI=app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAccountsBrowsersUi0399.kt
+          grep -Fq 'Capturar Suas viagens de todos os perfis' "$UI"
+          grep -Fq 'BlaBlaRidesSnapshotCoordinator0526.captureAll' "$UI"
+          grep -Fq 'Baixar última captura (.zip)' "$UI"
+          ! grep -R -F -q 'Capturar e enriquecer Suas viagens' app/src/main/java
+          ! find app/src/main -type f -name '*Enrichment0533*' | grep -q .
+          FAROL=app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          sha256sum "$FAROL" | tee /tmp/farol-before.sha256
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure Firebase Android app for build only
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+          fi
+          [ ! -s /tmp/firebase-sa.json ] || { chmod 600 /tmp/firebase-sa.json; export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json; }
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run inventory capture regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRidesSnapshot0526Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRidesPortableJson0531Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace
+
+      - name: Compile and build final-SHA APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ROTA_CERTA_GIT_SHA="$GITHUB_SHA"
+          export ROTA_CERTA_GIT_BRANCH="$GITHUB_REF_NAME"
+          export ROTA_CERTA_BUILD_TIME="$(TZ=America/Sao_Paulo date '+%d/%m/%Y %H:%M')"
+          ./gradlew :app:compileDebugKotlin :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          FAROL=app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          sha256sum "$FAROL" | tee /tmp/farol-after.sha256
+          diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/tmp/zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" > /tmp/aapt.txt
+          grep '^package:' /tmp/aapt.txt | grep -F "name='br.com.mapeiaia.rotacerta'" | grep -F "versionCode='5826'" | grep -F "versionName='0.1.534'"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > /tmp/apksigner.txt
+          grep -Fq 'Verified' /tmp/apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
+          sha256sum "$APK" | tee /tmp/apk.sha256
+
+      - name: Package evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cp app/build/outputs/apk/debug/app-debug.apk out/rota-certa-0.1.534-blablacar-rides-inventory-only.apk
+          cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/apk.sha256 /tmp/farol-before.sha256 /tmp/farol-after.sha256 out/
+          {
+            echo "branch=$GITHUB_REF_NAME"
+            echo "sha=$GITHUB_SHA"
+            echo "baseInventorySha=d6f888aafe42269f7115e63dacb66d2f6ee8ce13"
+            echo "versionName=0.1.534"
+            echo "versionCode=5826"
+            echo "captureMode=INVENTORY_ONLY"
+            echo "deepTripEnrichment=false"
+            echo "automaticTripOpen=false"
+            echo "physicalApproval=PENDING_SAMSUNG_SM-S911B_ANDROID_16"
+            echo "apkSha256=$(cut -d' ' -f1 /tmp/apk.sha256)"
+            echo "farolSha256=$(cut -d' ' -f1 /tmp/farol-after.sha256)"
+          } > out/build-evidence.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.534-blablacar-rides-inventory-only-${{ github.sha }}
+          path: out/
+          if-no-files-found: error
+          retention-days: 30

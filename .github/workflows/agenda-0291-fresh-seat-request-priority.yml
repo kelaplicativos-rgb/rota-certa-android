@@ -1,0 +1,131 @@
+name: Agenda 0.1.291 fresh seat request priority
+
+on:
+  push:
+    branches:
+      - agent/agenda-profile-card-colors-0.1.288
+    paths:
+      - '.github/workflows/agenda-0291-fresh-seat-request-priority.yml'
+      - '.github/scripts/agenda_0291_prefer_fresh_seat_sync.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agenda-0291-fresh-seat-request-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  materialize-test-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/agenda-profile-card-colors-0.1.288
+
+      - name: Prove exact 0.1.290 physical-test baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionCode = 5583' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.290"' app/build.gradle.kts
+          grep -Fq 'fun peek(): BlaBlaManualSeatSyncRequest? = list().firstOrNull()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt
+          grep -Fq 'val pending = manualSeatStore.peek() ?: return null' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'val pendingManualSeat = manualSeatStore.peek()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'if (rotate) {' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'requestStore.enqueue(request)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          test -f .github/scripts/agenda_0291_prefer_fresh_seat_sync.py
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - name: Materialize causal queue fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/agenda_0291_prefer_fresh_seat_sync.py
+          git diff --check
+          grep -Fq 'versionCode = 5584' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.291"' app/build.gradle.kts
+          grep -Fq 'internal object BlaBlaReliableSeatQueuePolicy' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'queue.firstOrNull { !hasPersistedAttempt(it.id) } ?: queue.firstOrNull()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'val manualSeatAttemptStore = remember(context) { BlaBlaManualSeatSyncAttemptStore(context) }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'val pending = pendingSeatRequest() ?: return null' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'val pendingManualSeat = pendingSeatRequest()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          ! grep -Fq 'manualSeatStore.peek()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'fun freshRequestIsPreferredOverRetainedAttempt()' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync0271Test.kt
+          grep -Fq 'fun retainedAttemptStillRunsWhenItIsTheOnlyPendingRequest()' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync0271Test.kt
+          grep -Fq 'const button = current > target ? c.remove : c.add;' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'setTimeout(step, 280);' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+
+      - name: Protect FAROL and exact source scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+          { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u > /tmp/changed.txt
+          printf '%s\n' \
+            'app/build.gradle.kts' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt' \
+            'app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync0271Test.kt' | sort > /tmp/expected.txt
+          cmp /tmp/expected.txt /tmp/changed.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Focused reliable-seat regressions and debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests br.com.mapeiaia.rotacerta.trips.BlaBlaReliableSeatSync0271Test \
+            --tests br.com.mapeiaia.rotacerta.trips.TripTimelineCardActions0289Test \
+            --tests br.com.mapeiaia.rotacerta.trips.TripTimelineExternalQuickPassengerStage47Test \
+            :app:assembleDebug --no-daemon --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /tmp/apk.sha256
+
+      - name: Commit tested source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/build.gradle.kts \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt \
+                  app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync0271Test.kt
+          git commit -m 'fix(agenda): do not let retained seat attempt starve fresh sync 0.1.291'
+          git push origin HEAD:agent/agenda-profile-card-colors-0.1.288
+          git rev-parse HEAD | tee /tmp/source-head.txt
+
+      - name: Prepare APK evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/agenda-0291
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0291/rota-certa-0.1.291-debug.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0291/apk.sha256
+          cp /tmp/source-head.txt /tmp/agenda-0291/source-head.txt
+          printf '%s\n' \
+            'versionName=0.1.291' \
+            'versionCode=5584' \
+            'physicalDefect=retained_compensation_starved_fresh_request' \
+            'freshUnstartedRequestPreferred=true' \
+            'retainedAttemptPreserved=true' \
+            'seatStepperOneByOnePreserved=true' \
+            'farolUntouched=true' > /tmp/agenda-0291/version.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-agenda-0.1.291-fresh-seat-priority-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: /tmp/agenda-0291

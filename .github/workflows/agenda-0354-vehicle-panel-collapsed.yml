@@ -1,0 +1,129 @@
+name: Rota Certa 0.1.355 vehicle panel shared pattern
+
+on:
+  push:
+    branches:
+      - agent/agenda-vehicle-panel-collapsed-0.1.354
+  pull_request:
+    branches:
+      - agent/agenda-blablacar-seat-sync-0.1.353
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agenda-0354-vehicle-panel-collapsed-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate 0.1.355 causal scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=6b0f38b348a915c9d04cdbcdcd84284c426faa33
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          grep -Fq 'versionCode = 5648' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.355"' app/build.gradle.kts
+          grep -Fq 'var driverDefaultsExpanded by remember { mutableStateOf(false) }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'if (driverDefaultsExpanded) "Fechar dados do veículo" else "Dados do veículo"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'if (driverDefaultsExpanded) {' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaVehiclePanelCollapsed0354Test.kt
+
+          CHANGED_FAROL="$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' || true)"
+          test -z "$CHANGED_FAROL"
+
+          ALLOWED='^(.github/workflows/agenda-0354-vehicle-panel-collapsed.yml|app/build.gradle.kts|app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt|app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaVehiclePanelCollapsed0354Test.kt)$'
+          UNEXPECTED="$(git diff --name-only "$BASE"..HEAD | grep -Ev "$ALLOWED" || true)"
+          test -z "$UNEXPECTED"
+
+      - name: Configure Firebase authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
+          else
+            echo "Firebase credential is missing."
+            exit 3
+          fi
+
+      - name: Generate Firebase Android config
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+          else
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+          fi
+          APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+          test -n "$APP_ID"
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests and installable APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace | tee /tmp/gradle.txt
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
+          grep -Fq "versionCode='5648'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.355'" /tmp/aapt.txt
+          mkdir -p /tmp/0355
+          cp "$APK" /tmp/0355/rota-certa-0.1.355-vehicle-panel-shared-pattern.apk
+          sha256sum /tmp/0355/rota-certa-0.1.355-vehicle-panel-shared-pattern.apk | tee /tmp/0355/apk.sha256
+          cp /tmp/aapt.txt /tmp/0355/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0355/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0355/gradle.txt
+          git rev-parse HEAD > /tmp/0355/source-head.txt
+          git diff --name-only 6b0f38b348a915c9d04cdbcdcd84284c426faa33..HEAD > /tmp/0355/changed-files.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.355-vehicle-panel-shared-pattern
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0355

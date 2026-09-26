@@ -1,0 +1,241 @@
+name: Rota Certa 0.1.349 Sincronizacao bidirecional
+# build-contract: 0.1.349-5642
+
+on:
+  push:
+    branches:
+      - agent/agenda-bidirectional-notifications-0.1.349
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agenda-0349-bidirectional-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate 0.1.349 causal scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=f68fe904134f5b23b6cf0cfd777218903db0cb5e
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          grep -Fq 'versionCode = 5642' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.349"' app/build.gradle.kts
+          grep -Fq 'const passengerContact = session.passengerContact' trip-platform/functions/index.js
+          grep -Fq 'authorized.access && authorized.access.displayName' trip-platform/functions/index.js
+          grep -Fq 'publicBookingFingerprint({ passengerId, boardingStopId, dropoffStopId, seats })' trip-platform/functions/index.js
+          grep -Fq 'requirePassengerDriverAccess' trip-platform/functions/index.js
+          grep -Fq 'assertNoOverbooking' trip-platform/functions/index.js
+          grep -Fq 'startQuickReservation' trip-platform/public/app.js
+          grep -Fq 'persistPendingBookingIntent(intent)' trip-platform/public/app.js
+          grep -Fq 'bookingRequestInFlight' trip-platform/public/app.js
+          grep -Fq 'reserveParams.set("reservar", "1")' trip-platform/public/app.js
+          grep -Fq '"✓ RESERVA SOLICITADA"' trip-platform/public/app.js
+          grep -Fq 'async function undoQuickBooking' trip-platform/public/app.js
+          grep -Fq 'id="startBooking" class="primary" type="button">RESERVAR</button>' trip-platform/public/index.html
+          grep -Fq 'Precisa de mais lugares ou outro trecho?' trip-platform/public/index.html
+          grep -Fq 'id="name" type="hidden"' trip-platform/public/index.html
+          grep -Fq 'id="contact" type="hidden"' trip-platform/public/index.html
+          grep -Fq 'id="quickBookingNotice"' trip-platform/public/index.html
+          grep -Fq 'tripChangeEvents' trip-platform/functions/index.js
+          grep -Fq 'tripNotifications' trip-platform/functions/index.js
+          grep -Fq 'PASSENGER_MY_TRIPS_EDIT' trip-platform/functions/index.js
+          grep -Fq 'PASSENGER_MY_TRIPS_CANCEL' trip-platform/functions/index.js
+          grep -Fq 'BOOKING_CHANGED_BY_DRIVER' trip-platform/functions/index.js
+          grep -Fq 'TRIP_TIME_CHANGED' trip-platform/functions/index.js
+          grep -Fq '/v1/passenger/me/notifications' trip-platform/functions/index.js
+          grep -Fq '/v1/driver/notifications' trip-platform/functions/index.js
+          grep -Fq 'passengerNotificationsBell' trip-platform/public/index.html
+          grep -Fq 'portalNotifications' trip-platform/public/index.html
+          grep -Fq 'loadPassengerNotifications' trip-platform/public/app.js
+          grep -Fq 'listDriverNotifications' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          grep -Fq 'driverUnreadCount' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq '(event + ":" + bookingId).hashCode()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/RotaCertaBookingMessagingService.kt
+
+          CHANGED_FAROL="$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' || true)"
+          test -z "$CHANGED_FAROL"
+
+          ALLOWED="^(.github/workflows/agenda-0349-bidirectional-notifications.yml|app/build.gradle.kts|app/src/main/java/br/com/mapeiaia/rotacerta/trips/(RotaCertaBookingMessagingService.kt|TripRemoteApi.kt|TripsActivity.kt)|trip-platform/functions/index.js|trip-platform/functions/test/bidirectional-notifications-0349.test.js|trip-platform/public/(app.js|index.html))$"
+          UNEXPECTED="$(git diff --name-only "$BASE"..HEAD | grep -Ev "$ALLOWED" || true)"
+          test -z "$UNEXPECTED"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Web and backend tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/public/date-selection.js
+          node --check trip-platform/public/app.js
+          node --test trip-platform/functions/test/*.test.js
+
+      - name: Configure Firebase authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
+          else
+            echo "Firebase credential is missing."
+            exit 3
+          fi
+
+      - name: Generate Firebase Android config
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+          else
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+          fi
+          APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+          test -n "$APP_ID"
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests and installable APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace | tee /tmp/gradle.txt
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -Fq 'certificate SHA-256 digest: d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' /tmp/apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
+          grep -Fq "versionCode='5642'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.349'" /tmp/aapt.txt
+          sha256sum "$APK" | tee /tmp/apk.sha256
+          mkdir -p /tmp/0349 trip-platform/public/downloads
+          cp "$APK" /tmp/0349/rota-certa-0.1.349-bidirectional-notifications.apk
+          cp "$APK" trip-platform/public/downloads/rota-certa-0.1.349-bidirectional-notifications.apk
+          cp /tmp/apk.sha256 /tmp/0349/apk.sha256
+          cp /tmp/aapt.txt /tmp/0349/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0349/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0349/gradle.txt
+          git rev-parse HEAD > /tmp/0349/source-head.txt
+          git diff --name-only f68fe904134f5b23b6cf0cfd777218903db0cb5e..HEAD > /tmp/0349/changed-files.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.349-bidirectional-notifications
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0349
+
+      - name: Install Firebase Functions dependencies
+        shell: bash
+        run: npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Deploy Agenda backend and hosting
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
+          fi
+
+      - name: Smoke deployed one-tap booking surface and hosted APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          DRIVER=viagem-certa
+          AGENDA=JA5o3L0KjPSbdM1m01jXhsNpoZZsXOiE
+          curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/v1/health" | grep -F '"ok":true'
+
+          BUST="$(date +%s%N)"
+          INDEX_READY=0
+          for attempt in $(seq 1 30); do
+            curl --fail --silent --show-error "$BASE/?v=$BUST-$attempt" -o /tmp/live-index.html || true
+            if grep -Fq 'id="quickBookingNotice"' /tmp/live-index.html \
+              && grep -Fq 'id="startBooking" class="primary" type="button">RESERVAR</button>' /tmp/live-index.html \
+              && grep -Fq 'Precisa de mais lugares ou outro trecho?' /tmp/live-index.html \
+              && grep -Fq 'id="name" type="hidden"' /tmp/live-index.html \
+              && grep -Fq 'id="contact" type="hidden"' /tmp/live-index.html; then
+              INDEX_READY=1
+              break
+            fi
+            sleep 4
+          done
+          test "$INDEX_READY" = "1"
+
+          APP_READY=0
+          for attempt in $(seq 1 30); do
+            curl --fail --silent --show-error "$BASE/app.js?v=$BUST-$attempt" -o /tmp/live-app.js || true
+            if grep -Fq 'startQuickReservation' /tmp/live-app.js \
+              && grep -Fq 'reserveParams.set("reservar", "1")' /tmp/live-app.js \
+              && grep -Fq 'persistPendingBookingIntent(intent)' /tmp/live-app.js \
+              && grep -Fq 'bookingRequestInFlight' /tmp/live-app.js; then
+              APP_READY=1
+              break
+            fi
+            sleep 4
+          done
+          test "$APP_READY" = "1"
+
+          ACCESS_CODE="$(curl --silent --show-error -o /tmp/unknown-access.json -w '%{http_code}' -X POST "$BASE/v1/public/passenger-access" -H 'Content-Type: application/json' --data "{\"driverUsername\":\"$DRIVER\",\"agendaToken\":\"$AGENDA\",\"passengerContact\":\"+5511900000000\"}")"
+          test "$ACCESS_CODE" = "403"
+
+          EXPECTED="$(sha256sum /tmp/0349/rota-certa-0.1.349-bidirectional-notifications.apk | awk '{print $1}')"
+          APK_READY=0
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error "$BASE/downloads/rota-certa-0.1.349-bidirectional-notifications.apk?v=$BUST-$attempt" -o /tmp/hosted-0349.apk; then
+              ACTUAL="$(sha256sum /tmp/hosted-0349.apk | awk '{print $1}')"
+              if [ "$ACTUAL" = "$EXPECTED" ]; then
+                APK_READY=1
+                break
+              fi
+            fi
+            sleep 4
+          done
+          test "$APK_READY" = "1"
+          echo "HOSTED_APK_URL=$BASE/downloads/rota-certa-0.1.349-bidirectional-notifications.apk"

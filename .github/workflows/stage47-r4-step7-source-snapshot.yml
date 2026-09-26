@@ -1,0 +1,16 @@
+name: Stage47 materialized source snapshot v1 (disabled)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  disabled-v1:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          echo 'stage47_source_snapshot_v1=DISABLED'
+          echo 'reason=missing GH_TOKEN in historical materializer; superseded by source snapshot v2'
+          echo 'apk_generated=false'

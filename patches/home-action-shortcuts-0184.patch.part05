@@ -1,0 +1,157 @@
++            label = "Definir destino de trabalho pelo GPS",
++            displayLabel = "Definir destino",
++            action = BubbleShortcutAction.OpenDestination,
++        ),
++        BubbleShortcutSpec(
++            id = "action_create_backup",
++            emoji = "⬆️",
++            label = "Criar backup",
++            displayLabel = "Criar backup",
++            action = BubbleShortcutAction.OpenBackup,
++        ),
++        BubbleShortcutSpec(
++            id = "action_restore_backup",
++            emoji = "⬇️",
++            label = "Restaurar backup",
++            displayLabel = "Restaurar",
++            action = BubbleShortcutAction.OpenBackup,
++        ),
++        BubbleShortcutSpec(
++            id = "action_create_quick_reply",
++            emoji = "✍️",
++            label = "Criar resposta rápida",
++            displayLabel = "Nova resposta",
++            action = BubbleShortcutAction.OpenQuickReplies,
++        ),
++        BubbleShortcutSpec(
++            id = "action_open_primary_link",
++            emoji = "🌐",
++            label = "Abrir link principal",
++            displayLabel = "Abrir link",
++            action = BubbleShortcutAction.OpenQuickLinks,
++        ),
++        BubbleShortcutSpec(
++            id = "action_open_whatsapp_app",
++            emoji = "🟢",
++            label = "Abrir WhatsApp",
++            displayLabel = "WhatsApp",
++            action = BubbleShortcutAction.OpenScreenWhatsApp,
++        ),
++        BubbleShortcutSpec(
++            id = "action_open_work_tracking",
++            emoji = "🗺️",
++            label = "Abrir rastreamento de trabalho",
++            displayLabel = "Rastreamento",
++            action = BubbleShortcutAction.OpenSettings,
++        ),
++        BubbleShortcutSpec(
++            id = "action_start_work_tracking",
++            emoji = "▶️",
++            label = "Iniciar rastreamento de trabalho",
++            displayLabel = "Iniciar GPS",
++            action = BubbleShortcutAction.OpenSettings,
++        ),
++        BubbleShortcutSpec(
++            id = "action_stop_work_tracking",
++            emoji = "⏹️",
++            label = "Parar rastreamento de trabalho",
++            displayLabel = "Parar GPS",
++            action = BubbleShortcutAction.OpenSettings,
++        ),
++    )
++
++    private val extraIdsByModule: Map<String, List<String>> = mapOf(
++        "destination" to listOf("action_define_destination_here"),
++        "alerts" to listOf("action_create_alert_here"),
++        "saved_places" to listOf("action_save_place_here"),
++        "radars" to listOf("action_create_radar_here"),
++        "backup" to listOf("action_create_backup", "action_restore_backup"),
++        "whatsapp" to listOf("action_open_whatsapp_app"),
++        "trip_confirmation" to listOf("action_copy_visible_text"),
++        "clear_clipboard" to listOf("action_clear_cache"),
++        "quick_replies" to listOf("action_create_quick_reply"),
++        "quick_links" to listOf("action_open_primary_link"),
++        "manual_capture" to listOf("action_copy_visible_text"),
++        "work_tracking" to listOf("action_start_work_tracking", "action_stop_work_tracking"),
++    )
++
++    val legacyModuleIds: List<String> = listOf(
++        "route",
++        "destination",
++        "alerts",
++        "saved_places",
++        "radars",
++        "appearance",
++        "backup",
++        "whatsapp",
++        "trip_confirmation",
++        "passenger_value",
++        "finance",
++        "clear_clipboard",
++        "diagnostic",
++        "quick_replies",
++        "quick_links",
++        "manual_capture",
++        "stop",
++    )
++
++    fun findSpec(id: String?): BubbleShortcutSpec? = extraSpecs.firstOrNull { it.id == id }
++
++    fun allSpecs(): List<BubbleShortcutSpec> =
++        (BubbleShortcutCatalog.modules.map { it.spec } + extraSpecs).distinctBy { it.id }
++
++    fun actionsForModule(moduleId: String): List<BubbleShortcutSpec> {
++        val moduleSpec = BubbleShortcutCatalog.modules.firstOrNull { it.spec.id == moduleId }?.spec
++        val extras = extraIdsByModule[moduleId].orEmpty().mapNotNull(::findSpec)
++        return listOfNotNull(moduleSpec) + extras
++    }
++
++    fun legacyDefaultSpecs(): List<BubbleShortcutSpec> =
++        legacyModuleIds.mapNotNull { id -> BubbleShortcutCatalog.modules.firstOrNull { it.spec.id == id }?.spec }
++
++    fun requireValid() {
++        val all = allSpecs()
++        require(all.size >= BubbleShortcutCatalog.modules.size)
++        require(all.size <= 64)
++        require(all.map { it.id }.distinct().size == all.size) { "Cada ação precisa de ID único." }
++        require(extraSpecs.none { it.id in legacyModuleIds }) { "Ação nova não pode reutilizar ID legado." }
++    }
++}
+diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt
+index 49ad850..a3ee287 100644
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt
+@@ -1,6 +1,7 @@
+ package br.com.mapeiaia.rotacerta
+ 
+ import android.content.Context
++import android.content.pm.PackageManager
+ import org.json.JSONArray
+ import org.json.JSONObject
+ 
+@@ -38,32 +39,41 @@ object ShortcutGesturePolicy0179 {
+     const val SHORTCUT_LONG_PRESS_MILLIS: Long = 1_500L
+     const val SHORTCUT_TRIPLE_TAP_WINDOW_MILLIS: Long = 900L
+     const val MAIN_CUSTOMIZATION_HOLD_MILLIS: Long = 5_000L
+-    const val MAX_GRID_ITEMS: Int = 32
++    const val MAX_GRID_ITEMS: Int = ShortcutActionCatalog0184.MAX_ACTIVE_ACTIONS
+     const val CONTRACT_MARKER: String = "shortcut_grid_customization_0_1_179"
+ }
+ 
+ object ShortcutGridCustomizationPolicy0179 {
+     val iconChoices: List<String>
+-        get() = (BubbleShortcutCatalog.modules.map { it.spec.emoji } + listOf(
++        get() = (ShortcutActionCatalog0184.allSpecs().map { it.emoji } + listOf(
+             "⭐", "🚗", "🧭", "🏠", "✅", "🔔", "📌", "📝", "⚙️", "➕",
+         )).distinct()
+ 
+-    fun defaults(): List<ShortcutGridEntry0179> = BubbleShortcutCatalog.modules.map { module ->
+-        val spec = module.spec
+-        ShortcutGridEntry0179(
+-            entryId = "default:${spec.id}",
+-            shortcutId = spec.id,
+-            label = spec.displayLabel,
+-            emoji = spec.emoji,
+-            enabled = true,
+-        )
+-    }

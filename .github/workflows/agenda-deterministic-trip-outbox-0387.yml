@@ -1,0 +1,201 @@
+name: Agenda deterministic trip outbox 0.1.387
+
+on:
+  pull_request:
+    branches:
+      - agent/agenda-silent-public-sync-0.1.386
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agenda-deterministic-trip-outbox-0387-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'agent/agenda-trip-outbox-0.1.387'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GOOGLE_MAPS_API_KEY: deterministic_trip_outbox_ci_dummy_key
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+    steps:
+      - name: Checkout exact triggering source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Record source identity and protected FAROL
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          SOURCE_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          printf '%s\n' "$SOURCE_SHA" | tee source_head.txt
+          printf '%s\n' "$SOURCE_BRANCH" | tee source_branch.txt
+          echo "ROTA_CERTA_GIT_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=$SOURCE_BRANCH" >> "$GITHUB_ENV"
+
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          test -s "$FAROL"
+          sha256sum "$FAROL" | tee farol-before.sha256
+          awk '{print $1}' farol-before.sha256 > farol-head.sha256
+          grep -Fxq '884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a' farol-head.sha256
+
+          git fetch origin agent/agenda-silent-public-sync-0.1.386 --depth=1
+          git show FETCH_HEAD:"$FAROL" | sha256sum | awk '{print $1}' > farol-base.sha256
+          cmp -s farol-base.sha256 farol-head.sha256
+
+          grep -Fq 'versionCode = 5680' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.387"' app/build.gradle.kts
+
+      - name: Prove deterministic source boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUTBOX='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt'
+          ACTIVITY='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt'
+          TIMELINE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt'
+          PASSENGERS='app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt'
+          API='trip-platform/functions/index.js'
+
+          grep -Fq 'tenantScope.key(KEY_EVENTS)' "$OUTBOX"
+          grep -Fq 'TripPublicationStatus0387.FAILED_RETRYABLE' "$OUTBOX"
+          grep -Fq 'fun rebase(' "$OUTBOX"
+          grep -Fq 'publicationTombstone = true' "$OUTBOX"
+          grep -Fq 'recordExternalManualMutation(' "$TIMELINE"
+          grep -Fq 'exactMatches.size != 1' "$TIMELINE"
+          grep -Fq 'recordTombstone(' "$TIMELINE"
+          grep -Fq 'recordExternalTombstone(' "$TIMELINE"
+          ! grep -Fq 'onSyncSeatsOnly?.invoke()' "$PASSENGERS"
+          grep -Fq 'legacyAfterVersioned' "$API"
+          grep -Fq 'publication_revision_conflict' "$API"
+
+          test "$(grep -Foc 'publicAgendaSyncRevision++' "$ACTIVITY")" -eq 1
+
+          git diff --name-only FETCH_HEAD...HEAD | tee changed-files.txt
+          ! grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt' changed-files.txt
+          if git diff FETCH_HEAD...HEAD --               app/src/main/java/br/com/mapeiaia/rotacerta/trips               trip-platform/functions/index.js               trip-platform/functions/test               | grep -Eiq 'Ezequiel|Barbosa|Santo André|São Thomé das Letras|profile UUID específico'; then
+            echo "Personal scenario hardcode detected" >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Check and test scope-relevant trip backend
+        shell: bash
+        working-directory: trip-platform/functions
+        run: |
+          set -euo pipefail
+          node --check index.js
+          node --test             test/deterministic-trip-outbox-0387.test.js             test/public-incremental-capacity-0375.test.js             | tee ../../backend-tests.txt
+
+      - name: Configure Firebase Android app
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run deterministic and retained Android regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaSilentPublicSync0386Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaSyncPanelScroll0385Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPassengerMainThread0384Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTouchUnfreeze0383Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFailureEvidence0382Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFailureEvidence0381Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPerformance0380Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaSyncRegression0373Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaIncrementalAvailability0375Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicBooking0296Test'             --tests 'br.com.mapeiaia.rotacerta.trips.ReservationApproval0356Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalStatus0350Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BookingExternalSeatSync0353Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripInventorySourceTruth0374Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedInventory0372Test'             --tests 'br.com.mapeiaia.rotacerta.TenantStorageFoundation0252Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
+
+      - name: Lint Android app
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+
+      - name: Assemble installable debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Verify final source FAROL and APK identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$(cat source_head.txt)"
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          sha256sum "$FAROL" | tee farol-after.sha256
+          cmp -s farol-before.sha256 farol-after.sha256
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee apk.sha256
+          grep -E 'version(Code|Name) = ' app/build.gradle.kts | tee app-version.txt
+          git diff --stat FETCH_HEAD...HEAD | tee source-diff-stat.txt
+          if git status --porcelain --untracked-files=no | grep -q .; then
+            echo "Tracked source changed during validation" >&2
+            git status --short
+            exit 1
+          fi
+
+      - name: Upload APK and deterministic audit evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.387-agenda-trip-outbox-${{ github.event.pull_request.head.sha || github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            source_head.txt
+            source_branch.txt
+            app-version.txt
+            farol-base.sha256
+            farol-head.sha256
+            farol-before.sha256
+            farol-after.sha256
+            apk.sha256
+            backend-tests.txt
+            changed-files.txt
+            source-diff-stat.txt

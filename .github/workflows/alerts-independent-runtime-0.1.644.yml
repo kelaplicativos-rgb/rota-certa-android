@@ -1,0 +1,175 @@
+name: Alerts Independent Runtime 0.1.644 APK
+
+on:
+  push:
+    branches:
+      - 'agent/alerts-independent-runtime-0.1.644'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alerts-independent-runtime-0644-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      GOOGLE_MAPS_API_KEY: ''
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove exact alert runtime source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "ROTA_CERTA_GIT_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          grep -Fq 'releaseVersionName = "0.1.644"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 5_935' app/build.gradle.kts
+          grep -Fq 'ALERT_RUNTIME_INDEPENDENT_FROM_FAROL_STAGE644' app/src/main/java/br/com/mapeiaia/rotacerta/AlertRuntimePolicy0644.kt
+          grep -Fq 'PROXIMITY_ALERTS_ENABLED_IS_SOLE_ALERT_AUTHORITY_STAGE644' app/src/main/java/br/com/mapeiaia/rotacerta/AlertRuntimePolicy0644.kt
+          grep -Fq 'AlertRuntimePolicy0644.shouldTrack(currentSettings, hasTargets)' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'AlertRuntimePolicy0644.isEnabled(currentSettings)' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'AlertRuntimePolicy0644.isEnabled(settings)' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngine.kt
+          grep -Fq 'hideFarolUiKeepAlerts0644()' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          ! grep -Fq 'val enabled = currentSettings.appEnabled && currentSettings.proximityAlertsEnabled' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          ! grep -Fq 'if (!settings.appEnabled || !settings.proximityAlertsEnabled)' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngine.kt
+          git diff --check
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure Firebase Android app
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Alerts and radars regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.AlertRuntimeIndependent0644Test' \
+            --tests 'br.com.mapeiaia.rotacerta.DirectionalProximityAlertEngineChecklist5Test' \
+            --tests 'br.com.mapeiaia.rotacerta.DirectionalAlertPolicyChecklist5Test' \
+            --tests 'br.com.mapeiaia.rotacerta.ProximityAlertsNoDirection0191ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.ProximityAlertEngineTest' \
+            --tests 'br.com.mapeiaia.rotacerta.AlertPopupLifecycle0190ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.AlertPopupPostPassHold0192ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.AlertPopupTimingTelemetry0193ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.DirectionalRadarDismiss0178Test' \
+            --tests 'br.com.mapeiaia.rotacerta.ImportedRadarEditPolicy0178Test' \
+            --tests 'br.com.mapeiaia.rotacerta.ReadingProximity0545ContractTest' \
+            --no-daemon --max-workers=2 --stacktrace | tee /tmp/alerts-0644-tests.log
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/alerts-0644-assemble.log
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Prove APK identity and signing
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/alerts-0644-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/alerts-0644-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/alerts-0644-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5935'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.644'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/alerts-0644-apksigner.txt
+          grep -Fq 'Verified' /tmp/alerts-0644-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/alerts-0644-dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/alerts-0644-dex-strings.txt
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.644-5935-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.644"
+            echo "versionCode=5935"
+            echo "branch=$GITHUB_REF_NAME"
+            echo "commit=$GITHUB_SHA"
+            echo "variant=debug"
+            echo "deviceTarget=Samsung SM-S911B / Android 16 / API 36"
+            echo "alertsIndependentFromFarol=PASS"
+            echo "radarsIndependentFromFarol=PASS"
+            echo "readingOffKeepsGpsAlertTracker=PASS"
+            echo "readingOffKeepsActiveAlertSurface=PASS"
+            echo "alertAuthority=proximityAlertsEnabled"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee alerts-independent-0644-proof.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-alerts-independent-0.1.644-${{ github.sha }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            alerts-independent-0644-proof.txt
+            /tmp/alerts-0644-tests.log
+            /tmp/alerts-0644-assemble.log
+            /tmp/alerts-0644-aapt.txt
+            /tmp/alerts-0644-apksigner.txt
+            /tmp/alerts-0644-zip-integrity.txt
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30

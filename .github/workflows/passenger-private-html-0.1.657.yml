@@ -1,0 +1,185 @@
+name: Passenger private HTML 0.1.657 APK
+
+on:
+  push:
+    branches:
+      - 'agent/passenger-private-html-0.1.657'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: passenger-private-html-0657-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      GOOGLE_MAPS_API_KEY: ''
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Prove exact 0.1.657 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "ROTA_CERTA_GIT_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          grep -Fq 'releaseVersionName = "0.1.657"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 5_948' app/build.gradle.kts
+          grep -Fq 'PASSENGER_PRIVATE_REFRESH_REQUEST_0656' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'READY_MESSAGE_SELECTOR' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'passengerOperationalAddressLabel0656' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'compactEmbeddedControls0593 = true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalAllTripsBrowserUi0563.kt
+          grep -Fq 'captureSingleTrip0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'passenger_prepare.js' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'BLABLACAR_HTML_PASSENGER_PRIVATE_MISSING_0657' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'val passengerContact: String = ""' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerIdentityStore.kt
+          grep -Fq 'metadata?.passengerContact' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'findComponentActivity0657()?.lifecycleScope' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAccountsBrowsersUi0399.kt
+          grep -Fq 'BlaBlaMessageNotificationListener0655' app/src/main/AndroidManifest.xml
+          git diff --check
+
+      - name: Configure Firebase Android app when credentials are available
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          elif [ -s /tmp/firebase-sa.json ]; then
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          else
+            echo "No Firebase credential available; build.gradle keeps google-services optional."
+          fi
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Passenger shortcuts and targeted HTML regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalShortcuts0656Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPassengerPrivateHtml0657Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaMessageNotificationRefresh0655Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPassengerDeepCapture0653Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripCardFooter0654Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.CentralPassengerControls0593Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TargetedCardRefreshReturn0645Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerComposeCancellation0652Test' \
+            --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0657-tests.log
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0657-assemble.log
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Prove APK identity manifest and signing
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/android-0657-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/android-0657-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/android-0657-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5948'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.657'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/aapt" dump xmltree "$APK" AndroidManifest.xml | tee /tmp/android-0657-manifest.txt
+          grep -Fq 'BlaBlaMessageNotificationListener0655' /tmp/android-0657-manifest.txt
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/android-0657-apksigner.txt
+          grep -Fq 'Verified' /tmp/android-0657-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0657-dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/android-0657-dex-strings.txt
+          grep -Fq 'PASSENGER_PRIVATE_REFRESH_REQUEST_0656' /tmp/android-0657-dex-strings.txt
+          grep -Fq 'BLABLACAR_HTML_PASSENGER_PRIVATE_MISSING_0657' /tmp/android-0657-dex-strings.txt
+          grep -Fq 'PASSENGER_QUICK_MESSAGE_0656' /tmp/android-0657-dex-strings.txt
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.657-5948-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.657"
+            echo "versionCode=5948"
+            echo "branch=$GITHUB_REF_NAME"
+            echo "commit=$GITHUB_SHA"
+            echo "deviceTarget=Samsung SM-S911B / Android 16 / API 36"
+            echo "privatePassengerHtml0657=PASS"
+            echo "privatePassengerFailClosed0657=PASS"
+            echo "activityOwnedCapture0657=PASS"
+            echo "visibleEditableAddresses0656=PASS"
+            echo "genericCityNotExactMapTarget0656=PASS"
+            echo "quickMessageSelector0656=PASS"
+            echo "fareRefreshBeforeManual0656=PASS"
+            echo "targetedHtmlRefresh0607=PASS"
+            echo "messageTrigger0655Preserved=PASS"
+            echo "sharedPassengerOperator0656=PASS"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee passenger-private-html-0657-proof.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-passenger-private-html-0.1.657-${{ github.sha }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            passenger-private-html-0657-proof.txt
+            /tmp/android-0657-tests.log
+            /tmp/android-0657-assemble.log
+            /tmp/android-0657-aapt.txt
+            /tmp/android-0657-manifest.txt
+            /tmp/android-0657-apksigner.txt
+            /tmp/android-0657-zip-integrity.txt
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30

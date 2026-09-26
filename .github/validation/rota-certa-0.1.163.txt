@@ -1,0 +1,16 @@
+Rota Certa 0.1.163 — Gravador de voo do farol
+
+Escopo isolado sobre a versão 0.1.162:
+- gravador circular sempre ativo e orientado somente por eventos reais;
+- horário civil em milissegundos e relógio monotônico em nanossegundos;
+- sequência, delta, thread, processo, memória, pacote, etapa e detalhes;
+- texto real da acessibilidade/OCR em blocos limitados e mascaramento de telefone/e-mail;
+- rastreamento de agendamento, captura, OCR, cache, HTTP, rota, decisão e desenho da bolinha;
+- checkpoint periódico e em eventos críticos, com recuperação da sessão anterior;
+- exportação integrada ao relatório técnico manual existente;
+- memória e disco limitados para aparelhos com baixo processamento e pouca RAM;
+- sem temporizador artificial de logs;
+- sem alteração em DecisionEngine, parser, políticas do farol, Manifest, permissões ou componentes;
+- Coletor permanece removido.
+
+A main permanece intacta até a validação prática do APK.

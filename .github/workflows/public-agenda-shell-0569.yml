@@ -1,0 +1,156 @@
+name: Rota Certa 0.1.569 public Agenda shell
+
+on:
+  push:
+    branches:
+      - agent/public-agenda-shell-blablacar-whatsapp-0.1.569
+    paths:
+      - '.github/workflows/public-agenda-shell-0569.yml'
+      - 'trip-platform/public/index.html'
+      - 'trip-platform/public/public-agenda-shell-0569.js'
+      - 'trip-platform/functions/test/public-agenda-shell-0569.test.js'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-agenda-shell-0569-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-and-deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+    steps:
+      - name: Checkout exact branch HEAD
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate public shell contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/public/public-agenda-shell-0569.js
+          node --test trip-platform/functions/test/public-agenda-shell-0569.test.js
+          grep -Fq 'card.href = publicUrl' trip-platform/public/public-agenda-shell-0569.js
+          grep -Fq 'body?.driver?.whatsapp' trip-platform/public/public-agenda-shell-0569.js
+          grep -Fq 'https://wa.me/' trip-platform/public/public-agenda-shell-0569.js
+          grep -Fq 'id="whatsappFab0569"' trip-platform/public/index.html
+          grep -Fq 'safe-area-inset-bottom' trip-platform/public/index.html
+          grep -Fq '/public-agenda-shell-0569.js?v=0.1.569.1' trip-platform/public/index.html
+          ! grep -Fiq 'Minha Área' trip-platform/public/index.html
+          ! grep -Fiq 'Fazer pedido de reserva' trip-platform/public/index.html
+          ! grep -Fiq 'passageiro' trip-platform/public/public-agenda-shell-0569.js
+          ! grep -Fiq 'agendaOccupancy0569' trip-platform/public/public-agenda-shell-0569.js
+          ! grep -Fiq 'confirmedPassengerSeats' trip-platform/public/public-agenda-shell-0569.js
+
+      - name: Configure Firebase authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
+          else
+            echo 'Firebase credential is missing.' >&2
+            exit 3
+          fi
+
+      - name: Deploy Hosting only
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only hosting --non-interactive --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only hosting --non-interactive
+          fi
+
+      - name: Smoke deployed public shell
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://rota-certa-7ccc8.web.app'
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/ezequiel?sha=$GITHUB_SHA" > /tmp/live-index.html
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/public-agenda-shell-0569.js?sha=$GITHUB_SHA" > /tmp/live-shell.js
+          grep -Fq '/public-agenda-shell-0569.js?v=0.1.569.1' /tmp/live-index.html
+          grep -Fq 'id="whatsappFab0569"' /tmp/live-index.html
+          ! grep -Fiq 'Minha Área' /tmp/live-index.html
+          grep -Fq 'card.href = publicUrl' /tmp/live-shell.js
+          grep -Fq 'body?.driver?.whatsapp' /tmp/live-shell.js
+          grep -Fq 'https://wa.me/' /tmp/live-shell.js
+          ! grep -Fiq 'passageiro' /tmp/live-shell.js
+          ! grep -Fiq 'agendaOccupancy0569' /tmp/live-shell.js
+          ! grep -Fiq 'confirmedPassengerSeats' /tmp/live-shell.js
+          echo 'PUBLIC_AGENDA_SHELL_0569_PASSENGER_FREE_LIVE=PASS'
+          echo "source_head=$GITHUB_SHA"
+
+      - name: Diagnose public trip link fields
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://rota-certa-7ccc8.web.app'
+          curl --retry 5 --retry-delay 2 --fail --silent --show-error "$BASE/v1/public/agenda/ezequiel?diag=$GITHUB_SHA" > /tmp/public-agenda.json
+          node <<'NODE'
+          const fs = require('fs');
+          const body = JSON.parse(fs.readFileSync('/tmp/public-agenda.json', 'utf8'));
+          const trips = Array.isArray(body.trips) ? body.trips : [];
+          console.log('PUBLIC_AGENDA_TRIP_COUNT=' + trips.length);
+          if (!trips.length) process.exit(0);
+          const keys = [...new Set(trips.flatMap((trip) => Object.keys(trip || {})))].sort();
+          console.log('PUBLIC_AGENDA_TRIP_KEYS=' + keys.join(','));
+          const candidates = ['blablaPublicUrl','publicUrl','publicTripId','tripPublicId','blablaTripId','externalTripId'];
+          for (const name of candidates) {
+            const values = trips.map((trip) => trip && trip[name]).filter((value) => value != null && String(value).trim() !== '');
+            console.log(`PUBLIC_LINK_FIELD_${name}=count:${values.length},sampleLength:${values.length ? String(values[0]).length : 0}`);
+          }
+          const firstPublicUrl = String(trips[0].publicUrl || '');
+          const parsed = new URL(firstPublicUrl);
+          const token = parsed.searchParams.get('trip') || '';
+          if (!token) throw new Error('public trip token missing from publicUrl');
+          fs.writeFileSync('/tmp/public-trip-token.txt', token);
+          console.log('PUBLIC_URL_HOST=' + parsed.hostname);
+          console.log('PUBLIC_URL_PATH=' + parsed.pathname);
+          console.log('PUBLIC_URL_QUERY_KEYS=' + [...parsed.searchParams.keys()].sort().join(','));
+          NODE
+          TOKEN="$(cat /tmp/public-trip-token.txt)"
+          curl --retry 5 --retry-delay 2 --fail --silent --show-error "$BASE/v1/public/trips/$TOKEN?diag=$GITHUB_SHA" > /tmp/public-trip-detail.json
+          node <<'NODE'
+          const fs = require('fs');
+          const body = JSON.parse(fs.readFileSync('/tmp/public-trip-detail.json', 'utf8'));
+          const trip = body.trip && typeof body.trip === 'object' ? body.trip : body;
+          const keys = Object.keys(trip || {}).sort();
+          console.log('PUBLIC_TRIP_DETAIL_KEYS=' + keys.join(','));
+          for (const name of ['blablaPublicUrl','publicUrl','publicTripId','tripPublicId','blablaTripId','externalTripId']) {
+            const value = trip && trip[name];
+            console.log(`PUBLIC_TRIP_DETAIL_${name}=present:${Boolean(value)},length:${value ? String(value).length : 0}`);
+          }
+          if (trip && trip.blablaPublicUrl) {
+            const u = new URL(String(trip.blablaPublicUrl));
+            console.log('PUBLIC_TRIP_DETAIL_BLABLA_HOST=' + u.hostname);
+            console.log('PUBLIC_TRIP_DETAIL_BLABLA_PATH=' + u.pathname);
+          }
+          NODE
