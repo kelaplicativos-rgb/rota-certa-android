@@ -1603,6 +1603,7 @@ internal object AgendaBackgroundSync0392 {
             context = appContext,
             target = target,
             existingSource = canonicalBefore.externalSnapshot,
+            scopedStateIsolation0662 = true,
         )
         if (htmlResult.trip == null) {
             return BlaBlaCommandResult0407(
@@ -1617,14 +1618,8 @@ internal object AgendaBackgroundSync0392 {
             )
         }
 
-        val exactResponse = targetedCollectorResponse0407(
-            response = BlaBlaCollectorStateStore(appContext).lastResponseRecoveringDynamicSessions(),
-            target = target,
-        )?.takeIf {
-            it.authority_source_0607 == BlaBlaAcquisitionAuthority0607.HTML_DIRECT
-        }
-        if (exactResponse?.trips?.singleOrNull() == null) {
-            return BlaBlaCommandResult0407(
+        val capturedTrip0662 = htmlResult.trip
+            ?: return BlaBlaCommandResult0407(
                 commandId = work.commandId,
                 target = target,
                 capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
@@ -1634,7 +1629,51 @@ internal object AgendaBackgroundSync0392 {
                 startedAtMillis = startedAt,
                 finishedAtMillis = System.currentTimeMillis(),
             )
+        if (
+            !capturedTrip0662.profile_uuid.trim().equals(target.profileUuid.trim(), ignoreCase = true) ||
+            capturedTrip0662.trip_id?.trim() != target.tripId
+        ) {
+            return BlaBlaCommandResult0407(
+                commandId = work.commandId,
+                target = target,
+                capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                status = BlaBlaCommandStatus0407.UNVERIFIED_TARGET,
+                errorCode = "TARGETED_HTML_SCOPE_LEAK_0662",
+                verification = "captured_html_identity_outside_exact_target",
+                startedAtMillis = startedAt,
+                finishedAtMillis = System.currentTimeMillis(),
+            )
         }
+        val exactResponse = BlaBlaCollectorMonthResponse(
+            collected_at = Instant.now().toString(),
+            status = "validated",
+            strategy = "html_trip_scope_0662",
+            authority_source_0607 = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
+            profiles = listOf(
+                BlaBlaCollectorProfile(
+                    uuid = target.profileUuid,
+                    name = "",
+                    title = "HTML direto • card exato",
+                ),
+            ),
+            trips = listOf(capturedTrip0662),
+            coverage = BlaBlaCollectorCoverage(
+                complete_for_scope = false,
+                global_profile_month_complete = false,
+                reason = "html_trip_scope_presence_only_0662",
+                requested_queries = 1,
+                validated_queries = 1,
+                failed_or_mismatched_queries = 0,
+                unresolved_target_cards = 0,
+                past_dates_skipped = false,
+            ),
+        )
+        UnifiedDebugEventStore.recordAlways(
+            "TARGET_CARD_HTML_SCOPE_ISOLATED_0662",
+            appContext.packageName,
+            "targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} scope=TRIP_ONLY " +
+                "combinedResponse=false dynamicSessionReadback=false exactTrips=1 authority=HTML_DIRECT_0607",
+        )
 
         val tenantSettings = SettingsRepository(appContext).settings.first()
         val batch = reconcileCollectedExternalTrips0403(
@@ -1689,24 +1728,17 @@ internal object AgendaBackgroundSync0392 {
         BookingRealtimeEvents0356.notifyChanged()
         TripWidgetProvider.updateAll(appContext)
 
-        fun exactSessionCollectorSource0646(): BlaBlaCollectorTrip? {
-            val account0646 = BlaBlaDynamicAccountRegistry(appContext).get(target.accountId) ?: return null
-            return BlaBlaDynamicSessionStore(appContext)
-                .read(account0646)
-                ?.trips
-                .orEmpty()
-                .filter { source0646 ->
-                    source0646.profile_uuid.trim().equals(target.profileUuid.trim(), ignoreCase = true) &&
-                        source0646.trip_id?.trim() == target.tripId
-                }
-                .singleOrNull()
-        }
+        fun exactCapturedHtmlSource0662(): BlaBlaCollectorTrip? =
+            capturedTrip0662.takeIf { source0662 ->
+                source0662.profile_uuid.trim().equals(target.profileUuid.trim(), ignoreCase = true) &&
+                    source0662.trip_id?.trim() == target.tripId
+            }
 
         var privateResult0646 = CollectorPrivateEnrichment0646.enrichExactTarget(
             context = appContext,
             store = store,
             target = target,
-            source = exactSessionCollectorSource0646(),
+            source = exactCapturedHtmlSource0662(),
         )
         var privateCollectorStatus0646 = if (privateResult0646.enrichedBookings > 0) {
             "CACHE_ENRICHED"
@@ -1755,7 +1787,7 @@ internal object AgendaBackgroundSync0392 {
                     context = appContext,
                     store = store,
                     target = target,
-                    source = exactSessionCollectorSource0646(),
+                    source = exactCapturedHtmlSource0662(),
                 )
                 remainingPrivateMissing0646 = CollectorPrivateEnrichment0646.needsPrivateEnrichment(
                     store.bookingsFor(refreshed.id),
@@ -1785,7 +1817,7 @@ internal object AgendaBackgroundSync0392 {
                 " profileUuidPresent=true tripIdPresent=true changed=${batch.changedTrips}" +
                 " skipped=${batch.skippedTrips} blocked=${batch.blockedTrips}" +
                 " publicationQueued=${batch.publicationQueued} outboxDelivered=$delivered" +
-                " exactTargetOnly=true authority=HTML_DIRECT_0607 legacyCollector=false" +
+                " exactTargetOnly=true authority=HTML_DIRECT_0607 legacyCollector=false scopedIsolation0662=true" +
                 " privateEnrichment=$privateCollectorStatus0646" +
                 " privateBookings=${privateResult0646.enrichedBookings}" +
                 " privateStillMissing=$remainingPrivateMissing0646",
