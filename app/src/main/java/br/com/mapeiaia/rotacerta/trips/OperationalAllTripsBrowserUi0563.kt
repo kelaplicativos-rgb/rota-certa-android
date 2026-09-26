@@ -1,5 +1,8 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import android.content.Context
+import android.content.ContextWrapper
+import androidx.activity.ComponentActivity
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,14 +25,17 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.time.Instant
 import java.time.LocalDate
@@ -37,6 +43,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * 0.1.566 — operational replacement for the old Timeline surface.
@@ -73,6 +80,21 @@ internal fun operationalTripMatchesSourceFilter0633(
     OperationalTripSourceFilter0633.BLABLACAR -> !nativeRotaCerta
 }
 
+internal enum class OperationalTripCardRefreshMode0663 {
+    BLABLACAR_DIRECT_HTML,
+    ROTA_CERTA_LOCAL,
+    UNAVAILABLE,
+}
+
+internal fun operationalTripCardRefreshMode0663(
+    nativeRotaCerta: Boolean,
+    canonicalTripPresent: Boolean,
+): OperationalTripCardRefreshMode0663 = when {
+    !canonicalTripPresent -> OperationalTripCardRefreshMode0663.UNAVAILABLE
+    nativeRotaCerta -> OperationalTripCardRefreshMode0663.ROTA_CERTA_LOCAL
+    else -> OperationalTripCardRefreshMode0663.BLABLACAR_DIRECT_HTML
+}
+
 @Composable
 internal fun OperationalAllTripsBrowserScreen0563(
     trips: List<Trip>,
@@ -87,6 +109,11 @@ internal fun OperationalAllTripsBrowserScreen0563(
     downloadTriggerToken0616: Int = 0,
 ) {
     val context = LocalContext.current
+    val fallbackRefreshScope0663 = rememberCoroutineScope()
+    val cardRefreshScope0663 = remember(context, fallbackRefreshScope0663) {
+        context.findComponentActivity0663()?.lifecycleScope ?: fallbackRefreshScope0663
+    }
+    val refreshingTripIds0663 = remember { mutableStateMapOf<String, Boolean>() }
     val store0654 = remember(context) { TripStore(context) }
     val accounts = remember(trips, bookings) {
         BlaBlaDynamicAccountRegistry(context.applicationContext).list()
@@ -285,6 +312,80 @@ internal fun OperationalAllTripsBrowserScreen0563(
         Instant.ofEpochMilli(nowMillis).atZone(zoneId).toLocalDate()
     }
 
+    val refreshRow0663: (OperationalTripBrowserRow0563) -> Unit = refreshRow0663@{ row ->
+        val canonicalTripId0663 = operationalCanonicalTripId0654(row)
+        val canonicalTrip0663 = row.canonicalTrip0633
+        val mode0663 = operationalTripCardRefreshMode0663(
+            nativeRotaCerta = row.nativeRotaCerta0633,
+            canonicalTripPresent = canonicalTrip0663 != null && canonicalTripId0663.isNotBlank(),
+        )
+        if (refreshingTripIds0663[canonicalTripId0663] == true) return@refreshRow0663
+
+        when (mode0663) {
+            OperationalTripCardRefreshMode0663.UNAVAILABLE -> {
+                UnifiedDebugEventStore.recordAlways(
+                    "TRIPS_CARD_REFRESH_REJECTED_0663",
+                    context.packageName,
+                    "scope=CARD_ONLY reason=canonical_trip_unavailable noTraversal=true",
+                )
+                onMessage("Atualização não iniciada: viagem canônica não encontrada.")
+            }
+
+            OperationalTripCardRefreshMode0663.ROTA_CERTA_LOCAL -> {
+                refreshingTripIds0663[canonicalTripId0663] = true
+                try {
+                    UnifiedDebugEventStore.recordAlways(
+                        "TRIPS_CARD_LOCAL_REFRESH_0663",
+                        context.packageName,
+                        "tripKey=${sha256TripPublication0387(canonicalTripId0663).take(16)} " +
+                            "scope=CARD_ONLY source=ROTA_CERTA_LOCAL noExternalTraversal=true",
+                    )
+                    onRefreshLocal()
+                    onMessage("✅ Card Rota Certa atualizado.")
+                } finally {
+                    refreshingTripIds0663.remove(canonicalTripId0663)
+                }
+            }
+
+            OperationalTripCardRefreshMode0663.BLABLACAR_DIRECT_HTML -> {
+                val trip0663 = canonicalTrip0663 ?: return@refreshRow0663
+                refreshingTripIds0663[canonicalTripId0663] = true
+                onMessage("📥 Atualizando somente este card pelo HTML…")
+                cardRefreshScope0663.launch {
+                    try {
+                        val result0663 = CentralDayCommandBridge0552.refreshTripDirect0662(
+                            context = context.applicationContext,
+                            trip = trip0663,
+                        )
+                        onRefreshLocal()
+                        UnifiedDebugEventStore.recordAlways(
+                            "TRIPS_CARD_HTML_DIRECT_0663",
+                            context.packageName,
+                            "tripKey=${sha256TripPublication0387(canonicalTripId0663).take(16)} " +
+                                "scope=TRIP_ONLY singleCard=true fullTraversal=false " +
+                                "status=${result0663?.status?.name ?: "NOT_STARTED"} authority=HTML_DIRECT_0607",
+                        )
+                        onMessage(
+                            when (result0663?.status) {
+                                BlaBlaCommandStatus0407.VERIFIED_SUCCESS ->
+                                    "✅ Card atualizado pelo HTML • nenhuma outra viagem foi percorrida."
+                                BlaBlaCommandStatus0407.AUTH_REQUIRED ->
+                                    "⚠ Sessão BlaBlaCar necessária para atualizar este card."
+                                null ->
+                                    "Atualização não iniciada: identidade forte indisponível ou atualização já em andamento."
+                                else ->
+                                    "⚠ Atualização deste card terminou com pendência: " +
+                                        result0663.errorCode.ifBlank { result0663.status.name }
+                            },
+                        )
+                    } finally {
+                        refreshingTripIds0663.remove(canonicalTripId0663)
+                    }
+                }
+            }
+        }
+    }
+
     val openRow: (OperationalTripBrowserRow0563) -> Unit = openRow@{ row ->
         if (row.nativeRotaCerta0633) {
             val canonicalId = row.canonicalTrip0633?.id
@@ -431,6 +532,8 @@ internal fun OperationalAllTripsBrowserScreen0563(
                         onMessage(text0654)
                         onRefreshLocal()
                     },
+                    refreshRunning0663 = refreshingTripIds0663[canonicalTripId0654] == true,
+                    onRefreshCard0663 = { refreshRow0663(row) },
                     onOpenIntegrity0654 = { onOpenTripIntegrity(canonicalTripId0654) },
                     onOpen = { openRow(row) },
                 )
@@ -480,6 +583,8 @@ internal fun OperationalAllTripsBrowserScreen0563(
                             onMessage(text0654)
                             onRefreshLocal()
                         },
+                        refreshRunning0663 = refreshingTripIds0663[canonicalTripId0654] == true,
+                        onRefreshCard0663 = { refreshRow0663(row) },
                         onOpenIntegrity0654 = { onOpenTripIntegrity(canonicalTripId0654) },
                         onOpen = { openRow(row) },
                     )
@@ -526,6 +631,8 @@ private fun OperationalTripBrowserCard0563(
     operationsExpanded0654: Boolean,
     onToggleOperations0654: () -> Unit,
     onOperationsChanged0654: (String) -> Unit,
+    refreshRunning0663: Boolean,
+    onRefreshCard0663: () -> Unit,
     onOpenIntegrity0654: () -> Unit,
     onOpen: () -> Unit,
 ) {
@@ -567,15 +674,29 @@ private fun OperationalTripBrowserCard0563(
                     text = dateLabel,
                     style = MaterialTheme.typography.titleMedium,
                 )
-                Text(
-                    text = if (row.nativeRotaCerta0633) {
-                        "Rota Certa"
-                    } else {
-                        row.account?.displayLabel ?: "BlaBlaCar • conta não confirmada"
-                    },
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        text = if (row.nativeRotaCerta0633) {
+                            "Rota Certa"
+                        } else {
+                            row.account?.displayLabel ?: "BlaBlaCar • conta não confirmada"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton(
+                        enabled = !refreshRunning0663,
+                        onClick = onRefreshCard0663,
+                    ) {
+                        Text(
+                            text = if (refreshRunning0663) "…" else "↻",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                }
             }
 
             Row(
@@ -855,4 +976,16 @@ internal fun operationalPassengerSummary0568(entry: TripTimelineEntry): String =
     }
     entry.blablaPassengerRosterComplete == true -> "Nenhum passageiro nesta viagem"
     else -> "Viagem BlaBlaCar"
+}
+
+
+private fun Context.findComponentActivity0663(): ComponentActivity? {
+    var current0663: Context = this
+    while (current0663 is ContextWrapper) {
+        if (current0663 is ComponentActivity) return current0663
+        val next0663 = current0663.baseContext
+        if (next0663 === current0663) break
+        current0663 = next0663
+    }
+    return current0663 as? ComponentActivity
 }
