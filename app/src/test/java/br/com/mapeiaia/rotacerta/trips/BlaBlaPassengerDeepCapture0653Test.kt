@@ -54,6 +54,42 @@ class BlaBlaPassengerDeepCapture0653Test {
     }
 
     @Test
+    fun blankPrivatePassengerEvidenceRequestsAnotherPagePass() {
+        assertTrue(
+            passengerPrivateEvidenceNeedsRetry0657(
+                phone = null,
+                fareMinorUnits = null,
+                boardingAddress = "",
+                dropoffAddress = "",
+            ),
+        )
+        assertFalse(
+            passengerPrivateEvidenceNeedsRetry0657(
+                phone = "+5511999999999",
+                fareMinorUnits = null,
+                boardingAddress = "",
+                dropoffAddress = "",
+            ),
+        )
+        assertFalse(
+            passengerPrivateEvidenceNeedsRetry0657(
+                phone = null,
+                fareMinorUnits = 9_300L,
+                boardingAddress = "",
+                dropoffAddress = "",
+            ),
+        )
+        assertFalse(
+            passengerPrivateEvidenceNeedsRetry0657(
+                phone = null,
+                fareMinorUnits = null,
+                boardingAddress = "Rua Júlio Colaço, 73",
+                dropoffAddress = "",
+            ),
+        )
+    }
+
+    @Test
     fun passengerPageMustRemainBoundToTheExactTrip() {
         val url = "https://www.blablacar.com.br/rides/offer/passenger/7371f028-9c55-4903-8444-308015823efd/0?id=trip-123"
         assertTrue(passengerPageBelongsToTrip0653(url, "trip-123"))
