@@ -2,6 +2,45 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.656",
+      "build": 5947,
+      "commit": null,
+      "branch": "agent/passenger-operational-shortcuts-0.1.656",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Viagens, Central do Dia e Timeline passam a reutilizar o mesmo operador de passageiro com endereços visíveis/editáveis, valor e mensagens prontas.",
+        "O atalho de mensagem passa a abrir um seletor com confirmar agora, confirmar amanhã, confirmar uma hora antes, estou no local e valor da reserva.",
+        "Dados privados ausentes no painel compacto disparam uma atualização HTML direcionada somente da viagem antes de recorrer ao preenchimento manual."
+      ],
+      "fixed": [
+        "Cidade ou rótulo genérico deixa de ser enviado ao Google Maps como se fosse endereço exato; sem endereço/coordenada confiável, o toque abre a edição do local.",
+        "O botão de valor deixa de abrir imediatamente o formulário manual quando a tarifa ainda pode ser recuperada pela captura HTML profunda.",
+        "O atalho de mensagens deixa de copiar uma única confirmação fixa e passa a oferecer opções operacionais.",
+        "A linha de Atalhos da Central do Dia passa a abrir o mesmo operador inline usado em Viagens."
+      ],
+      "improved": [
+        "A captura direcionada preserva identidade forte por profileUuid + tripId e continua usando a cadeia HTML canônica existente.",
+        "Os atalhos não registram o conteúdo das mensagens em telemetria e reaproveitam o WhatsApp canônico do passageiro.",
+        "Modelo e cor do veículo configurados na Agenda podem ser incluídos automaticamente nas mensagens de confirmação."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.655: o painel compacto ocultava os endereços, aceitava local genérico no pino, copiava mensagem fixa e podia pedir valor manual mesmo com dados recuperáveis no HTML."
+      ],
+      "modulesAffected": [
+        "Viagens",
+        "Central do Dia",
+        "Timeline",
+        "Passageiros",
+        "Atalhos",
+        "Coletor HTML",
+        "WhatsApp",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.655",
       "build": 5946,
       "commit": null,
