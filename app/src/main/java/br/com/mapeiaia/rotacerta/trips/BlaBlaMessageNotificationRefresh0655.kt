@@ -20,6 +20,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
@@ -237,6 +238,7 @@ class BlaBlaMessageNotificationListener0655 : NotificationListenerService() {
 internal object BlaBlaMessageRefreshScheduler0655 {
     private const val PREFS = "blablacar_message_trigger_0655"
     private const val KEY_REVISION = "trigger_revision"
+    private const val KEY_PROCESSED_REVISION = "processed_revision"
     private const val WORK_NAME = "blablacar-message-html-invalidation-0655"
 
     fun signal(context: Context, reason: String) {
@@ -251,13 +253,13 @@ internal object BlaBlaMessageRefreshScheduler0655 {
                     .setRequiredNetworkType(NetworkType.CONNECTED)
                     .build(),
             )
-            .setInitialDelay(NOTIFICATION_DEBOUNCE_MS_0655, TimeUnit.MILLISECONDS)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30L, TimeUnit.SECONDS)
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
 
         WorkManager.getInstance(app).enqueueUniqueWork(
             WORK_NAME,
-            ExistingWorkPolicy.KEEP,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
             request,
         )
         UnifiedDebugEventStore.record(
@@ -273,6 +275,21 @@ internal object BlaBlaMessageRefreshScheduler0655 {
             .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getLong(KEY_REVISION, 0L)
             .coerceAtLeast(0L)
+
+    fun processedRevision(context: Context): Long =
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getLong(KEY_PROCESSED_REVISION, 0L)
+            .coerceAtLeast(0L)
+
+    fun markProcessed(context: Context, revision: Long) {
+        val app = context.applicationContext
+        val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val current = prefs.getLong(KEY_PROCESSED_REVISION, 0L).coerceAtLeast(0L)
+        if (revision > current) {
+            prefs.edit().putLong(KEY_PROCESSED_REVISION, revision).apply()
+        }
+    }
 }
 
 class BlaBlaMessageRefreshWorker0655(
@@ -280,18 +297,31 @@ class BlaBlaMessageRefreshWorker0655(
     workerParameters: WorkerParameters,
 ) : CoroutineWorker(appContext, workerParameters) {
     override suspend fun doWork(): Result {
+        var observedRevision = BlaBlaMessageRefreshScheduler0655.revision(applicationContext)
+        if (BlaBlaMessageRefreshScheduler0655.processedRevision(applicationContext) >= observedRevision) {
+            return Result.success()
+        }
+
+        kotlinx.coroutines.delay(NOTIFICATION_DEBOUNCE_MS_0655)
+
         var pass = 0
         var transientFailure = false
         do {
             val before = BlaBlaMessageRefreshScheduler0655.revision(applicationContext)
+            if (BlaBlaMessageRefreshScheduler0655.processedRevision(applicationContext) >= before) {
+                return Result.success()
+            }
             val result = BlaBlaMessageHtmlCoordinator0655.refresh(applicationContext)
             transientFailure = transientFailure || result.transientFailure
             val after = BlaBlaMessageRefreshScheduler0655.revision(applicationContext)
+            observedRevision = after
             pass += 1
             if (after <= before) break
         } while (pass < MAX_DRAIN_PASSES_0655)
 
-        return if (transientFailure && runAttemptCount < 3) Result.retry() else Result.success()
+        if (transientFailure && runAttemptCount < 3) return Result.retry()
+        BlaBlaMessageRefreshScheduler0655.markProcessed(applicationContext, observedRevision)
+        return Result.success()
     }
 }
 
