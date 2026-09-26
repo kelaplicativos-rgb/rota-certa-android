@@ -81,6 +81,27 @@ internal data class EnhancedPassengerCardRow(
     val externalPassengerId: String? = null,
 )
 
+internal enum class PassengerQuickMessageType0656 {
+    CONFIRM_NOW,
+    CONFIRM_TOMORROW,
+    CONFIRM_ONE_HOUR,
+    AT_LOCATION,
+    FARE,
+}
+
+internal data class PassengerQuickMessageChoice0656(
+    val type: PassengerQuickMessageType0656,
+    val label: String,
+)
+
+internal val passengerQuickMessageChoices0656: List<PassengerQuickMessageChoice0656> = listOf(
+    PassengerQuickMessageChoice0656(PassengerQuickMessageType0656.CONFIRM_NOW, "Confirmar agora"),
+    PassengerQuickMessageChoice0656(PassengerQuickMessageType0656.CONFIRM_TOMORROW, "Confirmar amanhã"),
+    PassengerQuickMessageChoice0656(PassengerQuickMessageType0656.CONFIRM_ONE_HOUR, "Confirmar 1 hora antes"),
+    PassengerQuickMessageChoice0656(PassengerQuickMessageType0656.AT_LOCATION, "Estou no local"),
+    PassengerQuickMessageChoice0656(PassengerQuickMessageType0656.FARE, "Valor da reserva"),
+)
+
 internal data class PassengerTimelineRenderSnapshot0394(
     val rows: List<EnhancedPassengerCardRow>,
     val profilesByRowKey: Map<String, PassengerProfile>,
@@ -290,6 +311,77 @@ internal fun EnhancedPassengerTimelineSection(
     var fareEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var boardingAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var dropoffAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
+    var quickMessageRow0656 by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
+    var privateRefreshAttempted0656 by remember(trip?.id) { mutableStateOf(false) }
+    val vehicleSettings0656 = remember(store) { store.onlineSettings() }
+    val privateMetadataIncomplete0656 = rows.any(::passengerPrivateMetadataIncomplete0656)
+    val privateMetadataFingerprint0656 = rows.joinToString("|") { row ->
+        listOf(
+            passengerTimelineRowKey0394(row),
+            row.phone.orEmpty(),
+            row.fareMinorUnits?.toString().orEmpty(),
+            row.boardingAddress,
+            row.dropoffAddress,
+        ).joinToString("~")
+    }
+
+    LaunchedEffect(
+        compactEmbeddedControls0593,
+        trip?.id,
+        privateMetadataIncomplete0656,
+        privateMetadataFingerprint0656,
+    ) {
+        val selectedTrip0656 = trip ?: return@LaunchedEffect
+        if (!compactEmbeddedControls0593 || !privateMetadataIncomplete0656 || privateRefreshAttempted0656) {
+            return@LaunchedEffect
+        }
+        if (selectedTrip0656.blablaProfileUuid.isNullOrBlank() || selectedTrip0656.blablaTripId.isNullOrBlank()) {
+            return@LaunchedEffect
+        }
+        privateRefreshAttempted0656 = true
+        val queued0656 = withContext(Dispatchers.IO) {
+            CentralDayCommandBridge0552.refreshTrip(context, selectedTrip0656)
+        }
+        UnifiedDebugEventStore.recordAlways(
+            "PASSENGER_PRIVATE_REFRESH_REQUEST_0656",
+            context.packageName,
+            "canonicalTripId=" + passengerCancellationHash(selectedTrip0656.id) +
+                " trigger=COMPACT_SHORTCUTS_OPEN incomplete=true queued=$queued0656 exactTripOnly=true",
+        )
+        onChanged(
+            if (queued0656) {
+                "Atualizando telefone, valor e endereços desta viagem pelo HTML…"
+            } else {
+                "Os dados privados desta viagem já estão sendo atualizados ou a conta precisa ser reconectada."
+            },
+        )
+    }
+
+    fun requestPrivateRefreshBeforeManual0656(reason: String): Boolean {
+        val selectedTrip0656 = trip ?: return false
+        if (selectedTrip0656.blablaProfileUuid.isNullOrBlank() || selectedTrip0656.blablaTripId.isNullOrBlank()) return false
+        if (privateRefreshAttempted0656) return false
+        privateRefreshAttempted0656 = true
+        scope.launch {
+            val queued0656 = withContext(Dispatchers.IO) {
+                CentralDayCommandBridge0552.refreshTrip(context, selectedTrip0656)
+            }
+            UnifiedDebugEventStore.recordAlways(
+                "PASSENGER_PRIVATE_REFRESH_REQUEST_0656",
+                context.packageName,
+                "canonicalTripId=" + passengerCancellationHash(selectedTrip0656.id) +
+                    " trigger=$reason incomplete=true queued=$queued0656 exactTripOnly=true",
+            )
+            onChanged(
+                if (queued0656) {
+                    "Buscando no HTML os dados que faltam desta viagem…"
+                } else {
+                    "A atualização direcionada já está em andamento ou a sessão da conta precisa ser validada."
+                },
+            )
+        }
+        return true
+    }
 
     val selectedHistoryRow = historyRow
     if (selectedHistoryRow != null) {
@@ -544,6 +636,99 @@ internal fun EnhancedPassengerTimelineSection(
                     }
                 }
 
+                // 0.1.656 — the operational shortcuts are shared by Viagens and Central do Dia.
+                // Pickup/dropoff always keep a visible editable label. A city-only label is never
+                // promoted to an exact navigation target.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    TextButton(
+                        onClick = {
+                            if (pickupTarget0593 != null) {
+                                UnifiedDebugEventStore.recordAlways(
+                                    "CENTRAL_DAY_PASSENGER_SHORTCUT_0594",
+                                    context.packageName,
+                                    "shortcut=PICKUP_PIN exactTarget=true",
+                                    diagnosticContext = DiagnosticEventContext0507(
+                                        parentModule = DiagnosticModule0507.CENTRAL_DAY,
+                                        originModule = DiagnosticModule0507.CENTRAL_DAY,
+                                        executorModule = DiagnosticModule0507.CENTRAL_DAY,
+                                        submodule = "PASSENGER_CONTROLS",
+                                        component = "EnhancedPassengerTimelineSection",
+                                        operation = "CENTRAL_DAY_PASSENGER_SHORTCUT",
+                                        entityType = "booking",
+                                        entityId = passengerCancellationHash(currentBooking?.id ?: passenger.localBookingId.orEmpty()),
+                                        result = "PICKUP_PIN",
+                                    ),
+                                )
+                                openPassengerPickupMap(context, pickupTarget0593)
+                            } else {
+                                boardingAddressEditRow = passenger
+                            }
+                        },
+                        modifier = Modifier.size(36.dp),
+                        contentPadding = ADDRESS_ICON_PADDING,
+                    ) { Text("📍", maxLines = 1) }
+                    TextButton(
+                        onClick = { boardingAddressEditRow = passenger },
+                        modifier = Modifier.weight(1f),
+                        contentPadding = ADDRESS_PLACE_PADDING,
+                    ) {
+                        Text(
+                            passengerOperationalAddressLabel0656(passenger, boarding = true),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    TextButton(
+                        onClick = {
+                            if (dropoffTarget0593 != null) {
+                                UnifiedDebugEventStore.recordAlways(
+                                    "CENTRAL_DAY_PASSENGER_SHORTCUT_0594",
+                                    context.packageName,
+                                    "shortcut=DROPOFF_PIN exactTarget=true",
+                                    diagnosticContext = DiagnosticEventContext0507(
+                                        parentModule = DiagnosticModule0507.CENTRAL_DAY,
+                                        originModule = DiagnosticModule0507.CENTRAL_DAY,
+                                        executorModule = DiagnosticModule0507.CENTRAL_DAY,
+                                        submodule = "PASSENGER_CONTROLS",
+                                        component = "EnhancedPassengerTimelineSection",
+                                        operation = "CENTRAL_DAY_PASSENGER_SHORTCUT",
+                                        entityType = "booking",
+                                        entityId = passengerCancellationHash(currentBooking?.id ?: passenger.localBookingId.orEmpty()),
+                                        result = "DROPOFF_PIN",
+                                    ),
+                                )
+                                openPassengerDropoffMap(context, dropoffTarget0593)
+                            } else {
+                                dropoffAddressEditRow = passenger
+                            }
+                        },
+                        modifier = Modifier.size(36.dp),
+                        contentPadding = ADDRESS_ICON_PADDING,
+                    ) { Text("🏁", maxLines = 1) }
+                    TextButton(
+                        onClick = { dropoffAddressEditRow = passenger },
+                        modifier = Modifier.weight(1f),
+                        contentPadding = ADDRESS_PLACE_PADDING,
+                    ) {
+                        Text(
+                            passengerOperationalAddressLabel0656(passenger, boarding = false),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -584,60 +769,6 @@ internal fun EnhancedPassengerTimelineSection(
 
                     TextButton(
                         onClick = {
-                            if (pickupTarget0593 != null) {
-                                UnifiedDebugEventStore.recordAlways(
-                                    "CENTRAL_DAY_PASSENGER_SHORTCUT_0594",
-                                    context.packageName,
-                                    "shortcut=PICKUP_PIN",
-                                    diagnosticContext = DiagnosticEventContext0507(
-                                        parentModule = DiagnosticModule0507.CENTRAL_DAY,
-                                        originModule = DiagnosticModule0507.CENTRAL_DAY,
-                                        executorModule = DiagnosticModule0507.CENTRAL_DAY,
-                                        submodule = "PASSENGER_CONTROLS",
-                                        component = "EnhancedPassengerTimelineSection",
-                                        operation = "CENTRAL_DAY_PASSENGER_SHORTCUT",
-                                        entityType = "booking",
-                                        entityId = passengerCancellationHash(currentBooking?.id ?: passenger.localBookingId.orEmpty()),
-                                        result = "PICKUP_PIN",
-                                    ),
-                                )
-                                openPassengerPickupMap(context, pickupTarget0593)
-                            }
-                        },
-                        enabled = pickupTarget0593 != null,
-                        modifier = Modifier.size(36.dp),
-                        contentPadding = ADDRESS_ICON_PADDING,
-                    ) { Text("📍", maxLines = 1) }
-
-                    TextButton(
-                        onClick = {
-                            if (dropoffTarget0593 != null) {
-                                UnifiedDebugEventStore.recordAlways(
-                                    "CENTRAL_DAY_PASSENGER_SHORTCUT_0594",
-                                    context.packageName,
-                                    "shortcut=DROPOFF_PIN",
-                                    diagnosticContext = DiagnosticEventContext0507(
-                                        parentModule = DiagnosticModule0507.CENTRAL_DAY,
-                                        originModule = DiagnosticModule0507.CENTRAL_DAY,
-                                        executorModule = DiagnosticModule0507.CENTRAL_DAY,
-                                        submodule = "PASSENGER_CONTROLS",
-                                        component = "EnhancedPassengerTimelineSection",
-                                        operation = "CENTRAL_DAY_PASSENGER_SHORTCUT",
-                                        entityType = "booking",
-                                        entityId = passengerCancellationHash(currentBooking?.id ?: passenger.localBookingId.orEmpty()),
-                                        result = "DROPOFF_PIN",
-                                    ),
-                                )
-                                openPassengerDropoffMap(context, dropoffTarget0593)
-                            }
-                        },
-                        enabled = dropoffTarget0593 != null,
-                        modifier = Modifier.size(36.dp),
-                        contentPadding = ADDRESS_ICON_PADDING,
-                    ) { Text("🏁", maxLines = 1) }
-
-                    TextButton(
-                        onClick = {
                             UnifiedDebugEventStore.recordAlways(
                                 "CENTRAL_DAY_PASSENGER_SHORTCUT_0594",
                                 context.packageName,
@@ -656,7 +787,7 @@ internal fun EnhancedPassengerTimelineSection(
                             )
                             if (passenger.fareMinorUnits != null) {
                                 copyPassengerFareValue(context, passenger)
-                            } else {
+                            } else if (!requestPrivateRefreshBeforeManual0656("FARE_SHORTCUT")) {
                                 fareEditRow = passenger
                             }
                         },
@@ -669,7 +800,7 @@ internal fun EnhancedPassengerTimelineSection(
                             UnifiedDebugEventStore.recordAlways(
                                 "CENTRAL_DAY_PASSENGER_SHORTCUT_0594",
                                 context.packageName,
-                                "shortcut=READY_MESSAGE",
+                                "shortcut=READY_MESSAGE_SELECTOR",
                                 diagnosticContext = DiagnosticEventContext0507(
                                     parentModule = DiagnosticModule0507.CENTRAL_DAY,
                                     originModule = DiagnosticModule0507.CENTRAL_DAY,
@@ -679,10 +810,10 @@ internal fun EnhancedPassengerTimelineSection(
                                     operation = "CENTRAL_DAY_PASSENGER_SHORTCUT",
                                     entityType = "booking",
                                     entityId = passengerCancellationHash(currentBooking?.id ?: passenger.localBookingId.orEmpty()),
-                                    result = "READY_MESSAGE",
+                                    result = "READY_MESSAGE_SELECTOR",
                                 ),
                             )
-                            copyPassengerConfirmationMessage(context, entry, passenger)
+                            quickMessageRow0656 = passenger
                         },
                         modifier = Modifier.size(36.dp),
                         contentPadding = ADDRESS_ICON_PADDING,
@@ -1442,6 +1573,50 @@ internal fun EnhancedPassengerTimelineSection(
                 }) { Text(if (exact != null) "Vincular cadastro" else "Criar cadastro") }
             },
             dismissButton = { TextButton(onClick = { createProfileRow = null }) { Text("Cancelar") } },
+        )
+    }
+
+    quickMessageRow0656?.let { row ->
+        AlertDialog(
+            onDismissRequest = { quickMessageRow0656 = null },
+            title = { Text("Mensagem para " + row.name.ifBlank { "passageiro" }) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    passengerQuickMessageChoices0656.forEach { choice ->
+                        OutlinedButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                if (choice.type == PassengerQuickMessageType0656.FARE && row.fareMinorUnits == null) {
+                                    quickMessageRow0656 = null
+                                    if (!requestPrivateRefreshBeforeManual0656("FARE_MESSAGE")) {
+                                        fareEditRow = row
+                                    }
+                                } else {
+                                    val message0656 = passengerQuickMessageText0656(
+                                        entry = entry,
+                                        row = row,
+                                        type = choice.type,
+                                        localeTag = PassengerMoney.spec(context).localeTag,
+                                        vehicleMakeModel = vehicleSettings0656.vehicleMakeModel,
+                                        vehicleColor = vehicleSettings0656.vehicleColor,
+                                    )
+                                    quickMessageRow0656 = null
+                                    deliverPassengerQuickMessage0656(
+                                        context = context,
+                                        row = row,
+                                        type = choice.type,
+                                        message = message0656,
+                                    )
+                                }
+                            },
+                        ) { Text(choice.label) }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { quickMessageRow0656 = null }) { Text("Fechar") }
+            },
         )
     }
 
@@ -2351,6 +2526,117 @@ private fun copyPassengerFareValue(context: Context, row: EnhancedPassengerCardR
     Toast.makeText(context, "Valor copiado: $formatted", Toast.LENGTH_SHORT).show()
 }
 
+internal fun passengerPrivateMetadataIncomplete0656(row: EnhancedPassengerCardRow): Boolean {
+    if (BookingSource.BLABLACAR !in row.sources) return false
+    val pickupExact = row.boardingAddress.isNotBlank() ||
+        trustedPassengerCoordinate0513(row.boardingLatitude, row.boardingLongitude)
+    val dropoffExact = row.dropoffAddress.isNotBlank() ||
+        trustedPassengerCoordinate0513(row.dropoffLatitude, row.dropoffLongitude)
+    return row.phone.isNullOrBlank() || row.fareMinorUnits == null || !pickupExact || !dropoffExact
+}
+
+internal fun passengerOperationalAddressLabel0656(
+    row: EnhancedPassengerCardRow,
+    boarding: Boolean,
+): String {
+    val exact = if (boarding) row.boardingAddress.trim() else row.dropoffAddress.trim()
+    if (exact.isNotBlank()) return exact
+    val collected = if (boarding) row.boarding?.trim().orEmpty() else row.dropoff?.trim().orEmpty()
+    return if (collected.isNotBlank()) {
+        "$collected • definir endereço"
+    } else if (boarding) {
+        "Definir local de embarque"
+    } else {
+        "Definir local de destino"
+    }
+}
+
+internal fun passengerQuickMessageText0656(
+    entry: TripTimelineEntry,
+    row: EnhancedPassengerCardRow,
+    type: PassengerQuickMessageType0656,
+    localeTag: String = "pt-BR",
+    vehicleMakeModel: String = "",
+    vehicleColor: String = "",
+): String {
+    val locale = java.util.Locale.forLanguageTag(localeTag.ifBlank { "pt-BR" })
+    val departure = java.time.Instant.ofEpochMilli(entry.departureAtMillis)
+        .atZone(java.time.ZoneId.systemDefault())
+    val dateTime = java.time.format.DateTimeFormatter
+        .ofPattern("EEEE, d 'de' MMMM, 'às' HH'h'mm", locale)
+        .format(departure)
+        .replaceFirstChar { ch -> if (ch.isLowerCase()) ch.titlecase(locale) else ch.toString() }
+    val name = row.name.ifBlank { "passageiro" }
+    val origin = row.boarding?.trim()?.takeIf(String::isNotEmpty) ?: entry.origin.trim()
+    val destination = row.dropoff?.trim()?.takeIf(String::isNotEmpty) ?: entry.destination.trim()
+    val seatsText = if (row.seats == 1) "1 lugar" else "${row.seats} lugares"
+    val vehicleLines = listOf(vehicleMakeModel.trim(), vehicleColor.trim().uppercase(locale))
+        .filter(String::isNotBlank)
+    val vehicleBlock = if (vehicleLines.isEmpty()) "" else {
+        "\n\nCarro\n\n" + vehicleLines.joinToString("\n\n")
+    }
+
+    return when (type) {
+        PassengerQuickMessageType0656.CONFIRM_NOW -> buildString {
+            append("Olá, ").append(name).append("! Confirmando sua viagem:\n\n")
+            append(origin).append(" → ").append(destination).append("\n")
+            append(dateTime).append(".\n\nEstá tudo certo?")
+        }
+        PassengerQuickMessageType0656.CONFIRM_TOMORROW ->
+            "Oi! Passando para confirmar nossa viagem amanhã 👍\n\n" +
+                "Saída no horário combinado.\n" +
+                "Perto te envio a localização em tempo real 🚗" +
+                vehicleBlock
+        PassengerQuickMessageType0656.CONFIRM_ONE_HOUR ->
+            "Oi, $name! Confirmando nossa viagem daqui a aproximadamente 1 hora 👍\n\n" +
+                "Saída no horário combinado.\n" +
+                "Em breve envio a localização em tempo real 🚗" +
+                vehicleBlock
+        PassengerQuickMessageType0656.AT_LOCATION ->
+            "Oi, $name! Já estou no local combinado para o embarque 📍"
+        PassengerQuickMessageType0656.FARE -> {
+            val fare = row.fareMinorUnits?.let {
+                passengerTimelineFareClipboardText(it, row.fareCurrencyCode, localeTag)
+            } ?: "valor ainda não disponível"
+            "Olá, $name! O valor exibido para sua reserva de $seatsText, de $origin para $destination, é $fare."
+        }
+    }
+}
+
+private fun deliverPassengerQuickMessage0656(
+    context: Context,
+    row: EnhancedPassengerCardRow,
+    type: PassengerQuickMessageType0656,
+    message: String,
+) {
+    val digits = row.phone?.let(::passengerWhatsAppDigits0515)
+    val opened = digits?.let { phone ->
+        runCatching {
+            context.startActivity(
+                Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("https://wa.me/$phone?text=" + Uri.encode(message)),
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            true
+        }.getOrDefault(false)
+    } == true
+    if (!opened) {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("Mensagem do passageiro", message))
+        Toast.makeText(
+            context,
+            if (digits == null) "Mensagem copiada; WhatsApp do passageiro não está disponível." else "Mensagem copiada.",
+            Toast.LENGTH_SHORT,
+        ).show()
+    }
+    UnifiedDebugEventStore.record(
+        "PASSENGER_QUICK_MESSAGE_0656",
+        context.packageName,
+        "template=${type.name} whatsappOpened=$opened phonePresent=${digits != null} payloadLogged=false",
+    )
+}
+
 internal data class ExternalTripTarget(val profileUuid: String, val href: String)
 
 internal fun externalTripTarget(profileUuid: String?, href: String?): ExternalTripTarget? {
@@ -2483,16 +2769,20 @@ private fun trustedPassengerCoordinate0513(latitude: Double?, longitude: Double?
 internal fun passengerPickupMapTarget(row: EnhancedPassengerCardRow): PassengerPickupMapTarget? {
     val exact = row.boardingAddress.trim().takeIf(String::isNotEmpty)
     val collected = row.boarding?.trim()?.takeIf(String::isNotEmpty)
-    val query = exact ?: collected ?: return null
     val trusted = trustedPassengerCoordinate0513(row.boardingLatitude, row.boardingLongitude)
+    // 0.1.656: a city/stop label alone is display evidence, never an exact navigation target.
+    if (exact == null && !trusted) return null
+    val query = exact ?: collected ?: "${row.boardingLatitude},${row.boardingLongitude}"
     return PassengerPickupMapTarget(query, row.boardingLatitude.takeIf { trusted }, row.boardingLongitude.takeIf { trusted })
 }
 
 internal fun passengerDropoffMapTarget(row: EnhancedPassengerCardRow): PassengerPickupMapTarget? {
     val exact = row.dropoffAddress.trim().takeIf(String::isNotEmpty)
     val collected = row.dropoff?.trim()?.takeIf(String::isNotEmpty)
-    val query = exact ?: collected ?: return null
     val trusted = trustedPassengerCoordinate0513(row.dropoffLatitude, row.dropoffLongitude)
+    // 0.1.656: never send a generic destination label to Maps as if it were an exact address.
+    if (exact == null && !trusted) return null
+    val query = exact ?: collected ?: "${row.dropoffLatitude},${row.dropoffLongitude}"
     return PassengerPickupMapTarget(query, row.dropoffLatitude.takeIf { trusted }, row.dropoffLongitude.takeIf { trusted })
 }
 
