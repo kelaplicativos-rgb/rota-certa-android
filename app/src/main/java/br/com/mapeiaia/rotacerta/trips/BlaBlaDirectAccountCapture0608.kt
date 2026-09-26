@@ -149,17 +149,36 @@ internal object BlaBlaDirectAccountCapture0608 {
                     val webView = WebView(themed)
                     try {
                         configure(webView, account)
-                        successful = loadStable(
-                            webView = webView,
-                            script = script,
-                            onSample = { sample ->
-                                samples += sample
-                                onProgress("${account.displayLabel} • ${sample.observedCardCount} viagem(ns)")
-                            },
-                            onFailureReason0617 = { reason ->
-                                stabilizationFailures0617 += reason.ifBlank { "UNKNOWN" }
-                            },
-                        )
+                        successful = if (targetDate0661 == null) {
+                            loadStable(
+                                webView = webView,
+                                script = script,
+                                onSample = { sample ->
+                                    samples += sample
+                                    onProgress("${account.displayLabel} • ${sample.observedCardCount} viagem(ns)")
+                                },
+                                onFailureReason0617 = { reason ->
+                                    stabilizationFailures0617 += reason.ifBlank { "UNKNOWN" }
+                                },
+                            )
+                        } else {
+                            loadTodayStable0661(
+                                webView = webView,
+                                script = script,
+                                targetDate = targetDate0661,
+                                onSample = { sample ->
+                                    samples += sample
+                                    val todayCount0661 = BlaBlaCollectorCardModule.candidatesOnDate(
+                                        candidates = sample.candidates,
+                                        targetDate = targetDate0661,
+                                    ).size
+                                    onProgress("${account.displayLabel} • HTML de hoje • $todayCount0661 card(s) do dia")
+                                },
+                                onFailureReason0617 = { reason ->
+                                    stabilizationFailures0617 += reason.ifBlank { "UNKNOWN" }
+                                },
+                            )
+                        }
                     } finally {
                         runCatching { webView.stopLoading() }
                         runCatching { webView.webViewClient = WebViewClient() }
