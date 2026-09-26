@@ -484,6 +484,7 @@ internal object BlaBlaDirectAccountCapture0608 {
             profile = updated,
             onProgress = onProgress,
             targetDate0661 = targetDate0661,
+            scopedStateIsolation0662 = targetDate0661 != null,
         )
         val profileAfter = store.read(captureId)
             ?.profiles
