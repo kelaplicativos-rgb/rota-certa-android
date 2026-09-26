@@ -78,11 +78,12 @@ class CentralTodayOnlyRefresh0660Test {
     @Test
     fun centralButtonDiscoversTodayEvenWithZeroLocalCanonicalCards0660() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/CentralDoDia0552.kt").readText()
-        val buttonStart = source.indexOf("CENTRAL_DAY_TODAY_SCOPE_REQUESTED_0660")
+        val buttonStart = source.indexOf("CENTRAL_DAY_TODAY_HTML_REQUESTED_0661")
         assertTrue(buttonStart >= 0)
-        assertTrue(source.contains("BlaBlaDynamicSessionIntents.syncToday(context, nextAccount0660, today)"))
+        assertTrue(source.contains("BlaBlaTodayHtmlCaptureCoordinator0661.capture("))
         assertTrue(source.contains("discoverWhenLocalEmpty=true"))
-        assertFalse(source.substring(buttonStart.coerceAtLeast(0)).take(2500).contains("CentralDayCommandBridge0552.refreshAll"))
+        assertFalse(source.contains("BlaBlaDynamicSessionIntents.syncToday("))
+        assertFalse(source.substring(buttonStart.coerceAtLeast(0)).take(3500).contains("CentralDayCommandBridge0552.refreshAll"))
     }
 
     @Test
