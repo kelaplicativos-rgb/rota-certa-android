@@ -62,6 +62,8 @@ data class ExternalPassengerMetadata(
     val operationalStatus: PassengerOperationalStatus = PassengerOperationalStatus.CONFIRMED,
     val paymentStatus: PassengerPaymentStatus = PassengerPaymentStatus.UNPAID,
     val lastDriverSelection: String = "",
+    /** Private contact captured from the exact external reservation HTML. */
+    val passengerContact: String = "",
     val fareMinorUnits: Long? = null,
     val fareCurrencyCode: String = "",
     val boardingAddress: String = "",
@@ -1010,6 +1012,7 @@ class PassengerIdentityStore(context: Context) {
             externalTripId = stableExternalPassengerId(metadata.externalTripId).orEmpty(),
             externalProfileUuid = metadata.externalProfileUuid.trim().lowercase().take(80),
             lastDriverSelection = metadata.lastDriverSelection.trim().uppercase().take(32),
+            passengerContact = BlaBlaCollectorPassengerModule.normalizePhone(metadata.passengerContact).orEmpty(),
             fareCurrencyCode = metadata.fareCurrencyCode.trim().uppercase().take(3),
             boardingAddress = metadata.boardingAddress.trim().take(500),
             dropoffAddress = metadata.dropoffAddress.trim().take(500),
