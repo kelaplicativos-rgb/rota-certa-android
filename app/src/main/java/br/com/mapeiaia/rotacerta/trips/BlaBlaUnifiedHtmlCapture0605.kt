@@ -1838,6 +1838,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 externalPassengerId = externalPassengerId.ifBlank { existingMetadata?.externalPassengerId.orEmpty() },
                 externalTripId = ride.tripId,
                 externalProfileUuid = definition.uuid,
+                passengerContact = normalizedPhone ?: existingMetadata?.passengerContact.orEmpty(),
                 fareMinorUnits = fareMinorUnits ?: existingMetadata?.fareMinorUnits,
                 fareCurrencyCode = fareCurrencyCode.ifBlank { existingMetadata?.fareCurrencyCode.orEmpty() },
                 boardingAddress = boardingAddress,
