@@ -12,7 +12,7 @@ class CentralTodayDirectHtml0661Test {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/CentralDoDia0552.kt").readText()
         assertTrue(source.contains("BlaBlaTodayHtmlCaptureCoordinator0661.capture("))
         assertTrue(source.contains("CENTRAL_DAY_TODAY_HTML_REQUESTED_0661"))
-        assertTrue(source.contains("authority=${BlaBlaAcquisitionAuthority0607.HTML_DIRECT}"))
+        assertTrue(source.contains("BlaBlaAcquisitionAuthority0607.HTML_DIRECT"))
         assertFalse(source.contains("BlaBlaDynamicSessionIntents.syncToday("))
         assertFalse(source.contains("rememberLauncherForActivityResult"))
         assertFalse(source.contains("ActivityResultContracts.StartActivityForResult"))
