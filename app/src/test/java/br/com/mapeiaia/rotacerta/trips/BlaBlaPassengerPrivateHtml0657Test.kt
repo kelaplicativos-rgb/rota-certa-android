@@ -13,7 +13,7 @@ class BlaBlaPassengerPrivateHtml0657Test {
         val prepare = File("src/main/assets/blablacar/scripts/passenger_prepare.js").readText()
         val open = File("src/main/assets/blablacar/scripts/passenger_open.js").readText()
 
-        assertTrue(contact.contains("wa.me"))
+        assertTrue(contact.contains("wa.me") || contact.contains("wa\\.me"))
         assertTrue(contact.contains("phoneNumber"))
         assertTrue(contact.contains("whatsapp"))
         assertTrue(fare.contains("total") && fare.contains("reserva"))
