@@ -2,6 +2,43 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.653",
+      "build": 5944,
+      "commit": null,
+      "branch": "agent/html-passenger-depth-0.1.653",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A captura HTML autoritativa passa a aprofundar cada passageiro/reserva da viagem antes de considerar o card completo.",
+        "Cada passageiro resolvido recebe evidência HTML própria e reaproveita o mesmo perfil WebView autenticado da conta BlaBlaCar."
+      ],
+      "fixed": [
+        "Corrige a perda silenciosa de passengerHrefs emitidos por trip_detail.js e descartados pelo envelope Kotlin.",
+        "Uma viagem com passageiros deixa de ficar COMPLETE quando somente o roster superficial foi lido.",
+        "Telefone, tarifa e endereço privado deixam de depender exclusivamente de um enriquecimento posterior para aparecer nos atalhos canônicos."
+      ],
+      "improved": [
+        "Retry permanece no mesmo passageiro em falha de navegação, preservando o último estado canônico quando a captura profunda não fecha 100%.",
+        "A página individual é vinculada ao tripId exato antes de qualquer persistência e o metadata privado só é gravado quando todos os passageiros da viagem foram resolvidos.",
+        "Central do Dia, Timeline e Agenda/Viagem Certa continuam consumindo as mesmas reservas canônicas, agora com telefone, tarifa, endereço e booking href vindos da captura HTML profunda."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.652: o HTML da viagem podia informar que havia passageiros e ainda assim concluir a captura sem visitar as páginas individuais que continham telefone e atalhos."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Coletor HTML",
+        "Passageiros",
+        "Central do Dia",
+        "Timeline",
+        "Agenda",
+        "Viagem Certa",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.652",
       "build": 5943,
       "commit": null,
