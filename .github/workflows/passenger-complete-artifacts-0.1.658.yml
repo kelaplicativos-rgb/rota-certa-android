@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - 'agent/passenger-complete-artifacts-0.1.658'
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
