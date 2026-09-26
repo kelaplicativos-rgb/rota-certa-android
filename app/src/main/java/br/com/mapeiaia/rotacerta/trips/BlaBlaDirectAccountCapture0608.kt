@@ -299,7 +299,7 @@ internal object BlaBlaDirectAccountCapture0608 {
             }
         }
         val inventory = buildTripInventory0528(
-            tripIds = tripIds,
+            rawIdsInUiOrder = tripIds,
             explicitEmptyList = if (targetDate0661 == null) finalSample.explicitEmptyList else tripIds.isEmpty(),
         )
         if (inventory.duplicateCount != 0) {
