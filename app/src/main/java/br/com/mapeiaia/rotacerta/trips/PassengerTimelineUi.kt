@@ -27,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -313,6 +314,9 @@ internal fun EnhancedPassengerTimelineSection(
     var dropoffAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var quickMessageRow0656 by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var privateRefreshAttempted0656 by remember(trip?.id) { mutableStateOf(false) }
+    var privateRefreshCompleted0656 by remember(trip?.id) { mutableStateOf(false) }
+    var privateRefreshStartedAt0656 by remember(trip?.id) { mutableStateOf(0L) }
+    val targetedRefreshCommit0656 by TargetedTripRefreshEvents0645.commit.collectAsState()
     val vehicleSettings0656 = remember(store) { store.onlineSettings() }
     val privateMetadataIncomplete0656 = rows.any(::passengerPrivateMetadataIncomplete0656)
     val privateMetadataFingerprint0656 = rows.joinToString("|") { row ->
@@ -323,6 +327,29 @@ internal fun EnhancedPassengerTimelineSection(
             row.boardingAddress,
             row.dropoffAddress,
         ).joinToString("~")
+    }
+
+    LaunchedEffect(
+        targetedRefreshCommit0656?.revision,
+        trip?.id,
+        privateRefreshStartedAt0656,
+    ) {
+        val selectedTrip0656 = trip ?: return@LaunchedEffect
+        val commit0656 = targetedRefreshCommit0656 ?: return@LaunchedEffect
+        if (
+            privateRefreshAttempted0656 &&
+            privateRefreshStartedAt0656 > 0L &&
+            commit0656.canonicalTripId == selectedTrip0656.id &&
+            commit0656.committedAtMillis >= privateRefreshStartedAt0656
+        ) {
+            privateRefreshCompleted0656 = true
+            UnifiedDebugEventStore.recordAlways(
+                "PASSENGER_PRIVATE_REFRESH_COMMITTED_0656",
+                context.packageName,
+                "canonicalTripId=" + passengerCancellationHash(selectedTrip0656.id) +
+                    " changed=${commit0656.changed} canonicalRevision=${commit0656.canonicalRevision}",
+            )
+        }
     }
 
     LaunchedEffect(
@@ -339,6 +366,8 @@ internal fun EnhancedPassengerTimelineSection(
             return@LaunchedEffect
         }
         privateRefreshAttempted0656 = true
+        privateRefreshCompleted0656 = false
+        privateRefreshStartedAt0656 = System.currentTimeMillis()
         val queued0656 = withContext(Dispatchers.IO) {
             CentralDayCommandBridge0552.refreshTrip(context, selectedTrip0656)
         }
@@ -360,8 +389,20 @@ internal fun EnhancedPassengerTimelineSection(
     fun requestPrivateRefreshBeforeManual0656(reason: String): Boolean {
         val selectedTrip0656 = trip ?: return false
         if (selectedTrip0656.blablaProfileUuid.isNullOrBlank() || selectedTrip0656.blablaTripId.isNullOrBlank()) return false
-        if (privateRefreshAttempted0656) return false
+
+        if (privateRefreshAttempted0656 && !privateRefreshCompleted0656) {
+            val elapsed0656 = System.currentTimeMillis() - privateRefreshStartedAt0656
+            if (elapsed0656 in 0L until 20_000L) {
+                onChanged("A atualização HTML desta viagem ainda está em andamento. Tente novamente em alguns segundos.")
+                return true
+            }
+            privateRefreshCompleted0656 = true
+        }
+        if (privateRefreshAttempted0656 && privateRefreshCompleted0656) return false
+
         privateRefreshAttempted0656 = true
+        privateRefreshCompleted0656 = false
+        privateRefreshStartedAt0656 = System.currentTimeMillis()
         scope.launch {
             val queued0656 = withContext(Dispatchers.IO) {
                 CentralDayCommandBridge0552.refreshTrip(context, selectedTrip0656)
@@ -2528,11 +2569,11 @@ private fun copyPassengerFareValue(context: Context, row: EnhancedPassengerCardR
 
 internal fun passengerPrivateMetadataIncomplete0656(row: EnhancedPassengerCardRow): Boolean {
     if (BookingSource.BLABLACAR !in row.sources) return false
-    val pickupExact = row.boardingAddress.isNotBlank() ||
-        trustedPassengerCoordinate0513(row.boardingLatitude, row.boardingLongitude)
-    val dropoffExact = row.dropoffAddress.isNotBlank() ||
-        trustedPassengerCoordinate0513(row.dropoffLatitude, row.dropoffLongitude)
-    return row.phone.isNullOrBlank() || row.fareMinorUnits == null || !pickupExact || !dropoffExact
+    // Coordinates can navigate, but the operator still requires visible/editable address text.
+    return row.phone.isNullOrBlank() ||
+        row.fareMinorUnits == null ||
+        row.boardingAddress.isBlank() ||
+        row.dropoffAddress.isBlank()
 }
 
 internal fun passengerOperationalAddressLabel0656(
