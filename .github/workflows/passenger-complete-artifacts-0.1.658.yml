@@ -50,6 +50,11 @@ jobs:
           grep -Fq 'metadata?.passengerContact' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'findComponentActivity0657()?.lifecycleScope' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAccountsBrowsersUi0399.kt
           grep -Fq 'BlaBlaMessageNotificationListener0655' app/src/main/AndroidManifest.xml
+          grep -Fq 'passengerHtmlArtifacts0658' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'Missing declared snapshot artifact' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
+          grep -Fq 'BLABLACAR_HTML_PROFILE_SERIAL_0658' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
+          grep -Fq 'PASSENGER_HTML_ARTIFACT_INVALID_0658' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesForensicEvidence0528.kt
+          grep -Fq 'REQUIRED_PRIVATE_FIELDS_MISSING_0658' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
           git diff --check
 
       - name: Configure Firebase Android app when credentials are available
