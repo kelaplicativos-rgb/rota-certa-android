@@ -123,6 +123,16 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+        <!-- 0.1.655: notification is only a wake-up signal; /messages/list HTML remains authoritative. -->
+        <service
+            android:name=".trips.BlaBlaMessageNotificationListener0655"
+            android:exported="true"
+            android:label="Atualização automática BlaBlaCar"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
         <service
             android:name=".trips.TripQuickTileService"
             android:exported="true"
