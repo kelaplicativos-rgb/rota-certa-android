@@ -758,7 +758,7 @@ internal fun CentralDoDiaScreen0552(
                         onMessage("📥 Capturando HTMLs somente da operação de hoje…")
                         activity0661.lifecycleScope.launch {
                             try {
-                                val result0661 = BlaBlaRidesSnapshotCoordinator0526.captureToday0661(
+                                val result0661 = BlaBlaTodayHtmlCaptureCoordinator0661.capture(
                                     context = context.applicationContext,
                                     targetDate = today,
                                 ) { progress0661 ->
