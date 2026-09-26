@@ -1,5 +1,8 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import android.content.Context
+import android.content.ContextWrapper
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.rememberScrollState
@@ -26,11 +29,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebViewFeature
 import br.com.mapeiaia.rotacerta.DiagnosticEventContext0507
 import br.com.mapeiaia.rotacerta.DiagnosticModule0507
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.time.LocalDate
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -48,6 +53,9 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
     val registry = remember(context) { BlaBlaDynamicAccountRegistry(context) }
     val sessionStore = remember(context) { BlaBlaDynamicSessionStore(context) }
     val scope = rememberCoroutineScope()
+    val captureScope0657 = remember(context, scope) {
+        context.findComponentActivity0657()?.lifecycleScope ?: scope
+    }
     var revision by remember { mutableIntStateOf(0) }
     var showAddAccount by remember { mutableStateOf(false) }
     var newAccountLabel by remember { mutableStateOf("") }
@@ -141,7 +149,7 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
                         lastRidesSnapshot0526 = null
                         externalTimeline0535 = null
                         ridesSnapshotProgress0526 = "Preparando captura privada…"
-                        scope.launch {
+                        captureScope0657.launch {
                             try {
                                 val manifest = BlaBlaRidesSnapshotCoordinator0526.captureAll(context) { progress ->
                                     ridesSnapshotProgress0526 = progress
@@ -172,6 +180,18 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
                                         result = manifest.result,
                                     ),
                                 )
+                            } catch (cancelled: CancellationException) {
+                                UnifiedDebugEventStore.recordAlways(
+                                    "BLABLACAR_HTML_CAPTURE_UI_CANCELLED_0657",
+                                    context.packageName,
+                                    "reason=ACTIVITY_LIFECYCLE_END notCompositionScope=true buttonReleased=true",
+                                    diagnosticContext = DiagnosticEventContext0507(
+                                        parentModule = DiagnosticModule0507.BLABLACAR,
+                                        operation = "HTML_CAPTURE",
+                                        result = "CANCELLED",
+                                    ),
+                                )
+                                throw cancelled
                             } catch (error: Throwable) {
                                 ridesSnapshotProgress0526 =
                                     "Captura interrompida com segurança • " +
@@ -516,4 +536,15 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
             },
         )
     }
+}
+
+private fun Context.findComponentActivity0657(): ComponentActivity? {
+    var current: Context = this
+    while (current is ContextWrapper) {
+        if (current is ComponentActivity) return current
+        val next = current.baseContext
+        if (next === current) break
+        current = next
+    }
+    return current as? ComponentActivity
 }
