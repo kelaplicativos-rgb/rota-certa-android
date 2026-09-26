@@ -84,6 +84,7 @@ private data class UnifiedTripDetailEnvelope0605(
     val passengerHrefs: List<String> = emptyList(),
     val itineraryStops: List<String> = emptyList(),
     val itineraryAuthoritative: Boolean = false,
+    val stopLocations: List<BlaBlaTripStopLocation0659> = emptyList(),
     val domHtml: String = "",
 )
 
@@ -152,6 +153,15 @@ private data class UnifiedPassengerSegmentEvidence0653(
 )
 
 @Serializable
+private data class UnifiedPassengerReadyEvidence0659(
+    val ready: Boolean = false,
+    val rootInert: Boolean = false,
+    val markerCount: Int = 0,
+    val bodyLength: Int = 0,
+    val url: String = "",
+)
+
+@Serializable
 private data class UnifiedPassengerAddressEvidence0653(
     val specificAddresses: List<String> = emptyList(),
     val hasSpecificAddress: Boolean = false,
@@ -184,6 +194,7 @@ private data class UnifiedDirectScripts0605(
     val seats: String,
     val passengerOpen: String,
     val passengerPrepare: String,
+    val passengerReady: String,
     val passengerIdentity: String,
     val passengerContact: String,
     val passengerFare: String,
@@ -343,6 +354,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 seats = readAsset0605(app, "blablacar/scripts/seat_options.js"),
                 passengerOpen = readAsset0605(app, "blablacar/scripts/passenger_open.js"),
                 passengerPrepare = readAsset0605(app, "blablacar/scripts/passenger_prepare.js"),
+                passengerReady = readAsset0605(app, "blablacar/scripts/passenger_ready.js"),
                 passengerIdentity = readAsset0605(app, "blablacar/scripts/passenger_identity.js"),
                 passengerContact = readAsset0605(app, "blablacar/scripts/passenger_contact.js"),
                 passengerFare = readAsset0605(app, "blablacar/scripts/passenger_fare.js"),
@@ -358,6 +370,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 scripts.seats,
                 scripts.passengerOpen,
                 scripts.passengerPrepare,
+                scripts.passengerReady,
                 scripts.passengerIdentity,
                 scripts.passengerContact,
                 scripts.passengerFare,
@@ -892,6 +905,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 seats = readAsset0605(app, "blablacar/scripts/seat_options.js"),
                 passengerOpen = readAsset0605(app, "blablacar/scripts/passenger_open.js"),
                 passengerPrepare = readAsset0605(app, "blablacar/scripts/passenger_prepare.js"),
+                passengerReady = readAsset0605(app, "blablacar/scripts/passenger_ready.js"),
                 passengerIdentity = readAsset0605(app, "blablacar/scripts/passenger_identity.js"),
                 passengerContact = readAsset0605(app, "blablacar/scripts/passenger_contact.js"),
                 passengerFare = readAsset0605(app, "blablacar/scripts/passenger_fare.js"),
@@ -907,6 +921,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 scripts.seats,
                 scripts.passengerOpen,
                 scripts.passengerPrepare,
+                scripts.passengerReady,
                 scripts.passengerIdentity,
                 scripts.passengerContact,
                 scripts.passengerFare,
@@ -1176,6 +1191,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 administrativeUrl = administrativeUrl,
                 source = source,
                 passengerHrefs = detail.passengerHrefs,
+                tripStopLocations = detail.stopLocations,
                 scripts = scripts,
             )
         }
@@ -1679,6 +1695,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         administrativeUrl: String,
         source: BlaBlaCollectorTrip,
         passengerHrefs: List<String>,
+        tripStopLocations: List<BlaBlaTripStopLocation0659>,
         scripts: UnifiedDirectScripts0605,
     ): UnifiedPassengerDepthResult0653 {
         val expected = source.passengers.size
@@ -1737,11 +1754,21 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                     val candidateFare0657 = parsePassengerFareMinorUnits0653(candidateFareValues0657)
                     val candidateBoardingSegment0658 = candidate0657.segment.boarding.trim()
                     val candidateDropoffSegment0658 = candidate0657.segment.dropoff.trim()
-                    privateEvidenceMissing0657 = passengerPrivateEvidenceNeedsRetry0657(
+                    val candidateBoardingStop0659 = passengerTripStopLocation0659(
+                        candidateBoardingSegment0658,
+                        tripStopLocations,
+                    )
+                    val candidateDropoffStop0659 = passengerTripStopLocation0659(
+                        candidateDropoffSegment0658,
+                        tripStopLocations,
+                    )
+                    privateEvidenceMissing0657 = !passengerOperationalEvidenceComplete0659(
                         phone = BlaBlaCollectorPassengerModule.normalizePhone(candidate0657.contact.phone),
                         fareMinorUnits = candidateFare0657,
                         boardingSegment = candidateBoardingSegment0658,
                         dropoffSegment = candidateDropoffSegment0658,
+                        boardingStop = candidateBoardingStop0659,
+                        dropoffStop = candidateDropoffStop0659,
                     )
                     if (!privateEvidenceMissing0657 || attempt >= PASSENGER_DETAIL_ATTEMPTS_0653) {
                         captured = candidate0657
@@ -1750,7 +1777,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                     UnifiedDebugEventStore.recordAlways(
                         "BLABLACAR_HTML_PASSENGER_PRIVATE_RETRY_0657",
                         webView.context.packageName,
-                        "tripKey=${seatSyncDiagnosticKey(definition.uuid + "|" + ride.tripId)} passengerIndex=$index attempt=$attempt reason=REQUIRED_PRIVATE_FIELDS_MISSING_0658 privateValuesLogged=false",
+                        "tripKey=${seatSyncDiagnosticKey(definition.uuid + "|" + ride.tripId)} passengerIndex=$index attempt=$attempt reason=REQUIRED_PRIVATE_OR_TRIP_GEO_MISSING_0659 privateValuesLogged=false",
                     )
                 }
                 if (attempt < PASSENGER_DETAIL_ATTEMPTS_0653) {
@@ -1822,6 +1849,10 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             }
 
             val existingMetadata = identityStore.externalMetadata(reservationKey)
+            val boardingTripStop0659 = passengerTripStopLocation0659(page.segment.boarding, tripStopLocations)
+                ?: return@forEachIndexed
+            val dropoffTripStop0659 = passengerTripStopLocation0659(page.segment.dropoff, tripStopLocations)
+                ?: return@forEachIndexed
             val fareValues = buildList<String?> {
                 add(page.fare.driverReceives)
                 add(page.contact.fareAmount)
@@ -1836,11 +1867,8 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             val externalPassengerId = stableExternalPassengerId(
                 BlaBlaCollectorUrlModule.passengerIdentityKey(bookingHref),
             ).orEmpty()
-            val boardingAddress = page.contact.boardingAddress.trim()
-                .ifBlank { page.addresses.boardingAddress.trim() }
-                .ifBlank { existingMetadata?.boardingAddress.orEmpty() }
-            val dropoffAddress = page.addresses.dropoffAddress.trim()
-                .ifBlank { existingMetadata?.dropoffAddress.orEmpty() }
+            val boardingAddress = boardingTripStop0659.address.trim()
+            val dropoffAddress = dropoffTripStop0659.address.trim()
 
             pendingMetadata += (existingMetadata ?: ExternalPassengerMetadata(reservationKey = reservationKey)).copy(
                 externalPassengerId = externalPassengerId.ifBlank { existingMetadata?.externalPassengerId.orEmpty() },
@@ -1851,19 +1879,13 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 fareCurrencyCode = fareCurrencyCode.ifBlank { existingMetadata?.fareCurrencyCode.orEmpty() },
                 boardingAddress = boardingAddress,
                 dropoffAddress = dropoffAddress,
-                boardingLatitude = page.contact.boardingLatitude ?: existingMetadata?.boardingLatitude,
-                boardingLongitude = page.contact.boardingLongitude ?: existingMetadata?.boardingLongitude,
-                boardingAccuracyMeters = page.contact.boardingAccuracyMeters ?: existingMetadata?.boardingAccuracyMeters,
-                boardingLocationSource = page.contact.boardingLocationSource
-                    .ifBlank { existingMetadata?.boardingLocationSource.orEmpty() },
-                boardingLocationCollectedAtMillis = if (
-                    page.contact.boardingLatitude != null &&
-                    page.contact.boardingLongitude != null
-                ) {
-                    System.currentTimeMillis()
-                } else {
-                    existingMetadata?.boardingLocationCollectedAtMillis
-                },
+                boardingLatitude = boardingTripStop0659.latitude,
+                boardingLongitude = boardingTripStop0659.longitude,
+                dropoffLatitude = dropoffTripStop0659.latitude,
+                dropoffLongitude = dropoffTripStop0659.longitude,
+                boardingAccuracyMeters = null,
+                boardingLocationSource = "blablacar_trip_map_zoomOn_0659",
+                boardingLocationCollectedAtMillis = System.currentTimeMillis(),
             )
             passengers[index] = updatedPassenger
             resolved++
@@ -1937,12 +1959,38 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         } ?: return null
 
         if (!passengerPageBelongsToTrip0653(contactPage.finalUrl, ride.tripId)) return null
+        val readyBeforePrepare0659 = awaitPassengerPrivateReady0659(
+            webView = webView,
+            tripId = ride.tripId,
+            script = scripts.passengerReady,
+        )
+        if (readyBeforePrepare0659 == null) {
+            UnifiedDebugEventStore.recordAlways(
+                "BLABLACAR_HTML_PASSENGER_PAGE_NOT_READY_0659",
+                webView.context.packageName,
+                "tripBound=true passengerIndex=$passengerIndex stage=before_prepare privateValuesLogged=false",
+            )
+            return null
+        }
         repeat(PASSENGER_PREPARE_PASSES_0657) {
             evaluateCurrent0605(webView, scripts.passengerPrepare)
             delay(PASSENGER_PREPARE_SETTLE_MS_0657)
         }
         val preparedUrl0657 = webView.url.orEmpty()
         if (!passengerPageBelongsToTrip0653(preparedUrl0657, ride.tripId)) return null
+        val readyAfterPrepare0659 = awaitPassengerPrivateReady0659(
+            webView = webView,
+            tripId = ride.tripId,
+            script = scripts.passengerReady,
+        )
+        if (readyAfterPrepare0659 == null) {
+            UnifiedDebugEventStore.recordAlways(
+                "BLABLACAR_HTML_PASSENGER_PAGE_NOT_READY_0659",
+                webView.context.packageName,
+                "tripBound=true passengerIndex=$passengerIndex stage=after_prepare privateValuesLogged=false",
+            )
+            return null
+        }
         val contact = decode0605<UnifiedPassengerContactEvidence0653>(
             evaluateCurrent0605(webView, scripts.passengerContact),
         ) ?: return null
@@ -1967,6 +2015,29 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             segment = segment,
             addresses = addresses,
         )
+    }
+
+    private suspend fun awaitPassengerPrivateReady0659(
+        webView: WebView,
+        tripId: String,
+        script: String,
+    ): UnifiedPassengerReadyEvidence0659? {
+        repeat(PASSENGER_READY_POLLS_0659) {
+            val current = webView.url.orEmpty()
+            if (!passengerPageBelongsToTrip0653(current, tripId)) return null
+            val evidence = decode0605<UnifiedPassengerReadyEvidence0659>(
+                evaluateCurrent0605(webView, script),
+            )
+            if (
+                evidence?.ready == true &&
+                !evidence.rootInert &&
+                passengerPageBelongsToTrip0653(evidence.url, tripId)
+            ) {
+                return evidence
+            }
+            delay(PASSENGER_READY_POLL_MS_0659)
+        }
+        return null
     }
 
     private suspend fun awaitPassengerUrl0653(
@@ -2106,6 +2177,8 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
     private const val PASSENGER_DETAIL_RETRY_MS_0653 = 650L
     private const val PASSENGER_PREPARE_PASSES_0657 = 2
     private const val PASSENGER_PREPARE_SETTLE_MS_0657 = 350L
+    private const val PASSENGER_READY_POLLS_0659 = 10
+    private const val PASSENGER_READY_POLL_MS_0659 = 250L
     private const val PASSENGER_NAVIGATION_POLLS_0653 = 40
     private const val PASSENGER_NAVIGATION_POLL_MS_0653 = 200L
 
