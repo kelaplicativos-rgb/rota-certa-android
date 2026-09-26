@@ -2399,7 +2399,9 @@ internal object PublicAgendaAutoSync0300 {
             booking.copy(
                 passengerId = booking.passengerId.ifBlank { metadata?.passengerId.orEmpty() },
                 passengerContact = booking.passengerContact.ifBlank {
-                    BlaBlaCollectorPassengerModule.normalizePhone(passenger?.phone).orEmpty()
+                    BlaBlaCollectorPassengerModule.normalizePhone(passenger?.phone)
+                        ?: BlaBlaCollectorPassengerModule.normalizePhone(metadata?.passengerContact)
+                        ?: ""
                 },
                 fareMinorUnits = booking.fareMinorUnits ?: metadata?.fareMinorUnits,
                 fareCurrencyCode = booking.fareCurrencyCode.ifBlank { metadata?.fareCurrencyCode.orEmpty() },
