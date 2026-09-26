@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.662",
+      "build": 5953,
+      "commit": null,
+      "branch": "agent/html-scope-isolation-0.1.662",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "TODAY_ONLY mantém a captura HTML direta da 0.1.661, mas bloqueia qualquer reconstrução de DynamicSessionStore/combinedResponse durante commits limitados ao dia.",
+        "Atualização individual na Central do Dia passa a executar TRIP_ONLY diretamente no ciclo de vida da tela, sem WorkManager e sem percorrer outras viagens.",
+        "O refresh exato reconcilia diretamente o htmlResult.trip recém-capturado, sem reler CollectorStateStore ou sessões dinâmicas como fonte de conteúdo."
+      ],
+      "fixed": [
+        "Elimina o vazamento em que Atualizar operação de hoje terminava reconstruindo o estado combinado das duas contas e reintroduzia dezenas de viagens fora do escopo.",
+        "Elimina a dependência de lastResponseRecoveringDynamicSessions no commit do card individual.",
+        "Passageiros, vagas, valor e locais do TRIP_ONLY passam a derivar do HTML recém-capturado do tripId alvo antes do commit canônico."
+      ],
+      "improved": [
+        "Telemetria comprova combinedResponse=false, sessionContentWrite=false e canonicalHtmlOnly=true para escopos limitados.",
+        "Preservação de irmãos continua obrigatória: evaluateAbsentTrips=false e nenhum tombstone é autorizado em TODAY_ONLY/TRIP_ONLY.",
+        "Testes de regressão falham se a Central voltar a enfileirar atualização individual no WorkManager ou se o fluxo exato voltar a ler sessão dinâmica."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.661: TODAY_ONLY capturava HTML corretamente, porém a fase de commit ainda reconstruía COMBINED_RESPONSE com viagens fora do dia.",
+        "0.1.661: atualização individual ainda era disparada pela fila AgendaBackgroundSync/WorkManager e o readback exato podia depender do estado agregado."
+      ],
+      "modulesAffected": [
+        "Central do Dia",
+        "BlaBlaCar",
+        "Coletor HTML",
+        "Agenda",
+        "Timeline",
+        "Viagens",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.661",
       "build": 5952,
       "commit": null,
