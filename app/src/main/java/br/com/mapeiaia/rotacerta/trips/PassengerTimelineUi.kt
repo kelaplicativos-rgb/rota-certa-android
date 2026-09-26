@@ -1000,7 +1000,7 @@ internal fun EnhancedPassengerTimelineSection(
                     onClick = {
                         if (passenger.fareMinorUnits != null) {
                             copyPassengerFareValue(context, passenger)
-                        } else {
+                        } else if (!requestPrivateRefreshBeforeManual0656("FARE_TIMELINE")) {
                             fareEditRow = passenger
                         }
                     },
@@ -1011,7 +1011,7 @@ internal fun EnhancedPassengerTimelineSection(
                 }
 
                 OutlinedButton(
-                    onClick = { copyPassengerConfirmationMessage(context, entry, passenger) },
+                    onClick = { quickMessageRow0656 = passenger },
                     contentPadding = COMPACT_ACTION_PADDING,
                     modifier = Modifier.heightIn(min = 36.dp),
                 ) {
