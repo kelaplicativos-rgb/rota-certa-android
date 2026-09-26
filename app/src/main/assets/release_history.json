@@ -2,6 +2,43 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.663",
+      "build": 5954,
+      "commit": null,
+      "branch": "agent/trips-card-target-refresh-0.1.663",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Todos os cards visíveis em Viagens passam a exibir uma ação ↻ no cabeçalho, incluindo cards ativos, arquivados e os filtros Todas, Rota Certa e BlaBlaCar.",
+        "Cards BlaBlaCar reutilizam o executor direto já validado da Central do Dia, com refreshTripDirect0662 e escopo TRIP_ONLY para capturar somente o tripId selecionado.",
+        "O estado de progresso é isolado por canonicalTripId; somente o card acionado fica bloqueado enquanto a atualização está em andamento."
+      ],
+      "fixed": [
+        "Corrige a lacuna da 0.1.654 em que Viagens recebeu passageiros e atalhos da Central do Dia, mas não recebeu a atualização individual por card.",
+        "Elimina a necessidade de usar atualização global para refrescar um único card da Timeline de Viagens.",
+        "Cards Rota Certa mantêm a mesma seta visual e fazem somente releitura local, sem tentar percorrer BlaBlaCar ou inventar identidade externa."
+      ],
+      "improved": [
+        "Telemetria TRIPS_CARD_HTML_DIRECT_0663 comprova scope=TRIP_ONLY, singleCard=true e fullTraversal=false.",
+        "A captura longa usa lifecycleScope da Activity quando disponível, reduzindo risco de cancelamento por saída temporária da composição.",
+        "Testes de regressão verificam que cards ativos e arquivados usam o mesmo callback individual e que o fluxo de Viagens não chama refreshAll nem enqueueTripCollectorRefresh0517."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.654-0.1.662: o componente OperationalTripBrowserCard0563 não possuía callback de atualização individual no cabeçalho."
+      ],
+      "modulesAffected": [
+        "Viagens",
+        "Timeline",
+        "Central do Dia",
+        "BlaBlaCar",
+        "Coletor HTML",
+        "Rota Certa",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.662",
       "build": 5953,
       "commit": null,
