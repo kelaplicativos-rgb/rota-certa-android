@@ -71,6 +71,10 @@ class BlaBlaPassengerDeepCapture0653Test {
             93_00L,
             parsePassengerFareMinorUnits0653(listOf("R$ 93")),
         )
+        assertEquals(
+            123_456L,
+            parsePassengerFareMinorUnits0653(listOf("R$ 1.234,56")),
+        )
         assertNull(parsePassengerFareMinorUnits0653(listOf("", null, "sem valor")))
         assertEquals("BRL", passengerFareCurrency0653("", listOf("R$ 93")))
         assertEquals("BRL", passengerFareCurrency0653("brl", emptyList()))
