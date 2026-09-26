@@ -139,7 +139,13 @@ internal fun OperationalAllTripsBrowserScreen0563(
     val decisionByEntry = remember(selection.decisions) {
         selection.decisions.associateBy(OperationalTripDecision0564::entry)
     }
-    val rows = remember(entries, accounts, decisionByEntry, projectedTripsById0602) {
+    val rows = remember(
+        entries,
+        accounts,
+        decisionByEntry,
+        projectedTripsById0602,
+        passengerCountByTripId0654,
+    ) {
         entries.map { entry ->
             val target = resolveBlaBlaTripTarget0407(
                 context = context,
