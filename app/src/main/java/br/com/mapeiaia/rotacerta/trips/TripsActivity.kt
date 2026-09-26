@@ -874,6 +874,12 @@ private fun TripApp(
                         parentRootScreen0396 = TripScreen.TIMELINE
                         screen = TripScreen.LIST
                     },
+                    onRefreshLocal = { refresh() },
+                    onOpenTripIntegrity = { tripId ->
+                        focusedTripId = tripId
+                        parentRootScreen0396 = TripScreen.TIMELINE
+                        screen = TripScreen.CENTRAL_DAY
+                    },
                     downloadTriggerToken0616 = operationalTimelineDownloadToken0616,
                     onFirstUsableFrame = { renderedItems ->
                         AgendaTrace.reportTimelineFirstUsableFrame(
