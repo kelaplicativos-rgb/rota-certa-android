@@ -533,6 +533,171 @@ internal object BlaBlaDirectAccountCapture0608 {
         return null
     }
 
+    private fun directTodayScopeBoundaryReason0661(
+        sample: DirectRideListEnvelope0608,
+        targetDate: LocalDate,
+        targetObservedEarlier: Boolean,
+    ): String? {
+        if (sample.explicitEmptyList) return "TODAY_SCOPE_EXPLICIT_EMPTY_0661"
+        return when (
+            BlaBlaCollectorCardModule.todayScopeStopDecision0660(
+                candidates = sample.candidates,
+                targetDate = targetDate,
+                targetObservedEarlier = targetObservedEarlier,
+            )
+        ) {
+            BlaBlaTodayScopeStopDecision0660.COMPLETE_TARGET_RANGE -> "TODAY_SCOPE_TARGET_RANGE_ENDED_0661"
+            BlaBlaTodayScopeStopDecision0660.COMPLETE_TARGET_ABSENT -> "TODAY_SCOPE_TARGET_ABSENT_0661"
+            BlaBlaTodayScopeStopDecision0660.FAIL_DATE_EVIDENCE -> null
+            BlaBlaTodayScopeStopDecision0660.CONTINUE ->
+                if (sample.atBottom) "TODAY_SCOPE_LIST_END_0661" else null
+        }
+    }
+
+    private suspend fun loadTodayStable0661(
+        webView: WebView,
+        script: String,
+        targetDate: LocalDate,
+        onSample: (DirectRideListEnvelope0608) -> Unit,
+        onFailureReason0617: (String) -> Unit = {},
+    ): Pair<String, DirectRideListEnvelope0608>? =
+        withTimeoutOrNull(PAGE_TIMEOUT_MS) {
+            suspendCancellableCoroutine { continuation ->
+                val handler = Handler(Looper.getMainLooper())
+                var done = false
+                var pass = 0
+                var targetObserved0661 = false
+                var lastFingerprint0661 = ""
+                var stableBoundaryPasses0661 = 0
+
+                fun finish(value: Pair<String, DirectRideListEnvelope0608>?) {
+                    if (done) return
+                    done = true
+                    handler.removeCallbacksAndMessages(null)
+                    if (continuation.isActive) continuation.resume(value)
+                }
+
+                fun evaluate() {
+                    if (done) return
+                    val finalUrl = webView.url.orEmpty()
+                    if (!BlaBlaCollectorUrlModule.ridesPageMatches(finalUrl)) {
+                        onFailureReason0617("TODAY_SCOPE_URL_LEFT_RIDES_PAGE_0661")
+                        finish(null)
+                        return
+                    }
+                    webView.evaluateJavascript(script) { raw ->
+                        if (done) return@evaluateJavascript
+                        val sample = decode(raw)
+                        if (sample == null) {
+                            pass++
+                            if (pass >= MAX_PASSES) {
+                                onFailureReason0617("TODAY_SCOPE_SCRIPT_DECODE_MAX_PASSES_0661")
+                                finish(null)
+                            } else handler.postDelayed(::evaluate, RETRY_MS)
+                            return@evaluateJavascript
+                        }
+                        onSample(sample)
+                        val scoped0661 = BlaBlaCollectorCardModule.candidatesOnDate(
+                            candidates = sample.candidates,
+                            targetDate = targetDate,
+                        )
+                        if (scoped0661.isNotEmpty()) targetObserved0661 = true
+                        val boundary0661 = directTodayScopeBoundaryReason0661(
+                            sample = sample,
+                            targetDate = targetDate,
+                            targetObservedEarlier = targetObserved0661,
+                        )
+                        val fingerprint0661 = tripSetSha2560528(
+                            canonicalTripIds0528(scoped0661.mapNotNull { BlaBlaCollectorUrlModule.tripId(it.href) }),
+                        )
+                        val materialized0661 = sample.documentReady && !sample.loadingActive &&
+                            sample.snapshotHtml.isNotBlank() && !sample.snapshotTruncated &&
+                            sample.snapshotContainsAllObservedCards &&
+                            sample.lastMutationAgeMs >= TODAY_SCOPE_MUTATION_QUIET_MS_0661
+
+                        if (boundary0661 != null && materialized0661) {
+                            stableBoundaryPasses0661 = if (fingerprint0661 == lastFingerprint0661) {
+                                stableBoundaryPasses0661 + 1
+                            } else 1
+                            lastFingerprint0661 = fingerprint0661
+                            if (stableBoundaryPasses0661 >= TODAY_SCOPE_STABLE_PASSES_0661) {
+                                UnifiedDebugEventStore.recordAlways(
+                                    "BLABLACAR_DIRECT_TODAY_BOUNDARY_0661",
+                                    packageName,
+                                    "scope=TODAY_ONLY targetDate=$targetDate reason=$boundary0661 " +
+                                        "targetCards=${scoped0661.size} observedCards=${sample.observedCardCount} " +
+                                        "atBottom=${sample.atBottom} fullTraversal=false incrementalScroll=true",
+                                )
+                                finish(finalUrl to sample)
+                                return@evaluateJavascript
+                            }
+                            handler.postDelayed(::evaluate, TODAY_SCOPE_RECHECK_MS_0661)
+                            return@evaluateJavascript
+                        } else {
+                            stableBoundaryPasses0661 = 0
+                        }
+
+                        val decision0661 = BlaBlaCollectorCardModule.todayScopeStopDecision0660(
+                            candidates = sample.candidates,
+                            targetDate = targetDate,
+                            targetObservedEarlier = targetObserved0661,
+                        )
+                        if (decision0661 == BlaBlaTodayScopeStopDecision0660.FAIL_DATE_EVIDENCE &&
+                            sample.candidates.isNotEmpty() && sample.documentReady && !sample.loadingActive
+                        ) {
+                            onFailureReason0617("TODAY_SCOPE_DATE_EVIDENCE_UNREADABLE_0661")
+                            finish(null)
+                            return@evaluateJavascript
+                        }
+
+                        pass++
+                        if (pass >= MAX_PASSES) {
+                            onFailureReason0617("TODAY_SCOPE_MAX_EVALUATION_PASSES_0661")
+                            finish(null)
+                            return@evaluateJavascript
+                        }
+                        val scroll0661 = "(function(){try{" +
+                            "var h=Math.max(document.documentElement.clientHeight||0,window.innerHeight||0,600);" +
+                            "window.scrollBy(0,Math.max(280,Math.floor(h*0.85)));" +
+                            "}catch(_){ } return true;})();"
+                        webView.evaluateJavascript(scroll0661) {
+                            handler.postDelayed(::evaluate, RETRY_MS)
+                        }
+                    }
+                }
+
+                webView.webViewClient = object : WebViewClient() {
+                    override fun onReceivedError(
+                        view: WebView,
+                        request: WebResourceRequest,
+                        error: WebResourceError,
+                    ) {
+                        super.onReceivedError(view, request, error)
+                        if (request.isForMainFrame) {
+                            onFailureReason0617("TODAY_SCOPE_MAIN_FRAME_ERROR_0661")
+                            finish(null)
+                        }
+                    }
+
+                    override fun onPageFinished(view: WebView, url: String) {
+                        super.onPageFinished(view, url)
+                        if (done) return
+                        if (!BlaBlaCollectorUrlModule.ridesPageMatches(url)) {
+                            onFailureReason0617("TODAY_SCOPE_PAGE_FINISHED_OUTSIDE_RIDES_0661")
+                            finish(null)
+                            return
+                        }
+                        handler.postDelayed(::evaluate, INITIAL_SETTLE_MS)
+                    }
+                }
+                continuation.invokeOnCancellation {
+                    done = true
+                    handler.removeCallbacksAndMessages(null)
+                    runCatching { webView.stopLoading() }
+                }
+                webView.loadUrl(RIDES_URL)
+            }
+        }
     private suspend fun loadStable(
         webView: WebView,
         script: String,
@@ -702,6 +867,9 @@ internal object BlaBlaDirectAccountCapture0608 {
     }
 
     private const val RIDES_URL = "https://www.blablacar.com.br/rides"
+    private const val TODAY_SCOPE_STABLE_PASSES_0661 = 2
+    private const val TODAY_SCOPE_MUTATION_QUIET_MS_0661 = 700L
+    private const val TODAY_SCOPE_RECHECK_MS_0661 = 550L
     private const val PAGE_TIMEOUT_MS = 95_000L
     private const val INITIAL_SETTLE_MS = 750L
     private const val RETRY_MS = 650L
