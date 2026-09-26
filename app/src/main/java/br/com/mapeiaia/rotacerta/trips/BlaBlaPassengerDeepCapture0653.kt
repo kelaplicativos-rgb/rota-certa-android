@@ -29,6 +29,17 @@ internal fun passengerDeepCaptureComplete0653(
         resolvedPassengers >= 0 &&
         expectedPassengers == resolvedPassengers
 
+internal fun passengerPrivateEvidenceNeedsRetry0657(
+    phone: String?,
+    fareMinorUnits: Long?,
+    boardingAddress: String?,
+    dropoffAddress: String?,
+): Boolean =
+    phone.isNullOrBlank() &&
+        fareMinorUnits == null &&
+        boardingAddress.isNullOrBlank() &&
+        dropoffAddress.isNullOrBlank()
+
 internal fun passengerPageBelongsToTrip0653(
     passengerUrl: String?,
     tripId: String,
