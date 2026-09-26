@@ -623,7 +623,7 @@ internal object BlaBlaDirectAccountCapture0608 {
                             if (stableBoundaryPasses0661 >= TODAY_SCOPE_STABLE_PASSES_0661) {
                                 UnifiedDebugEventStore.recordAlways(
                                     "BLABLACAR_DIRECT_TODAY_BOUNDARY_0661",
-                                    packageName,
+                                    "br.com.mapeiaia.rotacerta",
                                     "scope=TODAY_ONLY targetDate=$targetDate reason=$boundary0661 " +
                                         "targetCards=${scoped0661.size} observedCards=${sample.observedCardCount} " +
                                         "atBottom=${sample.atBottom} fullTraversal=false incrementalScroll=true",
