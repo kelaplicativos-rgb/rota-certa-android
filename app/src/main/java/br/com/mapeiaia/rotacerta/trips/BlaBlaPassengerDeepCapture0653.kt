@@ -65,6 +65,6 @@ internal fun passengerFareCurrency0653(
 }
 
 private val MONEY_0653 = Regex(
-    """([0-9]{1,3}(?:\\.[0-9]{3})*|[0-9]+)(?:,([0-9]{1,2}))?""",
+    "([0-9]{1,3}(?:\\\\.[0-9]{3})*|[0-9]+)(?:,([0-9]{1,2}))?",
     RegexOption.IGNORE_CASE,
 )
