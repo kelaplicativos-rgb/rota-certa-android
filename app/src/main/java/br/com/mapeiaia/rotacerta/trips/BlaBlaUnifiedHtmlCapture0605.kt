@@ -290,6 +290,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         profile: BlaBlaRidesSnapshotProfile0526,
         onProgress: (String) -> Unit = {},
         targetDate0661: LocalDate? = null,
+        scopedStateIsolation0662: Boolean = false,
     ): BlaBlaUnifiedProfileCaptureResult0605 {
         val app = context.applicationContext
         val expectedProfileUuid = BlaBlaRidesSnapshotStore0526.strongUuid(profile.authenticatedProfileUuid)
@@ -453,6 +454,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                                     captureId = captureId,
                                     rotaCertaSeatAllocation = liveSettings0617.rotaCertaSeatAllocation,
                                     seatAllocationVersion = liveSettings0617.rotaCertaSeatAllocationVersion,
+                                    scopedStateIsolation0662 = scopedStateIsolation0662,
                                 )
                         if (liveCommitted0617) {
                             onProgress(
@@ -641,6 +643,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         captureId: String,
         rotaCertaSeatAllocation: Int,
         seatAllocationVersion: Long,
+        scopedStateIsolation0662: Boolean = false,
     ): Boolean {
         val app = context.applicationContext
         val transaction = BlaBlaHtmlCaptureTransaction0610.active(app)
@@ -761,25 +764,33 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                     return@withLock false
                 }
 
-                // Persist only after canonical readback succeeds. The exact-target session
-                // replacement preserves every sibling card, so a partial capture cannot erase
-                // another trip or another profile.
-                val sessionStore = BlaBlaDynamicSessionStore(app)
-                sessionStore.saveSync(
-                    account = account,
-                    lastUrl = lastUrl,
-                    trips = listOf(trip),
-                    skippedTrips = 0,
-                    identityVerified = true,
-                    targetedTripId = tripId,
-                    selectiveScriptSync0449 = false,
-                    acquisitionAuthority0607 = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
-                )
-                val combined = sessionStore.combinedResponse(BlaBlaDynamicAccountRegistry(app).list())
-                BlaBlaCollectorStateStore(app).saveResponse(
-                    response = combined,
-                    preserveOnPartial = true,
-                )
+                if (!scopedStateIsolation0662) {
+                    // Full/global capture may maintain the aggregate cache. Scoped captures
+                    // are forbidden from reconstructing unrelated account/trip state.
+                    val sessionStore = BlaBlaDynamicSessionStore(app)
+                    sessionStore.saveSync(
+                        account = account,
+                        lastUrl = lastUrl,
+                        trips = listOf(trip),
+                        skippedTrips = 0,
+                        identityVerified = true,
+                        targetedTripId = tripId,
+                        selectiveScriptSync0449 = false,
+                        acquisitionAuthority0607 = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
+                    )
+                    val combined = sessionStore.combinedResponse(BlaBlaDynamicAccountRegistry(app).list())
+                    BlaBlaCollectorStateStore(app).saveResponse(
+                        response = combined,
+                        preserveOnPartial = true,
+                    )
+                } else {
+                    UnifiedDebugEventStore.recordAlways(
+                        "BLABLACAR_SCOPED_SESSION_PROJECTION_BLOCKED_0662",
+                        app.packageName,
+                        "scope=SCOPED_HTML tripKey=${seatSyncDiagnosticKey(profileUuid + "|" + tripId)} " +
+                            "combinedResponse=false sessionContentWrite=false canonicalHtmlOnly=true",
+                    )
+                }
 
                 val publicParityStartedNs0620 = System.nanoTime()
                 val targetPublicationIds0620 = batch.publicationCanonicalTripIds0431
@@ -879,6 +890,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         context: Context,
         target: BlaBlaTripTarget0407,
         existingSource: BlaBlaCollectorTrip?,
+        scopedStateIsolation0662: Boolean = false,
     ): BlaBlaTargetedHtmlRefreshResult0607 {
         val app = context.applicationContext
         BlaBlaHtmlCaptureTransaction0610.active(app)?.let { transaction ->
@@ -1013,23 +1025,32 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 )
             }
 
-            sessionStore.saveSync(
-                account = account,
-                lastUrl = captured.evidence.finalUrl.ifBlank { administrativeUrl },
-                trips = listOf(trip),
-                skippedTrips = 0,
-                identityVerified = true,
-                dateScope = listOfNotNull(runCatching { LocalDate.parse(trip.date) }.getOrNull()),
-                targetedTripId = target.tripId,
-                selectiveScriptSync0449 = false,
-                acquisitionAuthority0607 = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
-            )
-            val response = sessionStore.combinedResponse(BlaBlaDynamicAccountRegistry(app).list())
-            BlaBlaCollectorStateStore(app).saveResponse(response, preserveOnPartial = false)
+            if (!scopedStateIsolation0662) {
+                sessionStore.saveSync(
+                    account = account,
+                    lastUrl = captured.evidence.finalUrl.ifBlank { administrativeUrl },
+                    trips = listOf(trip),
+                    skippedTrips = 0,
+                    identityVerified = true,
+                    dateScope = listOfNotNull(runCatching { LocalDate.parse(trip.date) }.getOrNull()),
+                    targetedTripId = target.tripId,
+                    selectiveScriptSync0449 = false,
+                    acquisitionAuthority0607 = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
+                )
+                val response = sessionStore.combinedResponse(BlaBlaDynamicAccountRegistry(app).list())
+                BlaBlaCollectorStateStore(app).saveResponse(response, preserveOnPartial = false)
+            } else {
+                UnifiedDebugEventStore.recordAlways(
+                    "BLABLACAR_TARGETED_SCOPE_ISOLATED_0662",
+                    app.packageName,
+                    "targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} scope=TRIP_ONLY " +
+                        "combinedResponse=false sessionContentWrite=false canonicalHtmlOnly=true",
+                )
+            }
             UnifiedDebugEventStore.recordAlways(
                 "BLABLACAR_TARGETED_HTML_REFRESH_0607",
                 app.packageName,
-                "targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} normalized=true operationalComplete=true exactCardReset=true staleFieldInheritance=false evidencePathPresent=${captured.evidence.htmlFile.isNotBlank()} authority=HTML_DIRECT_0607 legacyCollector=false",
+                "targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} normalized=true operationalComplete=true exactCardReset=true staleFieldInheritance=false evidencePathPresent=${captured.evidence.htmlFile.isNotBlank()} authority=HTML_DIRECT_0607 legacyCollector=false scopedIsolation0662=$scopedStateIsolation0662",
             )
             BlaBlaTargetedHtmlRefreshResult0607(
                 trip = trip,
