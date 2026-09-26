@@ -9,7 +9,7 @@
       ((node.getAttribute&&node.getAttribute('data-testid'))||'')
     );
     if(!marker)return false;
-    if(/cancelar|cancel|excluir|delete|recusar|reject|aprovar|approve|pagar|pay|confirmar|confirm|reservar|book/.test(marker))return false;
+    if(/cancelar|cancel|excluir|delete|recusar|reject|aprovar|approve|pagar|pay|confirmar|confirm|reservar|\bbook\b/.test(marker))return false;
     const href=clean((node.getAttribute&&node.getAttribute('href'))||'');
     if(/^tel:|wa\.me|whatsapp|sms:|mailto:/.test(href))return false;
     return (
