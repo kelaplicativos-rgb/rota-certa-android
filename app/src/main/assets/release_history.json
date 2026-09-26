@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.657",
+      "build": 5948,
+      "commit": null,
+      "branch": "agent/passenger-private-html-0.1.657",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A captura HTML profunda do passageiro passa a executar uma etapa segura de revelação de detalhes antes de ler telefone, valor, embarque e destino.",
+        "Telefone do passageiro passa a ser preservado também como metadata privada da reserva exata, permitindo hidratar os atalhos mesmo quando a projeção física da viagem não muda.",
+        "A extração privada amplia as fontes aceitas para DOM visível, links tel/WhatsApp, atributos, texto rotulado e dados estruturados embarcados na página."
+      ],
+      "fixed": [
+        "Uma página de passageiro que abre corretamente mas retorna telefone, tarifa e endereços todos vazios deixa de ser considerada resolvida: o mesmo passageiro é tentado novamente e, persistindo vazio, o card permanece incompleto sem degradar o canônico anterior.",
+        "O fluxo Atualizar BlaBlaCar deixa de depender do rememberCoroutineScope da composição e não é mais cancelado apenas porque a tela saiu da composição.",
+        "O telefone capturado deixa de depender exclusivamente do fingerprint da viagem para chegar a Viagens, Central do Dia e Timeline."
+      ],
+      "improved": [
+        "A abertura do passageiro prioriza o link exato da reserva/passenger em vez de links genéricos de perfil.",
+        "Tarifa e endereços usam seletores e rótulos mais amplos, incluindo ponto de encontro, destino, valor da reserva, total e valor recebido.",
+        "Falhas de dados privados continuam fail-closed e a telemetria registra apenas presença/ausência, nunca telefone, valor ou endereço."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.656: a captura entrava nas páginas dos passageiros, mas podia registrar phonePresent=false, farePresent=false e boardingAddressPresent=false e ainda concluir a leitura sem preencher os atalhos."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Coletor HTML",
+        "Passageiros",
+        "Viagens",
+        "Central do Dia",
+        "Timeline",
+        "Atalhos",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.656",
       "build": 5947,
       "commit": null,
