@@ -1,6 +1,9 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import android.app.Activity
 import android.content.Context
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -693,6 +696,69 @@ internal fun CentralDoDiaScreen0552(
     var diagnosticTripId by remember { mutableStateOf<String?>(null) }
     val formatter = remember { DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault()).withZone(ZoneId.systemDefault()) }
 
+    // 0.1.660: the Central do Dia owns a dedicated TODAY_ONLY launcher. It is deliberately
+    // independent from refreshAll(): zero local cards must still be able to discover today's
+    // BlaBlaCar operation, and accounts are processed serially to preserve the WebView single-flight.
+    var todaySyncQueue0660 by remember { mutableStateOf<List<String>>(emptyList()) }
+    var todaySyncInFlight0660 by remember { mutableStateOf<String?>(null) }
+    var todaySyncStarted0660 by remember { mutableStateOf(false) }
+    var todaySyncCompletedAccounts0660 by remember { mutableStateOf(0) }
+    var todaySyncFailedAccounts0660 by remember { mutableStateOf(0) }
+    var todaySyncTrips0660 by remember { mutableStateOf(0) }
+    val todaySyncLauncher0660 = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val finishedAccountId0660 = todaySyncInFlight0660
+        if (finishedAccountId0660 != null) {
+            todaySyncQueue0660 = todaySyncQueue0660.filterNot { it == finishedAccountId0660 }
+            todaySyncInFlight0660 = null
+            if (result.resultCode == Activity.RESULT_OK) {
+                todaySyncCompletedAccounts0660 += 1
+                todaySyncTrips0660 += result.data?.getIntExtra("trip_count", 0)?.coerceAtLeast(0) ?: 0
+            } else {
+                todaySyncFailedAccounts0660 += 1
+            }
+            onRefreshLocal()
+        }
+    }
+
+    LaunchedEffect(todaySyncStarted0660, todaySyncQueue0660, todaySyncInFlight0660, today) {
+        if (!todaySyncStarted0660 || todaySyncInFlight0660 != null) return@LaunchedEffect
+        val nextAccountId0660 = todaySyncQueue0660.firstOrNull()
+        if (nextAccountId0660 == null) {
+            todaySyncStarted0660 = false
+            onRefreshLocal()
+            UnifiedDebugEventStore.recordAlways(
+                "CENTRAL_DAY_TODAY_SCOPE_COMPLETE_0660",
+                context.packageName,
+                "scope=TODAY_ONLY targetDate=$today accountsOk=$todaySyncCompletedAccounts0660 accountsFailed=$todaySyncFailedAccounts0660 trips=$todaySyncTrips0660 fullTraversal=false outOfScopeCardsOpened=0",
+            )
+            onMessage(
+                if (todaySyncFailedAccounts0660 == 0) {
+                    "✅ Operação de hoje atualizada • $todaySyncTrips0660 viagem(ns)."
+                } else {
+                    "⚠ Operação de hoje concluída • $todaySyncTrips0660 viagem(ns) • $todaySyncFailedAccounts0660 conta(s) precisam de atenção."
+                },
+            )
+            return@LaunchedEffect
+        }
+        val nextAccount0660 = BlaBlaDynamicAccountRegistry(context.applicationContext).get(nextAccountId0660)
+        if (nextAccount0660?.verifiedDefinition() == null) {
+            todaySyncQueue0660 = todaySyncQueue0660.drop(1)
+            todaySyncFailedAccounts0660 += 1
+            return@LaunchedEffect
+        }
+        todaySyncInFlight0660 = nextAccountId0660
+        UnifiedDebugEventStore.recordAlways(
+            "CENTRAL_DAY_TODAY_SCOPE_ACCOUNT_0660",
+            context.packageName,
+            "scope=TODAY_ONLY targetDate=$today accountKey=${seatSyncDiagnosticKey(nextAccountId0660)} fullTraversal=false",
+        )
+        todaySyncLauncher0660.launch(
+            BlaBlaDynamicSessionIntents.syncToday(context, nextAccount0660, today),
+        )
+    }
+
     LaunchedEffect(commandRevision) {
         if (commandRevision > 0L) onRefreshLocal()
     }
@@ -731,17 +797,29 @@ internal fun CentralDoDiaScreen0552(
             TextButton(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
-                    val todayIds = model.trips.map(CentralTrip0552::canonicalTripId).toSet()
-                    val queued = CentralDayCommandBridge0552.refreshAll(context, trips.filter { it.id in todayIds })
-                    onMessage(
-                        if (queued > 0) {
-                            "📡 ${queued} viagem(ns) enviada(s) ao sincronizador canônico existente."
+                    if (todaySyncStarted0660 || todaySyncInFlight0660 != null) {
+                        onMessage("A operação de hoje já está sendo atualizada.")
+                    } else {
+                        val eligibleAccounts0660 = accounts.filter { it.verifiedDefinition() != null }
+                        if (eligibleAccounts0660.isEmpty()) {
+                            onMessage("Nenhuma conta BlaBlaCar validada para buscar a operação de hoje.")
                         } else {
-                            "Nenhuma viagem elegível foi enfileirada; verifique identidade/sessão."
-                        },
-                    )
+                            todaySyncCompletedAccounts0660 = 0
+                            todaySyncFailedAccounts0660 = 0
+                            todaySyncTrips0660 = 0
+                            todaySyncQueue0660 = eligibleAccounts0660.map { it.id }
+                            todaySyncInFlight0660 = null
+                            todaySyncStarted0660 = true
+                            UnifiedDebugEventStore.recordAlways(
+                                "CENTRAL_DAY_TODAY_SCOPE_REQUESTED_0660",
+                                context.packageName,
+                                "scope=TODAY_ONLY targetDate=$today accounts=${eligibleAccounts0660.size} localTodayCards=${model.trips.size} discoverWhenLocalEmpty=true fullTraversal=false",
+                            )
+                            onMessage("📡 Buscando somente a operação de hoje na BlaBlaCar…")
+                        }
+                    }
                 },
-            ) { Text("↻ Atualizar operação de hoje") }
+            ) { Text(if (todaySyncStarted0660) "↻ Atualizando somente hoje…" else "↻ Atualizar operação de hoje") }
         }
     }
 

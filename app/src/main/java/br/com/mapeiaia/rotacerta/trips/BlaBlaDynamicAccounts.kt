@@ -145,6 +145,11 @@ object BlaBlaDynamicSessionIntents {
     const val EXTRA_TARGET_TRIP_ID = "blablacar_target_trip_id"
     const val EXTRA_TARGET_DATE = "blablacar_target_date"
     const val EXTRA_TARGET_DATES = "blablacar_target_dates"
+    const val EXTRA_COLLECTION_SCOPE_0660 = "blablacar_collection_scope_0660"
+    const val SCOPE_FULL_0660 = "FULL"
+    const val SCOPE_TODAY_ONLY_0660 = "TODAY_ONLY"
+    const val SCOPE_SINGLE_CARD_0660 = "SINGLE_CARD"
+    internal const val SCOPE_DATE_RANGE_0660 = "DATE_SCOPE"
     const val EXTRA_ENABLED_SCRIPTS_0449 = "blablacar_enabled_scripts_0449"
     const val EXTRA_AUTOMATIC_COLLECTION_GENERATION = "blablacar_automatic_collection_generation_0400"
     const val EXTRA_AUTOMATIC_COLLECTION_ORIGIN = "blablacar_automatic_collection_origin_0400"
@@ -163,9 +168,11 @@ object BlaBlaDynamicSessionIntents {
     fun login(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_LOGIN)
     fun profile(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_PROFILE)
     fun sync(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_SYNC)
+        .putExtra(EXTRA_COLLECTION_SCOPE_0660, SCOPE_FULL_0660)
     internal fun syncPayload(account: BlaBlaDynamicAccount): Intent = Intent()
         .putExtra(EXTRA_ACCOUNT_ID, account.id)
         .putExtra(EXTRA_MODE, MODE_SYNC)
+        .putExtra(EXTRA_COLLECTION_SCOPE_0660, SCOPE_FULL_0660)
 
     internal fun ridesSnapshotPayload(
         account: BlaBlaDynamicAccount,
@@ -180,7 +187,8 @@ object BlaBlaDynamicSessionIntents {
         .putExtra(EXTRA_RIDES_SNAPSHOT_TOTAL_0526, total)
 
     fun syncToday(context: Context, account: BlaBlaDynamicAccount, targetDate: LocalDate): Intent =
-        syncDates(context, account, listOf(targetDate))
+        syncDatesInternal0449(context, account, listOf(targetDate), enabledScripts = null)
+            .putExtra(EXTRA_COLLECTION_SCOPE_0660, SCOPE_TODAY_ONLY_0660)
 
     fun syncDates(
         context: Context,
@@ -211,12 +219,14 @@ object BlaBlaDynamicSessionIntents {
                 ArrayList(enabledScripts.map(BlaBlaBrowserRequest::name).distinct().sorted()),
             )
         }
+        result.putExtra(EXTRA_COLLECTION_SCOPE_0660, SCOPE_DATE_RANGE_0660)
         return result
     }
     fun syncExact(context: Context, account: BlaBlaDynamicAccount, tripId: String, tripHref: String): Intent =
         intent(context, account, MODE_SYNC)
             .putExtra(EXTRA_TARGET_TRIP_ID, tripId)
             .putExtra(EXTRA_TARGET_URL, tripHref)
+            .putExtra(EXTRA_COLLECTION_SCOPE_0660, SCOPE_SINGLE_CARD_0660)
     fun manage(context: Context, account: BlaBlaDynamicAccount, tripHref: String): Intent =
         intent(context, account, MODE_MANAGE).putExtra(EXTRA_TARGET_URL, tripHref)
 
@@ -775,6 +785,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
     private var targetTripId = ""
     private var targetTripHref = ""
     private var targetDates: List<LocalDate> = emptyList()
+    private var collectionScope0660 = BlaBlaDynamicSessionIntents.SCOPE_FULL_0660
+    private var todayScopeTargetObserved0660 = false
     private var scriptSelection0449 = BlaBlaDateScopeScriptSelection0449.legacyAll()
     // Compatibility projection for page-finished dispatch; script authority lives in browserOrchestrator.
     private var phase = Phase.IDLE
@@ -944,6 +956,38 @@ internal class BlaBlaDynamicAccountSessionController0401(
         } else {
             targetDates = emptyList()
         }
+        val requestedCollectionScope0660 = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_COLLECTION_SCOPE_0660)
+            ?.trim()
+            .orEmpty()
+        collectionScope0660 = when {
+            targetTripId.isNotBlank() -> BlaBlaDynamicSessionIntents.SCOPE_SINGLE_CARD_0660
+            requestedCollectionScope0660 == BlaBlaDynamicSessionIntents.SCOPE_TODAY_ONLY_0660 -> BlaBlaDynamicSessionIntents.SCOPE_TODAY_ONLY_0660
+            targetDates.isNotEmpty() -> BlaBlaDynamicSessionIntents.SCOPE_DATE_RANGE_0660
+            else -> BlaBlaDynamicSessionIntents.SCOPE_FULL_0660
+        }
+        if (
+            collectionScope0660 == BlaBlaDynamicSessionIntents.SCOPE_TODAY_ONLY_0660 &&
+            targetDates.size != 1
+        ) {
+            UnifiedDebugEventStore.recordAlways(
+                "BLABLACAR_TODAY_SCOPE_REJECTED_0660",
+                packageName,
+                "scope=TODAY_ONLY dateCount=${targetDates.size} action=FAIL_CLOSED fullTraversal=false",
+            )
+            setResult(
+                Activity.RESULT_CANCELED,
+                Intent()
+                    .putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id)
+                    .putExtra(BlaBlaDynamicSessionIntents.EXTRA_SYNC_FAILURE_0407, "TODAY_SCOPE_REQUIRES_ONE_DATE_0660"),
+            )
+            finish()
+            return
+        }
+        UnifiedDebugEventStore.recordAlways(
+            "BLABLACAR_COLLECTION_SCOPE_0660",
+            packageName,
+            "scope=$collectionScope0660 dateCount=${targetDates.size} exactTrip=${targetTripId.isNotBlank()} fullTraversal=${collectionScope0660 == BlaBlaDynamicSessionIntents.SCOPE_FULL_0660}",
+        )
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
             if (visualHost == null && mode == BlaBlaDynamicSessionIntents.MODE_RIDES_SNAPSHOT_0526) {
                 failRidesSnapshot0526(
@@ -3093,6 +3137,12 @@ internal class BlaBlaDynamicAccountSessionController0401(
             val visible = requestedDates?.let { dates ->
                 BlaBlaCollectorCardModule.candidatesOnDates(visibleAll, dates)
             } ?: visibleAll
+            if (
+                collectionScope0660 == BlaBlaDynamicSessionIntents.SCOPE_TODAY_ONLY_0660 &&
+                visible.isNotEmpty()
+            ) {
+                todayScopeTargetObserved0660 = true
+            }
             UnifiedDebugEventStore.record(
                 "RIDES_TRAVERSAL_SCAN",
                 packageName,
@@ -3112,6 +3162,20 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 !BlaBlaCollectorCardModule.emptyListIsAuthoritative(result.explicitEmptyList)
             ) {
                 blockSyncWithoutCurrentCard("rides_empty_without_explicit_terminal_evidence")
+                return@evaluateRequest
+            }
+            if (
+                collectionScope0660 == BlaBlaDynamicSessionIntents.SCOPE_TODAY_ONLY_0660 &&
+                visibleAll.isEmpty() &&
+                BlaBlaCollectorCardModule.emptyListIsAuthoritative(result.explicitEmptyList)
+            ) {
+                UnifiedDebugEventStore.recordAlways(
+                    "BLABLACAR_TODAY_SCOPE_COMPLETE_0660",
+                    packageName,
+                    "scope=TODAY_ONLY targetDate=${targetDates.single()} stopReason=EXPLICIT_EMPTY_LIST cardsCaptured=${collected.size} outOfScopeCardsOpened=0 fullTraversal=false",
+                )
+                saveFinalSnapshotOnce(identityConfirmedThisSync && !account.profileUuid.isNullOrBlank())
+                completeSync(collected.size)
                 return@evaluateRequest
             }
             val nextKey = BlaBlaCollectorCardModule.firstUnresolvedVisibleKey(
@@ -3138,6 +3202,38 @@ internal class BlaBlaDynamicAccountSessionController0401(
             if (visible.any { tripTraversalKey(it).isBlank() }) {
                 blockSyncWithoutCurrentCard("visible_card_without_stable_identity")
                 return@evaluateRequest
+            }
+            if (collectionScope0660 == BlaBlaDynamicSessionIntents.SCOPE_TODAY_ONLY_0660) {
+                val targetDate0660 = targetDates.single()
+                when (
+                    val decision0660 = BlaBlaCollectorCardModule.todayScopeStopDecision0660(
+                        candidates = visibleAll,
+                        targetDate = targetDate0660,
+                        targetObservedEarlier = todayScopeTargetObserved0660,
+                    )
+                ) {
+                    BlaBlaTodayScopeStopDecision0660.FAIL_DATE_EVIDENCE -> {
+                        UnifiedDebugEventStore.recordAlways(
+                            "BLABLACAR_TODAY_SCOPE_DATE_UNPROVEN_0660",
+                            packageName,
+                            "scope=TODAY_ONLY targetDate=$targetDate0660 visible=${visibleAll.size} action=FAIL_CLOSED fullTraversal=false",
+                        )
+                        blockSyncWithoutCurrentCard("today_scope_date_evidence_unreadable_0660")
+                        return@evaluateRequest
+                    }
+                    BlaBlaTodayScopeStopDecision0660.COMPLETE_TARGET_RANGE,
+                    BlaBlaTodayScopeStopDecision0660.COMPLETE_TARGET_ABSENT -> {
+                        UnifiedDebugEventStore.recordAlways(
+                            "BLABLACAR_TODAY_SCOPE_COMPLETE_0660",
+                            packageName,
+                            "scope=TODAY_ONLY targetDate=$targetDate0660 stopReason=${decision0660.name} cardsCaptured=${collected.size} outOfScopeCardsOpened=0 fullTraversal=false atBottom=${result.atBottom}",
+                        )
+                        saveFinalSnapshotOnce(identityConfirmedThisSync && !account.profileUuid.isNullOrBlank())
+                        completeSync(collected.size)
+                        return@evaluateRequest
+                    }
+                    BlaBlaTodayScopeStopDecision0660.CONTINUE -> Unit
+                }
             }
             if (requestedDates != null) {
                 val firstVisibleDate = visibleAll.firstOrNull()?.let { candidate ->
@@ -3234,6 +3330,19 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 source = "exact_card_final",
                 profileUuid0646 = account.profileUuid.orEmpty(),
                 tripId0646 = targetTripId,
+            )
+        } else if (targetDates.isNotEmpty()) {
+            // Final date-scoped delta is mandatory even when zero cards were captured; otherwise
+            // a stale canonical card for today could survive an authoritative empty result.
+            AgendaBackgroundSync0392.enqueueCollectorDelta0431(
+                context = this,
+                source = if (collectionScope0660 == BlaBlaDynamicSessionIntents.SCOPE_TODAY_ONLY_0660) {
+                    "today_scope_final_0660"
+                } else {
+                    "date_scope_final_0660"
+                },
+                profileUuid0646 = account.profileUuid.orEmpty(),
+                dates0646 = targetDates,
             )
         }
         return true
@@ -5367,7 +5476,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         UnifiedDebugEventStore.record(
             "SYNC_END",
             packageName,
-            "account=${account.displayLabel} status=$finalStatus trips=$count skipped=$skipped completedCards=${completedCardTraversalKeys.size} quarantinedCards=${quarantinedCardTraversalKeys.size} missingPublicLinks0585=$missingPublicLinks0585 identityVerified=$identityConfirmedThisSync automaticGeneration=$automaticCollectionGeneration targeted=$targeted exactTargetFresh=$exactTargetFresh siblingCardsPreserved=${!targeted || targetedSnapshotSaved0407}",
+            "account=${account.displayLabel} status=$finalStatus trips=$count skipped=$skipped completedCards=${completedCardTraversalKeys.size} quarantinedCards=${quarantinedCardTraversalKeys.size} missingPublicLinks0585=$missingPublicLinks0585 identityVerified=$identityConfirmedThisSync automaticGeneration=$automaticCollectionGeneration targeted=$targeted exactTargetFresh=$exactTargetFresh siblingCardsPreserved=${!targeted || targetedSnapshotSaved0407} scope=$collectionScope0660 fullTraversal=${collectionScope0660 == BlaBlaDynamicSessionIntents.SCOPE_FULL_0660}",
         )
         if (automaticCollectionClaimed && !automaticCollectionReported) {
             automaticCollectionReported = true

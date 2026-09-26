@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.660",
+      "build": 5951,
+      "commit": null,
+      "branch": "agent/central-today-scope-0.1.660",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A Central do Dia passa a executar um fluxo TODAY_ONLY real por conta BlaBlaCar validada, inclusive quando existem zero cards canônicos locais.",
+        "As contas são processadas serialmente e o coletor de hoje encerra ao provar o fim da faixa da data, sem percorrer as demais datas da conta.",
+        "Os três escopos operacionais ficam explicitamente separados: FULL para captura completa, TODAY_ONLY para a Central do Dia e SINGLE_CARD para atualização individual."
+      ],
+      "fixed": [
+        "O botão Atualizar operação de hoje deixa de chamar refreshAll sobre cards locais já conhecidos, eliminando o no-op quando a Central está vazia.",
+        "A sincronização TODAY_ONLY deixa de rolar /rides até o fim: ao encontrar a fronteira cronológica do dia ou provar que o primeiro futuro já é posterior, encerra imediatamente.",
+        "Resultado vazio autoritativo de hoje agora emite delta final por data, permitindo remover card canônico obsoleto sem tocar em datas fora do escopo."
+      ],
+      "improved": [
+        "Evidência de data ilegível ou ordem não monotônica falha fechado em TODAY_ONLY, preservando o canônico anterior e proibindo fallback silencioso para FULL.",
+        "Atualização individual continua presa a profileUuid + tripId + URL administrativa e ao captureSingleTrip0607, sem descoberta de irmãos nem fallback de conta completa.",
+        "Telemetria registra scope, targetDate, motivo de parada, fullTraversal=false e outOfScopeCardsOpened=0 para auditoria do comportamento."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.659: Atualizar operação de hoje dependia dos cards já existentes localmente e não conseguia descobrir a operação quando a Central mostrava zero viagens.",
+        "0.1.659: o filtro por data impedia abrir cards externos ao escopo, mas ainda rolava a lista geral até o fim."
+      ],
+      "modulesAffected": [
+        "Central do Dia",
+        "BlaBlaCar",
+        "Coletor HTML",
+        "Agenda",
+        "Timeline",
+        "Viagens",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.659",
       "build": 5950,
       "commit": null,
