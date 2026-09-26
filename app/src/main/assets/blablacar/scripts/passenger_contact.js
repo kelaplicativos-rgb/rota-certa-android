@@ -81,7 +81,7 @@
     fareNode.innerText
   ));
   if (!fareAmount) {
-    const labeledFare = bodyText.match(/(?:valor\s+que\s+voc[eê]\s+recebe|voc[eê]\s+recebe|receber[aá]|valor\s+da\s+reserva|total\s+da\s+reserva|valor\s+total)[^R$]{0,100}(R\$\s*[0-9.]+(?:,[0-9]{1,2})?)/i);
+    const labeledFare = bodyText.match(/(?:valor\s+que\s+voc[eê]\s+recebe|voc[eê]\s+recebe|receber[aá]|valor\s+da\s+reserva|total\s+da\s+reserva|valor\s+total)[^0-9R$]{0,100}((?:R\$\s*[0-9.]+(?:,[0-9]{1,2})?)|(?:[0-9.]+(?:,[0-9]{1,2})?\s*R\$))/i);
     fareAmount = clean(labeledFare && labeledFare[1]);
   }
   let fareCurrencyCode = clean(currencyNode && (
