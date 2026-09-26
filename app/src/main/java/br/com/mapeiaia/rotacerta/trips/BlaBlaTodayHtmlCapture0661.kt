@@ -182,22 +182,15 @@ internal object BlaBlaTodayHtmlCaptureCoordinator0661 {
         )
         if (batch0661.blockedTrips != 0 || batch0661.staleResultsRejected != 0) return@withContext false
 
-        val sessionStore0661 = BlaBlaDynamicSessionStore(context)
-        stagedPairs0661.forEach { (account0661, trip0661) ->
-            val tripId0661 = trip0661.trip_id?.trim().orEmpty()
-            if (tripId0661.isNotBlank()) {
-                sessionStore0661.saveSync(
-                    account = account0661,
-                    lastUrl = stagedByAccount[account0661.id]?.stagedLastUrl0610.orEmpty(),
-                    trips = listOf(trip0661), skippedTrips = 0, identityVerified = true,
-                    targetedTripId = tripId0661, selectiveScriptSync0449 = false,
-                    acquisitionAuthority0607 = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
-                )
-            }
-        }
-        BlaBlaCollectorStateStore(context).saveResponse(
-            response = sessionStore0661.combinedResponse(BlaBlaDynamicAccountRegistry(context).list()),
-            preserveOnPartial = true,
+        // 0.1.662: TODAY_ONLY is a hard transaction boundary. The HTML captured for this
+        // date may update only matching canonical trips; it must never rebuild the aggregate
+        // session/collector response because that reintroduces unrelated cached trips.
+        UnifiedDebugEventStore.recordAlways(
+            "CENTRAL_TODAY_HTML_SCOPE_ISOLATED_0662",
+            context.packageName,
+            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} targetDate=$targetDate " +
+                "trips=${stagedPairs0661.size} combinedResponse=false sessionContentWrite=false " +
+                "scope=TODAY_ONLY canonicalHtmlOnly=true preserveSiblings=true",
         )
         if (batch0661.publicationCanonicalTripIds0431.isNotEmpty()) {
             runCatching {
@@ -214,7 +207,7 @@ internal object BlaBlaTodayHtmlCaptureCoordinator0661 {
             "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} targetDate=$targetDate " +
                 "trips=${stagedPairs0661.size} changed=${batch0661.changedTrips} unchanged=${batch0661.skippedTrips} " +
                 "authority=HTML_DIRECT_0607 preserveSiblings=true tombstone=false " +
-                "evaluateAbsence=false legacySync=false modeSync=false",
+                "evaluateAbsence=false legacySync=false modeSync=false combinedResponse=false scopedIsolation0662=true",
         )
         true
     }
