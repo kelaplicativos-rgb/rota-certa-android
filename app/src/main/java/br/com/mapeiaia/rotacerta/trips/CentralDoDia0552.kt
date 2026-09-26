@@ -1,9 +1,9 @@
 package br.com.mapeiaia.rotacerta.trips
 
-import android.app.Activity
 import android.content.Context
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import android.content.ContextWrapper
+import androidx.activity.ComponentActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,6 +36,8 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 /**
  * Central do Dia is deliberately a read model. It owns no canonical state and no persistence.
@@ -696,69 +698,12 @@ internal fun CentralDoDiaScreen0552(
     var diagnosticTripId by remember { mutableStateOf<String?>(null) }
     val formatter = remember { DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault()).withZone(ZoneId.systemDefault()) }
 
-    // 0.1.660: the Central do Dia owns a dedicated TODAY_ONLY launcher. It is deliberately
-    // independent from refreshAll(): zero local cards must still be able to discover today's
-    // BlaBlaCar operation, and accounts are processed serially to preserve the WebView single-flight.
-    var todaySyncQueue0660 by remember { mutableStateOf<List<String>>(emptyList()) }
-    var todaySyncInFlight0660 by remember { mutableStateOf<String?>(null) }
-    var todaySyncStarted0660 by remember { mutableStateOf(false) }
-    var todaySyncCompletedAccounts0660 by remember { mutableStateOf(0) }
-    var todaySyncFailedAccounts0660 by remember { mutableStateOf(0) }
-    var todaySyncTrips0660 by remember { mutableStateOf(0) }
-    val todaySyncLauncher0660 = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult(),
-    ) { result ->
-        val finishedAccountId0660 = todaySyncInFlight0660
-        if (finishedAccountId0660 != null) {
-            todaySyncQueue0660 = todaySyncQueue0660.filterNot { it == finishedAccountId0660 }
-            todaySyncInFlight0660 = null
-            if (result.resultCode == Activity.RESULT_OK) {
-                todaySyncCompletedAccounts0660 += 1
-                todaySyncTrips0660 += result.data?.getIntExtra("trip_count", 0)?.coerceAtLeast(0) ?: 0
-            } else {
-                todaySyncFailedAccounts0660 += 1
-            }
-            onRefreshLocal()
-        }
-    }
-
-    LaunchedEffect(todaySyncStarted0660, todaySyncQueue0660, todaySyncInFlight0660, today) {
-        if (!todaySyncStarted0660 || todaySyncInFlight0660 != null) return@LaunchedEffect
-        val nextAccountId0660 = todaySyncQueue0660.firstOrNull()
-        if (nextAccountId0660 == null) {
-            todaySyncStarted0660 = false
-            onRefreshLocal()
-            UnifiedDebugEventStore.recordAlways(
-                "CENTRAL_DAY_TODAY_SCOPE_COMPLETE_0660",
-                context.packageName,
-                "scope=TODAY_ONLY targetDate=$today accountsOk=$todaySyncCompletedAccounts0660 accountsFailed=$todaySyncFailedAccounts0660 trips=$todaySyncTrips0660 fullTraversal=false outOfScopeCardsOpened=0",
-            )
-            onMessage(
-                if (todaySyncFailedAccounts0660 == 0) {
-                    "✅ Operação de hoje atualizada • $todaySyncTrips0660 viagem(ns)."
-                } else {
-                    "⚠ Operação de hoje concluída • $todaySyncTrips0660 viagem(ns) • $todaySyncFailedAccounts0660 conta(s) precisam de atenção."
-                },
-            )
-            return@LaunchedEffect
-        }
-        val nextAccount0660 = BlaBlaDynamicAccountRegistry(context.applicationContext).get(nextAccountId0660)
-        if (nextAccount0660?.verifiedDefinition() == null) {
-            todaySyncQueue0660 = todaySyncQueue0660.drop(1)
-            todaySyncFailedAccounts0660 += 1
-            return@LaunchedEffect
-        }
-        todaySyncInFlight0660 = nextAccountId0660
-        UnifiedDebugEventStore.recordAlways(
-            "CENTRAL_DAY_TODAY_SCOPE_ACCOUNT_0660",
-            context.packageName,
-            "scope=TODAY_ONLY targetDate=$today accountKey=${seatSyncDiagnosticKey(nextAccountId0660)} fullTraversal=false",
-        )
-        todaySyncLauncher0660.launch(
-            BlaBlaDynamicSessionIntents.syncToday(context, nextAccount0660, today),
-        )
-    }
-
+    // 0.1.661: Central do Dia uses the same direct HTML authority as the global
+    // "Atualizar BlaBlaCar • capturar HTMLs" action. No MODE_SYNC or legacy account
+    // synchronizer may be started by this button.
+    var todayHtmlRunning0661 by remember { mutableStateOf(false) }
+    var todayHtmlProgress0661 by remember { mutableStateOf("") }
+    val activity0661 = remember(context) { context.findComponentActivity0661() }
     LaunchedEffect(commandRevision) {
         if (commandRevision > 0L) onRefreshLocal()
     }
@@ -797,29 +742,70 @@ internal fun CentralDoDiaScreen0552(
             TextButton(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
-                    if (todaySyncStarted0660 || todaySyncInFlight0660 != null) {
-                        onMessage("A operação de hoje já está sendo atualizada.")
+                    if (todayHtmlRunning0661) {
+                        onMessage("A captura HTML da operação de hoje já está em andamento.")
+                    } else if (activity0661 == null) {
+                        onMessage("Não foi possível obter o ciclo de vida da tela para iniciar a captura HTML.")
                     } else {
-                        val eligibleAccounts0660 = accounts.filter { it.verifiedDefinition() != null }
-                        if (eligibleAccounts0660.isEmpty()) {
-                            onMessage("Nenhuma conta BlaBlaCar validada para buscar a operação de hoje.")
-                        } else {
-                            todaySyncCompletedAccounts0660 = 0
-                            todaySyncFailedAccounts0660 = 0
-                            todaySyncTrips0660 = 0
-                            todaySyncQueue0660 = eligibleAccounts0660.map { it.id }
-                            todaySyncInFlight0660 = null
-                            todaySyncStarted0660 = true
-                            UnifiedDebugEventStore.recordAlways(
-                                "CENTRAL_DAY_TODAY_SCOPE_REQUESTED_0660",
-                                context.packageName,
-                                "scope=TODAY_ONLY targetDate=$today accounts=${eligibleAccounts0660.size} localTodayCards=${model.trips.size} discoverWhenLocalEmpty=true fullTraversal=false",
-                            )
-                            onMessage("📡 Buscando somente a operação de hoje na BlaBlaCar…")
+                        todayHtmlRunning0661 = true
+                        todayHtmlProgress0661 = "Preparando captura HTML somente de hoje…"
+                        UnifiedDebugEventStore.recordAlways(
+                            "CENTRAL_DAY_TODAY_HTML_REQUESTED_0661",
+                            context.packageName,
+                            "scope=TODAY_ONLY targetDate=$today localTodayCards=${model.trips.size} " +
+                                "authority=${BlaBlaAcquisitionAuthority0607.HTML_DIRECT} legacySync=false modeSync=false discoverWhenLocalEmpty=true",
+                        )
+                        onMessage("📥 Capturando HTMLs somente da operação de hoje…")
+                        activity0661.lifecycleScope.launch {
+                            try {
+                                val result0661 = BlaBlaRidesSnapshotCoordinator0526.captureToday0661(
+                                    context = context.applicationContext,
+                                    targetDate = today,
+                                ) { progress0661 ->
+                                    todayHtmlProgress0661 = progress0661
+                                }
+                                onRefreshLocal()
+                                val success0661 = result0661.failedAccounts == 0 &&
+                                    result0661.incompleteTrips == 0 && result0661.canonicalCommitAccepted
+                                onMessage(
+                                    if (success0661) {
+                                        "✅ HTML de hoje atualizado • ${result0661.completeTrips} viagem(ns) • " +
+                                            "${result0661.completeAccounts}/${result0661.totalAccounts} conta(s)."
+                                    } else {
+                                        "⚠ Captura HTML de hoje concluída com pendências • " +
+                                            "${result0661.completeTrips} viagem(ns) completas • " +
+                                            "${result0661.incompleteTrips} pendência(s) • " +
+                                            "${result0661.failedAccounts} conta(s) com falha."
+                                    },
+                                )
+                            } catch (cancelled: CancellationException) {
+                                UnifiedDebugEventStore.recordAlways(
+                                    "CENTRAL_DAY_TODAY_HTML_CANCELLED_0661",
+                                    context.packageName,
+                                    "scope=TODAY_ONLY targetDate=$today authority=${BlaBlaAcquisitionAuthority0607.HTML_DIRECT} legacySync=false",
+                                )
+                                throw cancelled
+                            } catch (error: Throwable) {
+                                UnifiedDebugEventStore.recordAlways(
+                                    "CENTRAL_DAY_TODAY_HTML_FAILED_0661",
+                                    context.packageName,
+                                    "scope=TODAY_ONLY targetDate=$today authority=${BlaBlaAcquisitionAuthority0607.HTML_DIRECT} " +
+                                        "legacySync=false error=${error.javaClass.simpleName.take(80)}",
+                                )
+                                onMessage("Não foi possível concluir a captura HTML de hoje: ${error.message ?: error.javaClass.simpleName}")
+                            } finally {
+                                todayHtmlRunning0661 = false
+                                onRefreshLocal()
+                            }
                         }
                     }
                 },
-            ) { Text(if (todaySyncStarted0660) "↻ Atualizando somente hoje…" else "↻ Atualizar operação de hoje") }
+            ) {
+                Text(if (todayHtmlRunning0661) "📥 Capturando HTMLs de hoje…" else "↻ Atualizar operação de hoje")
+            }
+            if (todayHtmlRunning0661 && todayHtmlProgress0661.isNotBlank()) {
+                Text(todayHtmlProgress0661, style = MaterialTheme.typography.bodySmall)
+            }
         }
     }
 
@@ -1067,4 +1053,15 @@ internal fun CentralDoDiaScreen0552(
             )
         }
     }
+}
+
+private fun Context.findComponentActivity0661(): ComponentActivity? {
+    var current0661: Context = this
+    while (current0661 is ContextWrapper) {
+        if (current0661 is ComponentActivity) return current0661
+        val next0661 = current0661.baseContext
+        if (next0661 === current0661) break
+        current0661 = next0661
+    }
+    return current0661 as? ComponentActivity
 }
