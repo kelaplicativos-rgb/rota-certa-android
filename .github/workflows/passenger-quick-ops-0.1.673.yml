@@ -1,0 +1,176 @@
+name: Passenger quick ops 0.1.673 APK
+
+on:
+  push:
+    branches:
+      - 'agent/passenger-quick-ops-0.1.673'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: passenger-quick-ops-0673-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-deploy-build-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    env:
+      GOOGLE_MAPS_API_KEY: ''
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      ROTA_CERTA_TARGET_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: agent/passenger-quick-ops-0.1.673
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.ROTA_CERTA_TARGET_SHA }}
+
+      - name: Prove exact 0.1.673 source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_TARGET_SHA"
+          echo "ROTA_CERTA_GIT_SHA=$ROTA_CERTA_TARGET_SHA" >> "$GITHUB_ENV"
+          PASS='app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt'
+          BACKEND='trip-platform/functions/index.js'
+          grep -Fq 'releaseVersionName = "0.1.673"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 5_964' app/build.gradle.kts
+          grep -Fq '"version": "0.1.673"' app/src/main/assets/release_history.json
+          grep -Fq 'PassengerQuickActionLine0673' "$PASS"
+          grep -Fq 'passengerRowsBoardingAtSegment0673' "$PASS"
+          grep -Fq 'compactSegmentMode0673' "$PASS"
+          grep -Fq 'statusShortcutRow0673' "$PASS"
+          grep -Fq 'effectivePassengerOperationalStatus0673' "$PASS"
+          grep -Fq 'passengerBoardingTimeMillis0672' "$PASS"
+          grep -Fq 'PASSENGER_STATUS_PENDING' "$BACKEND"
+          grep -Fq 'new Set(["PENDING", "CONFIRMED", "AT_LOCATION", "IN_CAR", "PAID", "COMPLETED", "CANCELLED"])' "$BACKEND"
+          grep -Fq 'operationalStatus: "PENDING"' "$BACKEND"
+          grep -Fq 'LIVE_TRACKING_POINTS_SYNCED_0668' app/src/main/java/br/com/mapeiaia/rotacerta/LiveTrackingShare0668.kt
+          grep -Fq 'HEARTBEAT_INTERVAL_MS = 5_000L' app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingService.kt
+          git diff --check eb6af0315b6478e5f1d2d6befa941f60de55788e HEAD
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate backend and inherited tracking source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/functions/live-tracking-0668.js
+          node --check trip-platform/public/tracking.js
+          node --test             trip-platform/functions/test/reservation-approval-0356.test.js             trip-platform/functions/test/live-tracking-0668.test.js
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run passenger quick ops and inherited regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerQuickOps0673Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerSegmentTime0672Test'             --tests 'br.com.mapeiaia.rotacerta.trips.SegmentPaxTimeline0671Test'             --tests 'br.com.mapeiaia.rotacerta.trips.ChronologicalPassengerCards0667Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalShortcuts0656Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalStatus0350Test'             --tests 'br.com.mapeiaia.rotacerta.trips.ReservationApproval0356Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineAgendaAtomicSync0632Test'             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTimelineLiveSegments0602Test'             --tests 'br.com.mapeiaia.rotacerta.trips.CentralDriverSegmentGlance0601Test'             --tests 'br.com.mapeiaia.rotacerta.LiveTrackingShare0668Test'             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripCardRefresh0663Test'             --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0673-tests.log
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0673-assemble.log
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_TARGET_SHA"
+
+      - name: Prove APK identity signing runtime markers and final SHA
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/android-0673-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/android-0673-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/android-0673-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5964'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.673'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/android-0673-apksigner.txt
+          grep -Fq 'Verified' /tmp/android-0673-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0673-dex-strings.txt
+          grep -Fq "$ROTA_CERTA_TARGET_SHA" /tmp/android-0673-dex-strings.txt
+          grep -Fq 'Mensagens prontas' /tmp/android-0673-dex-strings.txt
+          grep -Fq 'PASSENGER_STATUS_PENDING' /tmp/android-0673-dex-strings.txt
+          grep -Fq 'LIVE_TRACKING_POINTS_SYNCED_0668' /tmp/android-0673-dex-strings.txt
+
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.673-5964-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.673"
+            echo "versionCode=5964"
+            echo "branch=agent/passenger-quick-ops-0.1.673"
+            echo "commit=$ROTA_CERTA_TARGET_SHA"
+            echo "deviceTarget=Samsung SM-S911B / Android 16 / API 36"
+            echo "passengerLayout=ONE_ROW_PER_BOARDING_PASSENGER"
+            echo "quickActions=WHATSAPP_READY_MESSAGE_PICKUP_DROPOFF_STATUS"
+            echo "passengerCenter=FULL_ACTION_HUB"
+            echo "defaultOperationalPresentation=PENDING_UNTIL_EXPLICIT_DRIVER_CONFIRMATION"
+            echo "segmentClock=HTML_CANONICAL_STOP_TIME"
+            echo "liveGpsTracker0670=PRESERVED"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee passenger-quick-ops-0673-proof.txt
+
+      - name: Authenticate Google Cloud for canonical status backend
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy exact SHA canonical backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_TARGET_SHA"
+          gcloud functions deploy tripApi             --gen2             --project="$PROJECT"             --region=southamerica-east1             --runtime=nodejs20             --source=trip-platform/functions             --entry-point=tripApi             --trigger-http             --allow-unauthenticated             --clear-secrets             --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$ROTA_CERTA_TARGET_SHA"             --quiet
+
+      - name: Smoke live backend exact SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 20 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health-0673.json
+          grep -Fq '"ok":true' /tmp/live-health-0673.json
+          grep -Fq "\"backendGitSha\":\"$ROTA_CERTA_TARGET_SHA\"" /tmp/live-health-0673.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-passenger-quick-ops-0.1.673-${{ env.ROTA_CERTA_TARGET_SHA }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            passenger-quick-ops-0673-proof.txt
+            /tmp/android-0673-tests.log
+            /tmp/android-0673-assemble.log
+            /tmp/android-0673-aapt.txt
+            /tmp/android-0673-apksigner.txt
+            /tmp/android-0673-zip-integrity.txt
+            /tmp/live-health-0673.json
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30

@@ -12,6 +12,8 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -82,7 +84,7 @@ internal data class EnhancedPassengerCardRow(
     val externalBookingHref: String? = null,
     val externalProfileUuid: String? = null,
     val bookingStatus: BookingStatus? = null,
-    val operationalStatus: PassengerOperationalStatus = PassengerOperationalStatus.CONFIRMED,
+    val operationalStatus: PassengerOperationalStatus = PassengerOperationalStatus.PENDING,
     val paymentStatus: PassengerPaymentStatus = PassengerPaymentStatus.UNPAID,
     val lastDriverSelection: String = "",
     val fareMinorUnits: Long? = null,
@@ -267,6 +269,50 @@ internal fun passengerRowsOnSegment0672(
 ): List<EnhancedPassengerCardRow> =
     rows.filter { passengerActiveOnSegment0671(it, segmentIndex) }
 
+internal fun effectivePassengerOperationalStatus0673(
+    status: PassengerOperationalStatus,
+    lastDriverSelection: String,
+): PassengerOperationalStatus {
+    val explicit0673 = lastDriverSelection.trim().uppercase()
+    return if (
+        status == PassengerOperationalStatus.CONFIRMED &&
+        explicit0673 !in setOf("CONFIRMED", "AT_LOCATION", "IN_CAR", "PAID", "COMPLETED", "CANCELLED")
+    ) {
+        PassengerOperationalStatus.PENDING
+    } else {
+        status
+    }
+}
+
+internal fun passengerOperationalStatusLabel0673(
+    status: PassengerOperationalStatus,
+    lastDriverSelection: String = "",
+): String = when (effectivePassengerOperationalStatus0673(status, lastDriverSelection)) {
+    PassengerOperationalStatus.PENDING -> "Pendente"
+    PassengerOperationalStatus.CONFIRMED -> "Confirmado"
+    PassengerOperationalStatus.AT_LOCATION -> "No local"
+    PassengerOperationalStatus.IN_CAR -> "No carro"
+    PassengerOperationalStatus.COMPLETED -> "Concluído"
+    PassengerOperationalStatus.CANCELLED -> "Cancelado"
+}
+
+internal fun passengerRowsBoardingAtSegment0673(
+    rows: List<EnhancedPassengerCardRow>,
+    segmentIndex: Int,
+): List<EnhancedPassengerCardRow> = rows.filter { row0673 ->
+    row0673.boardingStopIndex == segmentIndex &&
+        row0673.bookingStatus !in setOf(BookingStatus.CANCELLED, BookingStatus.REJECTED, BookingStatus.EXPIRED) &&
+        row0673.operationalStatus != PassengerOperationalStatus.CANCELLED
+}
+
+internal fun passengerRowsWithoutBoardingStop0673(
+    rows: List<EnhancedPassengerCardRow>,
+): List<EnhancedPassengerCardRow> = rows.filter { row0673 ->
+    row0673.boardingStopIndex == null &&
+        row0673.bookingStatus !in setOf(BookingStatus.CANCELLED, BookingStatus.REJECTED, BookingStatus.EXPIRED) &&
+        row0673.operationalStatus != PassengerOperationalStatus.CANCELLED
+}
+
 internal fun passengerSegmentPaxLabel0671(
     rows: List<EnhancedPassengerCardRow>,
     segmentIndex: Int,
@@ -293,6 +339,68 @@ internal fun segmentStartTimeMillis0671(
 ).firstOrNull { it.stop.id == load.from.id }?.timeMillis
 
 @Composable
+private fun PassengerQuickActionLine0673(
+    passenger0673: EnhancedPassengerCardRow,
+    onNameClick0673: (EnhancedPassengerCardRow) -> Unit,
+    onWhatsApp0673: (EnhancedPassengerCardRow) -> Unit,
+    onQuickMessage0673: (EnhancedPassengerCardRow) -> Unit,
+    onPickup0673: (EnhancedPassengerCardRow) -> Unit,
+    onDropoff0673: (EnhancedPassengerCardRow) -> Unit,
+    onStatus0673: (EnhancedPassengerCardRow) -> Unit,
+) {
+    val name0673 = passenger0673.name.ifBlank { "Passageiro" }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(1.dp),
+    ) {
+        TextButton(
+            onClick = { onNameClick0673(passenger0673) },
+            modifier = Modifier.weight(1f).heightIn(min = 36.dp),
+            contentPadding = COMPACT_NAME_PADDING,
+        ) {
+            Text(
+                text = name0673,
+                modifier = Modifier.fillMaxWidth(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        IconButton(
+            onClick = { onWhatsApp0673(passenger0673) },
+            modifier = Modifier.size(36.dp),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_whatsapp_action),
+                contentDescription = "WhatsApp de $name0673",
+                tint = Color.Unspecified,
+                modifier = Modifier.size(21.dp),
+            )
+        }
+        TextButton(
+            onClick = { onQuickMessage0673(passenger0673) },
+            modifier = Modifier.size(36.dp),
+            contentPadding = ADDRESS_ICON_PADDING,
+        ) { Text("💬", maxLines = 1) }
+        TextButton(
+            onClick = { onPickup0673(passenger0673) },
+            modifier = Modifier.size(36.dp),
+            contentPadding = ADDRESS_ICON_PADDING,
+        ) { Text("📍", maxLines = 1) }
+        TextButton(
+            onClick = { onDropoff0673(passenger0673) },
+            modifier = Modifier.size(36.dp),
+            contentPadding = ADDRESS_ICON_PADDING,
+        ) { Text("🏁", maxLines = 1) }
+        TextButton(
+            onClick = { onStatus0673(passenger0673) },
+            modifier = Modifier.size(36.dp),
+            contentPadding = ADDRESS_ICON_PADDING,
+        ) { Text("👆", maxLines = 1) }
+    }
+}
+
+@Composable
 private fun SegmentVacancyLine0671(
     entry: TripTimelineEntry,
     trip: Trip,
@@ -300,6 +408,11 @@ private fun SegmentVacancyLine0671(
     segmentIndex0671: Int,
     rows0671: List<EnhancedPassengerCardRow>,
     onPassengerClick0672: (EnhancedPassengerCardRow) -> Unit,
+    onWhatsApp0673: (EnhancedPassengerCardRow) -> Unit = onPassengerClick0672,
+    onQuickMessage0673: (EnhancedPassengerCardRow) -> Unit = onPassengerClick0672,
+    onPickup0673: (EnhancedPassengerCardRow) -> Unit = onPassengerClick0672,
+    onDropoff0673: (EnhancedPassengerCardRow) -> Unit = onPassengerClick0672,
+    onStatus0673: (EnhancedPassengerCardRow) -> Unit = onPassengerClick0672,
 ) {
     val available0671 = load0671.availableSeats.coerceAtLeast(0)
     val vacancy0671 = when (available0671) {
@@ -308,7 +421,7 @@ private fun SegmentVacancyLine0671(
         else -> "${available0671} vagas"
     }
     val overbooking0671 = load0671.overbookingSeats.coerceAtLeast(0)
-    val passengers0672 = passengerRowsOnSegment0672(rows0671, segmentIndex0671)
+    val boardingPassengers0673 = passengerRowsBoardingAtSegment0673(rows0671, segmentIndex0671)
     val time0671 = tripChronologicalStopTimeLabel0667(
         timeMillis = segmentStartTimeMillis0671(
             trip,
@@ -318,56 +431,53 @@ private fun SegmentVacancyLine0671(
         ),
         zoneId = passengerScheduleZone0672(trip),
     ) ?: "—"
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(
-            text = time0671,
-            modifier = Modifier.width(42.dp).padding(top = 2.dp),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-        )
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = time0671,
+                modifier = Modifier.width(42.dp).padding(top = 2.dp),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
             Text(
                 text = "${load0671.from.name} → ${load0671.to.name}",
+                modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            passengers0672.forEach { passenger0672 ->
-                val name0672 = passenger0672.name.ifBlank { "Passageiro" }
-                Text(
-                    text = name0672,
-                    modifier = Modifier
-                        .clickable(
-                            onClickLabel = "Abrir atalhos de $name0672",
-                            onClick = { onPassengerClick0672(passenger0672) },
-                        )
-                        .padding(vertical = 2.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            val blocked0672 = load0671.blockedSeats.coerceAtLeast(0)
-            if (blocked0672 > 0) {
-                Text(
-                    text = "🚫 $blocked0672 bloqueada" + if (blocked0672 == 1) "" else "s",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                )
-            }
+            Text(
+                text = if (overbooking0671 > 0) "$vacancy0671 +$overbooking0671" else vacancy0671,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+            )
         }
-        Text(
-            text = if (overbooking0671 > 0) "$vacancy0671 +$overbooking0671" else vacancy0671,
-            style = MaterialTheme.typography.titleSmall,
-            maxLines = 1,
-        )
+        boardingPassengers0673.forEach { passenger0673 ->
+            PassengerQuickActionLine0673(
+                passenger0673 = passenger0673,
+                onNameClick0673 = onPassengerClick0672,
+                onWhatsApp0673 = onWhatsApp0673,
+                onQuickMessage0673 = onQuickMessage0673,
+                onPickup0673 = onPickup0673,
+                onDropoff0673 = onDropoff0673,
+                onStatus0673 = onStatus0673,
+            )
+        }
+        val blocked0672 = load0671.blockedSeats.coerceAtLeast(0)
+        if (blocked0672 > 0) {
+            Text(
+                text = "🚫 $blocked0672 bloqueada" + if (blocked0672 == 1) "" else "s",
+                modifier = Modifier.padding(start = 50.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
     }
 }
 
@@ -615,6 +725,7 @@ internal fun EnhancedPassengerTimelineSection(
     var fareEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var phoneEditRow0671 by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var communicationShortcutRow0672 by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
+    var statusShortcutRow0673 by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var boardingAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var dropoffAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var quickMessageRow0656 by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
@@ -632,6 +743,82 @@ internal fun EnhancedPassengerTimelineSection(
             row.boardingAddress,
             row.dropoffAddress,
         ).joinToString("~")
+    }
+
+    fun applyPassengerOperationalStatus0673(
+        passenger0673: EnhancedPassengerCardRow,
+        selectionRaw0673: String,
+    ) {
+        val selection0673 = selectionRaw0673.trim().uppercase()
+        statusShortcutRow0673 = null
+        val rowKey0673 = passengerTimelineRowKey0394(passenger0673)
+        val currentBooking0673 = passenger0673.localBookingId?.let(renderSnapshot.bookingsById::get)
+        val completed0673 =
+            rowKey0673 in renderSnapshot.completedRowKeys ||
+                passenger0673.operationalStatus == PassengerOperationalStatus.COMPLETED
+        if (completed0673 && selection0673 !in setOf("COMPLETED", "PAID")) {
+            onChanged("Esta ocorrência já foi concluída. A conclusão é permanente; apenas o pagamento ainda pode ser confirmado.")
+            return
+        }
+        if (passenger0673.operationalStatus == PassengerOperationalStatus.CANCELLED && selection0673 != "CANCELLED") {
+            onChanged("Esta reserva já foi cancelada. Uma nova participação precisa nascer como nova reserva/ocorrência.")
+            return
+        }
+        if (selection0673 == "CANCELLED") {
+            if (
+                currentBooking0673 != null ||
+                (BookingSource.BLABLACAR in passenger0673.sources && !passenger0673.externalReservationKey.isNullOrBlank())
+            ) {
+                cancelManualRow = passenger0673
+            } else {
+                onChanged("Não foi possível identificar a reserva/ocorrência exata para cancelar com segurança.")
+            }
+            return
+        }
+        if (currentBooking0673?.status == BookingStatus.REQUESTED) {
+            onChanged("Use Aprovar ou Recusar para resolver esta solicitação antes de alterar o status operacional.")
+            return
+        }
+        val selectedTrip0673 = trip
+        if (selectedTrip0673 == null || currentBooking0673 == null) {
+            onChanged("A ocorrência canônica não está disponível para alterar o status.")
+            return
+        }
+        scope.launch {
+            runCatching {
+                persistCanonicalPassengerMutation0582(
+                    context = context,
+                    trip = selectedTrip0673,
+                    updated = passengerOperationalMutation0582(currentBooking0673, selection0673),
+                    store = store,
+                    mutationCoordinator = mutationCoordinator,
+                    mutationType = "PASSENGER_STATUS_" + selection0673,
+                )
+            }.onSuccess {
+                if (selection0673 == "COMPLETED") {
+                    completionService.confirm(entry, passenger0673)?.let {
+                        completionRevision++
+                        identityRevision++
+                    }
+                    scope.launch(Dispatchers.IO) {
+                        runCatching { liveTrackingManager0668.closePassengerShare(rowKey0673) }
+                    }
+                }
+                onChanged(
+                    when (selection0673) {
+                        "PENDING" -> "Status Pendente salvo."
+                        "CONFIRMED" -> "Passageiro confirmado."
+                        "AT_LOCATION" -> "Status No local salvo."
+                        "IN_CAR" -> "Status No carro salvo."
+                        "PAID" -> "Pagamento confirmado."
+                        "COMPLETED" -> "Passageiro concluído."
+                        else -> "Status atualizado."
+                    },
+                )
+            }.onFailure { error0673 ->
+                onChanged("Nada foi alterado: " + (error0673.message ?: "falha ao gravar o status"))
+            }
+        }
     }
 
     LaunchedEffect(
@@ -749,10 +936,68 @@ internal fun EnhancedPassengerTimelineSection(
         return
     }
 
-    if (segmentLoads0671.isNotEmpty()) {
+    val compactSegmentMode0673 = segmentLoads0671.isNotEmpty() && trip != null
+    if (compactSegmentMode0673) {
         Text("Vagas por trecho", style = MaterialTheme.typography.titleSmall)
-    }
-    var lastRenderedStopIndex0667 = -1
+        segmentLoads0671.forEachIndexed { segmentIndex0673, load0673 ->
+            SegmentVacancyLine0671(
+                entry = entry,
+                trip = requireNotNull(trip),
+                load0671 = load0673,
+                segmentIndex0671 = segmentIndex0673,
+                rows0671 = rows,
+                onPassengerClick0672 = { communicationShortcutRow0672 = it },
+                onWhatsApp0673 = { row0673 ->
+                    val phone0673 = row0673.phone
+                    if (phone0673.isNullOrBlank()) phoneEditRow0671 = row0673
+                    else openPassengerWhatsApp(context, phone0673)
+                },
+                onQuickMessage0673 = { quickMessageRow0656 = it },
+                onPickup0673 = { row0673 ->
+                    passengerPickupMapTarget(row0673)?.let { openPassengerPickupMap(context, it) }
+                        ?: run { boardingAddressEditRow = row0673 }
+                },
+                onDropoff0673 = { row0673 ->
+                    passengerDropoffMapTarget(row0673)?.let { openPassengerDropoffMap(context, it) }
+                        ?: run { dropoffAddressEditRow = row0673 }
+                },
+                onStatus0673 = { statusShortcutRow0673 = it },
+            )
+        }
+        val withoutBoarding0673 = passengerRowsWithoutBoardingStop0673(rows)
+        if (withoutBoarding0673.isNotEmpty()) {
+            Text(
+                "Embarque não associado ao itinerário",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            withoutBoarding0673.forEach { row0673 ->
+                PassengerQuickActionLine0673(
+                    passenger0673 = row0673,
+                    onNameClick0673 = { communicationShortcutRow0672 = it },
+                    onWhatsApp0673 = { selected0673 ->
+                        val phone0673 = selected0673.phone
+                        if (phone0673.isNullOrBlank()) phoneEditRow0671 = selected0673
+                        else openPassengerWhatsApp(context, phone0673)
+                    },
+                    onQuickMessage0673 = { quickMessageRow0656 = it },
+                    onPickup0673 = { selected0673 ->
+                        passengerPickupMapTarget(selected0673)?.let { openPassengerPickupMap(context, it) }
+                            ?: run { boardingAddressEditRow = selected0673 }
+                    },
+                    onDropoff0673 = { selected0673 ->
+                        passengerDropoffMapTarget(selected0673)?.let { openPassengerDropoffMap(context, it) }
+                            ?: run { dropoffAddressEditRow = selected0673 }
+                    },
+                    onStatus0673 = { statusShortcutRow0673 = it },
+                )
+            }
+        }
+    } else {
+        if (segmentLoads0671.isNotEmpty()) {
+            Text("Vagas por trecho", style = MaterialTheme.typography.titleSmall)
+        }
+        var lastRenderedStopIndex0667 = -1
     var lastRenderedSegmentIndex0671 = -1
     rows.forEachIndexed { index, passenger ->
         if (segmentLoads0671.isNotEmpty() && trip != null) {
@@ -844,7 +1089,7 @@ internal fun EnhancedPassengerTimelineSection(
             passenger.operationalStatus == PassengerOperationalStatus.AT_LOCATION -> "No local"
             passenger.operationalStatus == PassengerOperationalStatus.IN_CAR -> "No carro"
             passenger.operationalStatus == PassengerOperationalStatus.CANCELLED -> "Cancelado"
-            passenger.operationalStatus == PassengerOperationalStatus.PENDING -> "Aguardando"
+            passenger.operationalStatus == PassengerOperationalStatus.PENDING -> "Pendente"
             else -> "Confirmado"
         }
         val selectOperationalStatus: (String) -> Unit = select@{ selection ->
@@ -1042,6 +1287,7 @@ internal fun EnhancedPassengerTimelineSection(
                                 expanded = statusMenuOpen,
                                 onDismissRequest = { statusMenuOpen = false },
                             ) {
+                                DropdownMenuItem(text = { Text("Pendente") }, onClick = { selectOperationalStatus("PENDING") })
                                 DropdownMenuItem(text = { Text("Confirmado") }, onClick = { selectOperationalStatus("CONFIRMED") })
                                 DropdownMenuItem(text = { Text("No local") }, onClick = { selectOperationalStatus("AT_LOCATION") })
                                 DropdownMenuItem(text = { Text("No carro") }, onClick = { selectOperationalStatus("IN_CAR") })
@@ -1653,7 +1899,8 @@ internal fun EnhancedPassengerTimelineSection(
                             expanded = statusMenuOpen,
                             onDismissRequest = { statusMenuOpen = false },
                         ) {
-                            DropdownMenuItem(text = { Text("Confirmado") }, onClick = { selectOperationalStatus("CONFIRMED") })
+                            DropdownMenuItem(text = { Text("Pendente") }, onClick = { selectOperationalStatus("PENDING") })
+                                DropdownMenuItem(text = { Text("Confirmado") }, onClick = { selectOperationalStatus("CONFIRMED") })
                             DropdownMenuItem(text = { Text("No local") }, onClick = { selectOperationalStatus("AT_LOCATION") })
                             DropdownMenuItem(text = { Text("No carro") }, onClick = { selectOperationalStatus("IN_CAR") })
                             DropdownMenuItem(text = { Text("Pago") }, onClick = { selectOperationalStatus("PAID") })
@@ -1788,6 +2035,8 @@ internal fun EnhancedPassengerTimelineSection(
                 isLast0667 = stopIndex0667 == chronologicalStops0667.lastIndex,
             )
         }
+    }
+
     }
 
     profileRow?.let { row ->
@@ -2076,20 +2325,90 @@ internal fun EnhancedPassengerTimelineSection(
         )
     }
 
+    statusShortcutRow0673?.let { row0673 ->
+        val currentStatus0673 = passengerOperationalStatusLabel0673(
+            row0673.operationalStatus,
+            row0673.lastDriverSelection,
+        )
+        AlertDialog(
+            onDismissRequest = { statusShortcutRow0673 = null },
+            title = { Text("Alterar status") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(row0673.name.ifBlank { "Passageiro" })
+                    Text("Atual: $currentStatus0673", style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { applyPassengerOperationalStatus0673(row0673, "PENDING") },
+                    ) { Text("Pendente") }
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { applyPassengerOperationalStatus0673(row0673, "CONFIRMED") },
+                    ) { Text("Confirmado") }
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { applyPassengerOperationalStatus0673(row0673, "AT_LOCATION") },
+                    ) { Text("No local") }
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { applyPassengerOperationalStatus0673(row0673, "IN_CAR") },
+                    ) { Text("No carro") }
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { applyPassengerOperationalStatus0673(row0673, "PAID") },
+                    ) { Text("Pago") }
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { applyPassengerOperationalStatus0673(row0673, "COMPLETED") },
+                    ) { Text("Concluído") }
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { applyPassengerOperationalStatus0673(row0673, "CANCELLED") },
+                    ) { Text("Cancelar") }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { statusShortcutRow0673 = null }) { Text("Fechar") }
+            },
+        )
+    }
+
     communicationShortcutRow0672?.let { row0672 ->
         val phone0672 = row0672.phone
         val profile0672 = renderSnapshot.profilesByRowKey[passengerTimelineRowKey0394(row0672)]
+        val pickup0673 = passengerPickupMapTarget(row0672)
+        val dropoff0673 = passengerDropoffMapTarget(row0672)
+        val boardingTime0673 = trip?.let { passengerBoardingTimeMillis0672(entry, it, row0672) }
+        val timeLabel0673 = boardingTime0673?.let {
+            tripChronologicalStopTimeLabel0667(it, passengerScheduleZone0672(trip))
+        } ?: "não disponível"
+        val statusLabel0673 = passengerOperationalStatusLabel0673(
+            row0672.operationalStatus,
+            row0672.lastDriverSelection,
+        )
         AlertDialog(
             onDismissRequest = { communicationShortcutRow0672 = null },
             title = { Text(row0672.name.ifBlank { "Passageiro" }) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    Text("Status: $statusLabel0673 • embarque previsto: $timeLabel0673", style = MaterialTheme.typography.bodySmall)
                     OutlinedButton(
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = !phone0672.isNullOrBlank(),
                         onClick = {
                             communicationShortcutRow0672 = null
-                            phone0672?.let { openPassengerWhatsApp(context, it) }
+                            statusShortcutRow0673 = row0672
+                        },
+                    ) { Text("👆 Alterar status") }
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            communicationShortcutRow0672 = null
+                            if (phone0672.isNullOrBlank()) phoneEditRow0671 = row0672
+                            else openPassengerWhatsApp(context, phone0672)
                         },
                     ) { Text("WhatsApp") }
                     OutlinedButton(
@@ -2098,7 +2417,48 @@ internal fun EnhancedPassengerTimelineSection(
                             communicationShortcutRow0672 = null
                             quickMessageRow0656 = row0672
                         },
-                    ) { Text("Mensagens prontas") }
+                    ) { Text("💬 Mensagens prontas") }
+
+                    Text(
+                        "Embarque: " + passengerOperationalAddressLabel0656(row0672, boarding = true),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            communicationShortcutRow0672 = null
+                            if (pickup0673 != null) openPassengerPickupMap(context, pickup0673)
+                            else boardingAddressEditRow = row0672
+                        },
+                    ) { Text("📍 GPS embarque") }
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            communicationShortcutRow0672 = null
+                            boardingAddressEditRow = row0672
+                        },
+                    ) { Text("Editar endereço de embarque") }
+
+                    Text(
+                        "Desembarque: " + passengerOperationalAddressLabel0656(row0672, boarding = false),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            communicationShortcutRow0672 = null
+                            if (dropoff0673 != null) openPassengerDropoffMap(context, dropoff0673)
+                            else dropoffAddressEditRow = row0672
+                        },
+                    ) { Text("🏁 GPS desembarque") }
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            communicationShortcutRow0672 = null
+                            dropoffAddressEditRow = row0672
+                        },
+                    ) { Text("Editar endereço de desembarque") }
+
                     OutlinedButton(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = {
@@ -2106,6 +2466,37 @@ internal fun EnhancedPassengerTimelineSection(
                             phoneEditRow0671 = row0672
                         },
                     ) { Text("Editar telefone") }
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            communicationShortcutRow0672 = null
+                            if (row0672.fareMinorUnits != null) copyPassengerFareValue(context, row0672)
+                            else if (!requestPrivateRefreshBeforeManual0656("FARE_CENTER_0673")) fareEditRow = row0672
+                        },
+                    ) { Text("💰 Valor da reserva") }
+
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = trip != null && row0672.dropoffLatitude != null && row0672.dropoffLongitude != null,
+                        onClick = {
+                            val selectedTrip0673 = trip ?: return@OutlinedButton
+                            val lat0673 = row0672.dropoffLatitude ?: return@OutlinedButton
+                            val lon0673 = row0672.dropoffLongitude ?: return@OutlinedButton
+                            communicationShortcutRow0672 = null
+                            requestPassengerTracking0668(
+                                PassengerTrackingLinkRequest0668(
+                                    tripId = selectedTrip0673.id,
+                                    passengerKey = passengerTimelineRowKey0394(row0672),
+                                    passengerName = row0672.name.ifBlank { "Passageiro" },
+                                    destinationLatitude = lat0673,
+                                    destinationLongitude = lon0673,
+                                    destinationLabel = row0672.dropoffAddress.ifBlank { row0672.dropoff.orEmpty() },
+                                    expiresAtMillis = passengerTrackingExpiry0668(entry.arrivalAtMillis),
+                                ),
+                            )
+                        },
+                    ) { Text("🛰️ Compartilhar acompanhamento") }
+
                     OutlinedButton(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = {
@@ -2377,7 +2768,10 @@ internal fun enhancedPassengerRows(
             externalReservationKey = metadataKey,
             externalBookingHref = passenger.booking_href?.trim()?.takeIf(String::isNotEmpty),
             externalProfileUuid = entry.blablaProfileUuid?.trim()?.takeIf(String::isNotEmpty),
-            operationalStatus = metadata?.operationalStatus ?: PassengerOperationalStatus.CONFIRMED,
+            operationalStatus = effectivePassengerOperationalStatus0673(
+                metadata?.operationalStatus ?: PassengerOperationalStatus.PENDING,
+                metadata?.lastDriverSelection.orEmpty(),
+            ),
             paymentStatus = metadata?.paymentStatus ?: PassengerPaymentStatus.UNPAID,
             lastDriverSelection = metadata?.lastDriverSelection.orEmpty(),
             fareMinorUnits = metadata?.fareMinorUnits,
@@ -2448,7 +2842,10 @@ internal fun enhancedPassengerRows(
                     },
                     localBookingId = booking.id,
                     bookingStatus = booking.status,
-                    operationalStatus = booking.operationalStatus,
+                    operationalStatus = effectivePassengerOperationalStatus0673(
+                        booking.operationalStatus,
+                        booking.lastDriverSelection,
+                    ),
                     paymentStatus = booking.paymentStatus,
                     lastDriverSelection = booking.lastDriverSelection,
                     fareMinorUnits = booking.fareMinorUnits ?: privateMetadata0494?.fareMinorUnits ?: current.fareMinorUnits,
@@ -2493,7 +2890,10 @@ internal fun enhancedPassengerRows(
                     passengerId = booking.passengerId.takeIf(String::isNotBlank),
                     localBookingId = booking.id,
                     bookingStatus = booking.status,
-                    operationalStatus = booking.operationalStatus,
+                    operationalStatus = effectivePassengerOperationalStatus0673(
+                        booking.operationalStatus,
+                        booking.lastDriverSelection,
+                    ),
                     paymentStatus = booking.paymentStatus,
                     lastDriverSelection = booking.lastDriverSelection,
                     fareMinorUnits = booking.fareMinorUnits ?: privateMetadata0494?.fareMinorUnits,
@@ -2936,7 +3336,7 @@ internal fun passengerOperationalMutation0582(
     selectionRaw: String,
 ): Booking {
     val selection = selectionRaw.trim().uppercase()
-    require(selection in setOf("CONFIRMED", "AT_LOCATION", "IN_CAR", "PAID", "COMPLETED", "CANCELLED")) {
+    require(selection in setOf("PENDING", "CONFIRMED", "AT_LOCATION", "IN_CAR", "PAID", "COMPLETED", "CANCELLED")) {
         "INVALID_OPERATIONAL_SELECTION"
     }
     require(previous.status !in setOf(BookingStatus.CANCELLED, BookingStatus.EXPIRED)) {
@@ -2955,6 +3355,7 @@ internal fun passengerOperationalMutation0582(
 
     val operational = when (selection) {
         "PAID" -> previous.operationalStatus
+        "PENDING" -> PassengerOperationalStatus.PENDING
         "CONFIRMED" -> PassengerOperationalStatus.CONFIRMED
         "AT_LOCATION" -> PassengerOperationalStatus.AT_LOCATION
         "IN_CAR" -> PassengerOperationalStatus.IN_CAR
@@ -2987,7 +3388,7 @@ internal fun passengerDecisionMutation0582(
     return previous.copy(
         status = if (action == "APPROVE") BookingStatus.CONFIRMED else BookingStatus.REJECTED,
         operationalStatus = if (action == "APPROVE") {
-            PassengerOperationalStatus.CONFIRMED
+            PassengerOperationalStatus.PENDING
         } else {
             PassengerOperationalStatus.PENDING
         },

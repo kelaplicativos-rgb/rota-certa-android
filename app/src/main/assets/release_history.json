@@ -2,6 +2,36 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.673",
+      "build": 5964,
+      "commit": null,
+      "branch": "agent/passenger-quick-ops-0.1.673",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Cada passageiro passa a ocupar uma única linha operacional compacta no trecho de embarque, com nome, WhatsApp, mensagens prontas, GPS de embarque, GPS de desembarque e atalho de status.",
+        "O nome do passageiro abre uma Central completa com status, horário previsto, endereços, GPS, telefone, valor, acompanhamento, histórico e BlaBlaCar.",
+        "O seletor de status passa a oferecer Pendente antes de Confirmado; reservas sem confirmação operacional explícita são apresentadas como Pendente.",
+        "Aprovar uma reserva confirma a vaga sem presumir contato operacional: o passageiro permanece Pendente até ação explícita do motorista."
+      ],
+      "fixed": [
+        "Passageiros deixam de ser repetidos em todos os trechos em que permanecem no carro; o nome nasce somente no trecho real de embarque.",
+        "O bloco antigo de controles detalhados deixa de duplicar status, endereços e atalhos quando Vagas por trecho está ativo.",
+        "A mudança explícita para Pendente passa a ser aceita pelo backend canônico sem ser interpretada como conclusão da viagem."
+      ],
+      "improved": [
+        "A linha operacional prioriza as quatro ações mais usadas sem escrever rótulos longos: WhatsApp, mensagem pronta, embarque e desembarque, além do gesto de status.",
+        "Os horários canônicos intermediários da 0.1.672 são preservados na mesma leitura compacta dos trechos."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.672: nomes ativos podiam se repetir em vários segmentos e o bloco operacional completo continuava aparecendo abaixo, duplicando informação.",
+        "0.1.672: estado operacional implícito Confirmado confundia reserva aprovada com contato já confirmado pelo motorista."
+      ],
+      "modulesAffected": ["Viagens", "Central do Dia", "Timeline de passageiros", "Vagas por trecho", "Status operacional", "Mensagens prontas", "GPS", "Backend canônico", "Build"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.672",
       "build": 5963,
       "commit": null,

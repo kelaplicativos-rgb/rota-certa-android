@@ -402,6 +402,7 @@ function driverNotificationCopy(eventType, booking, tripTitle) {
 }
 
 function passengerNotificationCopy(eventType, tripTitle) {
+  if (eventType === "PASSENGER_STATUS_PENDING") return { title: "Status pendente", message: "O status operacional voltou para pendente." };
   if (eventType === "PASSENGER_STATUS_CONFIRMED") return { title: "Reserva confirmada", message: "Sua vaga está confirmada." };
   if (eventType === "PASSENGER_AT_LOCATION") return { title: "Motorista no local", message: "O motorista informou que chegou ao local combinado." };
   if (eventType === "PASSENGER_IN_CAR") return { title: "Você está embarcado", message: "A viagem foi iniciada." };
@@ -2756,6 +2757,7 @@ function protectedSnapshotEventType(previous, updated) {
   }
   if (previous.paymentStatus !== updated.paymentStatus && updated.paymentStatus === "PAID") return "PASSENGER_PAYMENT_CONFIRMED";
   if (previous.operationalStatus !== updated.operationalStatus) {
+    if (updated.operationalStatus === "PENDING") return "PASSENGER_STATUS_PENDING";
     if (updated.operationalStatus === "AT_LOCATION") return "PASSENGER_AT_LOCATION";
     if (updated.operationalStatus === "IN_CAR") return "PASSENGER_IN_CAR";
     if (updated.operationalStatus === "COMPLETED") return "PASSENGER_COMPLETED";
@@ -8501,7 +8503,7 @@ async function mutateDriverBookingDecision(req, res, token, bookingIdRaw, driver
       const updated = {
         ...previous,
         status: targetStatus,
-        operationalStatus: action === "APPROVE" ? "CONFIRMED" : "PENDING",
+        operationalStatus: "PENDING",
         lastDriverSelection: action,
         decisionReason: reason,
         decisionActor: "DRIVER",
@@ -8597,7 +8599,7 @@ async function mutateDriverPassengerOperationalStatus(req, res, token, bookingId
   const adminActor0468 = driverOverride0468 && driverOverride0468.adminActor0468 === true;
   const bookingId = cleanText(bookingIdRaw, 120).replace(/[^A-Za-z0-9_-]/g, "");
   const selection = cleanText(req.body && req.body.selection, 32).toUpperCase();
-  const allowed = new Set(["CONFIRMED", "AT_LOCATION", "IN_CAR", "PAID", "COMPLETED", "CANCELLED"]);
+  const allowed = new Set(["PENDING", "CONFIRMED", "AT_LOCATION", "IN_CAR", "PAID", "COMPLETED", "CANCELLED"]);
   if (!bookingId) return fail(res, 400, "invalid_booking_id", "Identificador de reserva inválido.");
   if (!allowed.has(selection)) return fail(res, 400, "invalid_operational_status", "Estado operacional inválido.");
 
@@ -8635,7 +8637,7 @@ async function mutateDriverPassengerOperationalStatus(req, res, token, bookingId
         throw Object.assign(new Error("Esta solicitação foi recusada e não aceita atualização operacional."), { httpStatus: 409, code: "booking_rejected" });
       }
 
-      const beforeOperational = cleanText(previous.operationalStatus, 32) || "CONFIRMED";
+      const beforeOperational = cleanText(previous.operationalStatus, 32) || "PENDING";
       const beforePayment = cleanText(previous.paymentStatus, 32) || "UNPAID";
       if (beforeOperational === "COMPLETED" && selection !== "COMPLETED" && selection !== "PAID") {
         throw Object.assign(
@@ -8695,8 +8697,9 @@ async function mutateDriverPassengerOperationalStatus(req, res, token, bookingId
       delete persisted.id;
       tx.set(bookingRef, persisted, { merge: true });
 
-      const eventType = selection === "CONFIRMED" ? "PASSENGER_STATUS_CONFIRMED"
-        : selection === "AT_LOCATION" ? "PASSENGER_AT_LOCATION"
+      const eventType = selection === "PENDING" ? "PASSENGER_STATUS_PENDING"
+        : selection === "CONFIRMED" ? "PASSENGER_STATUS_CONFIRMED"
+          : selection === "AT_LOCATION" ? "PASSENGER_AT_LOCATION"
           : selection === "IN_CAR" ? "PASSENGER_IN_CAR"
             : selection === "PAID" ? "PASSENGER_PAYMENT_CONFIRMED"
               : selection === "CANCELLED" ? "BOOKING_CANCELLED_BY_DRIVER"
@@ -8719,7 +8722,7 @@ async function mutateDriverPassengerOperationalStatus(req, res, token, bookingId
           changedField("paymentStatus", beforePayment, afterPayment),
           changedField("status", previous.status, afterBookingStatus),
         ].filter(Boolean),
-        passengerRecipients: [{
+        passengerRecipients: selection === "PENDING" ? [] : [{
           passengerId,
           passengerContact,
           bookingId,
@@ -8782,7 +8785,7 @@ async function mutateDriverPassengerOperationalStatus(req, res, token, bookingId
     return json(res, 200, {
       booking: result.booking,
       changed: result.changed,
-      passengerNotified: result.changed,
+      passengerNotified: result.changed && result.eventType !== "PASSENGER_STATUS_PENDING",
       entityRevision: Math.max(0, Number(result.entityRevision || 0)),
     });
   } catch (error) {
