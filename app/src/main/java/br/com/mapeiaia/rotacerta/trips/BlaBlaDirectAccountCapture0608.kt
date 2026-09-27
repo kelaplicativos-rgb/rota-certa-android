@@ -13,6 +13,7 @@ import androidx.webkit.WebViewCompat
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -83,6 +84,39 @@ internal fun directObservedInventoryMatches0613(
         .filter(String::isNotBlank)
         .toSet()
     return observed.size == observedCardCount && snapshot == observed
+}
+
+internal fun directObservedTripLinks0676(
+    profileUuid: String,
+    tripIds: List<String>,
+    observedTripHrefs: List<String>,
+    parsedRides: List<ParsedExternalRide0535>,
+    now: LocalDateTime = LocalDateTime.now(),
+): List<BlaBlaRidesTripLink0582> {
+    val allowedTripIds0676 = canonicalTripIds0528(tripIds).toSet()
+    val administrativeUrlsByTripId0676 = observedTripHrefs.mapNotNull { rawHref0676 ->
+        val absolute0676 = BlaBlaCollectorUrlModule.absolute(rawHref0676)
+        val tripId0676 = BlaBlaCollectorUrlModule.tripId(absolute0676)
+            ?.takeIf { it in allowedTripIds0676 }
+            ?: return@mapNotNull null
+        if (
+            !BlaBlaCollectorUrlModule.isSpecificTrip(absolute0676) ||
+            BlaBlaCollectorUrlModule.tripId(absolute0676) != tripId0676
+        ) {
+            return@mapNotNull null
+        }
+        tripId0676 to BlaBlaCollectorUrlModule.canonical(absolute0676)
+    }.toMap()
+    return applyRidesShareEligibility0583(
+        links = buildRidesTripLinks0582(
+            profileUuid = profileUuid,
+            tripIds = tripIds,
+            administrativeUrlsByTripId = administrativeUrlsByTripId0676,
+            collectorTrips = emptyList(),
+        ),
+        rides = parsedRides,
+        now = now,
+    )
 }
 
 /**
@@ -346,6 +380,22 @@ internal object BlaBlaDirectAccountCapture0608 {
         )
 
         val canonicalIds = canonicalTripIds0528(tripIds)
+        val initialTripLinks0676 = directObservedTripLinks0676(
+            profileUuid = expected,
+            tripIds = canonicalIds,
+            observedTripHrefs = finalSample.observedTripHrefs,
+            parsedRides = scopedParsedRides0661,
+        )
+        if (!validateRidesTripLinks0582(canonicalIds, initialTripLinks0676)) {
+            UnifiedDebugEventStore.recordAlways(
+                "BLABLACAR_RIDES_INDEX_LINK_BINDING_REJECTED_0676",
+                app.packageName,
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} " +
+                    "accountKey=${store.accountKey(account.id)} trips=${canonicalIds.size} " +
+                    "links=${initialTripLinks0676.size} action=FAIL_CLOSED",
+            )
+            return fail(store, account, captureId, "RIDES_TRIP_LINK_BINDING_INVALID_0676")
+        }
         val indexArtifact = store.writeRidesIndexJson0528(
             captureId = captureId,
             profileUuid = expected,
@@ -356,8 +406,15 @@ internal object BlaBlaDirectAccountCapture0608 {
                 tripIdsSha256 = inventory.tripIdsSha256,
                 duplicateCount = inventory.duplicateCount,
                 rideDateRange = dateRange,
-                tripLinks = emptyList(),
+                tripLinks = initialTripLinks0676,
             ),
+        )
+        UnifiedDebugEventStore.recordAlways(
+            "BLABLACAR_RIDES_INDEX_LINKS_PERSISTED_0676",
+            app.packageName,
+            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} " +
+                "accountKey=${store.accountKey(account.id)} tripIds=${canonicalIds.size} " +
+                "tripLinks=${initialTripLinks0676.size} exactBinding=true relativeLinksCanonicalized=true",
         )
 
         val fingerprints = samples.map { sample ->

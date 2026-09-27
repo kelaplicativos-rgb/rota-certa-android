@@ -2,6 +2,35 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.676",
+      "build": 5967,
+      "commit": null,
+      "branch": "agent/rides-index-detail-diagnostics-0.1.676",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Suas viagens passa a persistir no rides-index.json um tripLink administrativo validado para cada tripId observado, inclusive quando o href original é relativo.",
+        "O capturador de detalhe passa a preferir o vínculo tripId→administrativeUrl persistido no índice antes de navegar para a viagem.",
+        "TRIP_DETAIL_HTML_UNVERIFIED é substituído por diagnóstico específico de LOAD, PAYLOAD_DECODE, TRIP_ID_MISMATCH ou DOM_EMPTY."
+      ],
+      "fixed": [
+        "Removida a contradição em que o 0608 encontrava todos os links de /rides/offer e em seguida gravava tripLinks vazio, fazendo o 0605 declarar UNIFIED_RIDES_INDEX_UNRESOLVED_TRIP_LINK.",
+        "O retry de transporte continua no mesmo card para todas as novas causas de detalhe, sem avançar silenciosamente para outra viagem."
+      ],
+      "improved": [
+        "Vínculos de índice são fail-closed: cada administrativeUrl precisa ser uma viagem específica e provar exatamente o mesmo tripId.",
+        "Telemetria do detalhe registra apenas URL sanitizada, chaves hash de identidade, presença de payload e tamanho do DOM, sem conteúdo privado.",
+        "A política 0.1.675 de commit do núcleo operacional com PASSENGER_DETAILS pendente permanece inalterada."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.675: rides-index.json podia conter dezenas de tripIds válidos com tripLinks vazio, bloqueando a conclusão do perfil.",
+        "0.1.675: TRIP_DETAIL_HTML_UNVERIFIED não distinguia falha de carregamento, decode, identidade ou DOM vazio."
+      ],
+      "modulesAffected": ["Suas viagens", "BlaBlaCar HTML", "Rides index", "Detalhe da viagem", "Diagnóstico", "Build"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.675",
       "build": 5966,
       "commit": null,

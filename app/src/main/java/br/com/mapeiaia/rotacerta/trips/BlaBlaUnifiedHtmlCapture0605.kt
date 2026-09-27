@@ -304,6 +304,52 @@ internal fun htmlCanonicalResponseStatusAccepted0611(
         unresolvedTargetCards == 0 &&
         authoritySource == BlaBlaAcquisitionAuthority0607.HTML_DIRECT
 
+internal fun rebindParsedRidesToPersistedTripLinks0676(
+    rides: List<ParsedExternalRide0535>,
+    links: List<BlaBlaRidesTripLink0582>,
+): List<ParsedExternalRide0535> {
+    val exactByTrip0676 = links.mapNotNull { link0676 ->
+        val absolute0676 = BlaBlaCollectorUrlModule.absolute(link0676.administrativeUrl)
+        val linkedTripId0676 = BlaBlaCollectorUrlModule.tripId(absolute0676)
+        if (
+            linkedTripId0676 != link0676.tripId ||
+            !BlaBlaCollectorUrlModule.isSpecificTrip(absolute0676)
+        ) {
+            null
+        } else {
+            link0676.tripId to BlaBlaCollectorUrlModule.canonical(absolute0676)
+        }
+    }.toMap()
+    return rides.map { ride0676 ->
+        val persisted0676 = exactByTrip0676[ride0676.tripId]
+        if (persisted0676.isNullOrBlank()) ride0676
+        else ride0676.copy(administrativeUrl = persisted0676)
+    }
+}
+
+internal fun tripDetailVerificationError0676(
+    detailPagePresent: Boolean,
+    payloadPresent: Boolean,
+    payloadDecoded: Boolean,
+    expectedTripId: String,
+    observedTripId: String?,
+    domHtmlBytes: Int,
+): String = when {
+    !detailPagePresent -> "TRIP_DETAIL_LOAD_FAILED_0676"
+    !payloadPresent || !payloadDecoded -> "TRIP_DETAIL_PAYLOAD_DECODE_FAILED_0676"
+    observedTripId?.trim() != expectedTripId.trim() -> "TRIP_DETAIL_ID_MISMATCH_0676"
+    domHtmlBytes <= 0 -> "TRIP_DETAIL_DOM_EMPTY_0676"
+    else -> ""
+}
+
+internal fun shouldRetryTripDetailFailure0676(errorCode: String): Boolean =
+    errorCode in setOf(
+        "TRIP_DETAIL_LOAD_FAILED_0676",
+        "TRIP_DETAIL_PAYLOAD_DECODE_FAILED_0676",
+        "TRIP_DETAIL_ID_MISMATCH_0676",
+        "TRIP_DETAIL_DOM_EMPTY_0676",
+    )
+
 internal object BlaBlaUnifiedHtmlCapture0605 {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     // 0.1.618: capture may run both isolated profiles concurrently; canonical
@@ -338,9 +384,14 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             return failedProfile0605(store, account, captureId, "UNIFIED_RIDES_HTML_PARSE_FAILED")
         }
 
+        val persistedIndex0676 = store.readRidesIndexJson0582(captureId, profile)
+        val parsedRides0676 = rebindParsedRidesToPersistedTripLinks0676(
+            rides = parsed.rides,
+            links = persistedIndex0676?.tripLinks.orEmpty(),
+        )
         val today = LocalDate.now()
         val now = LocalTime.now()
-        val futureRides = parsed.rides
+        val futureRides = parsedRides0676
             .filter { shouldCaptureRide0605(it, today, now) }
             .filter { ride ->
                 targetDate0661 == null || runCatching { LocalDate.parse(ride.date) }.getOrNull() == targetDate0661
@@ -432,7 +483,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                         var recoveryAttempt0621 = 0
                         while (
                             !captured.operationalComplete &&
-                            captured.evidence.errorCode == "TRIP_DETAIL_HTML_UNVERIFIED" &&
+                            shouldRetryTripDetailFailure0676(captured.evidence.errorCode) &&
                             recoveryAttempt0621 < TRANSPORT_RECOVERY_ATTEMPTS_0621
                         ) {
                             recoveryAttempt0621++
@@ -526,7 +577,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
 
                         if (
                             !captured.operationalComplete &&
-                            captured.evidence.errorCode == "TRIP_DETAIL_HTML_UNVERIFIED" &&
+                            shouldRetryTripDetailFailure0676(captured.evidence.errorCode) &&
                             recoveryAttempt0621 >= TRANSPORT_RECOVERY_ATTEMPTS_0621
                         ) {
                             transportRecoveryExhausted0621 = true
@@ -1170,14 +1221,35 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 !BlaBlaCollectorUrlModule.isPassenger(finalUrl)
         }
         val detail = decode0605<UnifiedTripDetailEnvelope0605>(detailPage?.payload)
-        if (
-            detailPage == null ||
-            detail == null ||
-            BlaBlaCollectorUrlModule.tripId(detail.detail.url) != ride.tripId ||
-            detail.domHtml.isBlank()
-        ) {
-            return failedTrip0605(ride, capturedAt, detailPage?.finalUrl.orEmpty(), "TRIP_DETAIL_HTML_UNVERIFIED")
+        val observedTripId0676 = detail?.let { BlaBlaCollectorUrlModule.tripId(it.detail.url) }
+        val detailError0676 = tripDetailVerificationError0676(
+            detailPagePresent = detailPage != null,
+            payloadPresent = !detailPage?.payload.isNullOrBlank(),
+            payloadDecoded = detail != null,
+            expectedTripId = ride.tripId,
+            observedTripId = observedTripId0676,
+            domHtmlBytes = detail?.domHtml?.toByteArray(Charsets.UTF_8)?.size ?: 0,
+        )
+        if (detailError0676.isNotBlank()) {
+            UnifiedDebugEventStore.recordAlways(
+                "BLABLACAR_TRIP_DETAIL_REJECTED_0676",
+                definition.uuid,
+                "requestedUrl=${BlaBlaCollectorUrlModule.sanitizeForLog(administrativeUrl)} " +
+                    "finalUrl=${BlaBlaCollectorUrlModule.sanitizeForLog(detailPage?.finalUrl)} " +
+                    "expectedTripKey=${seatSyncDiagnosticKey(ride.tripId)} " +
+                    "observedTripKey=${seatSyncDiagnosticKey(observedTripId0676.orEmpty())} " +
+                    "detailPagePresent=${detailPage != null} payloadPresent=${!detailPage?.payload.isNullOrBlank()} " +
+                    "payloadDecoded=${detail != null} domBytes=${detail?.domHtml?.toByteArray(Charsets.UTF_8)?.size ?: 0} " +
+                    "errorCode=$detailError0676",
+            )
+            return failedTrip0605(
+                ride = ride,
+                capturedAt = capturedAt,
+                finalUrl = detailPage?.finalUrl.orEmpty(),
+                errorCode = detailError0676,
+            )
         }
+        require(detail != null)
 
         val htmlEvidence = runCatching {
             store.writeTripHtml0605(captureId, definition.uuid, ride.tripId, detail.domHtml)
