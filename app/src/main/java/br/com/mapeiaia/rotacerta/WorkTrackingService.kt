@@ -7,8 +7,10 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.location.Location
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.work.BackoffPolicy
@@ -19,6 +21,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -29,9 +32,13 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
 class WorkTrackingService : Service() {
@@ -41,6 +48,11 @@ class WorkTrackingService : Service() {
     private var locationCallback: LocationCallback? = null
     private val uploadScope0668 = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val uploadInFlight0668 = AtomicBoolean(false)
+    private val watchdogInFlight0670 = AtomicBoolean(false)
+    private var heartbeatJob0670: Job? = null
+    @Volatile private var latestPoint0670: WorkTrackPoint? = null
+    @Volatile private var lastGpsCallbackAtMillis0670: Long = 0L
+    private var wakeLock0670: PowerManager.WakeLock? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -61,6 +73,9 @@ class WorkTrackingService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        heartbeatJob0670?.cancel()
+        heartbeatJob0670 = null
+        releaseWakeLock0670()
         removeLocationUpdates()
         uploadScope0668.cancel()
         super.onDestroy()
@@ -75,27 +90,23 @@ class WorkTrackingService : Service() {
         }
         startForeground(NOTIFICATION_ID, buildNotification())
         if (!repository.isTrackingActive()) repository.markTrackingStarted()
+        if (latestPoint0670 == null) {
+            val floor0670 = repository.sessionStartedAtMillis() ?: System.currentTimeMillis()
+            latestPoint0670 = repository.readAllPoints().lastOrNull { it.recordedAtMillis >= floor0670 }
+        }
+        startHeartbeatLoop0670()
         if (locationCallback != null) return
 
         val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, UPDATE_INTERVAL_MS)
             .setMinUpdateIntervalMillis(MIN_UPDATE_INTERVAL_MS)
-            .setMinUpdateDistanceMeters(MIN_UPDATE_DISTANCE_METERS)
+            .setMinUpdateDistanceMeters(0f)
+            .setMaxUpdateDelayMillis(UPDATE_INTERVAL_MS)
             .setWaitForAccurateLocation(false)
             .build()
         val callback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 try {
-                    result.locations.forEach { location ->
-                        if (location.latitude !in -90.0..90.0 || location.longitude !in -180.0..180.0) return@forEach
-                        repository.append(
-                            WorkTrackPoint(
-                                coordinate = Coordinate(location.latitude, location.longitude),
-                                recordedAtMillis = location.time.takeIf { it > 0L } ?: System.currentTimeMillis(),
-                                accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() },
-                                speedMetersPerSecond = location.speed.takeIf { location.hasSpeed() },
-                            ),
-                        )
-                    }
+                    result.locations.forEach(::acceptLocation0670)
                     scheduleRemoteSync0668()
                 } catch (error0172: Exception) {
                     UnifiedDebugEventStore.record(
@@ -108,7 +119,21 @@ class WorkTrackingService : Service() {
         }
         locationCallback = callback
         runCatching { locationClient.requestLocationUpdates(request, callback, mainLooper) }
-            .onFailure {
+            .onSuccess { task0670 ->
+                task0670.addOnFailureListener { error0670 ->
+                    UnifiedDebugEventStore.recordAlways(
+                        "LIVE_GPS_TRACKER_REQUEST_FAILED_0670",
+                        packageName,
+                        "type=${error0670::class.java.simpleName}",
+                    )
+                }
+            }
+            .onFailure { error0670 ->
+                UnifiedDebugEventStore.recordAlways(
+                    "LIVE_GPS_TRACKER_REQUEST_THROWN_0670",
+                    packageName,
+                    "type=${error0670::class.java.simpleName}",
+                )
                 repository.markTrackingStopped()
                 stopSelf()
             }
@@ -125,12 +150,108 @@ class WorkTrackingService : Service() {
                 } while (synced && shareManager0668.hasPendingPoints())
             } finally {
                 uploadInFlight0668.set(false)
-                if (shareManager0668.hasPendingPoints()) scheduleRemoteSync0668()
             }
         }
     }
 
+    private fun acceptLocation0670(location: Location) {
+        if (location.latitude !in -90.0..90.0 || location.longitude !in -180.0..180.0) return
+        val point0670 = WorkTrackPoint(
+            coordinate = Coordinate(location.latitude, location.longitude),
+            recordedAtMillis = location.time.takeIf { it > 0L } ?: System.currentTimeMillis(),
+            accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() },
+            speedMetersPerSecond = location.speed.takeIf { location.hasSpeed() },
+        )
+        val previous0670 = latestPoint0670
+        if (previous0670 == null || point0670.recordedAtMillis > previous0670.recordedAtMillis) {
+            repository.append(point0670)
+            latestPoint0670 = point0670
+        }
+        lastGpsCallbackAtMillis0670 = System.currentTimeMillis()
+    }
+
+    private fun startHeartbeatLoop0670() {
+        if (heartbeatJob0670?.isActive == true) return
+        heartbeatJob0670 = uploadScope0668.launch {
+            while (isActive) {
+                val sharing0670 = shareManager0668.hasActiveShares()
+                updateWakeLock0670(sharing0670)
+                if (sharing0670) {
+                    val now0670 = System.currentTimeMillis()
+                    if (
+                        lastGpsCallbackAtMillis0670 <= 0L ||
+                        now0670 - lastGpsCallbackAtMillis0670 >= GPS_WATCHDOG_AFTER_MS
+                    ) {
+                        requestWatchdogLocation0670()
+                    }
+                    runCatching {
+                        shareManager0668.sendHeartbeat0670(
+                            latestPoint = latestPoint0670,
+                            nowMillis = System.currentTimeMillis(),
+                        )
+                    }
+                    scheduleRemoteSync0668()
+                }
+                delay(HEARTBEAT_INTERVAL_MS)
+            }
+        }
+    }
+
+    @android.annotation.SuppressLint("MissingPermission")
+    private suspend fun requestWatchdogLocation0670() {
+        if (!hasLocationPermission()) return
+        if (!watchdogInFlight0670.compareAndSet(false, true)) return
+        try {
+            val request0670 = CurrentLocationRequest.Builder()
+                .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
+                .setMaxUpdateAgeMillis(5_000L)
+                .setDurationMillis(GPS_WATCHDOG_REQUEST_TIMEOUT_MS)
+                .build()
+            val location0670 = locationClient.getCurrentLocation(request0670, null).await()
+            if (location0670 != null) {
+                acceptLocation0670(location0670)
+                scheduleRemoteSync0668()
+            }
+        } catch (error0670: Exception) {
+            UnifiedDebugEventStore.record(
+                "LIVE_GPS_TRACKER_WATCHDOG_FAILURE_0670",
+                packageName,
+                "type=${error0670::class.java.simpleName}",
+            )
+        } finally {
+            watchdogInFlight0670.set(false)
+        }
+    }
+
+    private fun updateWakeLock0670(required0670: Boolean) {
+        if (!required0670) {
+            releaseWakeLock0670()
+            return
+        }
+        val current0670 = wakeLock0670
+        if (current0670?.isHeld == true) return
+        val manager0670 = getSystemService(PowerManager::class.java) ?: return
+        val lock0670 = manager0670.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "$packageName:LiveGpsTracker0670",
+        ).apply {
+            setReferenceCounted(false)
+            acquire()
+        }
+        wakeLock0670 = lock0670
+    }
+
+    private fun releaseWakeLock0670() {
+        wakeLock0670?.let { lock0670 ->
+            if (lock0670.isHeld) runCatching { lock0670.release() }
+        }
+        wakeLock0670 = null
+    }
+
     private fun stopTracking() {
+        heartbeatJob0670?.cancel()
+        heartbeatJob0670 = null
+        releaseWakeLock0670()
         repository.markTrackingStopped()
         removeLocationUpdates()
         val hadSharedSession0668 = shareManager0668.hasActiveShares()
@@ -205,7 +326,9 @@ class WorkTrackingService : Service() {
         private const val NOTIFICATION_ID = 12101
         private const val UPDATE_INTERVAL_MS = 5_000L
         private const val MIN_UPDATE_INTERVAL_MS = 2_000L
-        private const val MIN_UPDATE_DISTANCE_METERS = 8f
+        private const val HEARTBEAT_INTERVAL_MS = 5_000L
+        private const val GPS_WATCHDOG_AFTER_MS = 15_000L
+        private const val GPS_WATCHDOG_REQUEST_TIMEOUT_MS = 10_000L
     }
 }
 
