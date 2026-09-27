@@ -45,7 +45,7 @@ jobs:
           grep -Fq 'tracking.html#' app/src/main/java/br/com/mapeiaia/rotacerta/LiveTrackingShare0668.kt
           grep -Fq 'passengerTrackingExpiry0668' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
           grep -Fq 'createLiveTracking0668' trip-platform/functions/index.js
-          grep -Fq '/v1/public/tracking/' trip-platform/functions/index.js
+          grep -Fq 'parts[2] === "tracking"' trip-platform/functions/index.js
           grep -Fq 'PASSENGER_DESTINATION_RADIUS_METERS_0668' trip-platform/functions/live-tracking-0668.js
           grep -Fq 'LIVE_TRACKING_PUBLIC_0668' trip-platform/public/tracking.js
           git diff --check fbc7bd1105030d4bdc51856940e13c24382ffc0f HEAD
