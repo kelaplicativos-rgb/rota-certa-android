@@ -3071,6 +3071,25 @@ private fun linkPassengerProfileLegacyMetadata0494(
     return true
 }
 
+internal fun passengerBoardingTimeMillis0672(
+    entry: TripTimelineEntry,
+    trip: Trip,
+    row: EnhancedPassengerCardRow,
+): Long? {
+    val boardingIndex0672 = row.boardingStopIndex ?: return null
+    val stops0672 = tripChronologicalStops0667(
+        trip = trip,
+        departureAtMillis = entry.departureAtMillis,
+        arrivalAtMillis = entry.arrivalAtMillis,
+    )
+    val boardingStop0672 = stops0672.getOrNull(boardingIndex0672) ?: return null
+    return if (boardingIndex0672 == 0) {
+        boardingStop0672.timeMillis ?: entry.departureAtMillis
+    } else {
+        boardingStop0672.timeMillis
+    }
+}
+
 internal fun passengerConfirmationMessage(
     entry: TripTimelineEntry,
     row: EnhancedPassengerCardRow,
@@ -3146,17 +3165,33 @@ internal fun passengerQuickMessageText0656(
     entry: TripTimelineEntry,
     row: EnhancedPassengerCardRow,
     type: PassengerQuickMessageType0656,
+    trip: Trip? = null,
     localeTag: String = "pt-BR",
     vehicleMakeModel: String = "",
     vehicleColor: String = "",
 ): String {
     val locale = java.util.Locale.forLanguageTag(localeTag.ifBlank { "pt-BR" })
-    val departure = java.time.Instant.ofEpochMilli(entry.departureAtMillis)
-        .atZone(java.time.ZoneId.systemDefault())
-    val dateTime = java.time.format.DateTimeFormatter
-        .ofPattern("EEEE, d 'de' MMMM, 'às' HH'h'mm", locale)
-        .format(departure)
-        .replaceFirstChar { ch -> if (ch.isLowerCase()) ch.titlecase(locale) else ch.toString() }
+    val zone0672 = java.time.ZoneId.systemDefault()
+    val boardingMillis0672 = if (trip != null) {
+        passengerBoardingTimeMillis0672(entry, trip, row)
+    } else {
+        // Compatibility for non-canonical callers only. Operational UI always supplies trip.
+        entry.departureAtMillis
+    }
+    val boarding0672 = boardingMillis0672?.let { millis0672 ->
+        java.time.Instant.ofEpochMilli(millis0672).atZone(zone0672)
+    }
+    val dateTime0672 = boarding0672?.let { date0672 ->
+        java.time.format.DateTimeFormatter
+            .ofPattern("EEEE, d 'de' MMMM, 'às' HH'h'mm", locale)
+            .format(date0672)
+            .replaceFirstChar { ch -> if (ch.isLowerCase()) ch.titlecase(locale) else ch.toString() }
+    }
+    val clock0672 = boarding0672?.let { date0672 ->
+        java.time.format.DateTimeFormatter.ofPattern("HH'h'mm", locale).format(date0672)
+    }
+    val scheduleLine0672 = clock0672?.let { "Saída prevista às $it." }
+        ?: "Horário previsto do embarque ainda não disponível."
     val name = row.name.ifBlank { "passageiro" }
     val origin = row.boarding?.trim()?.takeIf(String::isNotEmpty) ?: entry.origin.trim()
     val destination = row.dropoff?.trim()?.takeIf(String::isNotEmpty) ?: entry.destination.trim()
@@ -3171,16 +3206,21 @@ internal fun passengerQuickMessageText0656(
         PassengerQuickMessageType0656.CONFIRM_NOW -> buildString {
             append("Olá, ").append(name).append("! Confirmando sua viagem:\n\n")
             append(origin).append(" → ").append(destination).append("\n")
-            append(dateTime).append(".\n\nEstá tudo certo?")
+            if (dateTime0672 != null) {
+                append(dateTime0672).append(".")
+            } else {
+                append("Horário previsto do embarque ainda não disponível.")
+            }
+            append("\n\nEstá tudo certo?")
         }
         PassengerQuickMessageType0656.CONFIRM_TOMORROW ->
             "Oi! Passando para confirmar nossa viagem amanhã 👍\n\n" +
-                "Saída no horário combinado.\n" +
+                scheduleLine0672 + "\n" +
                 "Perto te envio a localização em tempo real 🚗" +
                 vehicleBlock
         PassengerQuickMessageType0656.CONFIRM_ONE_HOUR ->
             "Oi, $name! Confirmando nossa viagem daqui a aproximadamente 1 hora 👍\n\n" +
-                "Saída no horário combinado.\n" +
+                scheduleLine0672 + "\n" +
                 "Em breve envio a localização em tempo real 🚗" +
                 vehicleBlock
         PassengerQuickMessageType0656.AT_LOCATION ->
