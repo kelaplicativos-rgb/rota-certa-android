@@ -674,7 +674,7 @@ private fun OperationalTripBrowserCard0563(
                     canonicalBookings0494 = bookings0654,
                     showTripActions0549 = false,
                     compactEmbeddedControls0593 = true,
-                    embedChronologicalStops0667 = true,
+                    segmentLoads0671 = row.segmentLoads0602,
                 )
             } else {
                 // Fail-closed fallback: without the canonical Trip there is no safe stop/passenger
@@ -721,81 +721,8 @@ private fun OperationalTripBrowserCard0563(
                 }
             }
 
-            // 0.1.603 — informação por trecho só existe na UI quando a topologia,
-            // capacidade e ocupação passaram pelo gate canônico de verdade.
-            // Sem prova suficiente, o bloco inteiro some: não exibimos aproximações.
-            if (row.segmentLoads0602.isNotEmpty()) {
-                Text(
-                    text = "Vagas por trecho",
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                row.segmentLoads0602.forEach { load0602 ->
-                    val capacity0602 = entry.capacity
-                    val available0602 = load0602.availableSeats.coerceAtLeast(0)
-                    val availabilityLabel0602 = when (available0602) {
-                        0 -> "LOTADO"
-                        1 -> "1 vaga"
-                        else -> "${available0602} vagas"
-                    }
-                    val dots0602 = capacity0602.takeIf { it in 1..12 }?.let { capacity ->
-                        val occupiedDots = load0602.occupiedSeats.coerceIn(0, capacity)
-                        "●".repeat(occupiedDots) + "○".repeat((capacity - occupiedDots).coerceAtLeast(0))
-                    }.orEmpty()
-                    val occupancy0602 =
-                        "${load0602.passengerSeats.coerceAtLeast(0)}/${capacity0602}"
-                    val blocked0602 = load0602.blockedSeats.coerceAtLeast(0)
-                    val overbooking0602 = load0602.overbookingSeats.coerceAtLeast(0)
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(1.dp),
-                        ) {
-                            Text(
-                                text = "${load0602.from.name} → ${load0602.to.name}",
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 2,
-                            )
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                if (dots0602.isNotBlank()) {
-                                    Text(
-                                        text = dots0602,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        maxLines = 1,
-                                    )
-                                }
-                                Text(
-                                    text = "👥 ${occupancy0602}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    maxLines = 1,
-                                )
-                                if (blocked0602 > 0) {
-                                    Text(
-                                        text = "🚫${blocked0602}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        maxLines = 1,
-                                    )
-                                }
-                            }
-                        }
-                        Text(
-                            text = if (overbooking0602 > 0) {
-                                "${availabilityLabel0602} +${overbooking0602}"
-                            } else {
-                                availabilityLabel0602
-                            },
-                            style = MaterialTheme.typography.titleSmall,
-                            maxLines = 1,
-                        )
-                    }
-                }
-            }
-
+            // 0.1.671 — horários, vagas e PAX reais são renderizados pela
+            // mesma seção de passageiros acima. Não existe uma segunda linha de ocupação.
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
