@@ -1233,7 +1233,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         if (detailError0676.isNotBlank()) {
             UnifiedDebugEventStore.recordAlways(
                 "BLABLACAR_TRIP_DETAIL_REJECTED_0676",
-                definition.uuid,
+                webView.context.applicationContext.packageName,
                 "requestedUrl=${BlaBlaCollectorUrlModule.sanitizeForLog(administrativeUrl)} " +
                     "finalUrl=${BlaBlaCollectorUrlModule.sanitizeForLog(detailPage?.finalUrl)} " +
                     "expectedTripKey=${seatSyncDiagnosticKey(ride.tripId)} " +
@@ -1249,6 +1249,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 errorCode = detailError0676,
             )
         }
+        require(detailPage != null)
         require(detail != null)
 
         val htmlEvidence = runCatching {
