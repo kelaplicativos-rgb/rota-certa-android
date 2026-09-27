@@ -1,0 +1,228 @@
+name: Live GPS tracker 0.1.670 APK and server
+
+on:
+  push:
+    branches:
+      - 'agent/live-gps-tracker-0.1.670'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-gps-tracker-0670-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-deploy-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: ''
+      ROTA_CERTA_TARGET_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: agent/live-gps-tracker-0.1.670
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.ROTA_CERTA_TARGET_SHA }}
+
+      - name: Prove exact 0.1.670 source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_TARGET_SHA"
+          echo "ROTA_CERTA_GIT_SHA=$ROTA_CERTA_TARGET_SHA" >> "$GITHUB_ENV"
+          grep -Fq 'releaseVersionName = "0.1.670"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 5_961' app/build.gradle.kts
+          grep -Fq '"version": "0.1.670"' app/src/main/assets/release_history.json
+          grep -Fq 'LIVE_TRACKING_POINTS_SYNCED_0668' app/src/main/java/br/com/mapeiaia/rotacerta/LiveTrackingShare0668.kt
+          grep -Fq '🛡 Família' app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingActivity.kt
+          grep -Fq 'shortcut=LIVE_TRACKING_0668' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'tracking.html#' app/src/main/java/br/com/mapeiaia/rotacerta/LiveTrackingShare0668.kt
+          grep -Fq 'passengerTrackingExpiry0668' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'createLiveTracking0668' trip-platform/functions/index.js
+          grep -Fq 'parts[2] === "tracking"' trip-platform/functions/index.js
+          grep -Fq 'PASSENGER_DESTINATION_RADIUS_METERS_0668' trip-platform/functions/live-tracking-0668.js
+          grep -Fq 'passengerDistanceToDestinationMeters0669(current, share)' trip-platform/functions/live-tracking-0668.js
+          grep -Fq 'latestRecordedAt < created' trip-platform/functions/live-tracking-0668.js
+          grep -Fq 'Aguardando localização do motorista' trip-platform/public/tracking.js
+          grep -Fq 'HEARTBEAT_INTERVAL_MS = 5_000L' app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingService.kt
+          grep -Fq 'GPS_WATCHDOG_AFTER_MS = 15_000L' app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingService.kt
+          grep -Fq '.setMinUpdateDistanceMeters(0f)' app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingService.kt
+          grep -Fq 'sendHeartbeat0670' app/src/main/java/br/com/mapeiaia/rotacerta/LiveTrackingShare0668.kt
+          grep -Fq '/v1/driver/tracking/heartbeat' app/src/main/java/br/com/mapeiaia/rotacerta/LiveTrackingShare0668.kt
+          grep -Fq 'android.permission.WAKE_LOCK' app/src/main/AndroidManifest.xml
+          grep -Fq 'async function postHeartbeat0670' trip-platform/functions/live-tracking-0668.js
+          grep -Fq 'trackerProtocolVersion: "0670"' trip-platform/functions/live-tracking-0668.js
+          grep -Fq 'LIVE_GPS_TRACKER_PUBLIC_0670' trip-platform/public/tracking.js
+          grep -Fq 'LIVE_GPS_TRACKER_PUBLIC_0670' trip-platform/public/tracking.js
+          git diff --check b30e8636280e2e786d90b9fc211ffec3edb461dd HEAD
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate backend and public tracking
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/functions/live-tracking-0668.js
+          node --check trip-platform/public/tracking.js
+          node --test trip-platform/functions/test/live-tracking-0668.test.js
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run live tracking and inherited Android regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.LiveTrackingShare0668Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.ChronologicalPassengerCards0667Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalShortcuts0656Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripCardRefresh0663Test' \
+            --tests 'br.com.mapeiaia.rotacerta.SafetyRecorder0666ContractTest' \
+            --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0668-tests.log
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0668-assemble.log
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_TARGET_SHA"
+
+      - name: Prove APK identity signing runtime markers and final SHA
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/android-0668-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/android-0668-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/android-0668-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5961'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.670'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/android-0668-apksigner.txt
+          grep -Fq 'Verified' /tmp/android-0668-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0668-dex-strings.txt
+          grep -Fq "$ROTA_CERTA_TARGET_SHA" /tmp/android-0668-dex-strings.txt
+          grep -Fq 'LIVE_TRACKING_POINTS_SYNCED_0668' /tmp/android-0668-dex-strings.txt
+          grep -Fq '/v1/driver/tracking/points' /tmp/android-0668-dex-strings.txt
+          grep -Fq '/v1/driver/tracking/heartbeat' /tmp/android-0668-dex-strings.txt
+          grep -Fq 'LIVE_GPS_TRACKER_REQUEST_FAILED_0670' /tmp/android-0668-dex-strings.txt
+          grep -Fq 'tracking.html#' /tmp/android-0668-dex-strings.txt
+          grep -Fq 'ChronologicalTripStopLine0667' /tmp/android-0668-dex-strings.txt
+          grep -Fq 'SAFETY_AUDIO_STARTED_0666' /tmp/android-0668-dex-strings.txt
+
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.670-5961-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.670"
+            echo "versionCode=5961"
+            echo "branch=agent/live-gps-tracker-0.1.670"
+            echo "commit=$ROTA_CERTA_TARGET_SHA"
+            echo "deviceTarget=Samsung SM-S911B / Android 16 / API 36"
+            echo "privateTrackingDefault=PRESERVED"
+            echo "familyShare=SERVER_LIVE_LINK"
+            echo "passengerShare=PER_PASSENGER_TEMPORARY"
+            echo "passengerPreShareHistory=BLOCKED"
+            echo "passengerDistanceBeforeFreshGps=NULL"
+            echo "passengerAutoCloseBeforeFreshGps=BLOCKED"
+            echo "trackerHeartbeat=5s"
+            echo "gpsWatchdog=15s"
+            echo "stationaryHeartbeat=ACTIVE"
+            echo "batteryHeartbeat=ACTIVE"
+            echo "wakeLockWhileSharing=ACTIVE"
+            echo "offlinePointQueue=PRESERVED_LOCAL"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee live-gps-tracker-0670-proof.txt
+
+      - name: Authenticate Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy exact backend SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          gcloud functions deploy tripApi \
+            --gen2 \
+            --project="$PROJECT" \
+            --region=southamerica-east1 \
+            --runtime=nodejs20 \
+            --source=trip-platform/functions \
+            --entry-point=tripApi \
+            --trigger-http \
+            --allow-unauthenticated \
+            --clear-secrets \
+            --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$ROTA_CERTA_TARGET_SHA" \
+            --quiet
+
+      - name: Deploy tracking page exact SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+          chmod 600 /tmp/firebase-sa.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          npx --yes firebase-tools@14.12.0 deploy --only hosting --project "$PROJECT" --config trip-platform/firebase.json --non-interactive
+
+      - name: Smoke live exact SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 20 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health-0668.json
+          grep -Fq '"ok":true' /tmp/live-health-0668.json
+          grep -Fq "\"backendGitSha\":\"$ROTA_CERTA_TARGET_SHA\"" /tmp/live-health-0668.json
+          curl --retry 10 --retry-delay 2 --fail --silent --show-error "$BASE/tracking.html?v=$ROTA_CERTA_TARGET_SHA" | tee /tmp/live-tracking-0668.html
+          grep -Fq 'Acompanhamento Rota Certa' /tmp/live-tracking-0668.html
+          curl --retry 10 --retry-delay 2 --fail --silent --show-error "$BASE/tracking.js?v=$ROTA_CERTA_TARGET_SHA" | tee /tmp/live-tracking-0668.js
+          grep -Fq 'LIVE_GPS_TRACKER_PUBLIC_0670' /tmp/live-tracking-0668.js
+          CODE="$(curl --silent --show-error -o /tmp/live-tracking-unknown-0668.json -w '%{http_code}' "$BASE/v1/public/tracking/abcdefghijklmnopqrstuv0123456789ABCDEFG")"
+          test "$CODE" = "404"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-live-gps-tracker-0.1.670-${{ env.ROTA_CERTA_TARGET_SHA }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            live-gps-tracker-0670-proof.txt
+            /tmp/android-0668-tests.log
+            /tmp/android-0668-assemble.log
+            /tmp/android-0668-aapt.txt
+            /tmp/android-0668-apksigner.txt
+            /tmp/android-0668-zip-integrity.txt
+            /tmp/live-health-0668.json
+            /tmp/live-tracking-0668.html
+            /tmp/live-tracking-0668.js
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30
