@@ -55,6 +55,8 @@ function publicTrackingPoints0668(points, share) {
 function shouldClosePassengerShare0668(share, latest, nowMillis = Date.now()) {
   if (!share || share.scope !== "PASSENGER" || !share.active || !latest) return false;
   const created = Number(share.createdAtMillis || 0);
+  const latestRecordedAt = Number(latest.recordedAtMillis || 0);
+  if (latestRecordedAt < created) return false;
   if (nowMillis - created < PASSENGER_MIN_ACTIVE_MILLIS_0668) return false;
   const destLat = finiteNumber0668(share.destinationLatitude);
   const destLon = finiteNumber0668(share.destinationLongitude);
@@ -365,10 +367,11 @@ function createLiveTracking0668({ db, requireDriver }) {
       sessionStartedAtMillis: session.startedAtMillis,
     });
 
+    const current = points.length ? normalizePoint0668(points[points.length - 1]) : null;
     const destinationLatitude = share.scope === "PASSENGER" ? finiteNumber0668(share.destinationLatitude) : null;
     const destinationLongitude = share.scope === "PASSENGER" ? finiteNumber0668(share.destinationLongitude) : null;
-    const distanceToDestinationMeters = latest && validCoordinate0668(destinationLatitude, destinationLongitude)
-      ? Math.round(distanceMeters0668(latest.latitude, latest.longitude, destinationLatitude, destinationLongitude))
+    const distanceToDestinationMeters = current && validCoordinate0668(destinationLatitude, destinationLongitude)
+      ? Math.round(distanceMeters0668(current.latitude, current.longitude, destinationLatitude, destinationLongitude))
       : null;
 
     return trackingJson0668(res, 200, {
@@ -377,10 +380,10 @@ function createLiveTracking0668({ db, requireDriver }) {
       driverDisplayName: cleanText0668(session.driverDisplayName, 120),
       startedAtMillis: share.scope === "PASSENGER" ? Number(share.createdAtMillis || floor) : Number(session.startedAtMillis || floor),
       expiresAtMillis: Number(share.expiresAtMillis || 0),
-      lastUpdatedAtMillis: Number(session.latestPointAtMillis || 0),
+      lastUpdatedAtMillis: current ? Number(current.recordedAtMillis || 0) : 0,
       batteryPercent: session.batteryPercent == null ? null : Number(session.batteryPercent),
       points,
-      current: latest && latest.recordedAtMillis >= floor ? latest : null,
+      current,
       destination: share.scope === "PASSENGER" && validCoordinate0668(destinationLatitude, destinationLongitude) ? {
         latitude: destinationLatitude,
         longitude: destinationLongitude,
