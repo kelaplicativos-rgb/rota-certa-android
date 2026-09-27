@@ -248,6 +248,33 @@ internal data class BlaBlaTargetedHtmlRefreshResult0607(
     val evidencePath: String = "",
 )
 
+internal enum class TargetedHtmlAcceptance0675 {
+    FULL_COMMIT,
+    CORE_COMMIT_PRIVATE_PENDING,
+    REJECT,
+}
+
+internal fun targetedHtmlCoreOperationalComplete0675(
+    evidence: BlaBlaRidesTripCapture0605,
+): Boolean =
+    evidence.tripId.isNotBlank() &&
+        evidence.normalized &&
+        evidence.passengerRosterComplete &&
+        evidence.itineraryAuthoritative &&
+        evidence.passengerSegmentsResolved &&
+        evidence.publishedSeats != null &&
+        evidence.publicTripUrl.isNotBlank()
+
+internal fun targetedHtmlAcceptance0675(
+    evidence: BlaBlaRidesTripCapture0605,
+    operationalComplete: Boolean,
+): TargetedHtmlAcceptance0675 = when {
+    operationalComplete -> TargetedHtmlAcceptance0675.FULL_COMMIT
+    targetedHtmlCoreOperationalComplete0675(evidence) ->
+        TargetedHtmlAcceptance0675.CORE_COMMIT_PRIVATE_PENDING
+    else -> TargetedHtmlAcceptance0675.REJECT
+}
+
 internal fun globalHtmlAtomicCommitEligible0609(
     manifestResult: String,
     profileStatuses: List<String>,
@@ -1013,11 +1040,15 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                     errorCode = captured.evidence.errorCode.ifBlank { "HTML_TARGET_NORMALIZATION_FAILED" },
                     evidencePath = captured.evidence.htmlFile,
                 )
-            if (!captured.operationalComplete) {
+            val acceptance0675 = targetedHtmlAcceptance0675(
+                evidence = captured.evidence,
+                operationalComplete = captured.operationalComplete,
+            )
+            if (acceptance0675 == TargetedHtmlAcceptance0675.REJECT) {
                 UnifiedDebugEventStore.recordAlways(
                     "TARGETED_HTML_INCOMPLETE_REJECTED_0615",
                     app.packageName,
-                    "targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} evidencePathPresent=${captured.evidence.htmlFile.isNotBlank()} error=${captured.evidence.errorCode.take(120)} action=PRESERVE_LAST_VALIDATED_HTML canonicalWrite=false sessionWrite=false",
+                    "targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} evidencePathPresent=${captured.evidence.htmlFile.isNotBlank()} error=${captured.evidence.errorCode.take(120)} action=PRESERVE_LAST_VALIDATED_HTML canonicalWrite=false sessionWrite=false coreOperationalComplete0675=false",
                 )
                 return BlaBlaTargetedHtmlRefreshResult0607(
                     errorCode = captured.evidence.errorCode.ifBlank { "HTML_TARGET_OPERATIONALLY_INCOMPLETE_0615" },
@@ -1025,8 +1056,18 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                     evidencePath = captured.evidence.htmlFile,
                 )
             }
+            if (acceptance0675 == TargetedHtmlAcceptance0675.CORE_COMMIT_PRIVATE_PENDING) {
+                UnifiedDebugEventStore.recordAlways(
+                    "TARGETED_HTML_PRIVATE_PENDING_ACCEPTED_0675",
+                    app.packageName,
+                    "targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} " +
+                        "coreOperationalComplete0675=true privateEnrichmentComplete=false " +
+                        "missing=PASSENGER_DETAILS canonicalWrite=true sessionContentWrite=false " +
+                        "scope=TRIP_ONLY preserveLastPrivateValues=true evidencePathPresent=${captured.evidence.htmlFile.isNotBlank()}",
+                )
+            }
 
-            if (!scopedStateIsolation0662) {
+            if (!scopedStateIsolation0662 && acceptance0675 == TargetedHtmlAcceptance0675.FULL_COMMIT) {
                 sessionStore.saveSync(
                     account = account,
                     lastUrl = captured.evidence.finalUrl.ifBlank { administrativeUrl },
@@ -1040,18 +1081,31 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 )
                 val response = sessionStore.combinedResponse(BlaBlaDynamicAccountRegistry(app).list())
                 BlaBlaCollectorStateStore(app).saveResponse(response, preserveOnPartial = false)
+            } else if (!scopedStateIsolation0662) {
+                UnifiedDebugEventStore.recordAlways(
+                    "TARGETED_HTML_PARTIAL_SESSION_ISOLATED_0675",
+                    app.packageName,
+                    "targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} " +
+                        "coreOperationalComplete0675=true privateEnrichmentComplete=false " +
+                        "sessionContentWrite=false canonicalCallerMayCommit=true",
+                )
             } else {
                 UnifiedDebugEventStore.recordAlways(
                     "BLABLACAR_TARGETED_SCOPE_ISOLATED_0662",
                     app.packageName,
                     "targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} scope=TRIP_ONLY " +
-                        "combinedResponse=false sessionContentWrite=false canonicalHtmlOnly=true",
+                        "combinedResponse=false sessionContentWrite=false canonicalHtmlOnly=true " +
+                        "privateEnrichmentPending=${acceptance0675 == TargetedHtmlAcceptance0675.CORE_COMMIT_PRIVATE_PENDING}",
                 )
             }
             UnifiedDebugEventStore.recordAlways(
                 "BLABLACAR_TARGETED_HTML_REFRESH_0607",
                 app.packageName,
-                "targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} normalized=true operationalComplete=true exactCardReset=true staleFieldInheritance=false evidencePathPresent=${captured.evidence.htmlFile.isNotBlank()} authority=HTML_DIRECT_0607 legacyCollector=false scopedIsolation0662=$scopedStateIsolation0662",
+                "targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} normalized=true " +
+                    "operationalComplete=${captured.operationalComplete} coreOperationalComplete0675=true " +
+                    "privateEnrichmentComplete=${captured.operationalComplete} " +
+                    "exactCardReset=true staleFieldInheritance=false evidencePathPresent=${captured.evidence.htmlFile.isNotBlank()} " +
+                    "authority=HTML_DIRECT_0607 legacyCollector=false scopedIsolation0662=$scopedStateIsolation0662",
             )
             BlaBlaTargetedHtmlRefreshResult0607(
                 trip = trip,

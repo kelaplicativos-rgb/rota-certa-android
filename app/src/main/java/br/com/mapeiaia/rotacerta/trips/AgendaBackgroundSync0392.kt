@@ -1629,6 +1629,16 @@ internal object AgendaBackgroundSync0392 {
                 startedAtMillis = startedAt,
                 finishedAtMillis = System.currentTimeMillis(),
             )
+        val privatePendingAtCapture0675 = !htmlResult.operationalComplete
+        if (privatePendingAtCapture0675) {
+            UnifiedDebugEventStore.recordAlways(
+                "TARGET_CARD_CORE_COMMIT_PRIVATE_PENDING_0675",
+                appContext.packageName,
+                "targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} " +
+                    "scope=TRIP_ONLY coreOperationalComplete0675=true " +
+                    "privateEnrichmentComplete=false canonicalCommitAllowed=true",
+            )
+        }
         if (
             !capturedTrip0662.profile_uuid.trim().equals(target.profileUuid.trim(), ignoreCase = true) ||
             capturedTrip0662.trip_id?.trim() != target.tripId
@@ -1818,9 +1828,13 @@ internal object AgendaBackgroundSync0392 {
                 " skipped=${batch.skippedTrips} blocked=${batch.blockedTrips}" +
                 " publicationQueued=${batch.publicationQueued} outboxDelivered=$delivered" +
                 " exactTargetOnly=true authority=HTML_DIRECT_0607 legacyCollector=false scopedIsolation0662=true" +
+                " htmlOperationalComplete=${htmlResult.operationalComplete}" +
+                " coreOperationalComplete0675=true" +
+                " privatePendingAtCapture0675=$privatePendingAtCapture0675" +
                 " privateEnrichment=$privateCollectorStatus0646" +
                 " privateBookings=${privateResult0646.enrichedBookings}" +
-                " privateStillMissing=$remainingPrivateMissing0646",
+                " privateStillMissing=$remainingPrivateMissing0646" +
+                " privateFieldsPreserved=true",
         )
         return BlaBlaCommandResult0407(
             commandId = work.commandId,
@@ -2078,6 +2092,25 @@ internal object AgendaBackgroundSync0392 {
         result
     }
 
+    internal fun preserveCanonicalPrivateFields0675(
+        incoming: Booking,
+        existing: Booking?,
+    ): Booking {
+        if (existing == null) return incoming
+        return incoming.copy(
+            passengerId = incoming.passengerId.ifBlank { existing.passengerId },
+            passengerContact = incoming.passengerContact.ifBlank { existing.passengerContact },
+            fareMinorUnits = incoming.fareMinorUnits ?: existing.fareMinorUnits,
+            fareCurrencyCode = incoming.fareCurrencyCode.ifBlank { existing.fareCurrencyCode },
+            boardingAddress = incoming.boardingAddress.ifBlank { existing.boardingAddress },
+            dropoffAddress = incoming.dropoffAddress.ifBlank { existing.dropoffAddress },
+            boardingLatitude = incoming.boardingLatitude ?: existing.boardingLatitude,
+            boardingLongitude = incoming.boardingLongitude ?: existing.boardingLongitude,
+            dropoffLatitude = incoming.dropoffLatitude ?: existing.dropoffLatitude,
+            dropoffLongitude = incoming.dropoffLongitude ?: existing.dropoffLongitude,
+        )
+    }
+
     internal fun materializeCanonicalExternalPrivateBookings0515(
         context: Context,
         store: TripStore,
@@ -2122,8 +2155,10 @@ internal object AgendaBackgroundSync0392 {
                 metadataLookup = identityStore::externalMetadata,
             ).map { booking ->
                 val existing = existingById[booking.id]
-                booking.copy(
-                    tripId = trip.id,
+                preserveCanonicalPrivateFields0675(
+                    incoming = booking.copy(tripId = trip.id),
+                    existing = existing,
+                ).copy(
                     createdAtMillis = existing?.createdAtMillis ?: booking.createdAtMillis,
                     updatedAtMillis = existing?.updatedAtMillis ?: booking.updatedAtMillis,
                 )
@@ -2153,7 +2188,8 @@ internal object AgendaBackgroundSync0392 {
                 "trips=" + candidates.size +
                     " bookings=" + materialized +
                     " staleRemoved=" + removedStale +
-                    " source=CANONICAL_AGENDA_PERSISTED_INPUT collectorDirectRead=false privateValuesLogged=false",
+                    " source=CANONICAL_AGENDA_PERSISTED_INPUT collectorDirectRead=false" +
+                    " privateFieldsPreserved=true privateValuesLogged=false",
             )
         }
         return materialized

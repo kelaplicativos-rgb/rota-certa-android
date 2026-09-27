@@ -2,6 +2,32 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.675",
+      "build": 5966,
+      "commit": null,
+      "branch": "agent/targeted-html-private-pending-0.1.675",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "O refresh HTML de um único card passa a separar completude operacional do enriquecimento privado: roster, itinerário, segmentos, vagas e link público válidos permitem o commit mesmo quando PASSENGER_DETAILS está pendente.",
+        "O caminho parcial aceito continua isolado em TRIP_ONLY, sem gravar conteúdo parcial na sessão global e sem percorrer outras viagens."
+      ],
+      "fixed": [
+        "MISSING_PASSENGER_DETAILS deixa de transformar sozinho um card operacionalmente válido em UNVERIFIED/canonicalWrite=false.",
+        "Valores privados já válidos do passageiro são preservados quando a nova captura não consegue observá-los, evitando apagar telefone, valor ou endereços durante o refresh."
+      ],
+      "improved": [
+        "Telemetria passa a diferenciar coreOperationalComplete0675, privateEnrichmentComplete, privatePendingAtCapture0675 e privateFieldsPreserved.",
+        "O commit canônico continua fail-closed para identidade, roster, itinerário, segmentos, vagas ou link público ausentes."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.674: o refresh individual podia terminar UNVERIFIED e manter o card congelado quando apenas os detalhes privados de passageiros não eram capturados."
+      ],
+      "modulesAffected": ["Viagens", "Central do Dia", "HTML direto", "Passageiros", "Refresh individual", "Build"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.674",
       "build": 5965,
       "commit": null,
