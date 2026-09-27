@@ -1,0 +1,151 @@
+name: Trip detail script resilience 0.1.677 APK
+
+on:
+  push:
+    branches:
+      - 'agent/trip-detail-script-resilience-0.1.677'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trip-detail-script-resilience-0677-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: ''
+      ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: agent/trip-detail-script-resilience-0.1.677
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Prove exact source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
+          D='app/src/main/assets/blablacar/scripts/trip_detail.js'
+          U='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt'
+          grep -Fq 'releaseVersionName = "0.1.677"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 5_968' app/build.gradle.kts
+          grep -Fq '"version": "0.1.677"' app/src/main/assets/release_history.json
+          grep -Fq 'placeKey(previous.label) === placeKey(value)' "$D"
+          grep -Fq 'placeKey(item.label) !== placeKey(values[index - 1].label)' "$D"
+          ! grep -Fq 'key(previous.label) === key(value)' "$D"
+          ! grep -Fq 'key(item.label) !== key(values[index - 1].label)' "$D"
+          grep -Fq "scriptStage: 'trip_detail_0677'" "$D"
+          grep -Fq 'TRIP_DETAIL_SCRIPT_ERROR_0677' "$U"
+          grep -Fq 'action=SKIP_FAILED_CARD_CONTINUE_PROFILE' "$U"
+          ! grep -Fq 'action=STOP_PROFILE_PRESERVE_CANONICAL' "$U"
+          grep -Fq 'capture != null && previous != null' "$U"
+          git diff --check 162b31fd2b7434a111fdcfaa13ebbd531194c523 HEAD
+
+      - name: Execute trip detail JavaScript smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check app/src/main/assets/blablacar/scripts/trip_detail.js
+          node .github/scripts/trip_detail_smoke_0677.mjs
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run targeted and inherited regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TripDetailScriptResilience0677Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.RidesIndexDetailPipeline0676Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectAccountCapture0608Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRidesForensicEvidence0528Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRidesPublicLinkCapture0582Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TargetedHtmlPrivatePending0675Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripCardRefresh0663Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPassengerArtifactCompleteness0658Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPassengerPrivateHtml0657Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaHtmlStopTimes0672Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerQuickOps0673Test' \
+            --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0677-tests.log
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0677-assemble.log
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
+
+      - name: Prove APK identity signing runtime markers and final SHA
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/android-0677-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/android-0677-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/android-0677-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5968'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.677'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/android-0677-apksigner.txt
+          grep -Fq 'Verified' /tmp/android-0677-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0677-dex-strings.txt
+          grep -Fq "$ROTA_CERTA_GIT_SHA" /tmp/android-0677-dex-strings.txt
+          grep -Fq 'TRIP_DETAIL_SCRIPT_ERROR_0677' /tmp/android-0677-dex-strings.txt
+          grep -Fq 'SKIP_FAILED_CARD_CONTINUE_PROFILE' /tmp/android-0677-dex-strings.txt
+          grep -Fq 'BLABLACAR_RIDES_INDEX_LINKS_PERSISTED_0676' /tmp/android-0677-dex-strings.txt
+          grep -Fq 'TARGETED_HTML_PRIVATE_PENDING_ACCEPTED_0675' /tmp/android-0677-dex-strings.txt
+          grep -Fq 'PASSENGER_QUICK_TRACKING_0674' /tmp/android-0677-dex-strings.txt
+
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.677-5968-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.677"
+            echo "versionCode=5968"
+            echo "branch=agent/trip-detail-script-resilience-0.1.677"
+            echo "commit=$ROTA_CERTA_GIT_SHA"
+            echo "deviceTarget=Samsung SM-S911B / Android 16 / API 36"
+            echo "tripDetailScriptSmoke=PASS"
+            echo "scriptErrorClassification=TRIP_DETAIL_SCRIPT_ERROR_0677"
+            echo "failedCardIsolation=CONTINUE_PROFILE"
+            echo "transportRetry=ONLY_RETRYABLE_DETAIL_FAILURES"
+            echo "failedIndexLink=PREVIOUS_PRESERVED"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee trip-detail-script-resilience-0677-proof.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-trip-detail-script-resilience-0.1.677-${{ github.sha }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            trip-detail-script-resilience-0677-proof.txt
+            /tmp/android-0677-tests.log
+            /tmp/android-0677-assemble.log
+            /tmp/android-0677-aapt.txt
+            /tmp/android-0677-apksigner.txt
+            /tmp/android-0677-zip-integrity.txt
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30
