@@ -42,6 +42,7 @@ internal data class TrackingSessionLocal0668(
     val startedAtMillis: Long,
     val shares: List<TrackingShareLocal0668> = emptyList(),
     val lastUploadedAtMillis: Long = 0L,
+    val lastHeartbeatAckAtMillis: Long = 0L,
     val serverRegistered: Boolean = false,
     val active: Boolean = true,
 )
@@ -96,6 +97,19 @@ private data class TrackingPointsRequest0668(
     val sessionId: String,
     val batteryPercent: Int? = null,
     val points: List<TrackingPointPayload0668>,
+)
+
+@Serializable
+private data class TrackingHeartbeatRequest0670(
+    val sessionId: String,
+    val deviceHeartbeatAtMillis: Long,
+    val lastGpsAtMillis: Long = 0L,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val accuracyMeters: Float? = null,
+    val speedMetersPerSecond: Float? = null,
+    val batteryPercent: Int? = null,
+    val trackingActive: Boolean = true,
 )
 
 @Serializable
@@ -284,6 +298,47 @@ internal class LiveTrackingShareManager0668(
         true
     }
 
+    suspend fun sendHeartbeat0670(
+        latestPoint: WorkTrackPoint?,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Boolean = withContext(Dispatchers.IO) {
+        val session = repository.session() ?: return@withContext false
+        if (!session.active || !repository.hasActiveShares(nowMillis)) return@withContext false
+        val settings = runCatching { validatedSettings() }.getOrNull() ?: return@withContext false
+        ensureSessionRemote(settings, session)
+
+        val point = latestPoint?.takeIf {
+            it.recordedAtMillis >= session.startedAtMillis - 60_000L &&
+                it.coordinate.latitude in -90.0..90.0 &&
+                it.coordinate.longitude in -180.0..180.0
+        }
+        val response = TrackingRemoteClient0668(settings).postHeartbeat0670(
+            TrackingHeartbeatRequest0670(
+                sessionId = session.sessionId,
+                deviceHeartbeatAtMillis = nowMillis,
+                lastGpsAtMillis = point?.recordedAtMillis ?: 0L,
+                latitude = point?.coordinate?.latitude,
+                longitude = point?.coordinate?.longitude,
+                accuracyMeters = point?.accuracyMeters,
+                speedMetersPerSecond = point?.speedMetersPerSecond,
+                batteryPercent = batteryPercent(),
+                trackingActive = true,
+            ),
+        )
+        if (!response.ok) return@withContext false
+        repository.session()?.let { current ->
+            if (current.sessionId == session.sessionId) {
+                repository.save(
+                    current.copy(
+                        lastHeartbeatAckAtMillis = max(current.lastHeartbeatAckAtMillis, nowMillis),
+                        serverRegistered = true,
+                    ),
+                )
+            }
+        }
+        true
+    }
+
     suspend fun closeFamilyShare(): Boolean = withContext(Dispatchers.IO) {
         val session = repository.session() ?: return@withContext false
         val share = repository.familyShare() ?: return@withContext false
@@ -402,6 +457,9 @@ private class TrackingRemoteClient0668(
 
     suspend fun postPoints(body: TrackingPointsRequest0668): TrackingAck0668 =
         post("/v1/driver/tracking/points", json.encodeToString(body))
+
+    suspend fun postHeartbeat0670(body: TrackingHeartbeatRequest0670): TrackingAck0668 =
+        post("/v1/driver/tracking/heartbeat", json.encodeToString(body))
 
     suspend fun closeShare(body: TrackingCloseRequest0668): TrackingAck0668 =
         post("/v1/driver/tracking/shares/close", json.encodeToString(body))
