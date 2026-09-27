@@ -126,16 +126,6 @@ internal fun OperationalAllTripsBrowserScreen0563(
         )
     }
     val projectedEntries = projectedTimeline0602.entries
-    val passengerCountByTripId0654 = remember(projectedTimeline0602.bookings) {
-        projectedTimeline0602.bookings
-            .asSequence()
-            .filter { booking ->
-                booking.capacityClaimType != CapacityClaimType.RESERVED_SEAT ||
-                    booking.passengerName.isNotBlank()
-            }
-            .groupingBy(Booking::tripId)
-            .eachCount()
-    }
     val projectedTripsById0602 = remember(projectedTimeline0602.trips) {
         projectedTimeline0602.trips.associateBy(Trip::id)
     }
@@ -171,7 +161,6 @@ internal fun OperationalAllTripsBrowserScreen0563(
         accounts,
         decisionByEntry,
         projectedTripsById0602,
-        passengerCountByTripId0654,
     ) {
         entries.map { entry ->
             val target = resolveBlaBlaTripTarget0407(
@@ -211,9 +200,6 @@ internal fun OperationalAllTripsBrowserScreen0563(
                 nativeRotaCerta0633 = nativeRotaCerta0633,
                 decisionReason = reason,
                 segmentLoads0602 = liveSegmentLoads0602,
-                passengerCount0654 = passengerCountByTripId0654[
-                    canonicalTrip0602?.id ?: entry.localTripId ?: entry.tripId
-                ] ?: 0,
             )
         }
     }
@@ -278,7 +264,6 @@ internal fun OperationalAllTripsBrowserScreen0563(
 
     var nowMillis by remember(rows) { mutableStateOf(System.currentTimeMillis()) }
     var showArchived by remember { mutableStateOf(false) }
-    var expandedTripOperations0654 by remember { mutableStateOf(emptySet<String>()) }
 
     LaunchedEffect(rows.map { it.entry.departureAtMillis }) {
         while (true) {
@@ -519,15 +504,6 @@ internal fun OperationalAllTripsBrowserScreen0563(
                     archived = false,
                     store0654 = store0654,
                     bookings0654 = projectedTimeline0602.bookings.filter { it.tripId == canonicalTripId0654 },
-                    operationsExpanded0654 = canonicalTripId0654 in expandedTripOperations0654,
-                    onToggleOperations0654 = {
-                        expandedTripOperations0654 =
-                            if (canonicalTripId0654 in expandedTripOperations0654) {
-                                expandedTripOperations0654 - canonicalTripId0654
-                            } else {
-                                expandedTripOperations0654 + canonicalTripId0654
-                            }
-                    },
                     onOperationsChanged0654 = { text0654 ->
                         onMessage(text0654)
                         onRefreshLocal()
@@ -570,15 +546,6 @@ internal fun OperationalAllTripsBrowserScreen0563(
                         archived = true,
                         store0654 = store0654,
                         bookings0654 = projectedTimeline0602.bookings.filter { it.tripId == canonicalTripId0654 },
-                        operationsExpanded0654 = canonicalTripId0654 in expandedTripOperations0654,
-                        onToggleOperations0654 = {
-                            expandedTripOperations0654 =
-                                if (canonicalTripId0654 in expandedTripOperations0654) {
-                                    expandedTripOperations0654 - canonicalTripId0654
-                                } else {
-                                    expandedTripOperations0654 + canonicalTripId0654
-                                }
-                        },
                         onOperationsChanged0654 = { text0654 ->
                             onMessage(text0654)
                             onRefreshLocal()
@@ -602,7 +569,6 @@ internal data class OperationalTripBrowserRow0563(
     val nativeRotaCerta0633: Boolean = false,
     val decisionReason: OperationalTripDecisionReason0564? = null,
     val segmentLoads0602: List<SegmentLoad> = emptyList(),
-    val passengerCount0654: Int = 0,
 )
 
 internal fun operationalTimelineSegmentLoads0602(
@@ -628,8 +594,6 @@ private fun OperationalTripBrowserCard0563(
     archived: Boolean,
     store0654: TripStore,
     bookings0654: List<Booking>,
-    operationsExpanded0654: Boolean,
-    onToggleOperations0654: () -> Unit,
     onOperationsChanged0654: (String) -> Unit,
     refreshRunning0663: Boolean,
     onRefreshCard0663: () -> Unit,
@@ -699,58 +663,62 @@ private fun OperationalTripBrowserCard0563(
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(
-                    modifier = Modifier.width(60.dp),
-                    horizontalAlignment = Alignment.End,
-                ) {
-                    Text(departureTime, style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(14.dp))
-                    if (duration != null) {
-                        Text(
-                            duration,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    } else {
-                        Spacer(Modifier.height(16.dp))
-                    }
-                    Spacer(Modifier.height(14.dp))
-                    Text(arrivalTime ?: "—", style = MaterialTheme.typography.titleMedium)
-                }
-
-                Column(
-                    modifier = Modifier.width(34.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text(
-                        text = "●\n│\n│\n●",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(entry.origin, style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(if (duration != null) 42.dp else 46.dp))
-                    Text(entry.destination, style = MaterialTheme.typography.titleMedium)
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("🚗", style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    text = operationalPassengerSummary0568(entry),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            val canonicalTrip0667 = row.canonicalTrip0633
+            if (canonicalTrip0667 != null) {
+                EnhancedPassengerTimelineSection(
+                    entry = entry,
+                    trip = canonicalTrip0667,
+                    store = store0654,
+                    currentCoordinate = null,
+                    onChanged = onOperationsChanged0654,
+                    canonicalBookings0494 = bookings0654,
+                    showTripActions0549 = false,
+                    compactEmbeddedControls0593 = true,
+                    embedChronologicalStops0667 = true,
                 )
+            } else {
+                // Fail-closed fallback: without the canonical Trip there is no safe stop/passenger
+                // association. Keep only the proven origin/destination summary.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(
+                        modifier = Modifier.width(60.dp),
+                        horizontalAlignment = Alignment.End,
+                    ) {
+                        Text(departureTime, style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(14.dp))
+                        if (duration != null) {
+                            Text(
+                                duration,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            Spacer(Modifier.height(16.dp))
+                        }
+                        Spacer(Modifier.height(14.dp))
+                        Text(arrivalTime ?: "—", style = MaterialTheme.typography.titleMedium)
+                    }
+
+                    Column(
+                        modifier = Modifier.width(34.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            text = "●\n│\n│\n●",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(entry.origin, style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(if (duration != null) 42.dp else 46.dp))
+                        Text(entry.destination, style = MaterialTheme.typography.titleMedium)
+                    }
+                }
             }
 
             // 0.1.603 — informação por trecho só existe na UI quando a topologia,
@@ -828,49 +796,13 @@ private fun OperationalTripBrowserCard0563(
                 }
             }
 
-            val hasCanonicalTrip0654 = row.canonicalTrip0633 != null
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.End,
             ) {
-                TextButton(
-                    modifier = Modifier.weight(1f),
-                    enabled = hasCanonicalTrip0654,
-                    onClick = onToggleOperations0654,
-                ) {
-                    Text(
-                        if (operationsExpanded0654) {
-                            "Passageiros ${row.passengerCount0654} ▲"
-                        } else {
-                            "Passageiros ${row.passengerCount0654} ▼"
-                        },
-                        maxLines = 1,
-                    )
+                TextButton(onClick = onOpenIntegrity0654) {
+                    Text("Integridade", maxLines = 1)
                 }
-                TextButton(
-                    modifier = Modifier.weight(1f),
-                    enabled = hasCanonicalTrip0654,
-                    onClick = {
-                        if (!operationsExpanded0654) onToggleOperations0654()
-                    },
-                ) { Text("Atalhos", maxLines = 1) }
-                TextButton(
-                    modifier = Modifier.weight(1f),
-                    onClick = onOpenIntegrity0654,
-                ) { Text("Integridade", maxLines = 1) }
-            }
-
-            if (operationsExpanded0654 && hasCanonicalTrip0654) {
-                EnhancedPassengerTimelineSection(
-                    entry = entry,
-                    trip = row.canonicalTrip0633,
-                    store = store0654,
-                    currentCoordinate = null,
-                    onChanged = onOperationsChanged0654,
-                    canonicalBookings0494 = bookings0654,
-                    showTripActions0549 = false,
-                    compactEmbeddedControls0593 = true,
-                )
             }
 
             if (row.nativeRotaCerta0633) {
