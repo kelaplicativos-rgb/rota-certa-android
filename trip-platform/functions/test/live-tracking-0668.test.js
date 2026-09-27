@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 const {
   distanceMeters0668,
   publicTrackingPoints0668,
+  publicTrackerTelemetry0670,
   passengerDistanceToDestinationMeters0669,
   shouldClosePassengerShare0668,
   trackingShareDocId0668,
@@ -110,4 +111,61 @@ test("passenger auto-close ignores a queued GPS point from before link creation"
     longitude:-46.6332,
     recordedAtMillis:share.createdAtMillis - 1,
   }, now), false);
+});
+
+
+test("tracker heartbeat stays connected even when GPS position does not move", () => {
+  const now = 5_000_000;
+  const current = {
+    latitude:-23.5505,
+    longitude:-46.6333,
+    recordedAtMillis:now - 18_000,
+  };
+  const telemetry = publicTrackerTelemetry0670({
+    lastDeviceHeartbeatAtMillis:now - 4_000,
+    lastGpsAtMillis:current.recordedAtMillis,
+  }, { scope:"FAMILY" }, current, now);
+  assert.equal(telemetry.deviceState, "CONNECTED");
+  assert.equal(telemetry.gpsState, "FRESH");
+  assert.equal(telemetry.lastDeviceHeartbeatAtMillis, now - 4_000);
+});
+
+test("tracker distinguishes connected device from stale GPS", () => {
+  const now = 6_000_000;
+  const current = {
+    latitude:-23.5505,
+    longitude:-46.6333,
+    recordedAtMillis:now - 45_000,
+  };
+  const telemetry = publicTrackerTelemetry0670({
+    lastDeviceHeartbeatAtMillis:now - 3_000,
+    lastGpsAtMillis:current.recordedAtMillis,
+  }, { scope:"FAMILY" }, current, now);
+  assert.equal(telemetry.deviceState, "CONNECTED");
+  assert.equal(telemetry.gpsState, "STALE");
+});
+
+test("passenger telemetry never exposes pre-share GPS age", () => {
+  const now = 7_000_000;
+  const telemetry = publicTrackerTelemetry0670({
+    lastDeviceHeartbeatAtMillis:now - 2_000,
+    lastGpsAtMillis:now - 1_000,
+  }, { scope:"PASSENGER", createdAtMillis:now - 500 }, null, now);
+  assert.equal(telemetry.deviceState, "CONNECTED");
+  assert.equal(telemetry.gpsState, "WAITING");
+  assert.equal(telemetry.lastGpsAtMillis, 0);
+});
+
+test("tracker reports offline after heartbeat stops", () => {
+  const now = 8_000_000;
+  const telemetry = publicTrackerTelemetry0670({
+    lastDeviceHeartbeatAtMillis:now - 61_000,
+    lastGpsAtMillis:now - 61_000,
+  }, { scope:"FAMILY" }, {
+    latitude:-23.5505,
+    longitude:-46.6333,
+    recordedAtMillis:now - 61_000,
+  }, now);
+  assert.equal(telemetry.deviceState, "OFFLINE");
+  assert.equal(telemetry.gpsState, "OLD");
 });
