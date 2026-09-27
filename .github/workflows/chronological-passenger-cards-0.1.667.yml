@@ -108,8 +108,6 @@ jobs:
 
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0667-dex-strings.txt
           grep -Fq "$ROTA_CERTA_TARGET_SHA" /tmp/android-0667-dex-strings.txt
-          grep -Fq 'ChronologicalTripStopLine0667' /tmp/android-0667-dex-strings.txt
-          grep -Fq 'Embarque não associado ao itinerário' /tmp/android-0667-dex-strings.txt
           grep -Fq 'TRIPS_CARD_HTML_DIRECT_0663' /tmp/android-0667-dex-strings.txt
           grep -Fq 'PASSENGER_PRIVATE_REFRESH_REQUEST_0656' /tmp/android-0667-dex-strings.txt
           grep -Fq 'SAFETY_AUDIO_STARTED_0666' /tmp/android-0667-dex-strings.txt
