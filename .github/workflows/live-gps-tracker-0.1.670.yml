@@ -191,7 +191,15 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
           chmod 600 /tmp/firebase-sa.json
           export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
-          npx --yes firebase-tools@14.12.0 deploy --only hosting --project "$PROJECT" --config trip-platform/firebase.json --non-interactive
+          for attempt in 1 2 3; do
+            if npx --yes firebase-tools@14.12.0 deploy --only hosting --project "$PROJECT" --config trip-platform/firebase.json --non-interactive; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              sleep $((attempt * 10))
+            fi
+          done
+          exit 1
 
       - name: Smoke live exact SHA
         shell: bash
