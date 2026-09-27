@@ -1,4 +1,5 @@
 (function() {
+  try {
   const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
   const first = (selectors) => {
     for (const selector of selectors) {
@@ -200,7 +201,7 @@
     if (!value) return;
     const time = clockNearNode(node);
     const previous = semanticItineraryObservations[semanticItineraryObservations.length - 1];
-    if (previous && key(previous.label) === key(value)) {
+    if (previous && placeKey(previous.label) === placeKey(value)) {
       if (!previous.time && time) previous.time = time;
       return;
     }
@@ -274,7 +275,7 @@
     ? Array.from(routeRoot.children)
         .map((row) => ({label:stopLabelFromRow(row), time:stopTimeFromRow(row)}))
         .filter((item) => !!item.label)
-        .filter((item, index, values) => index === 0 || key(item.label) !== key(values[index - 1].label))
+        .filter((item, index, values) => index === 0 || placeKey(item.label) !== placeKey(values[index - 1].label))
     : [];
   const fallbackItineraryStops = fallbackItineraryObservations.map((item) => item.label);
   const fallbackItineraryStopTimes = fallbackItineraryObservations.map((item) => item.time || '');
@@ -391,4 +392,10 @@ const html = clone.outerHTML || '';
     views: Number.isFinite(views) ? views : null,
     domHtml: html.slice(0, 350000)
   });
+  } catch (error) {
+    return JSON.stringify({
+      scriptError: String((error && error.name) || 'Error').slice(0, 80),
+      scriptStage: 'trip_detail_0677'
+    });
+  }
 })();
