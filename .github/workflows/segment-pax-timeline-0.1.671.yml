@@ -1,0 +1,154 @@
+name: Segment PAX timeline 0.1.671 APK
+
+on:
+  push:
+    branches:
+      - 'agent/segment-pax-timeline-0.1.671'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: segment-pax-timeline-0671-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: ''
+      ROTA_CERTA_TARGET_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: agent/segment-pax-timeline-0.1.671
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.ROTA_CERTA_TARGET_SHA }}
+
+      - name: Prove exact 0.1.671 source and unified segment contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_TARGET_SHA"
+          echo "ROTA_CERTA_GIT_SHA=$ROTA_CERTA_TARGET_SHA" >> "$GITHUB_ENV"
+          PASS='app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt'
+          TRIPS='app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalAllTripsBrowserUi0563.kt'
+          CENTRAL='app/src/main/java/br/com/mapeiaia/rotacerta/trips/CentralDoDia0552.kt'
+          grep -Fq 'releaseVersionName = "0.1.671"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 5_962' app/build.gradle.kts
+          grep -Fq '"version": "0.1.671"' app/src/main/assets/release_history.json
+          grep -Fq 'SegmentVacancyLine0671' "$PASS"
+          grep -Fq 'passengerSegmentPaxLabel0671' "$PASS"
+          grep -Fq 'dropoffStopIndex' "$PASS"
+          grep -Fq 'PASSENGER_PHONE_EDITED_0671' "$PASS"
+          grep -Fq 'segmentLoads0671 = row.segmentLoads0602' "$TRIPS"
+          grep -Fq 'segmentLoads0671 = item.segmentLoads' "$CENTRAL"
+          ! grep -Fq 'val dots0602' "$TRIPS"
+          ! grep -Fq 'val occupancy0602' "$TRIPS"
+          ! grep -Fq 'val dots0595' "$CENTRAL"
+          grep -Fq 'LIVE_TRACKING_POINTS_SYNCED_0668' app/src/main/java/br/com/mapeiaia/rotacerta/LiveTrackingShare0668.kt
+          grep -Fq 'HEARTBEAT_INTERVAL_MS = 5_000L' app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingService.kt
+          git diff --check 8d2a72d3763652b52d73c8aa0c87d5f5bd2896d1 HEAD
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate inherited live tracking backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/functions/live-tracking-0668.js
+          node --check trip-platform/public/tracking.js
+          node --test trip-platform/functions/test/live-tracking-0668.test.js
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run segment PAX and inherited regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.SegmentPaxTimeline0671Test'             --tests 'br.com.mapeiaia.rotacerta.trips.ChronologicalPassengerCards0667Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalShortcuts0656Test'             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTimelineLiveSegments0602Test'             --tests 'br.com.mapeiaia.rotacerta.trips.CentralDriverSegmentGlance0601Test'             --tests 'br.com.mapeiaia.rotacerta.LiveTrackingShare0668Test'             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripCardRefresh0663Test'             --tests 'br.com.mapeiaia.rotacerta.SafetyRecorder0666ContractTest'             --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0671-tests.log
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0671-assemble.log
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_TARGET_SHA"
+
+      - name: Prove APK identity signing runtime markers and final SHA
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/android-0671-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/android-0671-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/android-0671-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5962'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.671'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/android-0671-apksigner.txt
+          grep -Fq 'Verified' /tmp/android-0671-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0671-dex-strings.txt
+          grep -Fq "$ROTA_CERTA_TARGET_SHA" /tmp/android-0671-dex-strings.txt
+          grep -Fq 'PASSENGER_PHONE_EDITED_0671' /tmp/android-0671-dex-strings.txt
+          grep -Fq 'PAX:' /tmp/android-0671-dex-strings.txt
+          grep -Fq 'LIVE_TRACKING_POINTS_SYNCED_0668' /tmp/android-0671-dex-strings.txt
+          grep -Fq 'LIVE_GPS_TRACKER_REQUEST_FAILED_0670' /tmp/android-0671-dex-strings.txt
+          grep -Fq 'SAFETY_AUDIO_STARTED_0666' /tmp/android-0671-dex-strings.txt
+
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.671-5962-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.671"
+            echo "versionCode=5962"
+            echo "branch=agent/segment-pax-timeline-0.1.671"
+            echo "commit=$ROTA_CERTA_TARGET_SHA"
+            echo "deviceTarget=Samsung SM-S911B / Android 16 / API 36"
+            echo "segmentView=SINGLE_UNIFIED_BLOCK"
+            echo "segmentTimes=CANONICAL_STOP_TIMES"
+            echo "segmentPassengers=REAL_PAX_BY_BOARDING_DROPOFF_WINDOW"
+            echo "occupancyDots=REMOVED"
+            echo "occupancyFraction=REMOVED"
+            echo "phoneEdit=NEXT_TO_WHATSAPP"
+            echo "phoneOverride=LOCAL_PERSISTENT_PRECEDENCE"
+            echo "pickupDropoffPins=PRESERVED"
+            echo "liveGpsTracker0670=PRESERVED"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee segment-pax-timeline-0671-proof.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-segment-pax-timeline-0.1.671-${{ env.ROTA_CERTA_TARGET_SHA }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            segment-pax-timeline-0671-proof.txt
+            /tmp/android-0671-tests.log
+            /tmp/android-0671-assemble.log
+            /tmp/android-0671-aapt.txt
+            /tmp/android-0671-apksigner.txt
+            /tmp/android-0671-zip-integrity.txt
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30
