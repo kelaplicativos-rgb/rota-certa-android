@@ -2,6 +2,42 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.667",
+      "build": 5958,
+      "commit": null,
+      "branch": "agent/chronological-passenger-cards-0.1.667",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Cards operacionais passam a renderizar todas as paradas canônicas em ordem de itinerário com o horário observado para cada parada.",
+        "Cada passageiro nasce imediatamente abaixo da parada canônica onde embarca, mantendo nome, status e atalhos operacionais no mesmo bloco.",
+        "Os pontos exatos de embarque 📍 e desembarque 🏁 permanecem visíveis e acionáveis dentro de cada passageiro, mesmo quando a cidade já aparece na linha da rota."
+      ],
+      "fixed": [
+        "Removida a faixa redundante Passageiros | Atalhos | Integridade dos cards de Viagens e Central do Dia; os controles individuais ficam junto do passageiro e Integridade permanece como ação da viagem.",
+        "A visualização deixa de reduzir uma viagem multiparada apenas a origem e destino quando o Trip canônico possui o itinerário completo."
+      ],
+      "improved": [
+        "Viagens e Central do Dia reutilizam o mesmo operador de passageiro com agrupamento por boardingStopIndex, evitando semânticas diferentes entre as superfícies.",
+        "Horários e ordem das paradas vêm somente do Trip canônico alimentado pelo HTML; ausência de vínculo canônico mantém fallback fail-closed sem inventar associação.",
+        "Ação de atualização individual por HTML, vagas por trecho, WhatsApp, financeiro, mensagens e edição dos endereços continuam preservadas."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.666 e anteriores: a rota principal do card exibia somente origem e destino e os passageiros ficavam atrás de uma faixa expansível separada."
+      ],
+      "modulesAffected": [
+        "Viagens",
+        "Timeline",
+        "Central do Dia",
+        "Passageiros",
+        "Vagas por trecho",
+        "HTML canônico",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.666",
       "build": 5957,
       "commit": null,
