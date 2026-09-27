@@ -1,0 +1,128 @@
+name: Passenger tracking status shortcut 0.1.674 APK
+
+on:
+  push:
+    branches:
+      - 'agent/passenger-tracking-status-shortcut-0.1.674'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: passenger-tracking-status-0674-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    env:
+      GOOGLE_MAPS_API_KEY: ''
+      ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: agent/passenger-tracking-status-shortcut-0.1.674
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Prove exact source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
+          UI='app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt'
+          TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerQuickOps0673Test.kt'
+          grep -Fq 'releaseVersionName = "0.1.674"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 5_965' app/build.gradle.kts
+          grep -Fq '"version": "0.1.674"' app/src/main/assets/release_history.json
+          grep -Fq 'R.drawable.ic_whatsapp_action' "$UI"
+          grep -Fq 'PASSENGER_QUICK_TRACKING_0674' "$UI"
+          grep -Fq 'Text("🛰️", maxLines = 1)' "$UI"
+          grep -Fq 'Text("🚦", maxLines = 1)' "$UI"
+          ! grep -Fq 'Text("👆", maxLines = 1)' "$UI"
+          grep -Fq 'onTracking0674' "$UI"
+          grep -Fq 'PassengerTrackingLinkRequest0668' "$UI"
+          grep -Fq 'PASSENGER_QUICK_TRACKING_0674' "$TEST"
+          git diff --check e33e3a37683d5b929d9fc814b53bbdf42b2304a5 HEAD
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run focused and inherited regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerQuickOps0673Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerSegmentTime0672Test'             --tests 'br.com.mapeiaia.rotacerta.trips.SegmentPaxTimeline0671Test'             --tests 'br.com.mapeiaia.rotacerta.trips.ChronologicalPassengerCards0667Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalShortcuts0656Test'             --tests 'br.com.mapeiaia.rotacerta.LiveTrackingShare0668Test'             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripCardRefresh0663Test'             --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0674-tests.log
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0674-assemble.log
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
+
+      - name: Prove APK identity signing and final SHA
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/android-0674-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/android-0674-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/android-0674-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5965'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.674'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/android-0674-apksigner.txt
+          grep -Fq 'Verified' /tmp/android-0674-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0674-dex-strings.txt
+          grep -Fq "$ROTA_CERTA_GIT_SHA" /tmp/android-0674-dex-strings.txt
+          grep -Fq 'PASSENGER_QUICK_TRACKING_0674' /tmp/android-0674-dex-strings.txt
+          grep -Fq 'Compartilhar acompanhamento' /tmp/android-0674-dex-strings.txt
+          grep -Fq 'LIVE_TRACKING_POINTS_SYNCED_0668' /tmp/android-0674-dex-strings.txt
+
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.674-5965-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.674"
+            echo "versionCode=5965"
+            echo "branch=agent/passenger-tracking-status-shortcut-0.1.674"
+            echo "commit=$ROTA_CERTA_GIT_SHA"
+            echo "deviceTarget=Samsung SM-S911B / Android 16 / API 36"
+            echo "whatsapp=UNCHANGED"
+            echo "trackingShortcut=LIVE_TRACKING_SHARE_0668_DIRECT"
+            echo "statusShortcut=TRAFFIC_LIGHT"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee passenger-tracking-status-0674-proof.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-passenger-tracking-status-0.1.674-${{ github.sha }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            passenger-tracking-status-0674-proof.txt
+            /tmp/android-0674-tests.log
+            /tmp/android-0674-assemble.log
+            /tmp/android-0674-aapt.txt
+            /tmp/android-0674-apksigner.txt
+            /tmp/android-0674-zip-integrity.txt
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30

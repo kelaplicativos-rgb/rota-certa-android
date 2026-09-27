@@ -343,6 +343,7 @@ private fun PassengerQuickActionLine0673(
     passenger0673: EnhancedPassengerCardRow,
     onNameClick0673: (EnhancedPassengerCardRow) -> Unit,
     onWhatsApp0673: (EnhancedPassengerCardRow) -> Unit,
+    onTracking0674: (EnhancedPassengerCardRow) -> Unit,
     onQuickMessage0673: (EnhancedPassengerCardRow) -> Unit,
     onPickup0673: (EnhancedPassengerCardRow) -> Unit,
     onDropoff0673: (EnhancedPassengerCardRow) -> Unit,
@@ -378,6 +379,11 @@ private fun PassengerQuickActionLine0673(
             )
         }
         TextButton(
+            onClick = { onTracking0674(passenger0673) },
+            modifier = Modifier.size(36.dp),
+            contentPadding = ADDRESS_ICON_PADDING,
+        ) { Text("🛰️", maxLines = 1) }
+        TextButton(
             onClick = { onQuickMessage0673(passenger0673) },
             modifier = Modifier.size(36.dp),
             contentPadding = ADDRESS_ICON_PADDING,
@@ -396,7 +402,7 @@ private fun PassengerQuickActionLine0673(
             onClick = { onStatus0673(passenger0673) },
             modifier = Modifier.size(36.dp),
             contentPadding = ADDRESS_ICON_PADDING,
-        ) { Text("👆", maxLines = 1) }
+        ) { Text("🚦", maxLines = 1) }
     }
 }
 
@@ -409,6 +415,7 @@ private fun SegmentVacancyLine0671(
     rows0671: List<EnhancedPassengerCardRow>,
     onPassengerClick0672: (EnhancedPassengerCardRow) -> Unit,
     onWhatsApp0673: (EnhancedPassengerCardRow) -> Unit = onPassengerClick0672,
+    onTracking0674: (EnhancedPassengerCardRow) -> Unit = onPassengerClick0672,
     onQuickMessage0673: (EnhancedPassengerCardRow) -> Unit = onPassengerClick0672,
     onPickup0673: (EnhancedPassengerCardRow) -> Unit = onPassengerClick0672,
     onDropoff0673: (EnhancedPassengerCardRow) -> Unit = onPassengerClick0672,
@@ -462,6 +469,7 @@ private fun SegmentVacancyLine0671(
                 passenger0673 = passenger0673,
                 onNameClick0673 = onPassengerClick0672,
                 onWhatsApp0673 = onWhatsApp0673,
+                onTracking0674 = onTracking0674,
                 onQuickMessage0673 = onQuickMessage0673,
                 onPickup0673 = onPickup0673,
                 onDropoff0673 = onDropoff0673,
@@ -609,6 +617,36 @@ internal fun EnhancedPassengerTimelineSection(
                 requested0668 += Manifest.permission.POST_NOTIFICATIONS
             }
             trackingPermissionLauncher0668.launch(requested0668.toTypedArray())
+        }
+    }
+
+    fun sharePassengerTrackingShortcut0674(row0674: EnhancedPassengerCardRow) {
+        val selectedTrip0674 = trip
+        val latitude0674 = row0674.dropoffLatitude
+        val longitude0674 = row0674.dropoffLongitude
+        when {
+            selectedTrip0674 == null ->
+                onChanged("Viagem canônica indisponível para criar o acompanhamento.")
+            latitude0674 == null || longitude0674 == null ->
+                onChanged("Atualize esta viagem pelo HTML para obter o ponto exato de desembarque antes de compartilhar o acompanhamento.")
+            else -> {
+                UnifiedDebugEventStore.recordAlways(
+                    "PASSENGER_QUICK_TRACKING_0674",
+                    context.packageName,
+                    "passengerScoped=true source=QUICK_ROW preShareHistory=false",
+                )
+                requestPassengerTracking0668(
+                    PassengerTrackingLinkRequest0668(
+                        tripId = selectedTrip0674.id,
+                        passengerKey = passengerTimelineRowKey0394(row0674),
+                        passengerName = row0674.name.ifBlank { "Passageiro" },
+                        destinationLatitude = latitude0674,
+                        destinationLongitude = longitude0674,
+                        destinationLabel = row0674.dropoffAddress.ifBlank { row0674.dropoff.orEmpty() },
+                        expiresAtMillis = passengerTrackingExpiry0668(entry.arrivalAtMillis),
+                    ),
+                )
+            }
         }
     }
 
@@ -947,6 +985,7 @@ internal fun EnhancedPassengerTimelineSection(
                 segmentIndex0671 = segmentIndex0673,
                 rows0671 = rows,
                 onPassengerClick0672 = { communicationShortcutRow0672 = it },
+                onTracking0674 = { sharePassengerTrackingShortcut0674(it) },
                 onWhatsApp0673 = { row0673 ->
                     val phone0673 = row0673.phone
                     if (phone0673.isNullOrBlank()) phoneEditRow0671 = row0673
@@ -980,6 +1019,7 @@ internal fun EnhancedPassengerTimelineSection(
                         if (phone0673.isNullOrBlank()) phoneEditRow0671 = selected0673
                         else openPassengerWhatsApp(context, phone0673)
                     },
+                    onTracking0674 = { sharePassengerTrackingShortcut0674(it) },
                     onQuickMessage0673 = { quickMessageRow0656 = it },
                     onPickup0673 = { selected0673 ->
                         passengerPickupMapTarget(selected0673)?.let { openPassengerPickupMap(context, it) }
@@ -1013,6 +1053,7 @@ internal fun EnhancedPassengerTimelineSection(
                             segmentIndex0671 = segmentIndex0671,
                             rows0671 = rows,
                             onPassengerClick0672 = { communicationShortcutRow0672 = it },
+                            onTracking0674 = { sharePassengerTrackingShortcut0674(it) },
                         )
                     }
                     lastRenderedSegmentIndex0671 = safeTarget0671
@@ -1026,6 +1067,7 @@ internal fun EnhancedPassengerTimelineSection(
                             segmentIndex0671 = segmentIndex0671,
                             rows0671 = rows,
                             onPassengerClick0672 = { communicationShortcutRow0672 = it },
+                            onTracking0674 = { sharePassengerTrackingShortcut0674(it) },
                         )
                 }
                 lastRenderedSegmentIndex0671 = segmentLoads0671.lastIndex
@@ -2024,6 +2066,7 @@ internal fun EnhancedPassengerTimelineSection(
                             segmentIndex0671 = segmentIndex0671,
                             rows0671 = rows,
                             onPassengerClick0672 = { communicationShortcutRow0672 = it },
+                            onTracking0674 = { sharePassengerTrackingShortcut0674(it) },
                         )
         }
     } else if (embedChronologicalStops0667 && chronologicalStops0667.isNotEmpty() &&

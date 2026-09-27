@@ -2,6 +2,30 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.674",
+      "build": 5965,
+      "commit": null,
+      "branch": "agent/passenger-tracking-status-shortcut-0.1.674",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A linha compacta do passageiro ganha um atalho direto 🛰️ ao lado do WhatsApp para criar e compartilhar o mesmo link temporário de acompanhamento já usado pela Central do passageiro.",
+        "O atalho de status troca o gesto 👆 pelo semáforo 🚦, preservando exatamente o mesmo seletor Pendente/Confirmado/No local/No carro/Pago/Concluído/Cancelado."
+      ],
+      "fixed": [
+        "O status deixa de usar uma mão apontando, que podia ser confundida com uma ação genérica.",
+        "Compartilhar o acompanhamento deixa de exigir abrir primeiro a Central do passageiro quando o ponto exato de desembarque já está disponível."
+      ],
+      "improved": [
+        "WhatsApp, mensagens prontas, GPS de embarque e GPS de desembarque permanecem com os mesmos atalhos e comportamentos da 0.1.673.",
+        "O novo atalho de acompanhamento reutiliza a permissão, criação, expiração e compartilhamento do LiveTrackingShare 0668 sem criar uma segunda implementação de rastreamento."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": ["Timeline de passageiros", "Vagas por trecho", "Acompanhamento", "Status operacional", "Build"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.673",
       "build": 5964,
       "commit": null,
