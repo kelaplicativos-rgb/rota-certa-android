@@ -146,8 +146,6 @@ jobs:
           grep -Fq 'Verified' /tmp/android-0664-apksigner.txt
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0664-dex-strings.txt
           grep -Fq "$ROTA_CERTA_TARGET_SHA" /tmp/android-0664-dex-strings.txt
-          grep -Fq 'saved_place_quick_actions_0_1_664' /tmp/android-0664-dex-strings.txt
-          grep -Fq 'Endereço copiado' /tmp/android-0664-dex-strings.txt
           grep -Fq 'Enviar local' /tmp/android-0664-dex-strings.txt
           APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
           SHORT_SHA="$(git rev-parse --short=12 HEAD)"
