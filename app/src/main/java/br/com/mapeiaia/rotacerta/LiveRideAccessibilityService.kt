@@ -6986,6 +6986,16 @@ class LiveRideAccessibilityService : AccessibilityService() {
             universalResolvedForegroundPackage(),
             "entry=${entry0180.entryId}; id=${entry0180.shortcutId}; type=${entry0180.holdActionType0186.name}",
         )
+        when (entry0180.shortcutId) {
+            "action_record_audio" -> {
+                openSafetyRecorderModule0666(SafetyRecorderMode0666.AUDIO)
+                return
+            }
+            "action_record_video" -> {
+                openSafetyRecorderModule0666(SafetyRecorderMode0666.VIDEO)
+                return
+            }
+        }
         when (entry0180.holdActionType0186) {
             ShortcutHoldActionType0186.OPEN_MODULE -> {
                 val moduleSpec0186 = ShortcutActionCatalog0184.moduleSpecForAction(entry0180.shortcutId)
@@ -7164,6 +7174,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun openShortcutModule0171(spec: BubbleShortcutSpec) {
+        if (spec.id == "safety_recorder") {
+            openSafetyRecorderModule0666(SafetyRecorderMode0666.AUDIO)
+            return
+        }
         val intent0171 = Intent(this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             .putExtra(EXTRA_OPEN_TAB, spec.targetTab ?: TAB_CONFIG)
@@ -7300,6 +7314,30 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
     }
 
+    private fun openSafetyRecorderModule0666(mode: SafetyRecorderMode0666) {
+        launchShortcutActivity0176(
+            shortcutId = if (mode == SafetyRecorderMode0666.AUDIO) {
+                "safety_audio_module_0666"
+            } else {
+                "safety_video_module_0666"
+            },
+            intent = SafetyRecorderActivity0666.intent(this, mode),
+            failureMessage = "Não foi possível abrir os registros de segurança.",
+        )
+    }
+
+    private fun toggleSafetyRecorder0666(mode: SafetyRecorderMode0666) {
+        launchShortcutActivity0176(
+            shortcutId = if (mode == SafetyRecorderMode0666.AUDIO) {
+                "action_record_audio"
+            } else {
+                "action_record_video"
+            },
+            intent = SafetyRecorderGatewayActivity0666.intent(this, mode),
+            failureMessage = "Não foi possível iniciar o registro.",
+        )
+    }
+
     private fun openWorkTracking0184() {
         launchShortcutActivity0176(
             shortcutId = "action_open_work_tracking",
@@ -7339,6 +7377,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
             "work_tracking", "action_open_work_tracking" -> { openWorkTracking0184(); return }
             "action_start_work_tracking" -> { setWorkTracking0184(start = true); return }
             "action_stop_work_tracking" -> { setWorkTracking0184(start = false); return }
+            "action_record_audio" -> { toggleSafetyRecorder0666(SafetyRecorderMode0666.AUDIO); return }
+            "action_record_video" -> { toggleSafetyRecorder0666(SafetyRecorderMode0666.VIDEO); return }
+            "safety_recorder" -> { openSafetyRecorderModule0666(SafetyRecorderMode0666.AUDIO); return }
         }
         when (spec.action) {
             BubbleShortcutAction.CopyTripConfirmation -> copyTripConfirmationFromBubbleChecklist8() // trip_confirmation_action_checklist_8

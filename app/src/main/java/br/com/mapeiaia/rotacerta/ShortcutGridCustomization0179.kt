@@ -248,7 +248,7 @@ class ShortcutGridPreferenceStore0179(context: Context) {
             val initial = ShortcutGridCustomizationPolicy0179.initialEntries(isUpgrade)
             persist(initial)
             return if (isUpgrade) {
-                applyStage47TripShortcutMigration(initial)
+                applySafetyRecorder0666Migration(applyStage47TripShortcutMigration(initial))
             } else {
                 initial
             }
@@ -284,6 +284,7 @@ class ShortcutGridPreferenceStore0179(context: Context) {
             ShortcutGridCustomizationPolicy0179.normalize(entries)
         }.getOrElse { emptyList() }
             .let(::applyStage47TripShortcutMigration)
+            .let(::applySafetyRecorder0666Migration)
     }
 
     private fun applyStage47TripShortcutMigration(entries: List<ShortcutGridEntry0179>): List<ShortcutGridEntry0179> {
@@ -305,6 +306,26 @@ class ShortcutGridPreferenceStore0179(context: Context) {
         return migrated
     }
 
+
+    private fun applySafetyRecorder0666Migration(entries: List<ShortcutGridEntry0179>): List<ShortcutGridEntry0179> {
+        if (prefs.getBoolean(KEY_SAFETY_RECORDER_0666_MIGRATED, false)) return entries
+        var migrated = entries
+        listOf("action_record_audio", "action_record_video").forEach { shortcutId ->
+            if (
+                !ShortcutGridCustomizationPolicy0179.contains(migrated, shortcutId) &&
+                migrated.size < ShortcutGesturePolicy0179.MAX_GRID_ITEMS
+            ) {
+                migrated = ShortcutGridCustomizationPolicy0179.add(
+                    entries = migrated,
+                    shortcutId = shortcutId,
+                    nowMillis = System.currentTimeMillis(),
+                )
+            }
+        }
+        if (migrated != entries) persist(migrated)
+        prefs.edit().putBoolean(KEY_SAFETY_RECORDER_0666_MIGRATED, true).apply()
+        return migrated
+    }
 
     fun readResolved(): List<ResolvedShortcutGridEntry0179> =
         ShortcutGridCustomizationPolicy0179.resolve(read())
@@ -356,6 +377,7 @@ class ShortcutGridPreferenceStore0179(context: Context) {
         const val KEY_GRID = "grid_json_v1"
         const val KEY_INITIALIZED_0184 = "initialized_action_grid_0184"
         const val KEY_STAGE47_TRIP_SHORTCUT_MIGRATED = "stage47_trip_agenda_shortcut_migrated"
+        const val KEY_SAFETY_RECORDER_0666_MIGRATED = "safety_recorder_shortcuts_migrated_0666"
     }
 }
 

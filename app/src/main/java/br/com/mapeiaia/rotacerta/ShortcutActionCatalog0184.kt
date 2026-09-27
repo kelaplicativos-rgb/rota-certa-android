@@ -107,6 +107,20 @@ object ShortcutActionCatalog0184 {
             displayLabel = "Parar GPS",
             action = BubbleShortcutAction.OpenSettings,
         ),
+        BubbleShortcutSpec(
+            id = "action_record_audio",
+            emoji = "🗣️",
+            label = "Gravar áudio",
+            displayLabel = "Fala",
+            action = BubbleShortcutAction.OpenSettings,
+        ),
+        BubbleShortcutSpec(
+            id = "action_record_video",
+            emoji = "🎬",
+            label = "Gravar vídeo",
+            displayLabel = "Cena",
+            action = BubbleShortcutAction.OpenSettings,
+        ),
     )
 
     private val extraIdsByModule: Map<String, List<String>> = mapOf(
@@ -123,6 +137,7 @@ object ShortcutActionCatalog0184 {
         "text_correction" to emptyList(),
         "manual_capture" to listOf("action_copy_visible_text"),
         "work_tracking" to listOf("action_start_work_tracking", "action_stop_work_tracking"),
+        "safety_recorder" to listOf("action_record_audio", "action_record_video"),
     )
 
     val legacyModuleIds: List<String> = listOf(

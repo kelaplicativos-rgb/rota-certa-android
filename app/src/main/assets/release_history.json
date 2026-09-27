@@ -2,6 +2,42 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.666",
+      "build": 5957,
+      "commit": null,
+      "branch": "agent/safety-recorder-0.1.666",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Novo módulo Registros de segurança com atalhos distintos 🗣️ Fala e 🎬 Cena na grade flutuante.",
+        "Toque curto em Fala inicia ou encerra gravação de áudio; toque curto em Cena inicia ou encerra gravação de vídeo.",
+        "Apertar e segurar Fala ou Cena abre o módulo completo, com biblioteca de arquivos, seleção e compartilhamento nativo do Android.",
+        "Cena permite persistir câmera traseira ou frontal, qualidade FHD/HD/SD e áudio do vídeo ligado ou desligado.",
+        "Áudios e vídeos novos são persistidos via MediaStore nas coleções Music e Movies sob Rota Certa/Seguranca."
+      ],
+      "fixed": [
+        "Evita duas gravações simultâneas: ao trocar de Fala para Cena, ou vice-versa, o registro atual é finalizado antes do próximo iniciar.",
+        "O serviço de gravação fica isolado do Farol, HTML, Timeline e Agenda para não acoplar o registro ao pipeline operacional."
+      ],
+      "improved": [
+        "Gravação usa foreground service com tipos microphone/camera e notificação persistente, preservando permissões e indicadores de privacidade exigidos pelo Android.",
+        "A biblioteca interna mantém somente URIs criadas pelo próprio Rota Certa, evitando pedir acesso amplo à mídia do aparelho.",
+        "Compartilhamento usa ACTION_SEND/ACTION_SEND_MULTIPLE e concessão temporária de leitura ao aplicativo escolhido."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Grade de atalhos",
+        "Registros de segurança",
+        "Câmera",
+        "Microfone",
+        "MediaStore",
+        "Compartilhamento Android",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.665",
       "build": 5956,
       "commit": null,

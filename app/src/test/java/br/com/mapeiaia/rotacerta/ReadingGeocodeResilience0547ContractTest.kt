@@ -61,9 +61,9 @@ class ReadingGeocodeResilience0547ContractTest {
     }
 
     @Test
-    fun version_is_0547() {
+    fun release_metadata_tracks_current_build_without_changing_farol_contract() {
         val build = source("build.gradle.kts")
-        assertTrue(build.contains("releaseVersionCode = 5_934"))
-        assertTrue(build.contains("releaseVersionName = \"0.1.643\""))
+        assertTrue(build.contains("releaseVersionCode = 5_957"))
+        assertTrue(build.contains("releaseVersionName = \"0.1.666\""))
     }
 }
