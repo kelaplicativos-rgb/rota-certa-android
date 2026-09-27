@@ -10,6 +10,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
@@ -66,6 +70,16 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:noHistory="true"
+            android:label="Iniciar registro" />
+        <activity
+            android:name=".SafetyRecorderActivity0666"
+            android:exported="false"
+            android:label="Registros de segurança" />
+        <activity
+            android:name=".SafetyRecorderGatewayActivity0666"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
         <activity
             android:name=".FinancialActivity"
@@ -92,6 +106,10 @@
             android:name=".WorkTrackingService"
             android:exported="false"
             android:foregroundServiceType="location" />
+        <service
+            android:name=".SafetyRecorderService0666"
+            android:exported="false"
+            android:foregroundServiceType="microphone|camera" />
         <service
             android:name=".SafetyRecorderService0666"
             android:exported="false"
