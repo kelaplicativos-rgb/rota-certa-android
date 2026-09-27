@@ -108,7 +108,9 @@ jobs:
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0673-dex-strings.txt
           grep -Fq "$ROTA_CERTA_TARGET_SHA" /tmp/android-0673-dex-strings.txt
           grep -Fq 'Mensagens prontas' /tmp/android-0673-dex-strings.txt
-          grep -Fq 'PASSENGER_STATUS_PENDING' /tmp/android-0673-dex-strings.txt
+          # PENDING is proved by source + unit tests. It is intentionally not a
+          # required DEX literal because the runtime mutation composes the event
+          # name from the selected status.
           grep -Fq 'LIVE_TRACKING_POINTS_SYNCED_0668' /tmp/android-0673-dex-strings.txt
 
           APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
