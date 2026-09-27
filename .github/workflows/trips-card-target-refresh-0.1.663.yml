@@ -1,0 +1,181 @@
+name: Viagens targeted card refresh 0.1.663 APK
+
+on:
+  push:
+    branches:
+      - 'agent/trips-card-target-refresh-0.1.663'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trips-card-target-refresh-0663-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      GOOGLE_MAPS_API_KEY: ''
+      ROTA_CERTA_TARGET_SHA: ${{ github.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.ROTA_CERTA_TARGET_SHA }}
+
+      - name: Prove exact 0.1.663 targeted Viagens card source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_TARGET_SHA"
+          echo "ROTA_CERTA_GIT_SHA=$ROTA_CERTA_TARGET_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          SRC='app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalAllTripsBrowserUi0563.kt'
+          grep -Fq 'releaseVersionName = "0.1.663"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 5_954' app/build.gradle.kts
+          grep -Fq '"version": "0.1.663"' app/src/main/assets/release_history.json
+          grep -Fq 'OperationalTripCardRefreshMode0663' "$SRC"
+          grep -Fq 'onRefreshCard0663: () -> Unit' "$SRC"
+          test "$(grep -Fc 'onRefreshCard0663 = { refreshRow0663(row) }' "$SRC")" -eq 2
+          grep -Fq 'text = if (refreshRunning0663) "…" else "↻"' "$SRC"
+          grep -Fq 'CentralDayCommandBridge0552.refreshTripDirect0662(' "$SRC"
+          grep -Fq 'TRIPS_CARD_HTML_DIRECT_0663' "$SRC"
+          grep -Fq 'scope=TRIP_ONLY singleCard=true fullTraversal=false' "$SRC"
+          grep -Fq 'TRIPS_CARD_LOCAL_REFRESH_0663' "$SRC"
+          grep -Fq 'context.findComponentActivity0663()?.lifecycleScope' "$SRC"
+          grep -Fq 'mutableStateMapOf<String, Boolean>()' "$SRC"
+          ! grep -Fq 'CentralDayCommandBridge0552.refreshAll(' "$SRC"
+          ! grep -Fq 'enqueueTripCollectorRefresh0517(' "$SRC"
+          grep -Fq 'CENTRAL_DAY_CARD_HTML_DIRECT_0662' app/src/main/java/br/com/mapeiaia/rotacerta/trips/CentralDoDia0552.kt
+          grep -Fq 'captureSingleTrip0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'evaluateAbsentTrips0618 = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTodayHtmlCapture0661.kt
+          git diff --check
+
+      - name: Configure Firebase Android app when credentials are available
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          elif [ -s /tmp/firebase-sa.json ]; then
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          else
+            echo "No Firebase credential available; build.gradle keeps google-services optional."
+          fi
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Targeted Viagens card and HTML isolation regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripCardRefresh0663Test'             --tests 'br.com.mapeiaia.rotacerta.trips.ScopedHtmlIsolation0662Test'             --tests 'br.com.mapeiaia.rotacerta.trips.CentralTodayDirectHtml0661Test'             --tests 'br.com.mapeiaia.rotacerta.trips.CentralTodayOnlyRefresh0660Test'             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripCardFooter0654Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TargetedCardRefreshReturn0645Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalShortcuts0656Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPassengerPrivateHtml0657Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPassengerArtifactCompleteness0658Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPassengerHtmlPrecision0659Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaMessageNotificationRefresh0655Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPassengerDeepCapture0653Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerComposeCancellation0652Test'             --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0663-tests.log
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0663-assemble.log
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_TARGET_SHA"
+
+      - name: Prove APK identity manifest signing and final SHA
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/android-0663-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/android-0663-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/android-0663-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5954'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.663'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/android-0663-apksigner.txt
+          grep -Fq 'Verified' /tmp/android-0663-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0663-dex-strings.txt
+          grep -Fq "$ROTA_CERTA_TARGET_SHA" /tmp/android-0663-dex-strings.txt
+          grep -Fq 'TRIPS_CARD_HTML_DIRECT_0663' /tmp/android-0663-dex-strings.txt
+          grep -Fq 'TRIPS_CARD_LOCAL_REFRESH_0663' /tmp/android-0663-dex-strings.txt
+          grep -Fq 'CENTRAL_DAY_CARD_HTML_DIRECT_0662' /tmp/android-0663-dex-strings.txt
+          grep -Fq 'HTML_DIRECT_0607' /tmp/android-0663-dex-strings.txt
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.663-5954-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.663"
+            echo "versionCode=5954"
+            echo "branch=$GITHUB_REF_NAME"
+            echo "commit=$ROTA_CERTA_TARGET_SHA"
+            echo "deviceTarget=Samsung SM-S911B / Android 16 / API 36"
+            echo "allVisibleViagensCardsRefreshAction=PASS"
+            echo "activeCardsTargetedRefresh=PASS"
+            echo "archivedCardsTargetedRefresh=PASS"
+            echo "blablacarTripOnlyDirectHtml=PASS"
+            echo "rotaCertaLocalOnlyRefresh=PASS"
+            echo "perCanonicalTripProgressIsolation=PASS"
+            echo "globalTraversalFromCard=ABSENT"
+            echo "workManagerFromViagensCard=ABSENT"
+            echo "activityLifecycleRefreshScope=PASS"
+            echo "scopedHtmlIsolation0662Preserved=PASS"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee trips-card-target-refresh-0663-proof.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-trips-card-target-refresh-0.1.663-${{ env.ROTA_CERTA_TARGET_SHA }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            trips-card-target-refresh-0663-proof.txt
+            /tmp/android-0663-tests.log
+            /tmp/android-0663-assemble.log
+            /tmp/android-0663-aapt.txt
+            /tmp/android-0663-apksigner.txt
+            /tmp/android-0663-zip-integrity.txt
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30
