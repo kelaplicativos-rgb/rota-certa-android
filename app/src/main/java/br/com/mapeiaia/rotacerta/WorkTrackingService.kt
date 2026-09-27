@@ -325,7 +325,7 @@ class WorkTrackingService : Service() {
         private const val CHANNEL_ID = "work_tracking"
         private const val NOTIFICATION_ID = 12101
         private const val UPDATE_INTERVAL_MS = 5_000L
-        private const val MIN_UPDATE_INTERVAL_MS = 2_000L
+        private const val MIN_UPDATE_INTERVAL_MS = 5_000L
         private const val HEARTBEAT_INTERVAL_MS = 5_000L
         private const val GPS_WATCHDOG_AFTER_MS = 15_000L
         private const val GPS_WATCHDOG_REQUEST_TIMEOUT_MS = 10_000L
