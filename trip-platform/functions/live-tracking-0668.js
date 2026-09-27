@@ -8,8 +8,6 @@ const MAX_POINT_BATCH_0668 = 100;
 const MAX_PUBLIC_POINTS_0668 = 5000;
 const PASSENGER_DESTINATION_RADIUS_METERS_0668 = 220;
 const PASSENGER_MIN_ACTIVE_MILLIS_0668 = 10 * 60 * 1000;
-const PATH_SAMPLE_DISTANCE_METERS_0668 = 200;
-const PATH_SAMPLE_INTERVAL_MILLIS_0668 = 60 * 1000;
 
 function sha256Hex0668(value) {
   return crypto.createHash("sha256").update(String(value || "")).digest("hex");
@@ -36,6 +34,28 @@ function distanceMeters0668(lat1, lon1, lat2, lon2) {
   const a = Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return earth * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function continuousTrackingPoints0670(points) {
+  const seen = new Set();
+  return (Array.isArray(points) ? points : [])
+    .map(normalizePoint0668)
+    .filter(Boolean)
+    .sort((a, b) => a.recordedAtMillis - b.recordedAtMillis)
+    .filter((point) => {
+      const key = [point.recordedAtMillis, point.latitude.toFixed(7), point.longitude.toFixed(7)].join("|");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function trackingQueryFloor0670(share, session, sinceMillis) {
+  const privacyFloor = share && share.scope === "PASSENGER"
+    ? Number(share.createdAtMillis || 0)
+    : Number((session && session.startedAtMillis) || 0);
+  const requestedSince = Number(sinceMillis || 0);
+  return Math.max(privacyFloor, Number.isFinite(requestedSince) ? Math.trunc(requestedSince) : 0);
 }
 
 function publicTrackingPoints0668(points, share) {
@@ -280,7 +300,7 @@ function createLiveTracking0668({ db, requireDriver }) {
     if (!rawPoints.length || rawPoints.length > MAX_POINT_BATCH_0668) {
       return trackingFail0668(res, 400, "tracking_points_invalid", "Lote de pontos inválido.");
     }
-    const points = rawPoints.map(normalizePoint0668).filter(Boolean).sort((a, b) => a.recordedAtMillis - b.recordedAtMillis);
+    const points = continuousTrackingPoints0670(rawPoints);
     if (!points.length) return trackingFail0668(res, 400, "tracking_points_invalid", "Nenhum ponto GPS válido.");
     const now = Date.now();
     const sessionStarted = Number(selected.data.startedAtMillis || 0);
@@ -290,20 +310,13 @@ function createLiveTracking0668({ db, requireDriver }) {
     );
     if (!accepted.length) return trackingFail0668(res, 400, "tracking_points_out_of_window", "Pontos fora da sessão.");
 
-    let prior = selected.data.latestPoint && normalizePoint0668(selected.data.latestPoint);
     const batch = db.batch();
     let stored = 0;
     for (const point of accepted) {
-      const shouldStorePath = !prior ||
-        point.recordedAtMillis - prior.recordedAtMillis >= PATH_SAMPLE_INTERVAL_MILLIS_0668 ||
-        distanceMeters0668(prior.latitude, prior.longitude, point.latitude, point.longitude) >= PATH_SAMPLE_DISTANCE_METERS_0668;
-      if (shouldStorePath) {
-        const pointId = String(point.recordedAtMillis).padStart(16, "0") + "-" +
-          sha256Hex0668([point.latitude.toFixed(6), point.longitude.toFixed(6), point.recordedAtMillis].join("|")).slice(0, 12);
-        batch.set(selected.ref.collection("points").doc(pointId), point, { merge: true });
-        stored += 1;
-        prior = point;
-      }
+      const pointId = String(point.recordedAtMillis).padStart(16, "0") + "-" +
+        sha256Hex0668([point.latitude.toFixed(7), point.longitude.toFixed(7), point.recordedAtMillis].join("|")).slice(0, 12);
+      batch.set(selected.ref.collection("points").doc(pointId), point, { merge: true });
+      stored += 1;
     }
     const latest = accepted[accepted.length - 1];
     const battery = finiteNumber0668(body.batteryPercent);
@@ -449,25 +462,25 @@ function createLiveTracking0668({ db, requireDriver }) {
       return trackingFail0668(res, 410, "tracking_session_ended", "Este acompanhamento foi encerrado.");
     }
 
-    const floor = share.scope === "PASSENGER" ? Number(share.createdAtMillis || now) : Number(session.startedAtMillis || now);
+    const privacyFloor = trackingQueryFloor0670(share, session, 0);
+    const requestedSince = finiteNumber0668(req.query && req.query.since);
+    const queryFloor = trackingQueryFloor0670(share, session, requestedSince);
     const pointsSnap = await sessionRef.collection("points")
-      .where("recordedAtMillis", ">=", floor)
+      .where("recordedAtMillis", ">=", queryFloor)
       .orderBy("recordedAtMillis", "asc")
       .limit(MAX_PUBLIC_POINTS_0668)
       .get();
-    let points = pointsSnap.docs.map((doc) => doc.data());
-    const latest = normalizePoint0668(session.latestPoint);
-    if (latest && latest.recordedAtMillis >= floor) {
-      const last = points.length ? normalizePoint0668(points[points.length - 1]) : null;
-      if (!last || latest.recordedAtMillis > last.recordedAtMillis) points.push(latest);
-    }
-    points = publicTrackingPoints0668(points, {
+    const points = publicTrackingPoints0668(pointsSnap.docs.map((doc) => doc.data()), {
       scope: share.scope,
       createdAtMillis: share.createdAtMillis,
       sessionStartedAtMillis: session.startedAtMillis,
-    });
+    }).filter((point) => requestedSince == null || point.recordedAtMillis > requestedSince);
 
-    const current = points.length ? normalizePoint0668(points[points.length - 1]) : null;
+    const latest = normalizePoint0668(session.latestPoint);
+    const current = latest && latest.recordedAtMillis >= privacyFloor ? latest : null;
+    const lastRoutePoint = points.length ? points[points.length - 1] : null;
+    const hasMorePoints = pointsSnap.size >= MAX_PUBLIC_POINTS_0668;
+    const nextSinceMillis = lastRoutePoint ? Number(lastRoutePoint.recordedAtMillis || 0) : Math.max(0, Number(requestedSince || 0));
     const destinationLatitude = share.scope === "PASSENGER" ? finiteNumber0668(share.destinationLatitude) : null;
     const destinationLongitude = share.scope === "PASSENGER" ? finiteNumber0668(share.destinationLongitude) : null;
     const distanceToDestinationMeters = passengerDistanceToDestinationMeters0669(current, share);
@@ -487,6 +500,8 @@ function createLiveTracking0668({ db, requireDriver }) {
       serverNowMillis: now,
       batteryPercent: session.batteryPercent == null ? null : Number(session.batteryPercent),
       points,
+      hasMorePoints,
+      nextSinceMillis,
       current,
       destination: share.scope === "PASSENGER" && validCoordinate0668(destinationLatitude, destinationLongitude) ? {
         latitude: destinationLatitude,
@@ -511,6 +526,8 @@ function createLiveTracking0668({ db, requireDriver }) {
 module.exports = {
   createLiveTracking0668,
   distanceMeters0668,
+  continuousTrackingPoints0670,
+  trackingQueryFloor0670,
   publicTrackingPoints0668,
   publicTrackerTelemetry0670,
   passengerDistanceToDestinationMeters0669,
