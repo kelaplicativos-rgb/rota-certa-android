@@ -62,6 +62,45 @@ function passengerDistanceToDestinationMeters0669(current, share) {
   return Math.round(distanceMeters0668(latitude, longitude, destinationLatitude, destinationLongitude));
 }
 
+function publicTrackerTelemetry0670(session, share, current, nowMillis = Date.now()) {
+  const heartbeatAt = Number(
+    session && (
+      session.lastDeviceHeartbeatAtMillis ||
+      session.updatedAtMillis ||
+      session.latestPointAtMillis ||
+      0
+    )
+  );
+  const currentGpsAt = current ? Number(current.recordedAtMillis || 0) : 0;
+  const gpsAt = share && share.scope === "PASSENGER"
+    ? currentGpsAt
+    : Number((session && session.lastGpsAtMillis) || currentGpsAt || 0);
+  const heartbeatAgeMillis = heartbeatAt > 0 ? Math.max(0, nowMillis - heartbeatAt) : null;
+  const gpsAgeMillis = gpsAt > 0 ? Math.max(0, nowMillis - gpsAt) : null;
+  const deviceState = heartbeatAgeMillis == null
+    ? "WAITING"
+    : heartbeatAgeMillis <= 20_000
+      ? "CONNECTED"
+      : heartbeatAgeMillis <= 60_000
+        ? "DELAYED"
+        : "OFFLINE";
+  const gpsState = gpsAgeMillis == null
+    ? "WAITING"
+    : gpsAgeMillis <= 20_000
+      ? "FRESH"
+      : gpsAgeMillis <= 60_000
+        ? "STALE"
+        : "OLD";
+  return {
+    lastDeviceHeartbeatAtMillis: heartbeatAt > 0 ? heartbeatAt : 0,
+    lastGpsAtMillis: gpsAt > 0 ? gpsAt : 0,
+    heartbeatAgeMillis,
+    gpsAgeMillis,
+    deviceState,
+    gpsState,
+  };
+}
+
 function shouldClosePassengerShare0668(share, latest, nowMillis = Date.now()) {
   if (!share || share.scope !== "PASSENGER" || !share.active || !latest) return false;
   const created = Number(share.createdAtMillis || 0);
@@ -271,6 +310,8 @@ function createLiveTracking0668({ db, requireDriver }) {
     batch.set(selected.ref, {
       latestPoint: latest,
       latestPointAtMillis: latest.recordedAtMillis,
+      lastGpsAtMillis: latest.recordedAtMillis,
+      lastDeviceHeartbeatAtMillis: now,
       batteryPercent: battery == null ? null : Math.max(0, Math.min(100, Math.trunc(battery))),
       updatedAtMillis: now,
     }, { merge: true });
@@ -297,6 +338,55 @@ function createLiveTracking0668({ db, requireDriver }) {
       acceptedThroughMillis: latest.recordedAtMillis,
       pathPointsStored: stored,
       passengerSharesClosed: closing.length,
+    });
+  }
+
+  async function postHeartbeat0670(req, res) {
+    const identity = await requireTrackingDriver0668(req, res);
+    if (!identity) return;
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const selected = await sessionForDriver0668(req, res, identity, body.sessionId);
+    if (!selected) return;
+    if (!selected.data.active) {
+      return trackingFail0668(res, 409, "tracking_session_closed", "Sessão de rastreamento encerrada.");
+    }
+
+    const now = Date.now();
+    const sessionStarted = Number(selected.data.startedAtMillis || 0);
+    const battery = finiteNumber0668(body.batteryPercent);
+    const lastGpsAtMillis = Math.trunc(Number(body.lastGpsAtMillis || 0));
+    const latitude = finiteNumber0668(body.latitude);
+    const longitude = finiteNumber0668(body.longitude);
+    const heartbeatPoint = normalizePoint0668({
+      latitude,
+      longitude,
+      recordedAtMillis: lastGpsAtMillis,
+      accuracyMeters: body.accuracyMeters,
+      speedMetersPerSecond: body.speedMetersPerSecond,
+    });
+    const previousGpsAt = Number(selected.data.latestPointAtMillis || 0);
+    const pointAllowed = heartbeatPoint &&
+      heartbeatPoint.recordedAtMillis >= sessionStarted - 60 * 1000 &&
+      heartbeatPoint.recordedAtMillis <= now + 5 * 60 * 1000 &&
+      heartbeatPoint.recordedAtMillis >= previousGpsAt;
+
+    const update = {
+      lastDeviceHeartbeatAtMillis: now,
+      clientHeartbeatAtMillis: Math.trunc(Number(body.deviceHeartbeatAtMillis || now)),
+      batteryPercent: battery == null ? selected.data.batteryPercent ?? null : Math.max(0, Math.min(100, Math.trunc(battery))),
+      trackingActive: body.trackingActive !== false,
+      trackerProtocolVersion: "0670",
+      updatedAtMillis: now,
+    };
+    if (pointAllowed) {
+      update.latestPoint = heartbeatPoint;
+      update.latestPointAtMillis = heartbeatPoint.recordedAtMillis;
+      update.lastGpsAtMillis = heartbeatPoint.recordedAtMillis;
+    }
+    await selected.ref.set(update, { merge: true });
+    return trackingJson0668(res, 200, {
+      ok: true,
+      acceptedThroughMillis: pointAllowed ? heartbeatPoint.recordedAtMillis : previousGpsAt,
     });
   }
 
@@ -381,6 +471,7 @@ function createLiveTracking0668({ db, requireDriver }) {
     const destinationLatitude = share.scope === "PASSENGER" ? finiteNumber0668(share.destinationLatitude) : null;
     const destinationLongitude = share.scope === "PASSENGER" ? finiteNumber0668(share.destinationLongitude) : null;
     const distanceToDestinationMeters = passengerDistanceToDestinationMeters0669(current, share);
+    const tracker0670 = publicTrackerTelemetry0670(session, share, current, now);
 
     return trackingJson0668(res, 200, {
       ok: true,
@@ -388,7 +479,12 @@ function createLiveTracking0668({ db, requireDriver }) {
       driverDisplayName: cleanText0668(session.driverDisplayName, 120),
       startedAtMillis: share.scope === "PASSENGER" ? Number(share.createdAtMillis || floor) : Number(session.startedAtMillis || floor),
       expiresAtMillis: Number(share.expiresAtMillis || 0),
-      lastUpdatedAtMillis: current ? Number(current.recordedAtMillis || 0) : 0,
+      lastUpdatedAtMillis: tracker0670.lastDeviceHeartbeatAtMillis,
+      lastDeviceHeartbeatAtMillis: tracker0670.lastDeviceHeartbeatAtMillis,
+      lastGpsAtMillis: tracker0670.lastGpsAtMillis,
+      deviceState: tracker0670.deviceState,
+      gpsState: tracker0670.gpsState,
+      serverNowMillis: now,
       batteryPercent: session.batteryPercent == null ? null : Number(session.batteryPercent),
       points,
       current,
@@ -405,6 +501,7 @@ function createLiveTracking0668({ db, requireDriver }) {
     createSession,
     createShare,
     postPoints,
+    postHeartbeat0670,
     closeShare,
     closeSession,
     getPublic,
@@ -415,6 +512,7 @@ module.exports = {
   createLiveTracking0668,
   distanceMeters0668,
   publicTrackingPoints0668,
+  publicTrackerTelemetry0670,
   passengerDistanceToDestinationMeters0669,
   shouldClosePassengerShare0668,
   trackingShareDocId0668,
