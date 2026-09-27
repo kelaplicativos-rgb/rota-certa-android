@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.669",
+      "build": 5960,
+      "commit": null,
+      "branch": "agent/passenger-tracking-fresh-gps-0.1.669",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [],
+      "fixed": [
+        "O acompanhamento do passageiro deixa de calcular distância usando a última posição global da sessão quando ela é anterior à criação do link temporário.",
+        "Antes do primeiro ponto GPS posterior à criação do link, posição atual, última atualização e distância ao desembarque ficam indisponíveis em vez de reutilizar histórico anterior.",
+        "O encerramento automático por chegada ignora pontos GPS enfileirados com horário anterior à criação do compartilhamento do passageiro."
+      ],
+      "improved": [
+        "A página pública passa a exibir “Aguardando localização do motorista…” e “Aguardando localização…” até existir um GPS novo autorizado para aquele passageiro.",
+        "Valor nulo de distância não é mais convertido visualmente em 0 m.",
+        "Família e rastreamento privado mantêm a semântica anterior; a mudança fica restrita à fronteira de privacidade do link temporário do passageiro."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.668: distância até o desembarque podia ser calculada a partir de session.latestPoint mesmo quando esse ponto precedia a criação do link do passageiro."
+      ],
+      "modulesAffected": [
+        "Rastreamento de trabalho",
+        "Passageiros",
+        "Viagem Certa",
+        "Backend",
+        "Página de acompanhamento",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.668",
       "build": 5959,
       "commit": null,
