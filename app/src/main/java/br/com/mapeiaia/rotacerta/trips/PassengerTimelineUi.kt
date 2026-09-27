@@ -274,6 +274,13 @@ internal fun passengerSegmentPaxLabel0671(
 ): String = passengerRowsOnSegment0672(rows, segmentIndex)
     .joinToString(" • ") { row0672 -> row0672.name.ifBlank { "Passageiro" } }
 
+internal fun passengerScheduleZone0672(trip: Trip?): ZoneId {
+    val configured0672 = trip?.publicTimezoneId0411?.trim()?.takeIf(String::isNotBlank)
+    return configured0672
+        ?.let { zone0672 -> runCatching { ZoneId.of(zone0672) }.getOrNull() }
+        ?: ZoneId.systemDefault()
+}
+
 internal fun segmentStartTimeMillis0671(
     trip: Trip,
     load: SegmentLoad,
@@ -303,7 +310,13 @@ private fun SegmentVacancyLine0671(
     val overbooking0671 = load0671.overbookingSeats.coerceAtLeast(0)
     val passengers0672 = passengerRowsOnSegment0672(rows0671, segmentIndex0671)
     val time0671 = tripChronologicalStopTimeLabel0667(
-        segmentStartTimeMillis0671(trip, load0671, entry.departureAtMillis, entry.arrivalAtMillis),
+        timeMillis = segmentStartTimeMillis0671(
+            trip,
+            load0671,
+            entry.departureAtMillis,
+            entry.arrivalAtMillis,
+        ),
+        zoneId = passengerScheduleZone0672(trip),
     ) ?: "—"
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -3171,7 +3184,7 @@ internal fun passengerQuickMessageText0656(
     vehicleColor: String = "",
 ): String {
     val locale = java.util.Locale.forLanguageTag(localeTag.ifBlank { "pt-BR" })
-    val zone0672 = java.time.ZoneId.systemDefault()
+    val zone0672 = passengerScheduleZone0672(trip)
     val boardingMillis0672 = if (trip != null) {
         passengerBoardingTimeMillis0672(entry, trip, row)
     } else {
