@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -48,6 +49,9 @@ import br.com.mapeiaia.rotacerta.R
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.security.MessageDigest
 import java.text.Normalizer
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -190,6 +194,90 @@ internal fun buildImmediateCanonicalPassengerTimelineRenderSnapshot0517(
     )
 }
 
+internal data class TripChronologicalStop0667(
+    val stop: TripStop,
+    val index: Int,
+    val timeMillis: Long?,
+)
+
+internal fun tripChronologicalStops0667(
+    trip: Trip,
+    departureAtMillis: Long,
+    arrivalAtMillis: Long?,
+): List<TripChronologicalStop0667> {
+    val ordered0667 = trip.stops.sortedBy(TripStop::order)
+    val lastIndex0667 = ordered0667.lastIndex
+    return ordered0667.mapIndexed { index0667, stop0667 ->
+        val timeMillis0667 = when {
+            index0667 == 0 ->
+                stop0667.plannedDepartureMillis
+                    ?: stop0667.plannedArrivalMillis
+                    ?: departureAtMillis
+            index0667 == lastIndex0667 ->
+                stop0667.plannedArrivalMillis
+                    ?: stop0667.plannedDepartureMillis
+                    ?: arrivalAtMillis
+            else ->
+                stop0667.plannedArrivalMillis
+                    ?: stop0667.plannedDepartureMillis
+        }
+        TripChronologicalStop0667(
+            stop = stop0667,
+            index = index0667,
+            timeMillis = timeMillis0667,
+        )
+    }
+}
+
+internal fun tripChronologicalStopTimeLabel0667(
+    timeMillis: Long?,
+    zoneId: ZoneId = ZoneId.systemDefault(),
+): String? = timeMillis?.let { millis0667 ->
+    DateTimeFormatter.ofPattern("HH:mm").format(Instant.ofEpochMilli(millis0667).atZone(zoneId))
+}
+
+@Composable
+private fun ChronologicalTripStopLine0667(
+    item0667: TripChronologicalStop0667,
+    isLast0667: Boolean,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = tripChronologicalStopTimeLabel0667(item0667.timeMillis) ?: "—",
+            modifier = Modifier.width(48.dp),
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Column(
+            modifier = Modifier.width(18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = "●",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            if (!isLast0667) {
+                Text(
+                    text = "│",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                )
+            }
+        }
+        Text(
+            text = item0667.stop.name.ifBlank { "Parada" },
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.titleSmall,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
 @Composable
 internal fun EnhancedPassengerTimelineSection(
     entry: TripTimelineEntry,
@@ -202,6 +290,7 @@ internal fun EnhancedPassengerTimelineSection(
     canonicalBookings0494: List<Booking>? = null,
     showTripActions0549: Boolean = true,
     compactEmbeddedControls0593: Boolean = false,
+    embedChronologicalStops0667: Boolean = false,
 ) {
     val context = LocalContext.current
     val passengerStore = remember(context) { PassengerIdentityStore(context) }
@@ -294,7 +383,7 @@ internal fun EnhancedPassengerTimelineSection(
         TripBlaBlaTripActionRow(entry, onAddManualPassenger)
     }
     if (renderSnapshot == null) return
-    if (rawRows.isEmpty()) return
+    if (rawRows.isEmpty() && !embedChronologicalStops0667) return
 
     val progress = trip?.let { TripPassengerRouteOrder.progress(it, currentCoordinate) }
     // Keep trusted route/GPS ordering internally, but do not expose a
@@ -302,6 +391,15 @@ internal fun EnhancedPassengerTimelineSection(
     // explicit GPS actions while the place labels keep their existing editor action.
     val rows = passengerTimelineOperationalOrder(rawRows, progress)
         .sortedBy { row -> if (row.localBookingId == focusedBookingId) 0 else 1 }
+    val chronologicalStops0667 = if (embedChronologicalStops0667 && trip != null) {
+        tripChronologicalStops0667(
+            trip = trip,
+            departureAtMillis = entry.departureAtMillis,
+            arrivalAtMillis = entry.arrivalAtMillis,
+        )
+    } else {
+        emptyList()
+    }
 
     var profileRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var blockProfile by remember { mutableStateOf<PassengerProfile?>(null) }
@@ -444,8 +542,41 @@ internal fun EnhancedPassengerTimelineSection(
         return
     }
 
+    var lastRenderedStopIndex0667 = -1
     rows.forEachIndexed { index, passenger ->
-        if (index > 0) HorizontalDivider()
+        if (embedChronologicalStops0667 && chronologicalStops0667.isNotEmpty()) {
+            val targetStopIndex0667 = passenger.boardingStopIndex
+            if (targetStopIndex0667 != null) {
+                val safeTarget0667 = targetStopIndex0667.coerceIn(0, chronologicalStops0667.lastIndex)
+                for (stopIndex0667 in (lastRenderedStopIndex0667 + 1)..safeTarget0667) {
+                    ChronologicalTripStopLine0667(
+                        item0667 = chronologicalStops0667[stopIndex0667],
+                        isLast0667 = stopIndex0667 == chronologicalStops0667.lastIndex,
+                    )
+                }
+                lastRenderedStopIndex0667 = maxOf(lastRenderedStopIndex0667, safeTarget0667)
+            } else if (lastRenderedStopIndex0667 < chronologicalStops0667.lastIndex) {
+                for (stopIndex0667 in (lastRenderedStopIndex0667 + 1)..chronologicalStops0667.lastIndex) {
+                    ChronologicalTripStopLine0667(
+                        item0667 = chronologicalStops0667[stopIndex0667],
+                        isLast0667 = stopIndex0667 == chronologicalStops0667.lastIndex,
+                    )
+                }
+                lastRenderedStopIndex0667 = chronologicalStops0667.lastIndex
+                Text(
+                    text = "Embarque não associado ao itinerário",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (index > 0 && (
+                !embedChronologicalStops0667 ||
+                    passenger.boardingStopIndex == rows[index - 1].boardingStopIndex
+            )
+        ) {
+            HorizontalDivider()
+        }
         val rowKey0394 = passengerTimelineRowKey0394(passenger)
         val rowProfile = renderSnapshot.profilesByRowKey[rowKey0394]
         val currentBooking = passenger.localBookingId?.let(renderSnapshot.bookingsById::get)
@@ -1330,6 +1461,17 @@ internal fun EnhancedPassengerTimelineSection(
         }
     }
 
+
+    if (embedChronologicalStops0667 && chronologicalStops0667.isNotEmpty() &&
+        lastRenderedStopIndex0667 < chronologicalStops0667.lastIndex
+    ) {
+        for (stopIndex0667 in (lastRenderedStopIndex0667 + 1)..chronologicalStops0667.lastIndex) {
+            ChronologicalTripStopLine0667(
+                item0667 = chronologicalStops0667[stopIndex0667],
+                isLast0667 = stopIndex0667 == chronologicalStops0667.lastIndex,
+            )
+        }
+    }
 
     profileRow?.let { row ->
         val profile = passengerStore.profile(row.passengerId)
