@@ -52,6 +52,16 @@ function publicTrackingPoints0668(points, share) {
     }));
 }
 
+function passengerDistanceToDestinationMeters0669(current, share) {
+  if (!current || !share || share.scope !== "PASSENGER") return null;
+  const destinationLatitude = finiteNumber0668(share.destinationLatitude);
+  const destinationLongitude = finiteNumber0668(share.destinationLongitude);
+  const latitude = finiteNumber0668(current.latitude);
+  const longitude = finiteNumber0668(current.longitude);
+  if (!validCoordinate0668(latitude, longitude) || !validCoordinate0668(destinationLatitude, destinationLongitude)) return null;
+  return Math.round(distanceMeters0668(latitude, longitude, destinationLatitude, destinationLongitude));
+}
+
 function shouldClosePassengerShare0668(share, latest, nowMillis = Date.now()) {
   if (!share || share.scope !== "PASSENGER" || !share.active || !latest) return false;
   const created = Number(share.createdAtMillis || 0);
@@ -370,9 +380,7 @@ function createLiveTracking0668({ db, requireDriver }) {
     const current = points.length ? normalizePoint0668(points[points.length - 1]) : null;
     const destinationLatitude = share.scope === "PASSENGER" ? finiteNumber0668(share.destinationLatitude) : null;
     const destinationLongitude = share.scope === "PASSENGER" ? finiteNumber0668(share.destinationLongitude) : null;
-    const distanceToDestinationMeters = current && validCoordinate0668(destinationLatitude, destinationLongitude)
-      ? Math.round(distanceMeters0668(current.latitude, current.longitude, destinationLatitude, destinationLongitude))
-      : null;
+    const distanceToDestinationMeters = passengerDistanceToDestinationMeters0669(current, share);
 
     return trackingJson0668(res, 200, {
       ok: true,
@@ -407,6 +415,7 @@ module.exports = {
   createLiveTracking0668,
   distanceMeters0668,
   publicTrackingPoints0668,
+  passengerDistanceToDestinationMeters0669,
   shouldClosePassengerShare0668,
   trackingShareDocId0668,
 };
