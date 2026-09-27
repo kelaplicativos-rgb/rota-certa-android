@@ -2,6 +2,36 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.677",
+      "build": 5968,
+      "commit": null,
+      "branch": "agent/trip-detail-script-resilience-0.1.677",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "O trip_detail.js passa a usar o normalizador placeKey já definido para deduplicar paradas sem lançar ReferenceError.",
+        "Exceções do script de detalhe passam a retornar envelope mínimo sanitizado e são classificadas como TRIP_DETAIL_SCRIPT_ERROR_0677, separadas de falhas de transporte.",
+        "Esgotar o retry de transporte em um card não interrompe mais a captura das viagens restantes do perfil; o card falho permanece INCOMPLETE e o estado canônico anterior continua protegido."
+      ],
+      "fixed": [
+        "Corrigida a regressão introduzida na 0.1.672 em que chamadas inexistentes a key(...) abortavam o trip_detail.js antes do JSON e produziam TRIP_DETAIL_PAYLOAD_DECODE_FAILED_0676.",
+        "Corrigido o efeito cascata em que uma única viagem com falha de detalhe gerava UNIFIED_TRANSPORT_RECOVERY_EXHAUSTED_0621 e deixava todas as viagens seguintes sem tentativa.",
+        "Falhas de um card não apagam mais o tripLink público previamente validado do rides-index quando há evidência anterior preservável."
+      ],
+      "improved": [
+        "O workflow executa o trip_detail.js de verdade em Node sobre um DOM mínimo com origem e destino temporizados, além dos testes Kotlin herdados.",
+        "A telemetria registra somente presença de erro e estágio sanitizado do script, sem conteúdo do HTML ou dados privados.",
+        "Retry com reciclagem de WebView permanece restrito às falhas de detalhe classificadas como recuperáveis."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.672-0.1.676: trip_detail.js podia falhar deterministicamente com ReferenceError ao processar duas ou mais paradas.",
+        "0.1.676: uma falha definitiva no primeiro card podia impedir a tentativa das dezenas de viagens restantes do mesmo perfil."
+      ],
+      "modulesAffected": ["Suas viagens", "BlaBlaCar HTML", "Detalhe da viagem", "Rides index", "Refresh individual", "Diagnóstico", "Build"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.676",
       "build": 5967,
       "commit": null,
