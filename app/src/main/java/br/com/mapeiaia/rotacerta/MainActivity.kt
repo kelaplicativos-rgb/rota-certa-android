@@ -3296,15 +3296,15 @@ private fun copySavedPlaceAddress0664(context: Context, place: SavedPlace) {
     val address = savedPlaceAddressText0664(place)
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
     if (clipboard == null) {
-        Toast.makeText(context, "Nao foi possivel copiar o endereco.", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "Não foi possível copiar o endereço.", Toast.LENGTH_SHORT).show()
         return
     }
     runCatching {
-        clipboard.setPrimaryClip(ClipData.newPlainText("Endereco", address))
+        clipboard.setPrimaryClip(ClipData.newPlainText("Endereço", address))
     }.onSuccess {
-        Toast.makeText(context, "Endereco copiado", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "Endereço copiado", Toast.LENGTH_SHORT).show()
     }.onFailure {
-        Toast.makeText(context, "Nao foi possivel copiar o endereco.", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "Não foi possível copiar o endereço.", Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -3319,7 +3319,7 @@ private fun shareSavedPlace0664(context: Context, place: SavedPlace) {
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     runCatching { context.startActivity(chooser) }
         .onFailure {
-            Toast.makeText(context, "Nao foi possivel abrir o compartilhamento.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Não foi possível abrir o compartilhamento.", Toast.LENGTH_SHORT).show()
         }
 }
 
