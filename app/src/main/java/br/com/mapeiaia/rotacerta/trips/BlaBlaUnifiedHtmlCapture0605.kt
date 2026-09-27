@@ -83,6 +83,7 @@ private data class UnifiedTripDetailEnvelope0605(
     val publicTripHref: String = "",
     val passengerHrefs: List<String> = emptyList(),
     val itineraryStops: List<String> = emptyList(),
+    val itineraryStopTimes: List<String> = emptyList(),
     val itineraryAuthoritative: Boolean = false,
     val stopLocations: List<BlaBlaTripStopLocation0659> = emptyList(),
     val domHtml: String = "",
@@ -1190,16 +1191,34 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             trip.trip_id == ride.tripId && trip.profile_uuid.equals(definition.uuid, ignoreCase = true)
         }
 
-        val stops = detail.itineraryStops
-            .map(String::trim)
-            .filter(String::isNotBlank)
-            .fold(mutableListOf<String>()) { result, stop ->
-                if (result.lastOrNull() != stop) result += stop
-                result
+        val stopObservations0672 = detail.itineraryStops
+            .mapIndexedNotNull { index0672, rawStop0672 ->
+                val stop0672 = rawStop0672.trim().takeIf(String::isNotBlank) ?: return@mapIndexedNotNull null
+                val time0672 = detail.itineraryStopTimes
+                    .getOrNull(index0672)
+                    .orEmpty()
+                    .trim()
+                    .take(5)
+                    .takeIf { value0672 -> Regex("""^(?:[01]?\d|2[0-3]):[0-5]\d$""").matches(value0672) }
+                    .orEmpty()
+                stop0672 to time0672
+            }
+            .fold(mutableListOf<Pair<String, String>>()) { result0672, observation0672 ->
+                val previous0672 = result0672.lastOrNull()
+                when {
+                    previous0672 == null || previous0672.first != observation0672.first ->
+                        result0672 += observation0672
+                    previous0672.second.isBlank() && observation0672.second.isNotBlank() ->
+                        result0672[result0672.lastIndex] = previous0672.first to observation0672.second
+                }
+                result0672
             }
             .toList()
+        val stops = stopObservations0672.map(Pair<String, String>::first)
+        val stopTimes0672 = stopObservations0672.map(Pair<String, String>::second)
         val baseTrip = normalized?.copy(
             itinerary_stops = stops,
+            itinerary_stop_times = stopTimes0672,
             itinerary_authoritative = detail.itineraryAuthoritative && stops.size >= 2,
             public_trip_href = publicUrl,
             public_trip_href_source = publicSource,
