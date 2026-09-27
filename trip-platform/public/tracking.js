@@ -25,7 +25,7 @@
   }
 
   function formatDistance(meters) {
-    if (!Number.isFinite(Number(meters))) return "—";
+    if (meters == null || meters === "" || !Number.isFinite(Number(meters))) return "—";
     const value = Number(meters);
     return value < 1000 ? `${Math.max(0, Math.round(value))} m` : `${(value / 1000).toFixed(1).replace(".", ",")} km`;
   }
@@ -90,14 +90,19 @@
     privacy.textContent = passenger
       ? "Este link mostra somente o trecho compartilhado para esta viagem e será encerrado no destino ou ao expirar."
       : "Acompanhamento familiar da sessão atual, incluindo o trajeto já percorrido.";
-    const age = Date.now() - Number(data.lastUpdatedAtMillis || 0);
-    status.textContent = age <= 30000 ? "● " + ageLabel(data.lastUpdatedAtMillis) : ageLabel(data.lastUpdatedAtMillis);
-    status.className = age > 120000 ? "warn" : "status";
-    updated.textContent = formatTime(data.lastUpdatedAtMillis);
+    const waitingForPassengerGps = passenger && !data.current;
+    const age = data.lastUpdatedAtMillis ? Date.now() - Number(data.lastUpdatedAtMillis) : Number.POSITIVE_INFINITY;
+    status.textContent = waitingForPassengerGps
+      ? "Aguardando localização do motorista…"
+      : age <= 30000 ? "● " + ageLabel(data.lastUpdatedAtMillis) : ageLabel(data.lastUpdatedAtMillis);
+    status.className = waitingForPassengerGps || age > 120000 ? "warn" : "status";
+    updated.textContent = waitingForPassengerGps ? "Aguardando GPS" : formatTime(data.lastUpdatedAtMillis);
     started.textContent = formatTime(data.startedAtMillis);
     battery.textContent = data.batteryPercent == null ? "—" : `${Math.round(Number(data.batteryPercent))}%`;
     distanceBox.hidden = !passenger;
-    distance.textContent = formatDistance(data.distanceToDestinationMeters);
+    distance.textContent = waitingForPassengerGps || data.distanceToDestinationMeters == null
+      ? "Aguardando localização…"
+      : formatDistance(data.distanceToDestinationMeters);
     renderMap(data);
   }
 
