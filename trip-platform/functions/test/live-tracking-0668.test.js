@@ -3,6 +3,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
+  continuousTrackingPoints0670,
+  trackingQueryFloor0670,
   distanceMeters0668,
   publicTrackingPoints0668,
   publicTrackerTelemetry0670,
@@ -168,4 +170,32 @@ test("tracker reports offline after heartbeat stops", () => {
   }, now);
   assert.equal(telemetry.deviceState, "OFFLINE");
   assert.equal(telemetry.gpsState, "OLD");
+});
+
+
+test("continuous tracker keeps every valid five-second GPS point instead of sampling by distance or minute", () => {
+  const start = 10_000_000;
+  const raw = Array.from({ length: 13 }, (_, index) => ({
+    latitude:-23.550500 + index * 0.000015,
+    longitude:-46.633300 + index * 0.000015,
+    recordedAtMillis:start + index * 5_000,
+    accuracyMeters:5,
+    speedMetersPerSecond:8,
+  }));
+  const kept = continuousTrackingPoints0670(raw);
+  assert.equal(kept.length, 13);
+  assert.deepEqual(
+    kept.map((point) => point.recordedAtMillis),
+    raw.map((point) => point.recordedAtMillis),
+  );
+});
+
+test("incremental public route floor never crosses passenger privacy boundary", () => {
+  const session = { startedAtMillis:1_000 };
+  const passenger = { scope:"PASSENGER", createdAtMillis:5_000 };
+  const family = { scope:"FAMILY", createdAtMillis:5_000 };
+  assert.equal(trackingQueryFloor0670(passenger, session, 0), 5_000);
+  assert.equal(trackingQueryFloor0670(passenger, session, 7_500), 7_500);
+  assert.equal(trackingQueryFloor0670(passenger, session, 3_000), 5_000);
+  assert.equal(trackingQueryFloor0670(family, session, 7_500), 7_500);
 });
