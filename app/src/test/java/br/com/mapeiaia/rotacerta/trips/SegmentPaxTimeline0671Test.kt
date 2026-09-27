@@ -29,17 +29,17 @@ class SegmentPaxTimeline0671Test {
             row("Carla", 1, 2, 3),
         )
         assertEquals("Ana", passengerSegmentPaxLabel0671(rows, 0, 1))
-        assertEquals("Ana • Bruno ×2", passengerSegmentPaxLabel0671(rows, 1, 3))
-        assertEquals("Bruno ×2 • Carla", passengerSegmentPaxLabel0671(rows, 2, 3))
+        assertEquals("Ana • Bruno", passengerSegmentPaxLabel0671(rows, 1, 3))
+        assertEquals("Bruno • Carla", passengerSegmentPaxLabel0671(rows, 2, 3))
         assertFalse(passengerActiveOnSegment0671(rows[0], 2))
     }
 
     @Test
-    fun unresolvedRosterIsExplicitInsteadOfInventingNames() {
+    fun unresolvedRosterNeverInventsPaxLabelsOrNumbers() {
         val rows = listOf(row("Ana", 1, 0, 2))
-        assertEquals("Ana • +2 PAX sem nome", passengerSegmentPaxLabel0671(rows, 0, 3))
-        assertEquals("2 PAX sem nome", passengerSegmentPaxLabel0671(emptyList(), 0, 2))
-        assertEquals("Sem PAX", passengerSegmentPaxLabel0671(emptyList(), 0, 0))
+        assertEquals("Ana", passengerSegmentPaxLabel0671(rows, 0, 3))
+        assertEquals("", passengerSegmentPaxLabel0671(emptyList(), 0, 2))
+        assertEquals("", passengerSegmentPaxLabel0671(emptyList(), 0, 0))
     }
 
     @Test
@@ -72,6 +72,10 @@ class SegmentPaxTimeline0671Test {
 
         assertTrue(passenger.contains("PASSENGER_PHONE_EDITED_0671"))
         assertTrue(passenger.contains("phoneEditRow0671 = passenger"))
+        assertTrue(passenger.contains("communicationShortcutRow0672 = passenger"))
+        assertTrue(passenger.contains("onPassengerClick0672"))
+        assertFalse(passenger.contains("append(\"PAX: \""))
+        assertFalse(passenger.contains("PAX sem nome"))
         assertTrue(passenger.contains("privateMetadata0494?.passengerContact"))
         assertTrue(trips.contains("segmentLoads0671 = row.segmentLoads0602"))
         assertTrue(central.contains("segmentLoads0671 = item.segmentLoads"))
