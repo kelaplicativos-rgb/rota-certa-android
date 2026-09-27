@@ -151,6 +151,9 @@ class PassengerOperationalShortcuts0656Test {
         assertTrue(tripsSource.contains("compactEmbeddedControls0593 = true"))
         assertTrue(centralSource.contains("EnhancedPassengerTimelineSection("))
         assertTrue(centralSource.contains("compactEmbeddedControls0593 = true"))
-        assertTrue(centralSource.contains("if (!passengersExpanded0591)"))
+        assertTrue(tripsSource.contains("embedChronologicalStops0667 = true"))
+        assertTrue(centralSource.contains("embedChronologicalStops0667 = true"))
+        assertFalse(tripsSource.contains("Text(\\\"Atalhos\\\", maxLines = 1)"))
+        assertFalse(centralSource.contains("Text(\\\"Atalhos\\\", maxLines = 1)"))
     }
 }
