@@ -19,6 +19,9 @@
   let route = null;
   let currentMarker = null;
   let destinationMarker = null;
+  let routePoints0670 = [];
+  let lastRoutePointMillis0670 = 0;
+  let refreshInFlight0670 = false;
 
   function formatTime(value) {
     if (!value) return "—";
@@ -51,9 +54,7 @@
   }
 
   function renderMap(data) {
-    const points = Array.isArray(data.points) ? data.points.filter((p) =>
-      Number.isFinite(Number(p.latitude)) && Number.isFinite(Number(p.longitude))
-    ) : [];
+    const points = routePoints0670;
     const current = data.current;
     if (!ensureMap()) {
       fallback.hidden = false;
@@ -124,34 +125,70 @@
     renderMap(data);
   }
 
+  function mergeRoutePoints0670(incoming) {
+    const merged = new Map();
+    routePoints0670.forEach((p) => {
+      const key = [Number(p.recordedAtMillis || 0), Number(p.latitude).toFixed(7), Number(p.longitude).toFixed(7)].join("|");
+      merged.set(key, p);
+    });
+    (Array.isArray(incoming) ? incoming : []).forEach((p) => {
+      if (!Number.isFinite(Number(p.latitude)) || !Number.isFinite(Number(p.longitude))) return;
+      const key = [Number(p.recordedAtMillis || 0), Number(p.latitude).toFixed(7), Number(p.longitude).toFixed(7)].join("|");
+      merged.set(key, p);
+    });
+    routePoints0670 = Array.from(merged.values()).sort((a, b) =>
+      Number(a.recordedAtMillis || 0) - Number(b.recordedAtMillis || 0)
+    );
+    const last = routePoints0670.at(-1);
+    if (last) lastRoutePointMillis0670 = Number(last.recordedAtMillis || lastRoutePointMillis0670);
+  }
+
+  async function fetchTrackingPage0670(sinceMillis) {
+    const suffix = sinceMillis > 0 ? `?since=${encodeURIComponent(sinceMillis)}` : "";
+    const response = await fetch(`/v1/public/tracking/${encodeURIComponent(token)}${suffix}`, {
+      cache:"no-store",
+      headers:{ "Accept":"application/json" },
+    });
+    return response;
+  }
+
   async function refresh() {
+    if (refreshInFlight0670) return;
     if (!token || !/^[A-Za-z0-9_-]{22,180}$/.test(token)) {
       status.textContent = "Link inválido.";
       status.className = "ended";
       return;
     }
+    refreshInFlight0670 = true;
     try {
-      const response = await fetch(`/v1/public/tracking/${encodeURIComponent(token)}`, {
-        cache:"no-store",
-        headers:{ "Accept":"application/json" },
-      });
-      if (response.status === 410) {
-        status.textContent = "Compartilhamento encerrado.";
-        status.className = "ended";
-        if (timer) clearInterval(timer);
-        return;
+      let data = null;
+      let since0670 = lastRoutePointMillis0670;
+      for (let page0670 = 0; page0670 < 3; page0670 += 1) {
+        const response = await fetchTrackingPage0670(since0670);
+        if (response.status === 410) {
+          status.textContent = "Compartilhamento encerrado.";
+          status.className = "ended";
+          if (timer) clearInterval(timer);
+          return;
+        }
+        if (response.status === 404) {
+          status.textContent = "Aguardando o link ficar disponível no servidor…";
+          status.className = "warn";
+          return;
+        }
+        if (!response.ok) throw new Error("http_" + response.status);
+        data = await response.json();
+        mergeRoutePoints0670(data.points);
+        const next0670 = Number(data.nextSinceMillis || lastRoutePointMillis0670 || 0);
+        if (!data.hasMorePoints || next0670 <= since0670) break;
+        since0670 = next0670;
       }
-      if (response.status === 404) {
-        status.textContent = "Aguardando o link ficar disponível no servidor…";
-        status.className = "warn";
-        return;
-      }
-      if (!response.ok) throw new Error("http_" + response.status);
-      const data = await response.json();
-      render(data);
+      if (data) render(data);
     } catch (_) {
       status.textContent = "Sem conexão com o servidor. A última posição exibida permanece válida.";
       status.className = "warn";
+    } finally {
+      refreshInFlight0670 = false;
     }
   }
 
