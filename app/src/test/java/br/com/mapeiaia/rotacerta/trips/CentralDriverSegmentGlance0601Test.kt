@@ -19,7 +19,7 @@ class CentralDriverSegmentGlance0601Test {
         assertTrue(central.contains("segmentLoads0671 = item.segmentLoads"))
         assertTrue(central.contains("bloco único de vagas/PAX"))
         assertFalse(central.contains("val dots0595"))
-        assertFalse(central.contains("Text(\"👥 $occupancy0595\""))
+        assertFalse(central.contains("Text(\"👥 "))
         assertTrue(passenger.contains("SegmentVacancyLine0671("))
         assertTrue(passenger.contains("passengerSegmentPaxLabel0671("))
         assertTrue(passenger.contains("load0671.availableSeats"))
