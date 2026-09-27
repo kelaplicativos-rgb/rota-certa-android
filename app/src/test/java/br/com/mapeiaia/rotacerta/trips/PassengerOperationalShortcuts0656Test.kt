@@ -153,7 +153,7 @@ class PassengerOperationalShortcuts0656Test {
         assertTrue(centralSource.contains("compactEmbeddedControls0593 = true"))
         assertTrue(tripsSource.contains("embedChronologicalStops0667 = true"))
         assertTrue(centralSource.contains("embedChronologicalStops0667 = true"))
-        assertFalse(tripsSource.contains("Text(\\\"Atalhos\\\", maxLines = 1)"))
-        assertFalse(centralSource.contains("Text(\\\"Atalhos\\\", maxLines = 1)"))
+        assertFalse(tripsSource.contains("Text(\"Atalhos\", maxLines = 1)"))
+        assertFalse(centralSource.contains("Text(\"Atalhos\", maxLines = 1)"))
     }
 }
