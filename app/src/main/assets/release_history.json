@@ -2,6 +2,35 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.671",
+      "build": 5962,
+      "commit": null,
+      "branch": "agent/segment-pax-timeline-0.1.671",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Viagens e Central do Dia passam a usar um único bloco Vagas por trecho, sem a linha cronológica duplicada acima.",
+        "Cada trecho exibe o horário de saída da parada, a rota, as vagas restantes e os PAX reais ativos naquele segmento.",
+        "Passageiros continuam nascendo abaixo do respectivo embarque com pinos de embarque/desembarque e atalhos operacionais preservados.",
+        "Atalho de edição de telefone foi adicionado imediatamente ao lado do WhatsApp e o número manual passa a ter precedência local sobre novas capturas HTML."
+      ],
+      "fixed": [
+        "Removidos os indicadores abstratos de bolinhas e a fração de ocupação duplicada dos cards de Viagens e Central do Dia.",
+        "A ocupação visual por trecho passa a ser derivada dos mesmos índices canônicos de embarque/desembarque usados pelo motor de segmentos.",
+        "Edição manual de telefone deixa de ser perdida visualmente quando a mesma reserva é enriquecida novamente pelo HTML."
+      ],
+      "improved": [
+        "Trechos sem nome de passageiro suficiente sinalizam PAX sem nome em vez de inventar identidade.",
+        "Vagas, PAX e horários ficam agrupados na mesma leitura operacional."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.667-0.1.670: rota cronológica e Vagas por trecho apareciam como duas representações concorrentes no mesmo card."
+      ],
+      "modulesAffected": ["Viagens", "Central do Dia", "Timeline de passageiros", "Vagas por trecho", "WhatsApp", "Build"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.670",
       "build": 5961,
       "commit": null,
