@@ -1,0 +1,156 @@
+name: Chronological passenger cards 0.1.667 APK
+
+on:
+  push:
+    branches:
+      - 'agent/chronological-passenger-cards-0.1.667'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chronological-passenger-cards-0667-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: ''
+      ROTA_CERTA_TARGET_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: agent/chronological-passenger-cards-0.1.667
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.ROTA_CERTA_TARGET_SHA }}
+
+      - name: Prove exact 0.1.667 source and chronological card contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_TARGET_SHA"
+          echo "ROTA_CERTA_GIT_SHA=$ROTA_CERTA_TARGET_SHA" >> "$GITHUB_ENV"
+
+          PASS='app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt'
+          TRIPS='app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalAllTripsBrowserUi0563.kt'
+          CENTRAL='app/src/main/java/br/com/mapeiaia/rotacerta/trips/CentralDoDia0552.kt'
+
+          grep -Fq 'releaseVersionName = "0.1.667"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 5_958' app/build.gradle.kts
+          grep -Fq '"version": "0.1.667"' app/src/main/assets/release_history.json
+          grep -Fq 'tripChronologicalStops0667' "$PASS"
+          grep -Fq 'ChronologicalTripStopLine0667' "$PASS"
+          grep -Fq 'passenger.boardingStopIndex' "$PASS"
+          grep -Fq 'passengerOperationalAddressLabel0656(passenger, boarding = true)' "$PASS"
+          grep -Fq 'passengerOperationalAddressLabel0656(passenger, boarding = false)' "$PASS"
+          grep -Fq 'Text("📍", maxLines = 1)' "$PASS"
+          grep -Fq 'Text("🏁", maxLines = 1)' "$PASS"
+          grep -Fq 'embedChronologicalStops0667 = true' "$TRIPS"
+          grep -Fq 'embedChronologicalStops0667 = true' "$CENTRAL"
+          grep -Fq 'Text("Integridade", maxLines = 1)' "$TRIPS"
+          grep -Fq 'Text("Integridade", maxLines = 1)' "$CENTRAL"
+          ! grep -Fq 'Text("Atalhos", maxLines = 1)' "$TRIPS"
+          ! grep -Fq 'Text("Atalhos", maxLines = 1)' "$CENTRAL"
+          git diff --check 7e18fdc41abbcbc951944c5ed612feccfc3f0f19 HEAD
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run chronological card and inherited regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.ChronologicalPassengerCards0667Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripCardFooter0654Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalShortcuts0656Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripCardRefresh0663Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.ScopedHtmlIsolation0662Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.CentralTodayDirectHtml0661Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPassengerHtmlPrecision0659Test' \
+            --tests 'br.com.mapeiaia.rotacerta.SafetyRecorder0666ContractTest' \
+            --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0667-tests.log
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0667-assemble.log
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_TARGET_SHA"
+
+      - name: Prove APK identity signing runtime markers and final SHA
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+
+          unzip -t "$APK" | tee /tmp/android-0667-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/android-0667-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/android-0667-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5958'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.667'" <<< "$PACKAGE_LINE"
+
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/android-0667-apksigner.txt
+          grep -Fq 'Verified' /tmp/android-0667-apksigner.txt
+
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0667-dex-strings.txt
+          grep -Fq "$ROTA_CERTA_TARGET_SHA" /tmp/android-0667-dex-strings.txt
+          grep -Fq 'ChronologicalTripStopLine0667' /tmp/android-0667-dex-strings.txt
+          grep -Fq 'Embarque não associado ao itinerário' /tmp/android-0667-dex-strings.txt
+          grep -Fq 'TRIPS_CARD_HTML_DIRECT_0663' /tmp/android-0667-dex-strings.txt
+          grep -Fq 'PASSENGER_PRIVATE_REFRESH_REQUEST_0656' /tmp/android-0667-dex-strings.txt
+          grep -Fq 'SAFETY_AUDIO_STARTED_0666' /tmp/android-0667-dex-strings.txt
+
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.667-5958-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.667"
+            echo "versionCode=5958"
+            echo "branch=agent/chronological-passenger-cards-0.1.667"
+            echo "commit=$ROTA_CERTA_TARGET_SHA"
+            echo "deviceTarget=Samsung SM-S911B / Android 16 / API 36"
+            echo "routeOrder=CANONICAL_TRIP_STOP_ORDER"
+            echo "passengerPlacement=BELOW_BOARDING_STOP"
+            echo "pickupPin=PRESERVED"
+            echo "dropoffPin=PRESERVED"
+            echo "redundantFooter=REMOVED"
+            echo "tripIntegrityAction=PRESERVED"
+            echo "cardRefresh=HTML_EXACT_TRIP"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee chronological-passenger-cards-0667-proof.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-chronological-passenger-cards-0.1.667-${{ env.ROTA_CERTA_TARGET_SHA }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            chronological-passenger-cards-0667-proof.txt
+            /tmp/android-0667-tests.log
+            /tmp/android-0667-assemble.log
+            /tmp/android-0667-aapt.txt
+            /tmp/android-0667-apksigner.txt
+            /tmp/android-0667-zip-integrity.txt
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30
