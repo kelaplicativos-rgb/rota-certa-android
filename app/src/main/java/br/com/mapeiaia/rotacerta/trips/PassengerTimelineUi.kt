@@ -11,12 +11,14 @@ import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
@@ -259,25 +261,18 @@ internal fun passengerActiveOnSegment0671(
     return boarding0671 <= segmentIndex && segmentIndex < dropoff0671
 }
 
+internal fun passengerRowsOnSegment0672(
+    rows: List<EnhancedPassengerCardRow>,
+    segmentIndex: Int,
+): List<EnhancedPassengerCardRow> =
+    rows.filter { passengerActiveOnSegment0671(it, segmentIndex) }
+
 internal fun passengerSegmentPaxLabel0671(
     rows: List<EnhancedPassengerCardRow>,
     segmentIndex: Int,
-    expectedPassengerSeats: Int,
-): String {
-    val active0671 = rows.filter { passengerActiveOnSegment0671(it, segmentIndex) }
-    val named0671 = active0671.joinToString(" • ") { row0671 ->
-        val name0671 = row0671.name.ifBlank { "Passageiro" }
-        if (row0671.seats > 1) "$name0671 ×${row0671.seats}" else name0671
-    }
-    val resolvedSeats0671 = active0671.sumOf { it.seats.coerceAtLeast(1) }
-    val unresolved0671 = (expectedPassengerSeats.coerceAtLeast(0) - resolvedSeats0671).coerceAtLeast(0)
-    return when {
-        named0671.isBlank() && expectedPassengerSeats <= 0 -> "Sem PAX"
-        named0671.isBlank() -> "$expectedPassengerSeats PAX sem nome"
-        unresolved0671 > 0 -> "$named0671 • +$unresolved0671 PAX sem nome"
-        else -> named0671
-    }
-}
+    @Suppress("UNUSED_PARAMETER") expectedPassengerSeats: Int,
+): String = passengerRowsOnSegment0672(rows, segmentIndex)
+    .joinToString(" • ") { row0672 -> row0672.name.ifBlank { "Passageiro" } }
 
 internal fun segmentStartTimeMillis0671(
     trip: Trip,
@@ -297,6 +292,7 @@ private fun SegmentVacancyLine0671(
     load0671: SegmentLoad,
     segmentIndex0671: Int,
     rows0671: List<EnhancedPassengerCardRow>,
+    onPassengerClick0672: (EnhancedPassengerCardRow) -> Unit,
 ) {
     val available0671 = load0671.availableSeats.coerceAtLeast(0)
     val vacancy0671 = when (available0671) {
@@ -305,7 +301,7 @@ private fun SegmentVacancyLine0671(
         else -> "${available0671} vagas"
     }
     val overbooking0671 = load0671.overbookingSeats.coerceAtLeast(0)
-    val pax0671 = passengerSegmentPaxLabel0671(rows0671, segmentIndex0671, load0671.passengerSeats)
+    val passengers0672 = passengerRowsOnSegment0672(rows0671, segmentIndex0671)
     val time0671 = tripChronologicalStopTimeLabel0667(
         segmentStartTimeMillis0671(trip, load0671, entry.departureAtMillis, entry.arrivalAtMillis),
     ) ?: "—"
@@ -314,7 +310,13 @@ private fun SegmentVacancyLine0671(
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(time0671, modifier = Modifier.width(48.dp), style = MaterialTheme.typography.titleSmall)
+        Text(
+            text = time0671,
+            modifier = Modifier.width(42.dp).padding(top = 2.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 text = "${load0671.from.name} → ${load0671.to.name}",
@@ -322,17 +324,31 @@ private fun SegmentVacancyLine0671(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                text = buildString {
-                    append("PAX: ").append(pax0671)
-                    val blocked0671 = load0671.blockedSeats.coerceAtLeast(0)
-                    if (blocked0671 > 0) append(" • bloqueadas: ").append(blocked0671)
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            passengers0672.forEach { passenger0672 ->
+                val name0672 = passenger0672.name.ifBlank { "Passageiro" }
+                Text(
+                    text = name0672,
+                    modifier = Modifier
+                        .clickable(
+                            onClickLabel = "Abrir atalhos de $name0672",
+                            onClick = { onPassengerClick0672(passenger0672) },
+                        )
+                        .padding(vertical = 2.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            val blocked0672 = load0671.blockedSeats.coerceAtLeast(0)
+            if (blocked0672 > 0) {
+                Text(
+                    text = "🚫 $blocked0672 bloqueada" + if (blocked0672 == 1) "" else "s",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
         }
         Text(
             text = if (overbooking0671 > 0) "$vacancy0671 +$overbooking0671" else vacancy0671,
@@ -585,6 +601,7 @@ internal fun EnhancedPassengerTimelineSection(
     var createProfileRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var fareEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var phoneEditRow0671 by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
+    var communicationShortcutRow0672 by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var boardingAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var dropoffAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var quickMessageRow0656 by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
@@ -731,13 +748,27 @@ internal fun EnhancedPassengerTimelineSection(
                 val safeTarget0671 = targetStopIndex0671.coerceIn(0, segmentLoads0671.lastIndex)
                 if (safeTarget0671 > lastRenderedSegmentIndex0671) {
                     for (segmentIndex0671 in (lastRenderedSegmentIndex0671 + 1)..safeTarget0671) {
-                        SegmentVacancyLine0671(entry, trip, segmentLoads0671[segmentIndex0671], segmentIndex0671, rows)
+                        SegmentVacancyLine0671(
+                            entry = entry,
+                            trip = trip,
+                            load0671 = segmentLoads0671[segmentIndex0671],
+                            segmentIndex0671 = segmentIndex0671,
+                            rows0671 = rows,
+                            onPassengerClick0672 = { communicationShortcutRow0672 = it },
+                        )
                     }
                     lastRenderedSegmentIndex0671 = safeTarget0671
                 }
             } else if (lastRenderedSegmentIndex0671 < segmentLoads0671.lastIndex) {
                 for (segmentIndex0671 in (lastRenderedSegmentIndex0671 + 1)..segmentLoads0671.lastIndex) {
-                    SegmentVacancyLine0671(entry, trip, segmentLoads0671[segmentIndex0671], segmentIndex0671, rows)
+                    SegmentVacancyLine0671(
+                            entry = entry,
+                            trip = trip,
+                            load0671 = segmentLoads0671[segmentIndex0671],
+                            segmentIndex0671 = segmentIndex0671,
+                            rows0671 = rows,
+                            onPassengerClick0672 = { communicationShortcutRow0672 = it },
+                        )
                 }
                 lastRenderedSegmentIndex0671 = segmentLoads0671.lastIndex
                 Text(
@@ -963,9 +994,7 @@ internal fun EnhancedPassengerTimelineSection(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     TextButton(
-                        onClick = {
-                            historyRow = passenger.copy(passengerId = rowProfile?.id ?: passenger.passengerId)
-                        },
+                        onClick = { communicationShortcutRow0672 = passenger },
                         modifier = Modifier.weight(1f),
                         contentPadding = COMPACT_NAME_PADDING,
                     ) {
@@ -1728,7 +1757,14 @@ internal fun EnhancedPassengerTimelineSection(
         lastRenderedSegmentIndex0671 < segmentLoads0671.lastIndex
     ) {
         for (segmentIndex0671 in (lastRenderedSegmentIndex0671 + 1)..segmentLoads0671.lastIndex) {
-            SegmentVacancyLine0671(entry, trip, segmentLoads0671[segmentIndex0671], segmentIndex0671, rows)
+            SegmentVacancyLine0671(
+                            entry = entry,
+                            trip = trip,
+                            load0671 = segmentLoads0671[segmentIndex0671],
+                            segmentIndex0671 = segmentIndex0671,
+                            rows0671 = rows,
+                            onPassengerClick0672 = { communicationShortcutRow0672 = it },
+                        )
         }
     } else if (embedChronologicalStops0667 && chronologicalStops0667.isNotEmpty() &&
         lastRenderedStopIndex0667 < chronologicalStops0667.lastIndex
@@ -2027,6 +2063,67 @@ internal fun EnhancedPassengerTimelineSection(
         )
     }
 
+    communicationShortcutRow0672?.let { row0672 ->
+        val phone0672 = row0672.phone
+        val profile0672 = renderSnapshot.profilesByRowKey[passengerTimelineRowKey0394(row0672)]
+        AlertDialog(
+            onDismissRequest = { communicationShortcutRow0672 = null },
+            title = { Text(row0672.name.ifBlank { "Passageiro" }) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !phone0672.isNullOrBlank(),
+                        onClick = {
+                            communicationShortcutRow0672 = null
+                            phone0672?.let { openPassengerWhatsApp(context, it) }
+                        },
+                    ) { Text("WhatsApp") }
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            communicationShortcutRow0672 = null
+                            quickMessageRow0656 = row0672
+                        },
+                    ) { Text("Mensagens prontas") }
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            communicationShortcutRow0672 = null
+                            phoneEditRow0671 = row0672
+                        },
+                    ) { Text("Editar telefone") }
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            communicationShortcutRow0672 = null
+                            historyRow = row0672.copy(passengerId = profile0672?.id ?: row0672.passengerId)
+                        },
+                    ) { Text("Histórico") }
+                    if (externalPassengerTarget(row0672) != null) {
+                        OutlinedButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                communicationShortcutRow0672 = null
+                                if (!openExternalPassengerBlaBla(context, row0672)) {
+                                    Toast.makeText(
+                                        context,
+                                        "Conta BlaBlaCar deste passageiro não está conectada.",
+                                        Toast.LENGTH_LONG,
+                                    ).show()
+                                }
+                            },
+                        ) { Text("Abrir no BlaBlaCar") }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { communicationShortcutRow0672 = null }) { Text("Fechar") }
+            },
+        )
+    }
+
     quickMessageRow0656?.let { row ->
         AlertDialog(
             onDismissRequest = { quickMessageRow0656 = null },
@@ -2045,6 +2142,7 @@ internal fun EnhancedPassengerTimelineSection(
                                 } else {
                                     val message0656 = passengerQuickMessageText0656(
                                         entry = entry,
+                                        trip = trip,
                                         row = row,
                                         type = choice.type,
                                         localeTag = PassengerMoney.spec(context).localeTag,
