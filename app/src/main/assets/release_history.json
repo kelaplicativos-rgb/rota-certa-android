@@ -2,6 +2,43 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.665",
+      "build": 5956,
+      "commit": null,
+      "branch": "agent/saved-place-share-link-0.1.665",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Enviar um local salvo agora compartilha uma única mensagem com nome, endereço e link HTTPS clicável do Google Maps gerado pelas coordenadas exatas do SavedPlace.",
+        "Copiar reutiliza exatamente o mesmo conteúdo compartilhável, incluindo o link do mapa, para permitir colar a mensagem completa em WhatsApp, SMS, e-mail ou outro aplicativo.",
+        "Os botões GPS, Copiar e Enviar permanecem na mesma linha com 44 dp de altura, padding horizontal reduzido e texto forçado em uma linha."
+      ],
+      "fixed": [
+        "Corrige o compartilhamento da 0.1.664 que enviava somente nome e endereço e obrigava o destinatário a procurar o local manualmente.",
+        "Corrige a quebra visual de Copiar e Enviar em duas linhas quando o aparelho usa fonte ampliada ou a largura útil do card é menor.",
+        "Mantém GPS independente e preserva o endereço textual exibido no card; o link usa latitude/longitude para não depender da qualidade da geocodificação."
+      ],
+      "improved": [
+        "O payload compartilhado segue o formato: marcador de localização + nome, endereço legível e URL HTTPS em linhas separadas.",
+        "O seletor nativo ACTION_SEND continua sendo usado, sem acoplamento a um aplicativo específico.",
+        "Falhas de clipboard e de abertura do compartilhamento continuam tratadas localmente sem modificar o local salvo."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.664: compartilhamento sem link clicável.",
+        "0.1.664: Copiar e Enviar podiam quebrar o rótulo em duas linhas no card de busca."
+      ],
+      "modulesAffected": [
+        "Locais salvos",
+        "Busca de endereços",
+        "Compartilhamento Android",
+        "Área de transferência",
+        "Google Maps",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.664",
       "build": 5955,
       "commit": null,
