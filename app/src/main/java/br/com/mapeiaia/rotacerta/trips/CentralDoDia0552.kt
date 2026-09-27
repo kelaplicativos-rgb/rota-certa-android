@@ -941,7 +941,7 @@ internal fun CentralDoDiaScreen0552(
                         },
                         showTripActions0549 = false,
                         compactEmbeddedControls0593 = true,
-                        embedChronologicalStops0667 = true,
+                        segmentLoads0671 = item.segmentLoads,
                     )
                 } else {
                     Text(
@@ -967,71 +967,10 @@ internal fun CentralDoDiaScreen0552(
                     }
                 }
 
-                Text(
-                    "${item.passengerSeats} lugares • ${item.availableSeats?.let { "${it} vagas" } ?: "vagas não verificáveis"} • ${item.nextAction}",
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 2,
-                )
+                // 0.1.671 — a leitura operacional fica concentrada em "Vagas por trecho".
+                // Evita repetir contagem agregada abaixo da mesma verdade por segmento.
 
-                if (item.segmentLoads.isNotEmpty()) {
-                    Text(
-                        "Vagas por trecho",
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                    item.segmentLoads.forEach { load0595 ->
-                        val capacity0595 = item.operationalCapacity
-                        val availability0595 = when (load0595.availableSeats.coerceAtLeast(0)) {
-                            0 -> "LOTADO"
-                            1 -> "1 vaga"
-                            else -> "${load0595.availableSeats.coerceAtLeast(0)} vagas"
-                        }
-                        val occupancy0595 = capacity0595?.let { cap ->
-                            val passengers = load0595.passengerSeats.coerceAtLeast(0)
-                            "$passengers/$cap"
-                        } ?: load0595.passengerSeats.coerceAtLeast(0).toString()
-                        val dots0595 = capacity0595?.takeIf { it in 1..12 }?.let { cap ->
-                            val occupiedDots = load0595.occupiedSeats.coerceIn(0, cap)
-                            "●".repeat(occupiedDots) + "○".repeat((cap - occupiedDots).coerceAtLeast(0))
-                        }.orEmpty()
-                        val blocked0595 = load0595.blockedSeats.coerceAtLeast(0)
-                        val overbooking0595 = load0595.overbookingSeats.coerceAtLeast(0)
-
-                        // 0.1.601 — leitura operacional do motorista.
-                        // A Central do Dia mostra ocupação/vagas, mas nunca oferece ação de reserva.
-                        // Conversão do passageiro pertence à Agenda pública / Viagem Certa e não
-                        // deve vazar para esta superfície operacional.
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(1.dp),
-                            ) {
-                                Text(
-                                    "${load0595.from.name} → ${load0595.to.name}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    maxLines = 2,
-                                )
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    if (dots0595.isNotBlank()) {
-                                        Text(dots0595, style = MaterialTheme.typography.bodySmall, maxLines = 1)
-                                    }
-                                    Text("👥 $occupancy0595", style = MaterialTheme.typography.bodySmall, maxLines = 1)
-                                    if (blocked0595 > 0) {
-                                        Text("🚫$blocked0595", style = MaterialTheme.typography.bodySmall, maxLines = 1)
-                                    }
-                                }
-                            }
-                            Text(
-                                if (overbooking0595 > 0) "$availability0595 +$overbooking0595" else availability0595,
-                                style = MaterialTheme.typography.titleSmall,
-                                maxLines = 1,
-                            )
-                        }
-                    }
-                }
-
+                // 0.1.671 — o bloco único de vagas/PAX é compartilhado com Viagens.
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
