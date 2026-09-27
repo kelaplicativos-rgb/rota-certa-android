@@ -206,6 +206,12 @@ fun RotaCertaApp(launchIntent: Intent?) {
     fun openShortcutModuleFromHome0171(spec: BubbleShortcutSpec) {
         highlightedShortcutModule0171 = spec.id
         moduleNavigationActive0172 = true
+        if (spec.id == "safety_recorder") {
+            context.startActivity(
+                SafetyRecorderActivity0666.intent(context, SafetyRecorderMode0666.AUDIO),
+            )
+            return
+        }
         if (spec.id == "trip_agenda") {
             val traceId = br.com.mapeiaia.rotacerta.trips.AgendaTrace.beginAgendaOpen(context, "home_shortcut")
             val agendaIntent = br.com.mapeiaia.rotacerta.trips.AgendaTrace.attachTrace(
@@ -873,6 +879,19 @@ fun RotaCertaApp(launchIntent: Intent?) {
                                 )
 
                                 BubbleShortcutAction.OpenSettings -> when (spec.id) {
+                                    "safety_recorder" -> InlineModuleAction0174(
+                                        title = "Registros de segurança",
+                                        description = "Fala grava áudio e Cena grava vídeo. Toque curto executa imediatamente; segurar abre o módulo com arquivos e configurações.",
+                                        buttonLabel = "Abrir Fala e Cena",
+                                        onClick = {
+                                            context.startActivity(
+                                                SafetyRecorderActivity0666.intent(
+                                                    context,
+                                                    SafetyRecorderMode0666.AUDIO,
+                                                ),
+                                            )
+                                        },
+                                    )
                                     "trip_agenda" -> InlineModuleAction0174(
                                         title = "Agenda de Viagens",
                                         description = "Crie, publique, compartilhe e acompanhe viagens e vagas por trecho sem interferir no FAROL.",
