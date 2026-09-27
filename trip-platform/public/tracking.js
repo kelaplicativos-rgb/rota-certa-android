@@ -1,7 +1,7 @@
 "use strict";
 
 (() => {
-  const marker = "LIVE_TRACKING_PUBLIC_0668";
+  const marker = "LIVE_TRACKING_PUBLIC_0669";
   const token = (location.hash || "").slice(1).trim();
   const title = document.getElementById("title");
   const status = document.getElementById("status");
