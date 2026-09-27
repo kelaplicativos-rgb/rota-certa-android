@@ -1,0 +1,156 @@
+name: Safety recorder 0.1.666 APK
+
+on:
+  push:
+    branches:
+      - 'agent/safety-recorder-0.1.666'
+  pull_request:
+    branches:
+      - 'agent/saved-place-share-link-0.1.665'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: safety-recorder-0666-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: ''
+      ROTA_CERTA_TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      ROTA_CERTA_GIT_BRANCH: agent/safety-recorder-0.1.666
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.ROTA_CERTA_TARGET_SHA }}
+
+      - name: Prove exact 0.1.666 source and recorder contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_TARGET_SHA"
+          echo "ROTA_CERTA_GIT_SHA=$ROTA_CERTA_TARGET_SHA" >> "$GITHUB_ENV"
+
+          REC='app/src/main/java/br/com/mapeiaia/rotacerta/SafetyRecorder0666.kt'
+          BUB='app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt'
+          ACTIONS='app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutActionCatalog0184.kt'
+          LIVE='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          MANIFEST='app/src/main/AndroidManifest.xml'
+
+          grep -Fq 'releaseVersionName = "0.1.666"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 5_957' app/build.gradle.kts
+          grep -Fq '"version": "0.1.666"' app/src/main/assets/release_history.json
+          grep -Fq 'safety_recorder_0_1_666' "$REC"
+          grep -Fq 'id = "safety_recorder"' "$BUB"
+          grep -Fq 'id = "action_record_audio"' "$ACTIONS"
+          grep -Fq 'emoji = "🗣️"' "$ACTIONS"
+          grep -Fq 'displayLabel = "Fala"' "$ACTIONS"
+          grep -Fq 'id = "action_record_video"' "$ACTIONS"
+          grep -Fq 'emoji = "🎬"' "$ACTIONS"
+          grep -Fq 'displayLabel = "Cena"' "$ACTIONS"
+          grep -Fq 'SafetyRecorderGatewayActivity0666.intent' "$LIVE"
+          grep -Fq 'SafetyRecorderActivity0666.intent' "$LIVE"
+          grep -Fq 'FOREGROUND_SERVICE_MICROPHONE' "$MANIFEST"
+          grep -Fq 'FOREGROUND_SERVICE_CAMERA' "$MANIFEST"
+          grep -Fq 'android:foregroundServiceType="microphone|camera"' "$MANIFEST"
+          grep -Fq 'Environment.DIRECTORY_MUSIC + "/Rota Certa/Seguranca"' "$REC"
+          grep -Fq 'Environment.DIRECTORY_MOVIES + "/Rota Certa/Seguranca"' "$REC"
+          grep -Fq 'ACTION_SEND_MULTIPLE' "$REC"
+          grep -Fq 'O Rota Certa preserva as permissões e os indicadores de câmera/microfone do Android.' "$REC"
+          git diff --check
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run recorder and inherited regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.SafetyRecorder0666ContractTest'             --tests 'br.com.mapeiaia.rotacerta.SavedPlaceShareLink0665Test'             --tests 'br.com.mapeiaia.rotacerta.SavedPlaceQuickActions0664Test'             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripCardRefresh0663Test'             --tests 'br.com.mapeiaia.rotacerta.trips.ScopedHtmlIsolation0662Test'             --tests 'br.com.mapeiaia.rotacerta.trips.CentralTodayDirectHtml0661Test'             --tests 'br.com.mapeiaia.rotacerta.trips.CentralTodayOnlyRefresh0660Test'             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripCardFooter0654Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalShortcuts0656Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPassengerHtmlPrecision0659Test'             --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0666-tests.log
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0666-assemble.log
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_TARGET_SHA"
+
+      - name: Prove APK identity signing runtime markers and final SHA
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+
+          unzip -t "$APK" | tee /tmp/android-0666-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/android-0666-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/android-0666-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5957'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.666'" <<< "$PACKAGE_LINE"
+
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/android-0666-apksigner.txt
+          grep -Fq 'Verified' /tmp/android-0666-apksigner.txt
+
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0666-dex-strings.txt
+          grep -Fq "$ROTA_CERTA_TARGET_SHA" /tmp/android-0666-dex-strings.txt
+          grep -Fq 'SAFETY_AUDIO_STARTED_0666' /tmp/android-0666-dex-strings.txt
+          grep -Fq 'SAFETY_VIDEO_STARTED_0666' /tmp/android-0666-dex-strings.txt
+          grep -Fq 'action_record_audio' /tmp/android-0666-dex-strings.txt
+          grep -Fq 'action_record_video' /tmp/android-0666-dex-strings.txt
+          grep -Fq 'TRIPS_CARD_HTML_DIRECT_0663' /tmp/android-0666-dex-strings.txt
+
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.666-5957-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.666"
+            echo "versionCode=5957"
+            echo "branch=agent/safety-recorder-0.1.666"
+            echo "commit=$ROTA_CERTA_TARGET_SHA"
+            echo "deviceTarget=Samsung SM-S911B / Android 16 / API 36"
+            echo "shortcuts=Fala|Cena"
+            echo "shortTap=start_stop"
+            echo "longPress=open_module"
+            echo "videoCamera=front_or_back_persisted"
+            echo "videoQuality=FHD|HD|SD"
+            echo "nativeShare=ACTION_SEND|ACTION_SEND_MULTIPLE"
+            echo "privacyIndicators=ANDROID_SYSTEM_PRESERVED"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee safety-recorder-0666-proof.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-safety-recorder-0.1.666-${{ env.ROTA_CERTA_TARGET_SHA }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            safety-recorder-0666-proof.txt
+            /tmp/android-0666-tests.log
+            /tmp/android-0666-assemble.log
+            /tmp/android-0666-aapt.txt
+            /tmp/android-0666-apksigner.txt
+            /tmp/android-0666-zip-integrity.txt
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30
