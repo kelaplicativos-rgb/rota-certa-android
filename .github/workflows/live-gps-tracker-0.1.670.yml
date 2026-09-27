@@ -53,6 +53,13 @@ jobs:
           grep -Fq 'HEARTBEAT_INTERVAL_MS = 5_000L' app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingService.kt
           grep -Fq 'GPS_WATCHDOG_AFTER_MS = 15_000L' app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingService.kt
           grep -Fq '.setMinUpdateDistanceMeters(0f)' app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingService.kt
+          grep -Fq 'MIN_UPDATE_INTERVAL_MS = 5_000L' app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingService.kt
+          grep -Fq 'continuousTrackingPoints0670' trip-platform/functions/live-tracking-0668.js
+          grep -Fq 'trackingQueryFloor0670' trip-platform/functions/live-tracking-0668.js
+          grep -Fq 'hasMorePoints' trip-platform/functions/live-tracking-0668.js
+          grep -Fq 'routePoints0670' trip-platform/public/tracking.js
+          ! grep -Fq 'PATH_SAMPLE_DISTANCE_METERS_0668' trip-platform/functions/live-tracking-0668.js
+          ! grep -Fq 'PATH_SAMPLE_INTERVAL_MILLIS_0668' trip-platform/functions/live-tracking-0668.js
           grep -Fq 'sendHeartbeat0670' app/src/main/java/br/com/mapeiaia/rotacerta/LiveTrackingShare0668.kt
           grep -Fq '/v1/driver/tracking/heartbeat' app/src/main/java/br/com/mapeiaia/rotacerta/LiveTrackingShare0668.kt
           grep -Fq 'android.permission.WAKE_LOCK' app/src/main/AndroidManifest.xml
@@ -149,6 +156,10 @@ jobs:
             echo "passengerDistanceBeforeFreshGps=NULL"
             echo "passengerAutoCloseBeforeFreshGps=BLOCKED"
             echo "trackerHeartbeat=5s"
+            echo "gpsCadence=5s"
+            echo "continuousTrail=EVERY_VALID_GPS_POINT"
+            echo "destructivePathSampling=DISABLED"
+            echo "publicRoutePaging=INCREMENTAL"
             echo "gpsWatchdog=15s"
             echo "stationaryHeartbeat=ACTIVE"
             echo "batteryHeartbeat=ACTIVE"
