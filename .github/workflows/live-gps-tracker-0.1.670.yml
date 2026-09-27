@@ -49,7 +49,7 @@ jobs:
           grep -Fq 'PASSENGER_DESTINATION_RADIUS_METERS_0668' trip-platform/functions/live-tracking-0668.js
           grep -Fq 'passengerDistanceToDestinationMeters0669(current, share)' trip-platform/functions/live-tracking-0668.js
           grep -Fq 'latestRecordedAt < created' trip-platform/functions/live-tracking-0668.js
-          grep -Fq 'Aguardando localização do motorista' trip-platform/public/tracking.js
+          grep -Fq 'Aparelho conectado • aguardando GPS' trip-platform/public/tracking.js
           grep -Fq 'HEARTBEAT_INTERVAL_MS = 5_000L' app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingService.kt
           grep -Fq 'GPS_WATCHDOG_AFTER_MS = 15_000L' app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingService.kt
           grep -Fq '.setMinUpdateDistanceMeters(0f)' app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingService.kt
@@ -58,7 +58,6 @@ jobs:
           grep -Fq 'android.permission.WAKE_LOCK' app/src/main/AndroidManifest.xml
           grep -Fq 'async function postHeartbeat0670' trip-platform/functions/live-tracking-0668.js
           grep -Fq 'trackerProtocolVersion: "0670"' trip-platform/functions/live-tracking-0668.js
-          grep -Fq 'LIVE_GPS_TRACKER_PUBLIC_0670' trip-platform/public/tracking.js
           grep -Fq 'LIVE_GPS_TRACKER_PUBLIC_0670' trip-platform/public/tracking.js
           git diff --check b30e8636280e2e786d90b9fc211ffec3edb461dd HEAD
 
