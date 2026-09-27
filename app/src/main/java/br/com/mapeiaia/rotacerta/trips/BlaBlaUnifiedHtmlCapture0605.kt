@@ -87,6 +87,8 @@ private data class UnifiedTripDetailEnvelope0605(
     val itineraryAuthoritative: Boolean = false,
     val stopLocations: List<BlaBlaTripStopLocation0659> = emptyList(),
     val domHtml: String = "",
+    val scriptError: String = "",
+    val scriptStage: String = "",
 )
 
 @Serializable
@@ -581,14 +583,14 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                             recoveryAttempt0621 >= TRANSPORT_RECOVERY_ATTEMPTS_0621
                         ) {
                             transportRecoveryExhausted0621 = true
-                            unattemptedDueTransport0621 = futureRides.size - index - 1
+                            unattemptedDueTransport0621 = 0
                             UnifiedDebugEventStore.recordAlways(
                                 "BLABLACAR_HTML_TRANSPORT_RECOVERY_EXHAUSTED_0621",
                                 app.packageName,
                                 "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} " +
                                     "accountKey=${store.accountKey(account.id)} failedTrip=${index + 1}/${futureRides.size} " +
-                                    "recoveryAttempts=$recoveryAttempt0621 remainingUnattempted=$unattemptedDueTransport0621 " +
-                                    "action=STOP_PROFILE_PRESERVE_CANONICAL cascadePrevented=true",
+                                    "recoveryAttempts=$recoveryAttempt0621 remainingUnattempted=0 " +
+                                    "action=SKIP_FAILED_CARD_CONTINUE_PROFILE preserveLastValidated=true cascadePrevented=true",
                                 diagnosticContext = DiagnosticEventContext0507(
                                     parentModule = DiagnosticModule0507.BLABLACAR,
                                     operation = "HTML_TRANSPORT_RECOVERY",
@@ -599,7 +601,10 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                                     errorCode = "HTML_TRANSPORT_RECOVERY_EXHAUSTED_0621",
                                 ),
                             )
-                            break
+                            if (index + 1 < futureRides.size) {
+                                destroyUnifiedCaptureWebView0621(webView)
+                                webView = createUnifiedCaptureWebView0621(app, account)
+                            }
                         }
                     }
                 } finally {
@@ -620,7 +625,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             val links = existingIndex.tripIds.map { tripId ->
                 val previous = existingIndex.tripLinks.singleOrNull { it.tripId == tripId }
                 val capture = byTrip[tripId]
-                if (capture != null) {
+                if (capture != null && capture.status == "COMPLETE") {
                     BlaBlaRidesTripLink0582(
                         tripId = tripId,
                         administrativeUrl = capture.administrativeUrl,
@@ -630,6 +635,8 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                         publicTripStatus = if (capture.publicTripUrl.isNotBlank()) "COMPLETE" else "PENDING_UNKNOWN",
                         shareEligibility = previous?.shareEligibility ?: "ELIGIBLE",
                     )
+                } else if (capture != null && previous != null) {
+                    previous
                 } else {
                     val ride = parsedByTrip[tripId]
                     val administrativeUrl = BlaBlaCollectorUrlModule.absolute(ride?.administrativeUrl)
@@ -1222,14 +1229,19 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         }
         val detail = decode0605<UnifiedTripDetailEnvelope0605>(detailPage?.payload)
         val observedTripId0676 = detail?.let { BlaBlaCollectorUrlModule.tripId(it.detail.url) }
-        val detailError0676 = tripDetailVerificationError0676(
-            detailPagePresent = detailPage != null,
-            payloadPresent = !detailPage?.payload.isNullOrBlank(),
-            payloadDecoded = detail != null,
-            expectedTripId = ride.tripId,
-            observedTripId = observedTripId0676,
-            domHtmlBytes = detail?.domHtml?.toByteArray(Charsets.UTF_8)?.size ?: 0,
-        )
+        val scriptError0677 = detail?.scriptError?.trim().orEmpty()
+        val detailError0676 = if (scriptError0677.isNotBlank()) {
+            "TRIP_DETAIL_SCRIPT_ERROR_0677"
+        } else {
+            tripDetailVerificationError0676(
+                detailPagePresent = detailPage != null,
+                payloadPresent = !detailPage?.payload.isNullOrBlank(),
+                payloadDecoded = detail != null,
+                expectedTripId = ride.tripId,
+                observedTripId = observedTripId0676,
+                domHtmlBytes = detail?.domHtml?.toByteArray(Charsets.UTF_8)?.size ?: 0,
+            )
+        }
         if (detailError0676.isNotBlank()) {
             UnifiedDebugEventStore.recordAlways(
                 "BLABLACAR_TRIP_DETAIL_REJECTED_0676",
@@ -1240,6 +1252,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                     "observedTripKey=${seatSyncDiagnosticKey(observedTripId0676.orEmpty())} " +
                     "detailPagePresent=${detailPage != null} payloadPresent=${!detailPage?.payload.isNullOrBlank()} " +
                     "payloadDecoded=${detail != null} domBytes=${detail?.domHtml?.toByteArray(Charsets.UTF_8)?.size ?: 0} " +
+                    "scriptErrorPresent=${scriptError0677.isNotBlank()} scriptStage=${detail?.scriptStage.orEmpty().take(48)} " +
                     "errorCode=$detailError0676",
             )
             return failedTrip0605(
