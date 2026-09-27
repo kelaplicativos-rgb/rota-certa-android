@@ -2213,24 +2213,33 @@ private fun SavedPlaceSearchResult138(place: SavedPlace) {
             Text(savedPlaceAddressText0664(place), style = MaterialTheme.typography.bodySmall)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Button(
                     onClick = { openSavedPlaceInGps(context, place) },
-                    modifier = Modifier.weight(1f),
-                ) { Text("GPS") }
+                    modifier = Modifier.weight(1f).height(44.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                ) {
+                    Text("GPS", maxLines = 1, softWrap = false)
+                }
                 Button(
-                    onClick = { copySavedPlaceAddress0664(context, place) },
-                    modifier = Modifier.weight(1f),
-                ) { Text("Copiar") }
+                    onClick = { copySavedPlace0665(context, place) },
+                    modifier = Modifier.weight(1f).height(44.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                ) {
+                    Text("Copiar", maxLines = 1, softWrap = false)
+                }
                 Button(
-                    onClick = { shareSavedPlace0664(context, place) },
-                    modifier = Modifier.weight(1f),
-                ) { Text("Enviar") }
+                    onClick = { shareSavedPlace0665(context, place) },
+                    modifier = Modifier.weight(1f).height(44.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                ) {
+                    Text("Enviar", maxLines = 1, softWrap = false)
+                }
             }
         }
     }
-} // saved_place_quick_actions_0_1_664
+} // saved_place_share_link_0_1_665
 
 @Composable
 private fun SavedPlaceEditor(
@@ -3292,28 +3301,40 @@ private fun defaultSavedPlaceName(type: SavedPlaceType): String = when (type) {
 private fun savedPlaceAddressText0664(place: SavedPlace): String =
     place.address.trim().ifBlank { formatCoordinate(place.coordinate) }
 
-private fun copySavedPlaceAddress0664(context: Context, place: SavedPlace) {
+private fun savedPlaceGoogleMapsLink0665(place: SavedPlace): String {
+    val latitude = place.coordinate.latitude.toString()
+    val longitude = place.coordinate.longitude.toString()
+    return "https://www.google.com/maps/search/?api=1&query=$latitude,$longitude"
+}
+
+private fun savedPlaceShareText0665(place: SavedPlace): String {
+    val name = place.name.trim().ifBlank { "Local salvo" }
     val address = savedPlaceAddressText0664(place)
+    val mapsLink = savedPlaceGoogleMapsLink0665(place)
+    return "📍 $name\n$address\n$mapsLink"
+}
+
+private fun copySavedPlace0665(context: Context, place: SavedPlace) {
+    val payload = savedPlaceShareText0665(place)
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
     if (clipboard == null) {
-        Toast.makeText(context, "Não foi possível copiar o endereço.", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "Não foi possível copiar o local.", Toast.LENGTH_SHORT).show()
         return
     }
     runCatching {
-        clipboard.setPrimaryClip(ClipData.newPlainText("Endereço", address))
+        clipboard.setPrimaryClip(ClipData.newPlainText("Local", payload))
     }.onSuccess {
-        Toast.makeText(context, "Endereço copiado", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "Local copiado com link", Toast.LENGTH_SHORT).show()
     }.onFailure {
-        Toast.makeText(context, "Não foi possível copiar o endereço.", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "Não foi possível copiar o local.", Toast.LENGTH_SHORT).show()
     }
 }
 
-private fun shareSavedPlace0664(context: Context, place: SavedPlace) {
-    val name = place.name.trim().ifBlank { "Local salvo" }
-    val address = savedPlaceAddressText0664(place)
+private fun shareSavedPlace0665(context: Context, place: SavedPlace) {
+    val payload = savedPlaceShareText0665(place)
     val sendIntent = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
-        putExtra(Intent.EXTRA_TEXT, "$name\n$address")
+        putExtra(Intent.EXTRA_TEXT, payload)
     }
     val chooser = Intent.createChooser(sendIntent, "Enviar local")
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
