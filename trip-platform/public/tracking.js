@@ -1,12 +1,13 @@
 "use strict";
 
 (() => {
-  const marker = "LIVE_TRACKING_PUBLIC_0669";
+  const marker = "LIVE_GPS_TRACKER_PUBLIC_0670";
   const token = (location.hash || "").slice(1).trim();
   const title = document.getElementById("title");
   const status = document.getElementById("status");
   const privacy = document.getElementById("privacy");
-  const updated = document.getElementById("updated");
+  const deviceUpdated = document.getElementById("deviceUpdated");
+  const gpsUpdated = document.getElementById("gpsUpdated");
   const started = document.getElementById("started");
   const battery = document.getElementById("battery");
   const distanceBox = document.getElementById("distanceBox");
@@ -86,21 +87,38 @@
 
   function render(data) {
     const passenger = data.scope === "PASSENGER";
-    title.textContent = passenger ? "🚗 Seu motorista está a caminho" : "🛡 Acompanhamento de segurança";
+    title.textContent = passenger ? "🚗 Seu motorista está a caminho" : "🛡 GPS Tracker de segurança";
     privacy.textContent = passenger
-      ? "Este link mostra somente o trecho compartilhado para esta viagem e será encerrado no destino ou ao expirar."
-      : "Acompanhamento familiar da sessão atual, incluindo o trajeto já percorrido.";
-    const waitingForPassengerGps = passenger && !data.current;
-    const age = data.lastUpdatedAtMillis ? Date.now() - Number(data.lastUpdatedAtMillis) : Number.POSITIVE_INFINITY;
-    status.textContent = waitingForPassengerGps
-      ? "Aguardando localização do motorista…"
-      : age <= 30000 ? "● " + ageLabel(data.lastUpdatedAtMillis) : ageLabel(data.lastUpdatedAtMillis);
-    status.className = waitingForPassengerGps || age > 120000 ? "warn" : "status";
-    updated.textContent = waitingForPassengerGps ? "Aguardando GPS" : formatTime(data.lastUpdatedAtMillis);
+      ? "Este link mostra somente o trecho compartilhado para esta viagem e será encerrado no desembarque ou ao expirar."
+      : "Acompanhamento familiar ao vivo da sessão atual, incluindo o trajeto já percorrido.";
+
+    const deviceAt = Number(data.lastDeviceHeartbeatAtMillis || data.lastUpdatedAtMillis || 0);
+    const gpsAt = Number(data.lastGpsAtMillis || (data.current && data.current.recordedAtMillis) || 0);
+    const deviceState = String(data.deviceState || "WAITING");
+    const gpsState = String(data.gpsState || "WAITING");
+    if (deviceState === "CONNECTED" && gpsState === "FRESH") {
+      status.textContent = "🟢 GPS Tracker ativo • atualização automática";
+      status.className = "status";
+    } else if (deviceState === "CONNECTED") {
+      status.textContent = "🟡 Aparelho conectado • aguardando GPS";
+      status.className = "warn";
+    } else if (deviceState === "DELAYED") {
+      status.textContent = "🟠 Comunicação instável com o aparelho";
+      status.className = "warn";
+    } else if (deviceState === "OFFLINE") {
+      status.textContent = "🔴 Sem comunicação com o aparelho • última posição preservada";
+      status.className = "ended";
+    } else {
+      status.textContent = "Aguardando o GPS Tracker conectar…";
+      status.className = "warn";
+    }
+
+    deviceUpdated.textContent = deviceAt ? ageLabel(deviceAt) : "Aguardando conexão";
+    gpsUpdated.textContent = gpsAt ? ageLabel(gpsAt) : "Aguardando GPS";
     started.textContent = formatTime(data.startedAtMillis);
     battery.textContent = data.batteryPercent == null ? "—" : `${Math.round(Number(data.batteryPercent))}%`;
     distanceBox.hidden = !passenger;
-    distance.textContent = waitingForPassengerGps || data.distanceToDestinationMeters == null
+    distance.textContent = !data.current || data.distanceToDestinationMeters == null
       ? "Aguardando localização…"
       : formatDistance(data.distanceToDestinationMeters);
     renderMap(data);
