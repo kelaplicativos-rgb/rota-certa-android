@@ -2,6 +2,41 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.664",
+      "build": 5955,
+      "commit": null,
+      "branch": "agent/saved-place-actions-0.1.664",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "O resultado de busca em Locais salvos passa a exibir três ações compactas na mesma linha: GPS, Copiar e Enviar.",
+        "Copiar grava somente o endereço completo exibido no card na área de transferência e confirma com “Endereço copiado”.",
+        "Enviar abre o seletor nativo do Android por ACTION_SEND com nome do local e endereço, sem alterar o local salvo nem a navegação GPS."
+      ],
+      "fixed": [
+        "Elimina a necessidade de selecionar manualmente o endereço para copiá-lo a partir do resultado de busca.",
+        "Adiciona compartilhamento nativo sem acoplar o módulo a WhatsApp, SMS, e-mail ou qualquer aplicativo específico.",
+        "Preserva fallback para coordenadas quando um local legado não possuir endereço textual."
+      ],
+      "improved": [
+        "As três ações reutilizam o mesmo SavedPlace e permanecem independentes: GPS não copia nem compartilha; Copiar não abre aplicativos; Enviar não modifica o local.",
+        "Falhas de clipboard ou de abertura do compartilhamento são tratadas localmente com feedback curto, sem derrubar a tela.",
+        "O layout usa pesos iguais para manter GPS, Copiar e Enviar alinhados no card de busca."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.663 e anteriores: o resultado de busca em Locais salvos oferecia apenas o botão GPS."
+      ],
+      "modulesAffected": [
+        "Locais salvos",
+        "Busca de endereços",
+        "Compartilhamento Android",
+        "Área de transferência",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.663",
       "build": 5954,
       "commit": null,
