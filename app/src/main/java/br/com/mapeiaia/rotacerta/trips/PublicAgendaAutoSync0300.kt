@@ -2200,17 +2200,25 @@ internal object PublicAgendaAutoSync0300 {
         val booked = observedBooked.coerceIn(0, 999)
 
         val stopLabels = buildObservedStopLabels(origin, destination, source.itinerary_stops)
+        val stopTimes0672 = observedStopTimeMillis0672(
+            source = source,
+            stopLabels = stopLabels,
+            departure = departure,
+            arrival = arrival,
+            zoneId = zoneId,
+        )
         val wholeTripPriceCents = parsePriceCents(source.price)
         val stops = stopLabels.mapIndexed { index, label ->
             val isFirst = index == 0
             val isLast = index == stopLabels.lastIndex
+            val planned0672 = stopTimes0672.getOrNull(index)
             TripStop(
                 id = "stop-$index-$token",
                 order = index,
                 name = shortPlace(label),
                 address = label,
-                plannedDepartureMillis = departure.takeIf { isFirst },
-                plannedArrivalMillis = arrival.takeIf { isLast },
+                plannedDepartureMillis = planned0672.takeUnless { isLast },
+                plannedArrivalMillis = planned0672.takeUnless { isFirst },
                 // A single BlaBlaCar price is a whole-trip observation. Never distribute it
                 // over intermediate segments because that would invent per-segment prices.
                 priceToNextCents = wholeTripPriceCents.takeIf { stopLabels.size == 2 && isFirst } ?: 0L,
@@ -2294,6 +2302,49 @@ internal object PublicAgendaAutoSync0300 {
         itineraryStops.forEach(::addObserved)
         addObserved(destination)
         return result
+    }
+
+    internal fun observedStopTimeMillis0672(
+        source: BlaBlaCollectorTrip,
+        stopLabels: List<String>,
+        departure: Long,
+        arrival: Long?,
+        zoneId: ZoneId,
+    ): List<Long?> {
+        val sourceObservations0672 = source.itinerary_stops.mapIndexed { index0672, label0672 ->
+            label0672.trim() to source.itinerary_stop_times.getOrNull(index0672).orEmpty().trim()
+        }
+
+        fun equivalent0672(left0672: String, right0672: String): Boolean {
+            val exactLeft0672 = normalizeStopEvidence(left0672)
+            val exactRight0672 = normalizeStopEvidence(right0672)
+            if (exactLeft0672.isNotBlank() && exactLeft0672 == exactRight0672) return true
+            val shortLeft0672 = normalizePlace(left0672)
+            val shortRight0672 = normalizePlace(right0672)
+            return shortLeft0672.isNotBlank() && shortLeft0672 == shortRight0672
+        }
+
+        var lastKnown0672: Long? = null
+        return stopLabels.mapIndexed { index0672, label0672 ->
+            val matching0672 = sourceObservations0672
+                .filter { (observedLabel0672, _) -> equivalent0672(label0672, observedLabel0672) }
+                .distinctBy { it.first }
+            val rawTime0672 = matching0672.singleOrNull()?.second
+                ?.takeIf(String::isNotBlank)
+            var resolved0672 = parseDateTime(source.date, rawTime0672, zoneId)
+                ?: when (index0672) {
+                    0 -> departure
+                    stopLabels.lastIndex -> arrival
+                    else -> null
+                }
+
+            val floor0672 = lastKnown0672
+            if (resolved0672 != null && floor0672 != null) {
+                while (resolved0672 < floor0672) resolved0672 += DAY_MILLIS
+            }
+            if (resolved0672 != null) lastKnown0672 = resolved0672
+            resolved0672
+        }
     }
 
     private fun externalStopFor(stops: List<TripStop>, label: String?): TripStop? {
@@ -2511,6 +2562,7 @@ internal object PublicAgendaAutoSync0300 {
             append(source.published_seats ?: -1).append('|').append(rotaCertaSeatAllocation.coerceIn(0, 999)).append('|')
             append(source.booked_seats.coerceAtLeast(0)).append('|').append(source.passenger_roster_complete).append('|')
             append(source.itinerary_authoritative).append('|').append(source.itinerary_stops.joinToString(">") { normalizePlace(it) }).append('|')
+            append(source.itinerary_stop_times.joinToString(">") { it.trim().take(5) }).append('|')
             passengerSemantics.forEach { passenger -> append(passenger).append(',') }
         }
         return "bbcap-v2:${sha256(semantic)}"
