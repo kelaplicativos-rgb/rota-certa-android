@@ -46,6 +46,7 @@ class PassengerSegmentTime0672Test {
         departureAtMillis = millis(10, 30),
         capacity = 4,
         status = TripStatus.PUBLISHED,
+        publicTimezoneId0411 = "America/Sao_Paulo",
         stops = listOf(
             TripStop(id = "sa", order = 0, name = "Santo André", plannedDepartureMillis = millis(10, 30)),
             TripStop(id = "sp", order = 1, name = "São Paulo", plannedDepartureMillis = millis(10, 50)),
