@@ -272,6 +272,20 @@ object WorkTrackingBubbleShortcutModule0184 : BubbleShortcutModule {
     )
 }
 
+object SafetyRecorderBubbleShortcutModule0666 : BubbleShortcutModule {
+    const val CONTRACT_MARKER = "SAFETY_RECORDER_MODULE_0666"
+
+    override val spec = BubbleShortcutSpec(
+        id = "safety_recorder",
+        emoji = "🛡️",
+        label = "Registros de segurança",
+        displayLabel = "Registros",
+        action = BubbleShortcutAction.OpenSettings,
+        targetGroup = "general",
+        targetTab = "config",
+    )
+}
+
 object TripAgendaBubbleShortcutModuleStage47 : BubbleShortcutModule {
     const val CONTRACT_MARKER = "TRIP_AGENDA_SHORTCUT_STAGE47"
 
@@ -311,6 +325,7 @@ object BubbleShortcutCatalog {
         ReportsBubbleShortcutModule0184,
         MessageTemplatesBubbleShortcutModule0184,
         WorkTrackingBubbleShortcutModule0184,
+        SafetyRecorderBubbleShortcutModule0666,
         TripAgendaBubbleShortcutModuleStage47,
         StopBubbleShortcutModule,
     )
@@ -326,9 +341,14 @@ object BubbleShortcutCatalog {
         require(modules.map { it.spec.id }.distinct().size == modules.size) {
             "Cada atalho precisa ter identificador unico."
         }
-        val inheritedActionModules = modules.filterNot { it.spec.id == "trip_agenda" }
+        val inheritedActionModules = modules.filterNot {
+            it.spec.id == "trip_agenda" || it.spec.id == "safety_recorder"
+        }
         require(inheritedActionModules.map { it.spec.action }.distinct().size == inheritedActionModules.size) {
             "Cada recurso herdado precisa executar uma acao propria."
+        }
+        require(modules.singleOrNull { it.spec.id == "safety_recorder" }?.spec?.emoji == "🛡️") {
+            "Registros de segurança deve permanecer disponível na Home."
         }
         val tripSpec = modules.singleOrNull { it.spec.id == "trip_agenda" }?.spec
         require(tripSpec?.action == BubbleShortcutAction.OpenSettings) {
