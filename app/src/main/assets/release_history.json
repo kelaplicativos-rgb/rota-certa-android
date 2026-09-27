@@ -2,6 +2,39 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.672",
+      "build": 5963,
+      "commit": null,
+      "branch": "agent/passenger-segment-time-0.1.672",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Vagas por trecho exibe somente nomes reais dos passageiros; rótulos PAX, contagens PAX e sufixos de quantidade foram removidos da linha nominal.",
+        "O nome do passageiro virou um atalho clicável que abre WhatsApp, mensagens prontas, edição de telefone, histórico e acesso BlaBlaCar quando disponível.",
+        "Horários previstos de cada parada passam a ser capturados diretamente das linhas temporizadas do HTML BlaBlaCar e persistidos no itinerário canônico.",
+        "A coluna de horário à esquerda do trecho usa tipografia menor e alinhamento compacto.",
+        "Mensagens de confirmação usam o horário previsto do ponto exato de embarque do passageiro."
+      ],
+      "fixed": [
+        "Passageiro de trecho intermediário não recebe mais o horário global da primeira saída da viagem.",
+        "Na ausência de horário canônico da parada intermediária, a confirmação informa horário indisponível em vez de reutilizar 10:30 ou qualquer outra saída global.",
+        "Mudança de horário de uma parada passa a alterar o fingerprint semântico do snapshot e atualizar a projeção canônica.",
+        "Horários após meia-noite preservam ordem cronológica com avanço de data."
+      ],
+      "improved": [
+        "A mesma fonte canônica de horário alimenta tanto a coluna visual do trecho quanto as mensagens de confirmação.",
+        "O atalho pelo nome preserva acesso ao histórico que antes era aberto diretamente pelo nome."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.671: fallback visual podia mostrar PAX 2/PAX sem nome e misturar nomes com contagem abstrata.",
+        "0.1.671: paradas intermediárias sem plannedArrival/plannedDeparture apareciam com travessão mesmo quando o HTML continha horário.",
+        "0.1.671: CONFIRM_NOW usava entry.departureAtMillis e podia enviar a hora da primeira saída para um passageiro que embarcaria em outro trecho."
+      ],
+      "modulesAffected": ["Viagens", "Central do Dia", "Timeline de passageiros", "Vagas por trecho", "Mensagens prontas", "Coletor HTML", "Agenda canônica", "Build"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.671",
       "build": 5962,
       "commit": null,
