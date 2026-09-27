@@ -30,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -39,11 +40,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class WorkTrackingActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,17 +60,24 @@ class WorkTrackingActivity : ComponentActivity() {
     }
 }
 
+private enum class TrackingPermissionPurpose0668 { PRIVATE, FAMILY }
+
 @Composable
 private fun WorkTrackingScreen(onClose: () -> Unit) {
     val context = LocalContext.current
     val repository = remember { WorkTrackingRepository(context) }
+    val shareManager0668 = remember { LiveTrackingShareManager0668(context) }
+    val scope0668 = rememberCoroutineScope()
     var summary by remember { mutableStateOf(repository.todaySummary()) }
     var active by remember { mutableStateOf(repository.isTrackingActive()) }
+    var familyActive0668 by remember { mutableStateOf(shareManager0668.familyShareUrl() != null) }
+    var permissionPurpose0668 by remember { mutableStateOf(TrackingPermissionPurpose0668.PRIVATE) }
     var status by remember { mutableStateOf("") }
 
     fun refresh() {
         summary = repository.todaySummary()
         active = repository.isTrackingActive()
+        familyActive0668 = shareManager0668.familyShareUrl() != null
     }
 
     fun startTracking() {
@@ -75,7 +86,32 @@ private fun WorkTrackingScreen(onClose: () -> Unit) {
             Intent(context, WorkTrackingService::class.java).setAction(WorkTrackingService.ACTION_START),
         )
         active = true
-        status = "Rastreamento iniciado. A notificacao permanece visivel enquanto estiver ativo."
+        status = "Rastreamento iniciado. A notificação permanece visível enquanto estiver ativo."
+    }
+
+    fun createFamilyShare0668() {
+        startTracking()
+        status = "Criando link familiar seguro…"
+        scope0668.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { shareManager0668.createFamilyLink() }
+            }.onSuccess { outcome0668 ->
+                familyActive0668 = true
+                status = if (outcome0668.reused) {
+                    "Link familiar ativo. Você pode compartilhá-lo novamente."
+                } else {
+                    "Acompanhamento familiar ativado."
+                }
+                shareTrackingLink0668(
+                    context = context,
+                    title = "Compartilhar acompanhamento com a família",
+                    message = "🛡 Acompanhe meu percurso em tempo real pelo Rota Certa:",
+                    url = outcome0668.url,
+                )
+            }.onFailure { error0668 ->
+                status = "O percurso local foi iniciado, mas o link não pôde ser criado: ${error0668.message ?: "falha no servidor"}"
+            }
+        }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -85,14 +121,23 @@ private fun WorkTrackingScreen(onClose: () -> Unit) {
             permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        if (locationGranted) startTracking() else status = "Autorize a localizacao para registrar o percurso."
+        if (locationGranted) {
+            if (permissionPurpose0668 == TrackingPermissionPurpose0668.FAMILY) {
+                createFamilyShare0668()
+            } else {
+                startTracking()
+            }
+        } else {
+            status = "Autorize a localização para registrar o percurso."
+        }
     }
 
-    fun requestStart() {
+    fun requestLocation0668(purpose0668: TrackingPermissionPurpose0668) {
+        permissionPurpose0668 = purpose0668
         val fineGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         val coarseGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
         if (fineGranted || coarseGranted) {
-            startTracking()
+            if (purpose0668 == TrackingPermissionPurpose0668.FAMILY) createFamilyShare0668() else startTracking()
         } else {
             val permissions = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) permissions += Manifest.permission.POST_NOTIFICATIONS
@@ -116,7 +161,7 @@ private fun WorkTrackingScreen(onClose: () -> Unit) {
     ) {
         Text("Rastreamento de trabalho", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text(
-            "Registra somente neste aparelho o percurso do dia. Nao envia a localizacao para familiares ou servidores.",
+            "Privado por padrão: o percurso fica somente neste aparelho. A localização só é enviada ao servidor quando você ativa explicitamente um link de acompanhamento.",
             style = MaterialTheme.typography.bodySmall,
         )
 
@@ -124,7 +169,11 @@ private fun WorkTrackingScreen(onClose: () -> Unit) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(if (active) "ATIVO" else "PARADO", fontWeight = FontWeight.Bold)
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = ::requestStart, enabled = !active, modifier = Modifier.weight(1f)) {
+                    Button(
+                        onClick = { requestLocation0668(TrackingPermissionPurpose0668.PRIVATE) },
+                        enabled = !active,
+                        modifier = Modifier.weight(1f),
+                    ) {
                         Text("Iniciar")
                     }
                     OutlinedButton(
@@ -133,7 +182,11 @@ private fun WorkTrackingScreen(onClose: () -> Unit) {
                                 Intent(context, WorkTrackingService::class.java).setAction(WorkTrackingService.ACTION_STOP),
                             )
                             active = false
-                            status = "Rastreamento encerrado."
+                            status = if (shareManager0668.hasActiveShares()) {
+                                "Rastreamento encerrado. O Rota Certa também encerrará os links ativos no servidor."
+                            } else {
+                                "Rastreamento encerrado."
+                            }
                             refresh()
                         },
                         enabled = active,
@@ -147,21 +200,62 @@ private fun WorkTrackingScreen(onClose: () -> Unit) {
         }
 
         Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Compartilhamento", fontWeight = FontWeight.Bold)
+                Text(
+                    "Família acompanha toda esta sessão. Passageiros recebem links temporários individualmente nos cards das viagens.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { requestLocation0668(TrackingPermissionPurpose0668.FAMILY) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(if (familyActive0668) "🛡 Família" else "🛡 Família")
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            status = "Encerrando link familiar…"
+                            scope0668.launch {
+                                runCatching { withContext(Dispatchers.IO) { shareManager0668.closeFamilyShare() } }
+                                    .onSuccess {
+                                        familyActive0668 = false
+                                        status = "Link familiar encerrado."
+                                    }
+                                    .onFailure { error0668 ->
+                                        status = "Não foi possível confirmar o encerramento no servidor: ${error0668.message ?: "falha de conexão"}"
+                                    }
+                            }
+                        },
+                        enabled = familyActive0668,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("Encerrar link")
+                    }
+                }
+                Text(
+                    if (familyActive0668) "🟢 Link familiar ativo" else "⚫ Nenhum link familiar ativo",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Resumo de hoje", fontWeight = FontWeight.Bold)
-                Text("Distancia registrada: ${formatTrackingDistance(summary.distanceMeters)}")
+                Text("Distância registrada: ${formatTrackingDistance(summary.distanceMeters)}")
                 Text("Tempo registrado: ${formatTrackingDuration(summary.durationMillis)}")
                 Text("Pontos de GPS: ${summary.points.size}")
-                summary.startedAtMillis?.let { Text("Inicio: ${formatTrackingTime(it)}") }
-                summary.endedAtMillis?.let { Text("Ultima posicao: ${formatTrackingTime(it)}") }
+                summary.startedAtMillis?.let { Text("Início: ${formatTrackingTime(it)}") }
+                summary.endedAtMillis?.let { Text("Última posição: ${formatTrackingTime(it)}") }
             }
         }
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Tracado do percurso", fontWeight = FontWeight.Bold)
+                Text("Traçado do percurso", fontWeight = FontWeight.Bold)
                 Text(
-                    "A linha abaixo usa os pontos reais gravados pelo GPS. O fundo de ruas podera ser acrescentado em uma etapa posterior.",
+                    "A linha abaixo usa os pontos reais gravados pelo GPS. O link compartilhado usa o mesmo motor de localização.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 WorkRouteCanvas(summary.points)
@@ -175,7 +269,7 @@ private fun WorkTrackingScreen(onClose: () -> Unit) {
                     if (!active) {
                         repository.clearToday()
                         refresh()
-                        status = "Historico de hoje apagado."
+                        status = "Histórico de hoje apagado."
                     } else {
                         status = "Pare o rastreamento antes de apagar o percurso de hoje."
                     }

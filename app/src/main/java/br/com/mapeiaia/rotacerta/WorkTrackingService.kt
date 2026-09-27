@@ -11,21 +11,41 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
+import androidx.work.CoroutineWorker
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class WorkTrackingService : Service() {
     private lateinit var repository: WorkTrackingRepository
+    private lateinit var shareManager0668: LiveTrackingShareManager0668
     private lateinit var locationClient: FusedLocationProviderClient
     private var locationCallback: LocationCallback? = null
+    private val uploadScope0668 = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val uploadInFlight0668 = AtomicBoolean(false)
 
     override fun onCreate() {
         super.onCreate()
         repository = WorkTrackingRepository(applicationContext)
+        shareManager0668 = LiveTrackingShareManager0668(applicationContext)
         locationClient = LocationServices.getFusedLocationProviderClient(applicationContext)
         createNotificationChannel()
     }
@@ -42,6 +62,7 @@ class WorkTrackingService : Service() {
 
     override fun onDestroy() {
         removeLocationUpdates()
+        uploadScope0668.cancel()
         super.onDestroy()
     }
 
@@ -75,6 +96,7 @@ class WorkTrackingService : Service() {
                             ),
                         )
                     }
+                    scheduleRemoteSync0668()
                 } catch (error0172: Exception) {
                     UnifiedDebugEventStore.record(
                         "WORK_TRACKING_LOCATION_FAILURE_CONTAINED_0172",
@@ -90,11 +112,31 @@ class WorkTrackingService : Service() {
                 repository.markTrackingStopped()
                 stopSelf()
             }
+        scheduleRemoteSync0668()
+    }
+
+    private fun scheduleRemoteSync0668() {
+        if (!shareManager0668.hasActiveShares()) return
+        if (!uploadInFlight0668.compareAndSet(false, true)) return
+        uploadScope0668.launch {
+            try {
+                do {
+                    val synced = runCatching { shareManager0668.syncPendingPoints() }.getOrDefault(false)
+                } while (synced && shareManager0668.hasPendingPoints())
+            } finally {
+                uploadInFlight0668.set(false)
+                if (shareManager0668.hasPendingPoints()) scheduleRemoteSync0668()
+            }
+        }
     }
 
     private fun stopTracking() {
         repository.markTrackingStopped()
         removeLocationUpdates()
+        val hadSharedSession0668 = shareManager0668.hasActiveShares()
+        if (hadSharedSession0668) {
+            enqueueTrackingClose0668(applicationContext)
+        }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -110,8 +152,16 @@ class WorkTrackingService : Service() {
 
     private fun buildNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
         .setSmallIcon(android.R.drawable.ic_menu_mylocation)
-        .setContentTitle("Rastreamento de trabalho ativo")
-        .setContentText("O Rota Certa esta registrando o percurso neste aparelho.")
+        .setContentTitle(
+            if (shareManager0668.hasActiveShares()) "Acompanhamento ao vivo ativo" else "Rastreamento de trabalho ativo",
+        )
+        .setContentText(
+            if (shareManager0668.hasActiveShares()) {
+                "O percurso está sendo gravado e sincronizado com os links que você ativou."
+            } else {
+                "O Rota Certa está registrando o percurso somente neste aparelho."
+            },
+        )
         .setOngoing(true)
         .setOnlyAlertOnce(true)
         .setContentIntent(
@@ -143,7 +193,7 @@ class WorkTrackingService : Service() {
                 "Rastreamento de trabalho",
                 NotificationManager.IMPORTANCE_LOW,
             ).apply {
-                description = "Mantem visivel quando o percurso esta sendo registrado."
+                description = "Mantém visível quando o percurso está sendo registrado ou compartilhado."
             },
         )
     }
@@ -157,4 +207,31 @@ class WorkTrackingService : Service() {
         private const val MIN_UPDATE_INTERVAL_MS = 2_000L
         private const val MIN_UPDATE_DISTANCE_METERS = 8f
     }
+}
+
+class LiveTrackingCloseWorker0668(
+    appContext: android.content.Context,
+    params: WorkerParameters,
+) : CoroutineWorker(appContext, params) {
+    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        val manager = LiveTrackingShareManager0668(applicationContext)
+        if (!manager.hasActiveShares()) return@withContext Result.success()
+        runCatching { manager.closeActiveSession() }
+            .fold(
+                onSuccess = { Result.success() },
+                onFailure = { Result.retry() },
+            )
+    }
+}
+
+internal fun enqueueTrackingClose0668(context: android.content.Context) {
+    val request = OneTimeWorkRequestBuilder<LiveTrackingCloseWorker0668>()
+        .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+        .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.SECONDS)
+        .build()
+    WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
+        "live-tracking-close-0668",
+        ExistingWorkPolicy.REPLACE,
+        request,
+    )
 }

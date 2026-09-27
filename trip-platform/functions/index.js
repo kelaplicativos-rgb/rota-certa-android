@@ -1,6 +1,7 @@
 "use strict";
 
 const crypto = require("crypto");
+const { createLiveTracking0668 } = require("./live-tracking-0668");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
@@ -10995,6 +10996,8 @@ async function interpretAssistant0410(req, res) {
   }
 }
 
+const liveTracking0668 = createLiveTracking0668({ db, requireDriver });
+
 const agendaAdmin0417 = createAgendaAdmin0417({
   db,
   resolveDriverUsername,
@@ -11086,6 +11089,14 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     if (req.method === "POST" && path === "/v1/driver/passengers/reset-password") return await resetDriverPassengerPassword(req, res);
     if (req.method === "PUT" && path === "/v1/driver/referral-settings") return await updateDriverReferralSettings(req, res);
     if (req.method === "POST" && path === "/v1/driver/push-tokens") return await registerDriverPushToken(req, res);
+    if (req.method === "POST" && path === "/v1/driver/tracking/sessions") return await liveTracking0668.createSession(req, res);
+    if (req.method === "POST" && path === "/v1/driver/tracking/shares") return await liveTracking0668.createShare(req, res);
+    if (req.method === "POST" && path === "/v1/driver/tracking/points") return await liveTracking0668.postPoints(req, res);
+    if (req.method === "POST" && path === "/v1/driver/tracking/shares/close") return await liveTracking0668.closeShare(req, res);
+    if (req.method === "POST" && path === "/v1/driver/tracking/sessions/close") return await liveTracking0668.closeSession(req, res);
+    if (parts.length === 4 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "tracking" && req.method === "GET") {
+      return await liveTracking0668.getPublic(req, res, parts[3]);
+    }
     if (req.method === "POST" && path === "/v1/driver/trips") return await createDriverTrip(req, res);
     if (req.method === "GET" && path === "/v1/driver/trips/sync-state") return await listDriverTripSyncState0402(req, res);
     if (req.method === "PUT" && path === "/v1/driver/private-mirror") return await putDriverPrivateMirror0434(req, res);

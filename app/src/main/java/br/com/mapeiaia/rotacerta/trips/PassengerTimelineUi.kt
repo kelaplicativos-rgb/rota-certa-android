@@ -1,11 +1,16 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -42,7 +47,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import br.com.mapeiaia.rotacerta.Coordinate
+import br.com.mapeiaia.rotacerta.LiveTrackingShareManager0668
+import br.com.mapeiaia.rotacerta.PassengerTrackingLinkRequest0668
+import br.com.mapeiaia.rotacerta.WorkTrackingService
+import br.com.mapeiaia.rotacerta.passengerTrackingExpiry0668
+import br.com.mapeiaia.rotacerta.shareTrackingLink0668
 import br.com.mapeiaia.rotacerta.DiagnosticEventContext0507
 import br.com.mapeiaia.rotacerta.DiagnosticModule0507
 import br.com.mapeiaia.rotacerta.R
@@ -297,6 +308,75 @@ internal fun EnhancedPassengerTimelineSection(
     val completionService = remember(context) { PassengerCompletionService(context) }
     val mutationCoordinator = remember(context, store) { TripMutationCoordinator0387(context, store) }
     val scope = rememberCoroutineScope()
+    val liveTrackingManager0668 = remember(context) { LiveTrackingShareManager0668(context) }
+    var pendingTrackingRequest0668 by remember { mutableStateOf<PassengerTrackingLinkRequest0668?>(null) }
+
+    fun publishPassengerTracking0668(request0668: PassengerTrackingLinkRequest0668) {
+        ContextCompat.startForegroundService(
+            context,
+            Intent(context, WorkTrackingService::class.java).setAction(WorkTrackingService.ACTION_START),
+        )
+        onChanged("Criando link temporário de acompanhamento para " + request0668.passengerName + "…")
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { liveTrackingManager0668.createPassengerLink(request0668) }
+            }.onSuccess { outcome0668 ->
+                pendingTrackingRequest0668 = null
+                shareTrackingLink0668(
+                    context = context,
+                    title = "Compartilhar acompanhamento",
+                    message = "🚗 " + request0668.passengerName + ", acompanhe minha localização durante sua viagem:",
+                    url = outcome0668.url,
+                )
+                onChanged(
+                    if (outcome0668.reused) {
+                        "Link temporário de " + request0668.passengerName + " aberto para compartilhar novamente."
+                    } else {
+                        "Link temporário de " + request0668.passengerName + " criado. Ele não mostra o percurso anterior."
+                    },
+                )
+            }.onFailure { error0668 ->
+                onChanged("O GPS foi iniciado, mas o link temporário não pôde ser criado: " + (error0668.message ?: "falha no servidor"))
+            }
+        }
+    }
+
+    val trackingPermissionLauncher0668 = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { permissions0668 ->
+        val granted0668 =
+            permissions0668[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                permissions0668[Manifest.permission.ACCESS_COARSE_LOCATION] == true ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val pending0668 = pendingTrackingRequest0668
+        if (granted0668 && pending0668 != null) {
+            publishPassengerTracking0668(pending0668)
+        } else if (!granted0668) {
+            pendingTrackingRequest0668 = null
+            onChanged("Autorize a localização para criar o link de acompanhamento.")
+        }
+    }
+
+    fun requestPassengerTracking0668(request0668: PassengerTrackingLinkRequest0668) {
+        val granted0668 =
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (granted0668) {
+            publishPassengerTracking0668(request0668)
+        } else {
+            pendingTrackingRequest0668 = request0668
+            val requested0668 = mutableListOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                requested0668 += Manifest.permission.POST_NOTIFICATIONS
+            }
+            trackingPermissionLauncher0668.launch(requested0668.toTypedArray())
+        }
+    }
+
     var identityRevision by remember { mutableIntStateOf(0) }
     var completionRevision by remember { mutableIntStateOf(0) }
     val immediateCanonicalSnapshot0517 = remember(entry, trip, canonicalBookings0494) {
@@ -687,6 +767,9 @@ internal fun EnhancedPassengerTimelineSection(
                             completionRevision++
                             identityRevision++
                         }
+                        scope.launch(Dispatchers.IO) {
+                            runCatching { liveTrackingManager0668.closePassengerShare(rowKey0394) }
+                        }
                     }
                     UnifiedDebugEventStore.record(
                         "TIMELINE_CANONICAL_PASSENGER_MUTATION_0494",
@@ -906,6 +989,53 @@ internal fun EnhancedPassengerTimelineSection(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.End,
                 ) {
+                    TextButton(
+                        onClick = {
+                            val selectedTrip0668 = trip
+                            val destinationLatitude0668 = passenger.dropoffLatitude
+                            val destinationLongitude0668 = passenger.dropoffLongitude
+                            when {
+                                selectedTrip0668 == null -> {
+                                    onChanged("Viagem canônica indisponível para criar o acompanhamento.")
+                                }
+                                destinationLatitude0668 == null || destinationLongitude0668 == null -> {
+                                    onChanged("Atualize esta viagem pelo HTML para obter o ponto exato de desembarque antes de compartilhar o acompanhamento.")
+                                }
+                                else -> {
+                                    UnifiedDebugEventStore.recordAlways(
+                                        "CENTRAL_DAY_PASSENGER_SHORTCUT_0594",
+                                        context.packageName,
+                                        "shortcut=LIVE_TRACKING_0668 passengerScoped=true preShareHistory=false",
+                                        diagnosticContext = DiagnosticEventContext0507(
+                                            parentModule = DiagnosticModule0507.CENTRAL_DAY,
+                                            originModule = DiagnosticModule0507.CENTRAL_DAY,
+                                            executorModule = DiagnosticModule0507.CENTRAL_DAY,
+                                            submodule = "PASSENGER_CONTROLS",
+                                            component = "EnhancedPassengerTimelineSection",
+                                            operation = "CENTRAL_DAY_PASSENGER_SHORTCUT",
+                                            entityType = "booking",
+                                            entityId = passengerCancellationHash(currentBooking?.id ?: passenger.localBookingId.orEmpty()),
+                                            result = "LIVE_TRACKING_0668",
+                                        ),
+                                    )
+                                    requestPassengerTracking0668(
+                                        PassengerTrackingLinkRequest0668(
+                                            tripId = selectedTrip0668.id,
+                                            passengerKey = rowKey0394,
+                                            passengerName = passenger.name.ifBlank { "Passageiro" },
+                                            destinationLatitude = destinationLatitude0668,
+                                            destinationLongitude = destinationLongitude0668,
+                                            destinationLabel = passenger.dropoffAddress.ifBlank { passenger.dropoff.orEmpty() },
+                                            expiresAtMillis = passengerTrackingExpiry0668(entry.arrivalAtMillis),
+                                        ),
+                                    )
+                                }
+                            }
+                        },
+                        modifier = Modifier.size(36.dp),
+                        contentPadding = ADDRESS_ICON_PADDING,
+                    ) { Text("🛰️", maxLines = 1) }
+
                     IconButton(
                         onClick = {
                             if (!phone0593.isNullOrBlank()) {

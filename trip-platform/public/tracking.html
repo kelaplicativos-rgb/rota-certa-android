@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <title>Rota Certa • Acompanhamento</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <style>
+    :root { color-scheme: dark; font-family: system-ui,-apple-system,Segoe UI,sans-serif; background:#0c1117; color:#eef3f7; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#0c1117; }
+    main { max-width:900px; margin:0 auto; padding:18px; }
+    .card { background:#151d26; border:1px solid #283543; border-radius:18px; padding:16px; margin-bottom:14px; }
+    h1 { font-size:1.35rem; margin:0 0 8px; }
+    p { margin:5px 0; color:#cbd5df; }
+    .status { font-weight:700; color:#83e9a6; }
+    .warn { color:#ffd166; }
+    .ended { color:#ff8d8d; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(145px,1fr)); gap:8px; margin-top:12px; }
+    .metric { background:#0f151c; border-radius:12px; padding:10px; }
+    .metric b { display:block; font-size:1.05rem; color:#fff; }
+    #map { height:min(62vh,520px); min-height:320px; border-radius:18px; overflow:hidden; border:1px solid #283543; }
+    a { color:#7cc7ff; }
+    footer { font-size:.82rem; color:#8997a5; padding:8px 2px 20px; }
+  </style>
+</head>
+<body>
+<main>
+  <section class="card">
+    <h1 id="title">Acompanhamento Rota Certa</h1>
+    <p id="status" class="status">Carregando localização…</p>
+    <p id="privacy"></p>
+    <div class="grid">
+      <div class="metric"><span>Última atualização</span><b id="updated">—</b></div>
+      <div class="metric"><span>Início</span><b id="started">—</b></div>
+      <div class="metric" id="distanceBox" hidden><span>Até o destino</span><b id="distance">—</b></div>
+      <div class="metric"><span>Bateria do aparelho</span><b id="battery">—</b></div>
+    </div>
+  </section>
+  <div id="map"></div>
+  <section class="card" id="fallback" hidden>
+    <p>O mapa de ruas não pôde carregar, mas a última posição continua disponível.</p>
+    <a id="mapsLink" target="_blank" rel="noreferrer">Abrir última posição no mapa</a>
+  </section>
+  <footer>O link é privado e temporário. Não encaminhe para pessoas que não devam acompanhar esta viagem.</footer>
+</main>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="/tracking.js?v=0668"></script>
+</body>
+</html>

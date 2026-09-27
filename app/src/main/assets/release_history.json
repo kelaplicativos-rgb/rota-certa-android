@@ -2,6 +2,43 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.668",
+      "build": 5959,
+      "commit": null,
+      "branch": "agent/live-tracking-share-0.1.668",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Rastreamento de trabalho permanece privado por padrão e ganha compartilhamento Família explícito, com um único toque para iniciar a sessão GPS e gerar um link HTTPS acompanhado pelo servidor.",
+        "Cada passageiro passa a ter o atalho 🛰️ no bloco operacional compartilhado por Viagens e Central do Dia; o link temporário nasce no momento do compartilhamento e usa o destino exato daquele passageiro.",
+        "Backend Viagem Certa recebe sessões, pontos GPS e compartilhamentos com tokens fortes; a página tracking.html mostra posição atual, trajeto permitido, última atualização, bateria e destino quando aplicável."
+      ],
+      "fixed": [
+        "O link do passageiro nunca recebe o histórico anterior à criação do próprio compartilhamento, mesmo quando já existe uma sessão familiar ativa.",
+        "Parar o rastreamento agenda revogação persistente com WorkManager e requisito de rede, evitando considerar localmente encerrado um link que o servidor ainda não confirmou.",
+        "Perda de internet não interrompe a gravação local: pontos continuam no JSONL e são enviados em ordem quando a conectividade retorna."
+      ],
+      "improved": [
+        "Família e passageiros reutilizam o mesmo WorkTrackingService e a mesma coleta GPS, sem duplicar provedores de localização nem acoplar o recurso ao Farol.",
+        "Tokens públicos ficam no fragmento da URL e no servidor são persistidos apenas como SHA-256; o link do passageiro expira em até 24 horas e é encerrado automaticamente ao atingir o raio do destino.",
+        "O mapa web usa OpenStreetMap/Leaflet como camada visual, enquanto coordenadas e histórico autorizado permanecem independentes do carregamento do mapa."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Rastreamento de trabalho",
+        "Segurança",
+        "Viagens",
+        "Timeline",
+        "Central do Dia",
+        "Passageiros",
+        "Viagem Certa",
+        "Backend",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.667",
       "build": 5958,
       "commit": null,
