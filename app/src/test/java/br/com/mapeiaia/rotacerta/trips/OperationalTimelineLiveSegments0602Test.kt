@@ -94,30 +94,26 @@ class OperationalTimelineLiveSegments0602Test {
     }
 
     @Test
-    fun allTripsCardsKeepDriverOnlyLiveSegmentGlanceVisible() {
+    fun allTripsCardsUseSingleSharedSegmentPaxTimeline() {
         val source = File(
             "src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalAllTripsBrowserUi0563.kt",
         ).readText()
-
-        val start = source.indexOf("// 0.1.603 — informação por trecho só existe na UI")
-        val end = source.indexOf("if (!targetConfirmed)", start)
-        assertTrue(start >= 0 && end > start)
-        val section = source.substring(start, end)
+        val passenger = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt",
+        ).readText()
 
         assertTrue(source.contains("projectedTimeline0602"))
         assertTrue(source.contains("operationalTimelineSegmentLoads0602("))
         assertTrue(source.contains("canonicalTimelineSegmentLoads0494(entry, trip)"))
-        assertTrue(section.contains("if (row.segmentLoads0602.isNotEmpty())"))
-        assertTrue(section.contains("Vagas por trecho"))
-        assertTrue(section.contains("row.segmentLoads0602.forEach"))
-        assertTrue(section.contains("load0602.availableSeats"))
-        assertTrue(section.contains("load0602.passengerSeats"))
-        assertTrue(section.contains("load0602.blockedSeats"))
-        assertTrue(section.contains("load0602.overbookingSeats"))
-        assertTrue(section.contains("\"LOTADO\""))
-        assertTrue(!section.contains("Aguardando atualização canônica das vagas."))
-        assertTrue(!section.contains("Reserve Já"))
-        assertTrue(!section.contains("Indisponível"))
+        assertTrue(source.contains("segmentLoads0671 = row.segmentLoads0602"))
+        assertTrue(source.contains("mesma seção de passageiros"))
+        assertTrue(!source.contains("val dots0602"))
+        assertTrue(!source.contains("val occupancy0602"))
+        assertTrue(passenger.contains("SegmentVacancyLine0671("))
+        assertTrue(passenger.contains("PAX: "))
+        assertTrue(passenger.contains("\"LOTADO\""))
+        assertTrue(!source.contains("Reserve Já"))
         assertTrue(!source.contains("SeatAvailabilityEngine.segmentLoads"))
     }
+
 }

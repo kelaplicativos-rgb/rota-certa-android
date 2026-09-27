@@ -68,8 +68,10 @@ class ChronologicalPassengerCards0667Test {
         assertTrue(passengerSource.contains("{ Text(\"🏁\", maxLines = 1) }"))
         assertTrue(passengerSource.contains("passengerOperationalAddressLabel0656(passenger, boarding = true)"))
         assertTrue(passengerSource.contains("passengerOperationalAddressLabel0656(passenger, boarding = false)"))
-        assertTrue(tripsSource.contains("embedChronologicalStops0667 = true"))
-        assertTrue(centralSource.contains("embedChronologicalStops0667 = true"))
+        assertTrue(tripsSource.contains("segmentLoads0671 = row.segmentLoads0602"))
+        assertTrue(centralSource.contains("segmentLoads0671 = item.segmentLoads"))
+        assertFalse(tripsSource.contains("embedChronologicalStops0667 = true"))
+        assertFalse(centralSource.contains("embedChronologicalStops0667 = true"))
         assertFalse(tripsSource.contains("Text(\"Atalhos\", maxLines = 1)"))
         assertFalse(centralSource.contains("Text(\"Atalhos\", maxLines = 1)"))
     }
