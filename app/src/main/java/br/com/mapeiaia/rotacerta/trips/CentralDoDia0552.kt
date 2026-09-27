@@ -772,8 +772,6 @@ internal fun CentralDoDiaScreen0552(
         )
     }
 
-    var expandedPassengerTripIds0591 by remember { mutableStateOf(emptySet<String>()) }
-
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
@@ -861,7 +859,6 @@ internal fun CentralDoDiaScreen0552(
     }
 
     model.trips.forEach { item ->
-        val passengersExpanded0591 = item.canonicalTripId in expandedPassengerTripIds0591
         val canonicalTrip0593 = trips.firstOrNull { trip -> trip.id == item.canonicalTripId }
         val timelineEntry0593 = entryByTripId0593[item.canonicalTripId]
         Card(Modifier.fillMaxWidth()) {
@@ -929,7 +926,47 @@ internal fun CentralDoDiaScreen0552(
                     }
                 }
 
-                Text("${item.origin} → ${item.destination}", style = MaterialTheme.typography.bodyLarge, maxLines = 2)
+                if (canonicalTrip0593 != null && timelineEntry0593 != null) {
+                    EnhancedPassengerTimelineSection(
+                        entry = timelineEntry0593,
+                        trip = canonicalTrip0593,
+                        store = store0593,
+                        currentCoordinate = null,
+                        onChanged = { message ->
+                            onMessage(message)
+                            onRefreshLocal()
+                        },
+                        canonicalBookings0494 = bookings.filter { booking ->
+                            booking.tripId == item.canonicalTripId
+                        },
+                        showTripActions0549 = false,
+                        compactEmbeddedControls0593 = true,
+                        embedChronologicalStops0667 = true,
+                    )
+                } else {
+                    Text(
+                        "${item.origin} → ${item.destination}",
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 2,
+                    )
+                    item.passengers.forEach { passenger ->
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                passenger.name + " • " + passenger.stateLabel,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                            )
+                            TextButton(
+                                onClick = { onOpenTimeline(item.canonicalTripId, passenger.bookingId) },
+                            ) { Text("Operar") }
+                        }
+                    }
+                }
+
                 Text(
                     "${item.passengerSeats} lugares • ${item.availableSeats?.let { "${it} vagas" } ?: "vagas não verificáveis"} • ${item.nextAction}",
                     style = MaterialTheme.typography.bodySmall,
@@ -995,91 +1032,13 @@ internal fun CentralDoDiaScreen0552(
                     }
                 }
 
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
                     TextButton(
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            val opening0594 = !passengersExpanded0591
-                            val controlsAvailable0594 = canonicalTrip0593 != null && timelineEntry0593 != null
-                            UnifiedDebugEventStore.recordAlways(
-                                "CENTRAL_DAY_PASSENGER_PANEL_TOGGLE_0594",
-                                context.packageName,
-                                "opening=$opening0594 controlsAvailable=$controlsAvailable0594 passengers=${item.passengers.size}",
-                                diagnosticContext = DiagnosticEventContext0507(
-                                    parentModule = DiagnosticModule0507.CENTRAL_DAY,
-                                    originModule = DiagnosticModule0507.CENTRAL_DAY,
-                                    executorModule = DiagnosticModule0507.CENTRAL_DAY,
-                                    submodule = "PASSENGER_CONTROLS",
-                                    component = "CentralDoDiaScreen0552",
-                                    operation = "CENTRAL_DAY_PASSENGER_PANEL",
-                                    entityType = "trip",
-                                    entityId = seatSyncDiagnosticKey(item.canonicalTripId),
-                                    result = if (controlsAvailable0594) "OPERATIONAL_CONTROLS" else "READ_ONLY_FALLBACK",
-                                ),
-                            )
-                            expandedPassengerTripIds0591 =
-                                if (passengersExpanded0591) {
-                                    expandedPassengerTripIds0591 - item.canonicalTripId
-                                } else {
-                                    expandedPassengerTripIds0591 + item.canonicalTripId
-                                }
-                        },
-                    ) {
-                        Text(
-                            if (passengersExpanded0591) {
-                                "Passageiros ${item.passengers.size} ▲"
-                            } else {
-                                "Passageiros ${item.passengers.size} ▼"
-                            },
-                            maxLines = 1,
-                        )
-                    }
-                    TextButton(
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            if (!passengersExpanded0591) {
-                                expandedPassengerTripIds0591 += item.canonicalTripId
-                            }
-                        },
-                    ) { Text("Atalhos", maxLines = 1) }
-                    TextButton(
-                        modifier = Modifier.weight(1f),
                         onClick = { diagnosticTripId = item.canonicalTripId },
                     ) { Text("Integridade", maxLines = 1) }
-                }
-
-                if (passengersExpanded0591) {
-                    if (canonicalTrip0593 != null && timelineEntry0593 != null) {
-                        EnhancedPassengerTimelineSection(
-                            entry = timelineEntry0593,
-                            trip = canonicalTrip0593,
-                            store = store0593,
-                            currentCoordinate = null,
-                            onChanged = { message ->
-                                onMessage(message)
-                                onRefreshLocal()
-                            },
-                            canonicalBookings0494 = bookings.filter { booking ->
-                                booking.tripId == item.canonicalTripId
-                            },
-                            showTripActions0549 = false,
-                            compactEmbeddedControls0593 = true,
-                        )
-                    } else {
-                        item.passengers.forEach { passenger ->
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(
-                                    passenger.name + " • " + passenger.stateLabel,
-                                    modifier = Modifier.weight(1f),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    maxLines = 1,
-                                )
-                                TextButton(
-                                    onClick = { onOpenTimeline(item.canonicalTripId, passenger.bookingId) },
-                                ) { Text("Operar") }
-                            }
-                        }
-                    }
                 }
             }
         }
