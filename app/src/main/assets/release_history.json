@@ -2,6 +2,46 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.670",
+      "build": 5961,
+      "commit": null,
+      "branch": "agent/live-gps-tracker-0.1.670",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Acompanhamento de segurança passa a operar como GPS Tracker ao vivo, com heartbeat independente do movimento enviado aproximadamente a cada 5 segundos enquanto existir compartilhamento ativo.",
+        "Heartbeat transmite presença do aparelho, bateria e última leitura GPS sem transformar cada heartbeat em ponto do rastro.",
+        "Watchdog solicita uma posição atual quando o serviço fica 15 segundos sem callback normal do GPS.",
+        "Wake lock parcial fica ativo somente enquanto há link Família ou Passageiro em acompanhamento para reduzir congelamentos com a tela apagada."
+      ],
+      "fixed": [
+        "Corrigido congelamento do acompanhamento quando o carro ficava parado ou o Fused Location deixava de entregar callbacks por causa da distância mínima de 8 metros.",
+        "Falha de sincronização deixa de entrar em repetição imediata sem intervalo; novas tentativas passam a ser conduzidas pelo ciclo do tracker e pelos callbacks GPS.",
+        "Página pública distingue último contato do aparelho de última posição GPS, evitando apresentar bateria e estado como se ainda estivessem atualizados quando a telemetria parou."
+      ],
+      "improved": [
+        "A página exibe estados separados para aparelho conectado, GPS aguardando/atrasado e perda de comunicação, preservando a última posição conhecida no mapa.",
+        "Atualizações GPS periódicas deixam de depender de deslocamento mínimo para manter o acompanhamento ao vivo.",
+        "Privacidade do passageiro permanece preservada: idade/posição GPS anterior à criação do link não é exposta."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.669: Acompanhamento de segurança podia permanecer horas congelado porque posição, bateria e upload dependiam exclusivamente de novos callbacks de localização."
+      ],
+      "modulesAffected": [
+        "Rastreamento de trabalho",
+        "Segurança",
+        "Passageiros",
+        "Viagem Certa",
+        "Backend",
+        "Página de acompanhamento",
+        "GPS",
+        "Bateria",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.669",
       "build": 5960,
       "commit": null,
