@@ -178,11 +178,36 @@
   const itineraryNodes = Array.from(document.querySelectorAll(
     '[data-testid*="itinerary-departure-station"], [data-testid*="itinerary-stop"], [data-testid*="station"], [data-testid*="itinerary-arrival-station"]'
   ));
-  const semanticItineraryStops = [];
+  const clockFromText = (value) => {
+    const match = clean(value).match(/(?:^|\s)((?:[01]?\d|2[0-3]):[0-5]\d)(?:\s|$)/);
+    return clean(match && match[1]);
+  };
+  const clockNearNode = (node) => {
+    let current = node;
+    for (let depth = 0; current && depth < 6; depth += 1, current = current.parentElement) {
+      const leaves = Array.from(current.querySelectorAll ? current.querySelectorAll('span, p, div, time') : [])
+        .filter((leaf) => leaf.children.length === 0)
+        .map((leaf) => clockFromText(leaf.innerText || leaf.textContent))
+        .filter(Boolean);
+      const unique = Array.from(new Set(leaves));
+      if (unique.length === 1) return unique[0];
+    }
+    return '';
+  };
+  const semanticItineraryObservations = [];
   itineraryNodes.forEach((node) => {
     const value = clean(node.innerText);
-    if (value && semanticItineraryStops[semanticItineraryStops.length - 1] !== value) semanticItineraryStops.push(value);
+    if (!value) return;
+    const time = clockNearNode(node);
+    const previous = semanticItineraryObservations[semanticItineraryObservations.length - 1];
+    if (previous && key(previous.label) === key(value)) {
+      if (!previous.time && time) previous.time = time;
+      return;
+    }
+    semanticItineraryObservations.push({label:value, time:time});
   });
+  const semanticItineraryStops = semanticItineraryObservations.map((item) => item.label);
+  const semanticItineraryStopTimes = semanticItineraryObservations.map((item) => item.time || '');
 
   // 0.1.606: the current BlaBlaCar offer DOM no longer exposes itinerary data-testid
   // attributes consistently. The exact administrative offer still exposes one strong,
@@ -237,15 +262,25 @@
     );
     return clean(candidate || '');
   };
-  const fallbackItineraryStops = routeRoot
+  const stopTimeFromRow = (row) => {
+    if (!row) return '';
+    const leaves = Array.from(row.querySelectorAll('span, p, div, time'))
+      .filter((node) => node.children.length === 0)
+      .map((node) => clockFromText(node.innerText || node.textContent))
+      .filter(Boolean);
+    return Array.from(new Set(leaves))[0] || '';
+  };
+  const fallbackItineraryObservations = routeRoot
     ? Array.from(routeRoot.children)
-        .map(stopLabelFromRow)
-        .filter(Boolean)
-        .filter((value, index, values) => index === 0 || value !== values[index - 1])
+        .map((row) => ({label:stopLabelFromRow(row), time:stopTimeFromRow(row)}))
+        .filter((item) => !!item.label)
+        .filter((item, index, values) => index === 0 || key(item.label) !== key(values[index - 1].label))
     : [];
-  const itineraryStops = semanticItineraryStops.length >= 2
-    ? semanticItineraryStops
-    : fallbackItineraryStops;
+  const fallbackItineraryStops = fallbackItineraryObservations.map((item) => item.label);
+  const fallbackItineraryStopTimes = fallbackItineraryObservations.map((item) => item.time || '');
+  const useSemanticItinerary = semanticItineraryStops.length >= 2;
+  const itineraryStops = useSemanticItinerary ? semanticItineraryStops : fallbackItineraryStops;
+  const itineraryStopTimes = useSemanticItinerary ? semanticItineraryStopTimes : fallbackItineraryStopTimes;
   const observedOrigin = first(['[data-testid="e2e-itinerary-departure-station"]', '[data-testid*="departure-station"]']) ||
     itineraryStops[0] || '';
   const observedDestination = first(['[data-testid="e2e-itinerary-arrival-station"]', '[data-testid*="arrival-station"]']) ||
@@ -350,6 +385,7 @@ const html = clone.outerHTML || '';
     optionsHref: options ? absolute(options.getAttribute('href') || options.href || '') : '',
     publicTripHref: publicTripHref,
     itineraryStops: itineraryStops,
+    itineraryStopTimes: itineraryStopTimes,
     itineraryAuthoritative: itineraryAuthoritative,
     stopLocations: stopLocations,
     views: Number.isFinite(views) ? views : null,

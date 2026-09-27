@@ -89,6 +89,8 @@ data class BlaBlaCollectorTrip(
     val passengers: List<BlaBlaCollectorPassenger> = emptyList(),
     /** Ordered itinerary labels captured from the exact BlaBlaCar trip. Empty means not observed. */
     val itinerary_stops: List<String> = emptyList(),
+    /** HH:mm values captured from the exact timed itinerary rows, positionally aligned with itinerary_stops. */
+    val itinerary_stop_times: List<String> = emptyList(),
     /** True only when NETWORK-FIRST confirmed the complete ordered waypoint list. */
     val itinerary_authoritative: Boolean = false,
     val booked_seats: Int = 0,
