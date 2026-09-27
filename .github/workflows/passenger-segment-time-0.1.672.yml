@@ -1,0 +1,159 @@
+name: Passenger segment time 0.1.672 APK
+
+on:
+  push:
+    branches:
+      - 'agent/passenger-segment-time-0.1.672'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: passenger-segment-time-0672-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: ''
+      ROTA_CERTA_TARGET_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: agent/passenger-segment-time-0.1.672
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.ROTA_CERTA_TARGET_SHA }}
+
+      - name: Prove exact 0.1.672 source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_TARGET_SHA"
+          echo "ROTA_CERTA_GIT_SHA=$ROTA_CERTA_TARGET_SHA" >> "$GITHUB_ENV"
+          PASS='app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt'
+          COLLECTOR='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt'
+          CAPTURE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt'
+          PUBLIC='app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt'
+          DETAIL='app/src/main/assets/blablacar/scripts/trip_detail.js'
+          grep -Fq 'releaseVersionName = "0.1.672"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 5_963' app/build.gradle.kts
+          grep -Fq '"version": "0.1.672"' app/src/main/assets/release_history.json
+          grep -Fq 'val itinerary_stop_times: List<String> = emptyList()' "$COLLECTOR"
+          grep -Fq 'itineraryStopTimes: itineraryStopTimes' "$DETAIL"
+          grep -Fq 'itinerary_stop_times = stopTimes0672' "$CAPTURE"
+          grep -Fq 'observedStopTimeMillis0672' "$PUBLIC"
+          grep -Fq 'passengerBoardingTimeMillis0672' "$PASS"
+          grep -Fq 'communicationShortcutRow0672 = passenger' "$PASS"
+          grep -Fq 'onPassengerClick0672' "$PASS"
+          ! grep -Fq 'append("PAX: ")' "$PASS"
+          ! grep -Fq 'PAX sem nome' "$PASS"
+          grep -Fq 'MaterialTheme.typography.labelMedium' "$PASS"
+          grep -Fq 'LIVE_TRACKING_POINTS_SYNCED_0668' app/src/main/java/br/com/mapeiaia/rotacerta/LiveTrackingShare0668.kt
+          grep -Fq 'HEARTBEAT_INTERVAL_MS = 5_000L' app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingService.kt
+          git diff --check 10defb4d0b68259a395262b877f8911f5c6bfdb4 HEAD
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate timed HTML script and inherited live tracking backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check app/src/main/assets/blablacar/scripts/trip_detail.js
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/functions/live-tracking-0668.js
+          node --check trip-platform/public/tracking.js
+          node --test trip-platform/functions/test/live-tracking-0668.test.js
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run exact segment schedule and inherited regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerSegmentTime0672Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaStopTimes0672Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaHtmlStopTimes0672Test'             --tests 'br.com.mapeiaia.rotacerta.trips.SegmentPaxTimeline0671Test'             --tests 'br.com.mapeiaia.rotacerta.trips.ChronologicalPassengerCards0667Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalShortcuts0656Test'             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTimelineLiveSegments0602Test'             --tests 'br.com.mapeiaia.rotacerta.trips.CentralDriverSegmentGlance0601Test'             --tests 'br.com.mapeiaia.rotacerta.LiveTrackingShare0668Test'             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripCardRefresh0663Test'             --tests 'br.com.mapeiaia.rotacerta.SafetyRecorder0666ContractTest'             --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0672-tests.log
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0672-assemble.log
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_TARGET_SHA"
+
+      - name: Prove APK identity signing runtime markers and final SHA
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/android-0672-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/android-0672-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/android-0672-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5963'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.672'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/android-0672-apksigner.txt
+          grep -Fq 'Verified' /tmp/android-0672-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0672-dex-strings.txt
+          grep -Fq "$ROTA_CERTA_TARGET_SHA" /tmp/android-0672-dex-strings.txt
+          grep -Fq 'passengerBoardingTimeMillis0672' /tmp/android-0672-dex-strings.txt
+          grep -Fq 'Horário previsto do embarque ainda não disponível.' /tmp/android-0672-dex-strings.txt
+          grep -Fq 'Mensagens prontas' /tmp/android-0672-dex-strings.txt
+          grep -Fq 'LIVE_TRACKING_POINTS_SYNCED_0668' /tmp/android-0672-dex-strings.txt
+          grep -Fq 'LIVE_GPS_TRACKER_REQUEST_FAILED_0670' /tmp/android-0672-dex-strings.txt
+          grep -Fq 'SAFETY_AUDIO_STARTED_0666' /tmp/android-0672-dex-strings.txt
+
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.672-5963-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.672"
+            echo "versionCode=5963"
+            echo "branch=agent/passenger-segment-time-0.1.672"
+            echo "commit=$ROTA_CERTA_TARGET_SHA"
+            echo "deviceTarget=Samsung SM-S911B / Android 16 / API 36"
+            echo "segmentPassengerLabel=NAMES_ONLY"
+            echo "segmentPassengerNameAction=COMMUNICATION_SHORTCUTS"
+            echo "segmentClock=SMALL_LEFT_COLUMN"
+            echo "segmentClockSource=HTML_CANONICAL_STOP_TIME"
+            echo "confirmationClock=PASSENGER_BOARDING_STOP"
+            echo "intermediateGlobalDepartureFallback=BLOCKED"
+            echo "phoneEdit=NEXT_TO_WHATSAPP_PRESERVED"
+            echo "pickupDropoffPins=PRESERVED"
+            echo "liveGpsTracker0670=PRESERVED"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee passenger-segment-time-0672-proof.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-passenger-segment-time-0.1.672-${{ env.ROTA_CERTA_TARGET_SHA }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            passenger-segment-time-0672-proof.txt
+            /tmp/android-0672-tests.log
+            /tmp/android-0672-assemble.log
+            /tmp/android-0672-aapt.txt
+            /tmp/android-0672-apksigner.txt
+            /tmp/android-0672-zip-integrity.txt
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30
