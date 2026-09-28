@@ -6926,7 +6926,7 @@ async function changePassengerPassword(req, res) {
     passwordChangeRequired0651: false,
     updatedAtMillis: now,
   }, { merge: true });
-  const recoveryAccess = await db.collection("driverPassengerAccess")
+  const recoveryAccess = await db.collectionGroup(PASSENGER_ACCESS_SUBCOLLECTION_0683)
     .where("passengerContact", "==", session.passengerContact)
     .limit(50)
     .get();
@@ -11072,6 +11072,7 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     if (req.method === "POST" && path === "/v1/public/referrals/request") return await requestPassengerReferralInvite(req, res);
     if (req.method === "GET" && path === "/v1/driver/passengers") return await listDriverPassengers(req, res);
     if (req.method === "POST" && path === "/v1/driver/passengers/invite") return await inviteDriverPassenger(req, res);
+    if (req.method === "POST" && path === "/v1/driver/passengers/approve") return await approveDriverPassenger(req, res);
     if (req.method === "POST" && path === "/v1/driver/passengers/sync") return await syncDriverPassengerDirectory(req, res);
     if (req.method === "PUT" && path === "/v1/driver/passengers/whatsapp") return await updateDriverPassengerWhatsapp(req, res);
     if (req.method === "POST" && path === "/v1/driver/passengers/block") return await setDriverPassengerBlocked(req, res);
