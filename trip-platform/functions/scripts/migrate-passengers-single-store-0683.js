@@ -128,7 +128,7 @@ async function main() {
     canonicalByContact.set(contact, {
       passengerId,
       contact,
-      displayName: clean(rawName || directory.displayName, 120),
+      displayName: clean(rawName || directory.displayName || (previous && previous.displayName), 120),
       source: clean(source, 80),
       createdAtMillis: Math.max(
         0,
@@ -167,8 +167,22 @@ async function main() {
     throw new Error("Canonical migration has passenger records without a contact; refusing destructive cleanup. unresolved=" + unresolvedDirectory.length);
   }
 
-  const writes = [];
+  const canonicalByPassengerId = new Map();
   canonicalByContact.forEach((item) => {
+    const previous = canonicalByPassengerId.get(item.passengerId);
+    const preferredContact = contactByPassengerId.get(item.passengerId);
+    const itemPreferred = preferredContact && preferredContact === item.contact;
+    const previousPreferred = previous && preferredContact && preferredContact === previous.contact;
+    if (!previous || itemPreferred || (!previousPreferred && item.source === "CANONICAL_PRE_MIGRATION_0683")) {
+      canonicalByPassengerId.set(item.passengerId, item);
+    }
+  });
+  const canonicalContactByPassengerId = new Map(
+    [...canonicalByPassengerId.values()].map((item) => [item.passengerId, item.contact]),
+  );
+
+  const writes = [];
+  canonicalByPassengerId.forEach((item) => {
     writes.push((batch) => batch.set(passengerRef(item.contact), {
       passengerId: item.passengerId,
       primaryContact: item.contact,
@@ -191,9 +205,10 @@ async function main() {
 
   legacyAccess.docs.forEach((doc) => {
     const data = doc.data();
-    const contact = normalizedStoredContact(data.passengerContact);
+    const storedContact = normalizedStoredContact(data.passengerContact);
     const driverUsername = clean(data.driverUsername, 80).toLowerCase();
     const passengerId = clean(data.passengerId, 120);
+    const contact = canonicalContactByPassengerId.get(passengerId) || storedContact;
     if (!contact || !driverUsername || !passengerId) return;
     const legacyStatus = clean(data.status, 20).toUpperCase();
     const status = legacyStatus === "BLOCKED" ? "BLOCKED" : (legacyStatus === "MOVED" ? "MOVED" : "REVOKED");
@@ -218,11 +233,22 @@ async function main() {
     }, { merge: true }));
   });
 
+  const staleCanonicalAccessDeletes = [];
   existingCanonicalAccess.docs.forEach((doc) => {
     const data = doc.data();
+    const passengerId = clean(data.passengerId, 120);
+    const storedContact = normalizedStoredContact(data.passengerContact);
+    const contact = canonicalContactByPassengerId.get(passengerId) || storedContact;
+    const driverUsername = clean(data.driverUsername, 80).toLowerCase();
+    if (!contact || !driverUsername || !passengerId) return;
+    const destination = accessRef(driverUsername, contact);
     const legacyStatus = clean(data.status, 20).toUpperCase();
     const status = legacyStatus === "BLOCKED" ? "BLOCKED" : (legacyStatus === "MOVED" ? "MOVED" : "REVOKED");
-    writes.push((batch) => batch.set(doc.ref, {
+    writes.push((batch) => batch.set(destination, {
+      ...data,
+      passengerContact: contact,
+      passengerId,
+      driverUsername,
       status,
       agendaAdmin: false,
       approvalPolicyVersion: POLICY_VERSION,
@@ -233,9 +259,21 @@ async function main() {
       updatedAtMillis: startedAtMillis,
       migrationSource0683: "CANONICAL_PRE_RESET",
     }, { merge: true }));
+    if (doc.ref.path !== destination.path) staleCanonicalAccessDeletes.push(doc.ref);
   });
 
   await commitOps(writes);
+
+  const staleCanonicalParents = existingCanonical.docs.filter((doc) => {
+    const data = doc.data();
+    const passengerId = clean(data.passengerId, 120);
+    const contact = canonicalContactByPassengerId.get(passengerId);
+    return contact && doc.id !== sha256(contact);
+  });
+  await commitOps([
+    ...staleCanonicalAccessDeletes.map((ref) => (batch) => batch.delete(ref)),
+    ...staleCanonicalParents.map((doc) => (batch) => batch.delete(doc.ref)),
+  ]);
 
   const authDeleted = {};
   for (const name of AUTH_COLLECTIONS_TO_CLEAR) {
