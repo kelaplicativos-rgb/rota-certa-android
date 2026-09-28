@@ -5562,7 +5562,7 @@ async function openPassengerPasswordSession0625(req, res) {
       passengerId,
       passengerContact,
       displayName,
-      source: creatingIdentity ? "PUBLIC_SELF_REGISTRATION_0625" : "PASSENGER_LOGIN_0625",
+      source: creatingIdentity ? "APPROVED_FIRST_ACCESS_0683" : "PASSENGER_LOGIN_0625",
       createdAtMillis: Number(fresh.createdAtMillis || now),
     }, now);
     if (target.driverUsername) {
@@ -5572,7 +5572,7 @@ async function openPassengerPasswordSession0625(req, res) {
         passengerContact,
         passengerId,
         displayName,
-        status: cleanText(targetAccess && targetAccess.status, 20).toUpperCase() || "AUTHORIZED",
+        status: cleanText(targetAccess && targetAccess.status, 20).toUpperCase() || "LOCAL_ONLY",
         createdAtMillis: Number(targetAccess && targetAccess.createdAtMillis || now),
         updatedAtMillis: now,
       }, { merge: true });
