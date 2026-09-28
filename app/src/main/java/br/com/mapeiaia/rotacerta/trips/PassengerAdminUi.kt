@@ -811,6 +811,7 @@ fun PassengerAdminScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Limpar senha") }
+                }
             }
         }
     }
@@ -886,7 +887,7 @@ fun PassengerAdminScreen(
                                         if (nextBlocked) {
                                             "⛔ Bloqueio sincronizado. ${response.cancelledBookings} reserva(s) ativa(s) cancelada(s); vagas recalculadas."
                                         } else {
-                                            "Desbloqueio sincronizado. O acesso automático à Agenda de Viagens foi restaurado."
+                                            "Desbloqueio sincronizado. O passageiro continua sem acesso à Agenda até nova aprovação explícita."
                                         },
                                     )
                                 }.onFailure { error ->
