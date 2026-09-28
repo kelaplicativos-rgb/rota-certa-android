@@ -6,7 +6,7 @@ on:
       - agent/global-html-refresh-0.1.679
   pull_request:
     branches:
-      - agent/html-transaction-heartbeat-0.1.678
+      - agent/global-html-refresh-0.1.679
   workflow_dispatch:
 
 permissions:
