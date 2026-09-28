@@ -8,6 +8,9 @@ const MAX_POINT_BATCH_0668 = 100;
 const MAX_PUBLIC_POINTS_0668 = 5000;
 const PASSENGER_DESTINATION_RADIUS_METERS_0668 = 220;
 const PASSENGER_MIN_ACTIVE_MILLIS_0668 = 10 * 60 * 1000;
+const FAMILY_ACCESS_SESSION_MILLIS_0681 = 365 * 24 * 60 * 60 * 1000;
+const FAMILY_AUTH_WINDOW_MILLIS_0681 = 10 * 60 * 1000;
+const FAMILY_AUTH_MAX_FAILURES_0681 = 5;
 
 function sha256Hex0668(value) {
   return crypto.createHash("sha256").update(String(value || "")).digest("hex");
@@ -149,6 +152,33 @@ function trackingShareDocId0668(token) {
   return sha256Hex0668("tracking:" + token);
 }
 
+function normalizeFamilyUsername0681(value) {
+  return String(value || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32);
+}
+
+function familyAliasDocId0681(username) {
+  return normalizeFamilyUsername0681(username);
+}
+
+function familySessionDocId0681(token) {
+  return sha256Hex0668("family-session|" + String(token || ""));
+}
+
+function familyPinHash0681(username, pin) {
+  return sha256Hex0668("family-pin|" + normalizeFamilyUsername0681(username) + "|" + String(pin || ""));
+}
+
+function safeEqual0681(left, right) {
+  const a = Buffer.from(String(left || ""));
+  const b = Buffer.from(String(right || ""));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 function trackingShareExpired0680(share, nowMillis = Date.now()) {
   if (!share || share.scope !== "PASSENGER") return false;
   return Number(share.expiresAtMillis || 0) <= nowMillis;
@@ -265,6 +295,19 @@ function createLiveTracking0668({ db, requireDriver }) {
     if (scope === "PASSENGER" && !validCoordinate0668(destinationLatitude, destinationLongitude)) {
       return trackingFail0668(res, 400, "tracking_destination_required", "Destino exato do passageiro é obrigatório.");
     }
+    const familyUsername0681 = scope === "FAMILY"
+      ? normalizeFamilyUsername0681(
+          (identity.driver && (identity.driver.publicUsername || identity.driver.username)) ||
+          body.driverUsername
+        )
+      : "";
+    const familyPin0681 = scope === "FAMILY" ? cleanText0668(body.familyPin, 12) : "";
+    if (scope === "FAMILY" && !familyUsername0681) {
+      return trackingFail0668(res, 400, "tracking_family_username_required", "Identidade pública do motorista é obrigatória.");
+    }
+    if (scope === "FAMILY" && !/^\d{6}$/.test(familyPin0681)) {
+      return trackingFail0668(res, 400, "tracking_family_pin_invalid", "Código familiar deve ter 6 dígitos.");
+    }
 
     const shareRef = db.collection("tripTrackingShares").doc(trackingShareDocId0668(token));
     const existing = await shareRef.get();
@@ -284,9 +327,25 @@ function createLiveTracking0668({ db, requireDriver }) {
       destinationLatitude: scope === "PASSENGER" ? destinationLatitude : null,
       destinationLongitude: scope === "PASSENGER" ? destinationLongitude : null,
       destinationLabel: scope === "PASSENGER" ? cleanText0668(body.destinationLabel, 220) : "",
+      familyUsername0681,
       updatedAtMillis: now,
     }, { merge: true });
-    return trackingJson0668(res, 200, { ok: true, acceptedThroughMillis: 0 });
+    if (scope === "FAMILY") {
+      await db.collection("tripTrackingFamilyAliases").doc(familyAliasDocId0681(familyUsername0681)).set({
+        driverKey: identity.driverKey,
+        driverUsername: familyUsername0681,
+        shareDocId: shareRef.id,
+        active: true,
+        pinHash: familyPinHash0681(familyUsername0681, familyPin0681),
+        createdAtMillis: existing.exists ? Number(existing.data().createdAtMillis || now) : now,
+        updatedAtMillis: now,
+      }, { merge: true });
+    }
+    return trackingJson0668(res, 200, {
+      ok: true,
+      acceptedThroughMillis: 0,
+      familyUsername: scope === "FAMILY" ? familyUsername0681 : "",
+    });
   }
 
   async function postPoints(req, res) {
@@ -418,6 +477,17 @@ function createLiveTracking0668({ db, requireDriver }) {
     }
     const now = Date.now();
     await ref.set({ active: false, endedAtMillis: now, endReason: "DRIVER_REVOKED", updatedAtMillis: now }, { merge: true });
+    const share = snap.data();
+    if (share.scope === "FAMILY") {
+      const username = normalizeFamilyUsername0681(share.familyUsername0681 || (identity.driver && (identity.driver.publicUsername || identity.driver.username)));
+      if (username) {
+        const aliasRef = db.collection("tripTrackingFamilyAliases").doc(familyAliasDocId0681(username));
+        const aliasSnap = await aliasRef.get();
+        if (aliasSnap.exists && aliasSnap.data().shareDocId === ref.id) {
+          await aliasRef.set({ active: false, updatedAtMillis: now, endedAtMillis: now }, { merge: true });
+        }
+      }
+    }
     return trackingJson0668(res, 200, { ok: true, acceptedThroughMillis: 0 });
   }
 
@@ -442,6 +512,159 @@ function createLiveTracking0668({ db, requireDriver }) {
       await batch.commit();
     }
     return trackingJson0668(res, 200, { ok: true, acceptedThroughMillis: 0 });
+  }
+
+  async function getFamilyStatus0681(req, res) {
+    const identity = await requireTrackingDriver0668(req, res);
+    if (!identity) return;
+    const username = normalizeFamilyUsername0681(identity.driver && (identity.driver.publicUsername || identity.driver.username));
+    if (!username) return trackingJson0668(res, 200, { ok:true, active:false, state:"INACTIVE", username:"" });
+    const aliasRef = db.collection("tripTrackingFamilyAliases").doc(familyAliasDocId0681(username));
+    const aliasSnap = await aliasRef.get();
+    if (!aliasSnap.exists || !aliasSnap.data().active) {
+      return trackingJson0668(res, 200, { ok:true, active:false, state:"INACTIVE", username, publicPath:"/" + username + "/gps" });
+    }
+    const alias = aliasSnap.data();
+    const shareSnap = await db.collection("tripTrackingShares").doc(cleanText0668(alias.shareDocId, 128)).get();
+    if (!shareSnap.exists || !shareSnap.data().active) {
+      return trackingJson0668(res, 200, { ok:true, active:false, state:"INACTIVE", username, publicPath:"/" + username + "/gps" });
+    }
+    const share = shareSnap.data();
+    const sessionSnap = await db.collection("tripTrackingSessions").doc(cleanText0668(share.sessionDocId, 128)).get();
+    if (!sessionSnap.exists || !sessionSnap.data().active) {
+      return trackingJson0668(res, 200, { ok:true, active:false, state:"INACTIVE", username, publicPath:"/" + username + "/gps" });
+    }
+    const session = sessionSnap.data();
+    const latest = normalizePoint0668(session.latestPoint);
+    const telemetry = publicTrackerTelemetry0670(session, share, latest, Date.now());
+    const state = telemetry.deviceState === "CONNECTED" ? "ACTIVE" : "RECONNECTING";
+    return trackingJson0668(res, 200, {
+      ok:true,
+      active:true,
+      state,
+      username,
+      publicPath:"/" + username + "/gps",
+      deviceState:telemetry.deviceState,
+      gpsState:telemetry.gpsState,
+      lastDeviceHeartbeatAtMillis:telemetry.lastDeviceHeartbeatAtMillis,
+      lastGpsAtMillis:telemetry.lastGpsAtMillis,
+    });
+  }
+
+  async function openFamilySession0681(req, res) {
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const username = normalizeFamilyUsername0681(body.username);
+    const pin = cleanText0668(body.pin, 12);
+    if (!username || !/^\d{6}$/.test(pin)) {
+      return trackingFail0668(res, 400, "tracking_family_credentials_invalid", "Código familiar inválido.");
+    }
+    const aliasRef = db.collection("tripTrackingFamilyAliases").doc(familyAliasDocId0681(username));
+    const aliasSnap = await aliasRef.get();
+    if (!aliasSnap.exists || !aliasSnap.data().active) {
+      return trackingFail0668(res, 410, "tracking_family_inactive", "O motorista não está compartilhando a localização.");
+    }
+    const alias = aliasSnap.data();
+    const ip = cleanText0668(req.ip || req.get("X-Forwarded-For") || "unknown", 120);
+    const attemptRef = db.collection("tripTrackingFamilyAuthAttempts").doc(sha256Hex0668(username + "|" + ip));
+    const attemptSnap = await attemptRef.get();
+    const now = Date.now();
+    const attempt = attemptSnap.exists ? attemptSnap.data() : {};
+    const windowStart = Number(attempt.windowStartedAtMillis || 0);
+    const failures = now - windowStart <= FAMILY_AUTH_WINDOW_MILLIS_0681 ? Number(attempt.failures || 0) : 0;
+    if (failures >= FAMILY_AUTH_MAX_FAILURES_0681) {
+      return trackingFail0668(res, 429, "tracking_family_auth_limited", "Muitas tentativas. Aguarde alguns minutos.");
+    }
+    const expectedHash = cleanText0668(alias.pinHash, 128);
+    if (!safeEqual0681(expectedHash, familyPinHash0681(username, pin))) {
+      await attemptRef.set({
+        username,
+        failures: failures + 1,
+        windowStartedAtMillis: failures === 0 ? now : windowStart,
+        updatedAtMillis: now,
+      }, { merge:true });
+      return trackingFail0668(res, 401, "tracking_family_pin_invalid", "Código familiar incorreto.");
+    }
+    await attemptRef.set({ failures:0, windowStartedAtMillis:now, updatedAtMillis:now }, { merge:true });
+    const sessionToken = crypto.randomBytes(32).toString("base64url");
+    const expiresAtMillis = now + FAMILY_ACCESS_SESSION_MILLIS_0681;
+    await db.collection("tripTrackingFamilyAccessSessions").doc(familySessionDocId0681(sessionToken)).set({
+      username,
+      driverKey:alias.driverKey,
+      shareDocId:alias.shareDocId,
+      createdAtMillis:now,
+      updatedAtMillis:now,
+      expiresAtMillis,
+    });
+    return trackingJson0668(res, 200, { ok:true, sessionToken, username, expiresAtMillis });
+  }
+
+  async function getPublicFamily0681(req, res, usernameRaw) {
+    const username = normalizeFamilyUsername0681(usernameRaw);
+    const sessionToken = cleanText0668(req.get("X-Rota-Certa-Family-Session") || "", 180);
+    if (!username || !/^[A-Za-z0-9_-]{22,180}$/.test(sessionToken)) {
+      return trackingFail0668(res, 401, "tracking_family_session_required", "Autorize este navegador para acompanhar.");
+    }
+    const accessRef = db.collection("tripTrackingFamilyAccessSessions").doc(familySessionDocId0681(sessionToken));
+    const accessSnap = await accessRef.get();
+    const now = Date.now();
+    if (!accessSnap.exists || Number(accessSnap.data().expiresAtMillis || 0) <= now || accessSnap.data().username !== username) {
+      return trackingFail0668(res, 401, "tracking_family_session_invalid", "Autorização familiar expirada.");
+    }
+    const aliasSnap = await db.collection("tripTrackingFamilyAliases").doc(familyAliasDocId0681(username)).get();
+    if (!aliasSnap.exists || !aliasSnap.data().active) {
+      return trackingFail0668(res, 410, "tracking_family_inactive", "O motorista não está compartilhando a localização.");
+    }
+    const alias = aliasSnap.data();
+    if (alias.shareDocId !== accessSnap.data().shareDocId) {
+      return trackingFail0668(res, 401, "tracking_family_session_rotated", "A autorização precisa ser renovada.");
+    }
+    const shareSnap = await db.collection("tripTrackingShares").doc(cleanText0668(alias.shareDocId, 128)).get();
+    if (!shareSnap.exists || !shareSnap.data().active) {
+      return trackingFail0668(res, 410, "tracking_family_inactive", "O motorista não está compartilhando a localização.");
+    }
+    const share = shareSnap.data();
+    const sessionRef = db.collection("tripTrackingSessions").doc(cleanText0668(share.sessionDocId, 120));
+    const sessionSnap = await sessionRef.get();
+    if (!sessionSnap.exists || !sessionSnap.data().active) {
+      return trackingFail0668(res, 410, "tracking_session_ended", "O motorista não está compartilhando a localização.");
+    }
+    const session = sessionSnap.data();
+    const requestedSince = finiteNumber0668(req.query && req.query.since);
+    const queryFloor = trackingQueryFloor0670(share, session, requestedSince);
+    const pointsSnap = await sessionRef.collection("points")
+      .where("recordedAtMillis", ">=", queryFloor)
+      .orderBy("recordedAtMillis", "asc")
+      .limit(MAX_PUBLIC_POINTS_0668)
+      .get();
+    const points = publicTrackingPoints0668(pointsSnap.docs.map((doc) => doc.data()), {
+      scope:"FAMILY",
+      createdAtMillis:share.createdAtMillis,
+      sessionStartedAtMillis:session.startedAtMillis,
+    }).filter((point) => requestedSince == null || point.recordedAtMillis > requestedSince);
+    const latest = normalizePoint0668(session.latestPoint);
+    const lastRoutePoint = points.length ? points[points.length - 1] : null;
+    const tracker0670 = publicTrackerTelemetry0670(session, share, latest, now);
+    await accessRef.set({ updatedAtMillis:now, expiresAtMillis:now + FAMILY_ACCESS_SESSION_MILLIS_0681 }, { merge:true });
+    return trackingJson0668(res, 200, {
+      ok:true,
+      scope:"FAMILY",
+      driverDisplayName:cleanText0668(session.driverDisplayName, 120),
+      startedAtMillis:Number(session.startedAtMillis || 0),
+      lastUpdatedAtMillis:tracker0670.lastDeviceHeartbeatAtMillis,
+      lastDeviceHeartbeatAtMillis:tracker0670.lastDeviceHeartbeatAtMillis,
+      lastGpsAtMillis:tracker0670.lastGpsAtMillis,
+      deviceState:tracker0670.deviceState,
+      gpsState:tracker0670.gpsState,
+      serverNowMillis:now,
+      batteryPercent:session.batteryPercent == null ? null : Number(session.batteryPercent),
+      points,
+      hasMorePoints:pointsSnap.size >= MAX_PUBLIC_POINTS_0668,
+      nextSinceMillis:lastRoutePoint ? Number(lastRoutePoint.recordedAtMillis || 0) : Math.max(0, Number(requestedSince || 0)),
+      current:latest,
+      destination:null,
+      distanceToDestinationMeters:null,
+      permanentPath:"/" + username + "/gps",
+    });
   }
 
   async function getPublic(req, res, tokenRaw) {
@@ -493,7 +716,7 @@ function createLiveTracking0668({ db, requireDriver }) {
       ok: true,
       scope: share.scope,
       driverDisplayName: cleanText0668(session.driverDisplayName, 120),
-      startedAtMillis: share.scope === "PASSENGER" ? Number(share.createdAtMillis || floor) : Number(session.startedAtMillis || floor),
+      startedAtMillis: share.scope === "PASSENGER" ? Number(share.createdAtMillis || privacyFloor) : Number(session.startedAtMillis || privacyFloor),
       expiresAtMillis: Number(share.expiresAtMillis || 0),
       lastUpdatedAtMillis: tracker0670.lastDeviceHeartbeatAtMillis,
       lastDeviceHeartbeatAtMillis: tracker0670.lastDeviceHeartbeatAtMillis,
@@ -522,6 +745,9 @@ function createLiveTracking0668({ db, requireDriver }) {
     postHeartbeat0670,
     closeShare,
     closeSession,
+    getFamilyStatus0681,
+    openFamilySession0681,
+    getPublicFamily0681,
     getPublic,
   };
 }
@@ -537,4 +763,6 @@ module.exports = {
   shouldClosePassengerShare0668,
   trackingShareDocId0668,
   trackingShareExpired0680,
+  normalizeFamilyUsername0681,
+  familyPinHash0681,
 };
