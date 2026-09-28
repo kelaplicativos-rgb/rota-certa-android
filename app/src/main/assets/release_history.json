@@ -2,6 +2,43 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.682",
+      "build": 5973,
+      "commit": null,
+      "branch": "agent/farol-trusted-route-0.1.682",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "O FAROL passa a tentar primeiro uma rota direta entre o último endereço textual do card atual e os destinos configurados do motorista, sem depender do atlas local nem da escolha de candidato geográfico.",
+        "O resultado visual verde/vermelho passa a expirar após 5 segundos e fica vinculado à assinatura e às gerações atuais do card.",
+        "O pipeline legado permanece disponível como contingência quando a rota direta não responde dentro do orçamento curto."
+      ],
+      "fixed": [
+        "A cor final deixa de herdar a recomendação de uma coordenada local preliminar quando a quilometragem rodoviária final aponta outra distância.",
+        "O cálculo local preliminar deixa de publicar verde/vermelho antes de existir uma rota rodoviária suficiente para sustentar a decisão.",
+        "Resultado verde/vermelho antigo deixa de permanecer indefinidamente na bolinha após a validade visual."
+      ],
+      "improved": [
+        "A rota direta primária usa o texto bruto do último endereço no Route Matrix e os alvos do motorista como coordenadas, evitando cache de geocodificação e seleção enviesada por proximidade.",
+        "Distâncias rodoviárias cacheadas e finais passam a recalcular a recomendação em vez de apenas substituir o número exibido.",
+        "Quando os dados finais são insuficientes, a interface permanece amarela em vez de publicar uma cor sem prova suficiente."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.681: resultado local preliminar podia permanecer como recomendação final mesmo quando a distância rodoviária exibida era incompatível com a cor.",
+        "0.1.681: verde/vermelho não possuíam expiração visual automática."
+      ],
+      "modulesAffected": [
+        "FAROL",
+        "Leitura de cards",
+        "Rotas",
+        "Bolinha",
+        "Diagnóstico",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.681",
       "build": 5972,
       "commit": null,
