@@ -373,6 +373,43 @@ class GoogleMapsService(context: Context? = null) {
         result
     }
 
+    /**
+     * 0.1.682 trusted primary FAROL route.
+     *
+     * Sends the last address text from the current card directly to Google Route Matrix and the
+     * configured driver targets as coordinates. This deliberately bypasses the learned atlas,
+     * cached geocodes and target-biased candidate selection. There is no OSM/legacy fallback here:
+     * the caller owns the short timeout and may fall back to the preserved legacy pipeline.
+     */
+    suspend fun trustedDirectDrivingDistancesFromAddressKm0682(
+        originAddress: String,
+        destinations: List<Coordinate>,
+        apiKey: String,
+    ): List<Double?>? = withContext(Dispatchers.IO) {
+        if (originAddress.isBlank() || destinations.isEmpty() || apiKey.isBlank()) {
+            FarolFlightRecorder0163.record(
+                stage = "FAROL_TRUSTED_DIRECT_ROUTE_SKIPPED_0682",
+                packageName = null,
+                details = "blankOrigin=${originAddress.isBlank()}; destinations=${destinations.size}; apiKeyPresent=${apiKey.isNotBlank()}",
+            )
+            return@withContext null
+        }
+
+        val started = SystemClock.elapsedRealtimeNanos()
+        val body = addressRouteMatrixBody(originAddress, destinations)
+        val values = runCatching {
+            requestAddressRouteMatrix(body, apiKey, destinations.size)
+        }.getOrNull()
+        val accepted = values?.takeIf { result ->
+            result.size == destinations.size && result.any { it != null }
+        }
+        FarolFlightRecorder0163.record(
+            stage = "FAROL_TRUSTED_DIRECT_ROUTE_RESULT_0682",
+            packageName = null,
+            details = "resolved=${accepted?.count { it != null } ?: 0}; destinations=${destinations.size}; complete=${accepted?.all { it != null } == true}; elapsed_us=${(SystemClock.elapsedRealtimeNanos() - started).coerceAtLeast(0L) / 1_000L}",
+        )
+        accepted
+    }
     private fun requestDrivingDistance(body: String, apiKey: String): Double? {
         val connection = (URL(ROUTES_COMPUTE_URL).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
