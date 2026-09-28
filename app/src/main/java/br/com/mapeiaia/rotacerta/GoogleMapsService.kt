@@ -386,29 +386,80 @@ class GoogleMapsService(context: Context? = null) {
         destinations: List<Coordinate>,
         apiKey: String,
     ): List<Double?>? = withContext(Dispatchers.IO) {
-        if (originAddress.isBlank() || destinations.isEmpty() || apiKey.isBlank()) {
+        if (originAddress.isBlank() || destinations.isEmpty()) {
             FarolFlightRecorder0163.record(
                 stage = "FAROL_TRUSTED_DIRECT_ROUTE_SKIPPED_0682",
                 packageName = null,
-                details = "blankOrigin=${originAddress.isBlank()}; destinations=${destinations.size}; apiKeyPresent=${apiKey.isNotBlank()}",
+                details = "blankOrigin=${originAddress.isBlank()}; destinations=${destinations.size}",
             )
             return@withContext null
         }
 
         val started = SystemClock.elapsedRealtimeNanos()
-        val body = addressRouteMatrixBody(originAddress, destinations)
-        val values = runCatching {
-            requestAddressRouteMatrix(body, apiKey, destinations.size)
-        }.getOrNull()
-        val accepted = values?.takeIf { result ->
-            result.size == destinations.size && result.any { it != null }
+        if (apiKey.isNotBlank()) {
+            val body = addressRouteMatrixBody(originAddress, destinations)
+            val googleValues = runCatching {
+                requestAddressRouteMatrix(body, apiKey, destinations.size)
+            }.getOrNull()?.takeIf { result ->
+                result.size == destinations.size && result.any { it != null }
+            }
+            if (googleValues != null) {
+                FarolFlightRecorder0163.record(
+                    stage = "FAROL_TRUSTED_DIRECT_ROUTE_RESULT_0682",
+                    packageName = null,
+                    details = "provider=google_raw_address; resolved=${googleValues.count { it != null }}; destinations=${destinations.size}; complete=${googleValues.all { it != null }}; elapsed_us=${(SystemClock.elapsedRealtimeNanos() - started).coerceAtLeast(0L) / 1_000L}",
+                )
+                return@withContext googleValues
+            }
         }
+
+        val unbiasedOrigin0682 = resolveUnbiasedOrigin0682(originAddress)
+        if (unbiasedOrigin0682 == null) {
+            FarolFlightRecorder0163.record(
+                stage = "FAROL_TRUSTED_DIRECT_ROUTE_AMBIGUOUS_0682",
+                packageName = null,
+                details = "provider=osm_unbiased; query=${originAddress.take(180)}; result=yellow_fallback",
+            )
+            return@withContext null
+        }
+        val osmValues = destinations.map { destination ->
+            requestWithRetry(OSM_ROUTE_REQUEST_ATTEMPTS) {
+                requestOsrmDrivingDistance(unbiasedOrigin0682, destination)
+            }
+        }.takeIf { values -> values.any { it != null } }
         FarolFlightRecorder0163.record(
             stage = "FAROL_TRUSTED_DIRECT_ROUTE_RESULT_0682",
             packageName = null,
-            details = "resolved=${accepted?.count { it != null } ?: 0}; destinations=${destinations.size}; complete=${accepted?.all { it != null } == true}; elapsed_us=${(SystemClock.elapsedRealtimeNanos() - started).coerceAtLeast(0L) / 1_000L}",
+            details = "provider=osm_unbiased; resolved=${osmValues?.count { it != null } ?: 0}; destinations=${destinations.size}; complete=${osmValues?.all { it != null } == true}; elapsed_us=${(SystemClock.elapsedRealtimeNanos() - started).coerceAtLeast(0L) / 1_000L}",
         )
-        accepted
+        osmValues
+    }
+
+    private suspend fun resolveUnbiasedOrigin0682(originAddress: String): Coordinate? {
+        val queries0682 = geocodeQueries0547(originAddress)
+        queries0682.forEachIndexed { index0682, query0682 ->
+            val candidates0682 = requestWithRetry(OSM_GEOCODE_REQUEST_ATTEMPTS) {
+                requestNominatimGeocodeCandidates0547(query0682)
+            }.orEmpty()
+            val selected0682 = selectUnbiasedGeocodeCandidate0682(candidates0682)
+            FarolFlightRecorder0163.record(
+                stage = "FAROL_UNBIASED_GEOCODE_RESULT_0682",
+                packageName = null,
+                details = "index=$index0682; candidates=${candidates0682.size}; selected=${selected0682 != null}; query=${query0682.take(160)}",
+            )
+            if (selected0682 != null) return selected0682
+        }
+        return null
+    }
+
+    internal fun selectUnbiasedGeocodeCandidate0682(candidates: List<Coordinate>): Coordinate? {
+        if (candidates.isEmpty()) return null
+        val first0682 = candidates.first()
+        if (candidates.size == 1) return first0682
+        val geographicallyCoherent0682 = candidates.take(5).all { candidate0682 ->
+            straightLineKm0547(first0682, candidate0682) <= TRUSTED_GEOCODE_CLUSTER_KM_0682
+        }
+        return first0682.takeIf { geographicallyCoherent0682 }
     }
     private fun requestDrivingDistance(body: String, apiKey: String): Double? {
         val connection = (URL(ROUTES_COMPUTE_URL).openConnection() as HttpURLConnection).apply {
@@ -1109,6 +1160,7 @@ class GoogleMapsService(context: Context? = null) {
         const val OSM_READ_TIMEOUT_MS = 1_200
         const val OSM_GEOCODE_REQUEST_ATTEMPTS = 1
         const val OSM_ROUTE_REQUEST_ATTEMPTS = 1
+        const val TRUSTED_GEOCODE_CLUSTER_KM_0682 = 3.0
         const val CONNECT_TIMEOUT_MS = 350 // subsecond_connect_budget_checklist_6
         const val READ_TIMEOUT_MS = 600 // subsecond_read_budget_checklist_6
         const val ROUTE_REQUEST_ATTEMPTS = 1 // single_route_attempt_checklist_6
