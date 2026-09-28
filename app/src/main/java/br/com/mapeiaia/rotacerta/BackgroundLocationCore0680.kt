@@ -70,7 +70,7 @@ internal object LocationCoreRuntime0680 {
         return runCatching {
             ContextCompat.startForegroundService(
                 app,
-                Intent(app, WorkTrackingService::class.java).setAction(WorkTrackingService.ACTION_START),
+                Intent(app, WorkTrackingService::class.java).setAction(WorkTrackingService.ACTION_ENSURE_LOCATION_CORE_0681),
             )
             true
         }.getOrDefault(false)
@@ -112,6 +112,13 @@ internal class BackgroundProximityRuntime0680(
     @Volatile private var radars: List<ImportedRadar> = emptyList()
     private var configJob: Job? = null
     private var activeVisual: DirectionalAlertVisual? = null
+
+    fun isLocationRequired0681(): Boolean {
+        val currentSettings = settings
+        val hasTargets =
+            savedPlaces.any { it.type == SavedPlaceType.ProximityAlert } || radars.isNotEmpty()
+        return AlertRuntimePolicy0644.shouldTrack(currentSettings, hasTargets)
+    }
 
     fun start(scope: CoroutineScope) {
         createChannel()
