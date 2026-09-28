@@ -246,18 +246,15 @@ function createLiveTracking0668({ db, requireDriver }) {
       return trackingFail0668(res, 400, "tracking_share_scope_invalid", "Escopo de rastreamento inválido.");
     }
     const now = Date.now();
-    if (!selected.data.active || Number(selected.data.expiresAtMillis || 0) <= now) {
+    if (!selected.data.active) {
       return trackingFail0668(res, 409, "tracking_session_closed", "Sessão de rastreamento encerrada.");
     }
     const createdAtMillis = Math.max(Number(selected.data.startedAtMillis || now), Math.trunc(Number(body.createdAtMillis || now)));
     const requestedExpiry = Math.trunc(Number(body.expiresAtMillis || 0));
-    const sessionExpiry = Number(selected.data.expiresAtMillis || (now + MAX_SESSION_MILLIS_0668));
-    const scopeMax = scope === "PASSENGER" ? now + MAX_PASSENGER_MILLIS_0668 : now + MAX_SESSION_MILLIS_0668;
-    const expiresAtMillis = Math.min(
-      requestedExpiry > now ? requestedExpiry : scopeMax,
-      sessionExpiry,
-      scopeMax,
-    );
+    const scopeMax = now + MAX_PASSENGER_MILLIS_0668;
+    const expiresAtMillis = scope === "FAMILY"
+      ? FAMILY_PERSISTENT_EXPIRY_MILLIS_0680
+      : Math.min(requestedExpiry > now ? requestedExpiry : scopeMax, scopeMax);
     const destinationLatitude = finiteNumber0668(body.destinationLatitude);
     const destinationLongitude = finiteNumber0668(body.destinationLongitude);
     if (scope === "PASSENGER" && !validCoordinate0668(destinationLatitude, destinationLongitude)) {
