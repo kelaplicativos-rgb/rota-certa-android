@@ -119,14 +119,15 @@ jobs:
           set -euo pipefail
           chmod +x ./gradlew
           ./gradlew :app:testDebugUnitTest \
-            --tests '*BlaBlaGlobalHtmlRefresh0679Test' \
-            --tests '*BlaBlaLiveHtmlCommit0617Test' \
-            --tests '*BlaBlaUnifiedHtmlCapture0605Test' \
-            --tests '*BlaBlaDirectAccountCapture0608Test' \
-            --tests '*AgendaHeaderNavigation0396Test' \
-            --tests '*AgendaNavigationNotificationsProfiles0416Test' \
-            --tests '*AgendaCanonicalCentralSync0403Test' \
-            --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/tests.log
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaGlobalHtmlRefresh0679Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaHtmlTransactionHeartbeat0678Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TripDetailScriptResilience0677Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.RidesIndexDetailPipeline0676Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaLiveHtmlCommit0617Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectAccountCapture0608Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRidesForensicEvidence0528Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TargetedHtmlPrivatePending0675Test' \
+            --no-daemon --max-workers=2 --stacktrace | tee /tmp/tests.log
 
       - name: Assemble exact-head APK
         shell: bash
