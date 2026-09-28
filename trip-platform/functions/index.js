@@ -11098,6 +11098,11 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     if (req.method === "POST" && path === "/v1/driver/tracking/heartbeat") return await liveTracking0668.postHeartbeat0670(req, res);
     if (req.method === "POST" && path === "/v1/driver/tracking/shares/close") return await liveTracking0668.closeShare(req, res);
     if (req.method === "POST" && path === "/v1/driver/tracking/sessions/close") return await liveTracking0668.closeSession(req, res);
+    if (req.method === "GET" && path === "/v1/driver/tracking/family/status") return await liveTracking0668.getFamilyStatus0681(req, res);
+    if (req.method === "POST" && path === "/v1/public/tracking/family/session") return await liveTracking0668.openFamilySession0681(req, res);
+    if (parts.length === 5 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "tracking" && parts[3] === "family" && req.method === "GET") {
+      return await liveTracking0668.getPublicFamily0681(req, res, parts[4]);
+    }
     if (parts.length === 4 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "tracking" && req.method === "GET") {
       return await liveTracking0668.getPublic(req, res, parts[3]);
     }
