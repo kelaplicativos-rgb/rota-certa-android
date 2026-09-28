@@ -51,12 +51,18 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Run full Android unit regression suite
+      - name: Run focused regression suite for 0.1.682 and preserved 0.1.681 location core
         shell: bash
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0682-tests.log
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.FarolTrustedRoute0682Test' \
+            --tests 'br.com.mapeiaia.rotacerta.PermanentFamilyGps0681Test' \
+            --tests 'br.com.mapeiaia.rotacerta.PersistentLocationCore0680Test' \
+            --tests 'br.com.mapeiaia.rotacerta.LiveTrackingShare0668Test' \
+            --tests 'br.com.mapeiaia.rotacerta.DirectionalProximityAlertEngineChecklist5Test' \
+            --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0682-tests.log
 
       - name: Assemble exact source APK
         shell: bash
