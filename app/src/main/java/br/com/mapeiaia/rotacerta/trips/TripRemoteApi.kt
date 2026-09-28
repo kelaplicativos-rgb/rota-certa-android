@@ -185,6 +185,10 @@ data class DriverPassengerAccess(
     val agendaAdmin: Boolean = false,
     val referredByContact: String = "",
     val referralRewardGrantedAtMillis: Long = 0L,
+    val approvalPolicyVersion: Int = 0,
+    val approvedAtMillis: Long = 0L,
+    val approvalSource: String = "",
+    val invitedAtMillis: Long = 0L,
     val creditBalanceCents: Long = 0L,
     val creditEarnedCents: Long = 0L,
     val creditSpentCents: Long = 0L,
@@ -229,6 +233,11 @@ data class DriverPassengerInviteResponse(
 )
 
 @Serializable
+data class DriverPassengerApproveResponse(
+    val passenger: DriverPassengerAccess = DriverPassengerAccess(),
+)
+
+@Serializable
 data class DriverPassengerBlockRequest(
     val passengerContact: String,
     val passengerId: String = "",
@@ -266,10 +275,9 @@ data class DriverPassengerResetPasswordRequest(
 
 @Serializable
 data class DriverPassengerResetPasswordResponse(
-    val temporaryPassword: String = "",
-    val firstAccessPassword: Boolean = false,
-    val accountActivatedBeforeReset: Boolean = false,
-    val recoveryStatus: String = "",
+    val cleared: Boolean = false,
+    val invalidatedSessions: Int = 0,
+    val passengerId: String = "",
 )
 
 @Serializable
@@ -1389,6 +1397,23 @@ class TripRemoteApi(
         requireDriverToken = true,
     )
 
+    suspend fun approvePassenger(
+        displayName: String,
+        passengerContact: String,
+        passengerId: String = "",
+    ): DriverPassengerApproveResponse = request(
+        method = "POST",
+        path = "/v1/driver/passengers/approve",
+        body = json.encodeToString(
+            DriverPassengerInviteRequest(
+                displayName = displayName.trim(),
+                passengerContact = passengerContact.trim(),
+                passengerId = passengerId.trim(),
+            ),
+        ),
+        requireDriverToken = true,
+    )
+
     suspend fun syncPassengerDirectory(
         profiles: List<PassengerProfile>,
     ): DriverPassengerDirectoryResponse {
@@ -1485,7 +1510,7 @@ class TripRemoteApi(
         passengerId: String = "",
     ): DriverPassengerBlockResponse = setPassengerAccessStatus(
         passengerContact = passengerContact,
-        status = if (blocked) "BLOCKED" else "AUTHORIZED",
+        status = if (blocked) "BLOCKED" else "LOCAL_ONLY",
         passengerId = passengerId,
     )
 
