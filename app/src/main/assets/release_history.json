@@ -2,6 +2,36 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.678",
+      "build": 5969,
+      "commit": null,
+      "branch": "agent/html-transaction-heartbeat-0.1.678",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A transação HTML global passa a usar lease renovável por heartbeat, preservando captureId e generation durante capturas longas.",
+        "O ownership da geração é propagado explicitamente do coordenador para o perfil, commit individual por card e finalizador global.",
+        "O TTL de 15 minutos passa a medir inatividade desde o último heartbeat, e não mais o tempo total transcorrido desde o início da captura."
+      ],
+      "fixed": [
+        "Corrigida a expiração determinística de transaction_not_active quando Suas viagens levava mais de 15 minutos para percorrer perfis e cards.",
+        "Cards HTML completos deixam de perder o commit ao vivo apenas porque a captura global ultrapassou 15 minutos.",
+        "O encerramento da transação valida também a generation, evitando que uma execução antiga encerre acidentalmente uma lease mais nova."
+      ],
+      "improved": [
+        "Heartbeats são renovados nas fronteiras de perfil, antes de cada card e durante retries de transporte, sem reduzir os gates de roster, itinerário, segmentos, vagas, link público ou identidade.",
+        "Transações realmente abandonadas continuam expirando após 15 minutos sem atividade.",
+        "O finalizador usa a geração originalmente aberta pelo coordenador em vez de depender apenas de uma releitura volátil do estado."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.677: uma captura real de aproximadamente 20 minutos podia invalidar a própria transação aos 15 minutos e produzir transaction_not_active no finalizador.",
+        "0.1.677: viagens completas capturadas após o TTL podiam ficar com liveCommitted0617=false apesar de toda a evidência operacional estar válida."
+      ],
+      "modulesAffected": ["Suas viagens", "BlaBlaCar HTML", "Transação HTML", "Timeline", "Agenda", "Commit por card", "Diagnóstico", "Build"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.677",
       "build": 5968,
       "commit": null,
