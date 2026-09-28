@@ -271,6 +271,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var universalActiveRidePackageName: String? = null // universal_route_inflight_runtime_0_1_120
     private var universalActiveAddressSignature: String? = null // universal_two_address_fields_0_1_98
     @Volatile private var universalActiveCardIdentity0683: String? = null
+    @Volatile private var stage684AccessibilityRouteAddress: String? = null
+    @Volatile private var stage684AccessibilityRouteCardIdentity: String? = null
     private var lastImmediateScreenFingerprintChecklist13: Int? = null
     private var lastImmediateScreenPackageChecklist13: String? = null
     private var fastFarolStartedAtChecklist13: Long = 0L // simple_saved_app_fields_checklist_13
@@ -1200,6 +1202,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (::stage36RuntimeAuthority.isInitialized) stage36RuntimeAuthority.markExplicitOff("manual_reading_disabled_stage43")
         universalActiveAddressSignature = null
         universalActiveCardIdentity0683 = null
+        stage684AccessibilityRouteAddress = null
+        stage684AccessibilityRouteCardIdentity = null
         lastSnapshotHash = null
         lastAnalyzedHash = null
         shortcutOverlayController.hideFarolUiKeepAlerts0644()
@@ -1265,6 +1269,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (::stage36RuntimeAuthority.isInitialized) stage36RuntimeAuthority.markExplicitOff("work_mode_disabled")
         universalActiveAddressSignature = null
         universalActiveCardIdentity0683 = null
+        stage684AccessibilityRouteAddress = null
+        stage684AccessibilityRouteCardIdentity = null
         // Stage36 work-mode OFF is distinct from visual-card disappearance.
         lastSnapshotHash = null
         lastAnalyzedHash = null
@@ -2254,6 +2260,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         currentDistanceKm = null
         universalActiveAddressSignature = null
         universalActiveCardIdentity0683 = null
+        stage684AccessibilityRouteAddress = null
+        stage684AccessibilityRouteCardIdentity = null
         stage19VisualVerificationPending = true
         stage26PreCollectGate.invalidate()
         if (::stage36RuntimeAuthority.isInitialized) stage36RuntimeAuthority.markExplicitOff("stage26_apply_reading_off")
@@ -2567,6 +2575,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         currentDistanceKm = null
         universalActiveAddressSignature = null
         universalActiveCardIdentity0683 = null
+        stage684AccessibilityRouteAddress = null
+        stage684AccessibilityRouteCardIdentity = null
         stage19VisualVerificationPending = false
         fastFarolStartedAtChecklist13 = System.currentTimeMillis()
         rememberBubbleReason(
@@ -2912,6 +2922,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         universalWindowGeneration += 1L
         universalActiveAddressSignature = null
         universalActiveCardIdentity0683 = null
+        stage684AccessibilityRouteAddress = null
+        stage684AccessibilityRouteCardIdentity = null
         lastAnalyzedHash = null
         currentDistanceKm = null
         stage19VisualVerificationPending = true
@@ -2949,6 +2961,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         universalWindowGeneration += 1L
         universalActiveAddressSignature = null
         universalActiveCardIdentity0683 = null
+        stage684AccessibilityRouteAddress = null
+        stage684AccessibilityRouteCardIdentity = null
         lastAnalyzedHash = null
         currentDistanceKm = null
         stage19VisualVerificationPending = true
@@ -2992,6 +3006,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         universalWindowGeneration += 1L
         universalActiveAddressSignature = null
         universalActiveCardIdentity0683 = null
+        stage684AccessibilityRouteAddress = null
+        stage684AccessibilityRouteCardIdentity = null
         lastAnalyzedHash = null
         currentDistanceKm = null
         stage19VisualVerificationPending = true
@@ -3607,6 +3623,56 @@ class LiveRideAccessibilityService : AccessibilityService() {
             )
             return
         }
+        val routeSanitization0684 = FarolRouteAddressSanitizer0684.sanitize(evaluationStage19.destination)
+        if (!routeSanitization0684.accepted || routeSanitization0684.sanitized.isNullOrBlank()) {
+            stage19VisualVerificationPending = true
+            rememberBubbleReason(
+                "stage684_route_address_rejected",
+                "Endereço do card não foi comprovado para rota; mantendo amarelo.",
+            )
+            if (currentRadarColor != RadarColor.Default || currentDistanceKm != null) {
+                showOverlay(RadarColor.Default, distanceKm = null)
+            }
+            FarolMaximumForensicsStage38.record(
+                SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(),
+                "S684_ROUTE_ADDRESS_REJECTED", packageStage47, cycleId = cycleIdStage20,
+                details = "source=$sourceStage19; raw=${evaluationStage19.destination.take(900)}; reason=${routeSanitization0684.reason}; cuts=${routeSanitization0684.cuts.joinToString("|").take(900)}; yellow=true; routeBlocked=true; cacheBlocked=true",
+            )
+            FarolFlightRecorder0163.record(
+                stage = "FAROL_ROUTE_ADDRESS_REJECTED_0684",
+                packageName = packageStage47,
+                details = "source=$sourceStage19; reason=${routeSanitization0684.reason}; raw=${evaluationStage19.destination.take(500)}; cuts=${routeSanitization0684.cuts.joinToString("|").take(500)}",
+            )
+            if (sourceStage19.startsWith("Accessibility", ignoreCase = true)) {
+                requestUniversalScreenshotStage19(packageStage47, cycleIdStage20)
+            }
+            return
+        }
+
+        var routeDestination0684 = routeSanitization0684.sanitized
+        val accessibilitySource0684 = sourceStage19.startsWith("Accessibility", ignoreCase = true)
+        val ocrSource0684 = sourceStage19.equals("Ocr", ignoreCase = true)
+        var accessibilityPriorityApplied0684 = false
+        if (accessibilitySource0684) {
+            stage684AccessibilityRouteAddress = routeDestination0684
+            stage684AccessibilityRouteCardIdentity = candidateCardIdentity0683
+        } else if (ocrSource0684) {
+            val accessibilityAddress0684 = stage684AccessibilityRouteAddress
+            if (FarolRouteAddressSanitizer0684.compatibleRouteAddress(accessibilityAddress0684, routeDestination0684)) {
+                routeDestination0684 = accessibilityAddress0684.orEmpty()
+                accessibilityPriorityApplied0684 = true
+            }
+        }
+        FarolMaximumForensicsStage38.record(
+            SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(),
+            "S684_ROUTE_ADDRESS_APPROVED", packageStage47, cycleId = cycleIdStage20,
+            details = "source=$sourceStage19; raw=${evaluationStage19.destination.take(900)}; sanitized=${routeDestination0684.take(900)}; changed=${routeSanitization0684.changed}; reason=${routeSanitization0684.reason}; cuts=${routeSanitization0684.cuts.joinToString("|").take(900)}; accessibilityPriority=$accessibilityPriorityApplied0684; cacheLearningAllowed=true",
+        )
+        FarolFlightRecorder0163.record(
+            stage = "FAROL_ROUTE_ADDRESS_APPROVED_0684",
+            packageName = packageStage47,
+            details = "source=$sourceStage19; sanitized=${routeDestination0684.take(500)}; changed=${routeSanitization0684.changed}; accessibilityPriority=$accessibilityPriorityApplied0684",
+        )
         val candidatePackageStage46R3 = observePackageForWindowIdStage46R3(evaluationStage19.windowId)
         bindCandidateTargetSurfaceStage46(
             candidatePackageStage46R3,
@@ -3661,7 +3727,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
         val fieldsStage19 = RideFields(
             pickup = evaluationStage19.pickup,
-            destination = evaluationStage19.destination,
+            destination = routeDestination0684,
         )
         val settingsStage19 = currentSettings
         val targetsStage19 = fastWorkRegionTargetsChecklist13(settingsStage19)
@@ -3751,7 +3817,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         UnifiedDebugEventStore.record(
             "STAGE19_VISUAL_ROUTE_STARTED",
             null,
-            "source=$sourceStage19; destination=${fieldsStage19.destination.orEmpty()}; screenGeneration=${bindingStage19.screenGeneration}; windowGeneration=${bindingStage19.windowGeneration}; trace=$traceIdStage20; routeJob=$routeJobIdStage20",
+            "source=$sourceStage19; destination=${fieldsStage19.destination.orEmpty()}; routeAddressSanitized0684=true; accessibilityPriority=$accessibilityPriorityApplied0684; screenGeneration=${bindingStage19.screenGeneration}; windowGeneration=${bindingStage19.windowGeneration}; trace=$traceIdStage20; routeJob=$routeJobIdStage20",
         )
     }
 
@@ -4760,6 +4826,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         universalActiveRidePackageName = null
         universalActiveAddressSignature = null
         universalActiveCardIdentity0683 = null
+        stage684AccessibilityRouteAddress = null
+        stage684AccessibilityRouteCardIdentity = null
         lastSnapshotHash = null
         lastAnalyzedHash = null
         currentDistanceKm = null
@@ -6052,6 +6120,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (::stage36RuntimeAuthority.isInitialized) stage36RuntimeAuthority.clearVisualLease(reason)
         universalActiveAddressSignature = null
         universalActiveCardIdentity0683 = null
+        stage684AccessibilityRouteAddress = null
+        stage684AccessibilityRouteCardIdentity = null
         lastSnapshotHash = null
         lastAnalyzedHash = null
         analyzing = false
