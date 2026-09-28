@@ -70,14 +70,20 @@ private fun WorkTrackingScreen(onClose: () -> Unit) {
     val scope0668 = rememberCoroutineScope()
     var summary by remember { mutableStateOf(repository.todaySummary()) }
     var active by remember { mutableStateOf(repository.isTrackingActive()) }
-    var familyActive0668 by remember { mutableStateOf(shareManager0668.familyShareUrl() != null) }
+    var familyActive0668 by remember { mutableStateOf(false) }
+    var familyState0681 by remember { mutableStateOf("RECONNECTING") }
+    var familyUrl0681 by remember { mutableStateOf(shareManager0668.familyShareUrl().orEmpty()) }
+    var familyPin0681 by remember { mutableStateOf(shareManager0668.familyPin0681().orEmpty()) }
+    var localFamilyConfigured0681 by remember { mutableStateOf(shareManager0668.familyShareUrl() != null) }
     var permissionPurpose0668 by remember { mutableStateOf(TrackingPermissionPurpose0668.PRIVATE) }
     var status by remember { mutableStateOf("") }
 
     fun refresh() {
         summary = repository.todaySummary()
         active = repository.isTrackingActive()
-        familyActive0668 = shareManager0668.familyShareUrl() != null
+        localFamilyConfigured0681 = shareManager0668.familyShareUrl() != null
+        familyUrl0681 = shareManager0668.familyShareUrl().orEmpty()
+        familyPin0681 = shareManager0668.familyPin0681().orEmpty()
     }
 
     fun startTracking() {
@@ -86,27 +92,41 @@ private fun WorkTrackingScreen(onClose: () -> Unit) {
             Intent(context, WorkTrackingService::class.java).setAction(WorkTrackingService.ACTION_START),
         )
         active = true
-        status = "Rastreamento iniciado. A notificação permanece visível enquanto estiver ativo."
+        status = "Rastreamento de trabalho iniciado."
+    }
+
+    fun ensureLocationCore0681() {
+        ContextCompat.startForegroundService(
+            context,
+            Intent(context, WorkTrackingService::class.java)
+                .setAction(WorkTrackingService.ACTION_ENSURE_LOCATION_CORE_0681),
+        )
     }
 
     fun createFamilyShare0668() {
-        startTracking()
-        status = "Criando link familiar seguro…"
+        ensureLocationCore0681()
+        status = "Ativando o endereço familiar permanente…"
         scope0668.launch {
             runCatching {
                 withContext(Dispatchers.IO) { shareManager0668.createFamilyLink() }
             }.onSuccess { outcome0668 ->
                 familyActive0668 = true
+                familyState0681 = "ACTIVE"
+                localFamilyConfigured0681 = true
+                familyUrl0681 = outcome0668.url
+                familyPin0681 = outcome0668.familyPin
                 status = if (outcome0668.reused) {
-                    "Link familiar ativo. Você pode compartilhá-lo novamente."
+                    "Endereço familiar confirmado pelo servidor."
                 } else {
-                    "Acompanhamento familiar ativado."
+                    "Acompanhamento familiar permanente ativado."
                 }
                 shareTrackingLink0668(
                     context = context,
                     title = "Compartilhar acompanhamento com a família",
-                    message = "🛡 Acompanhe meu percurso em tempo real pelo Rota Certa:",
-                    url = outcome0668.url,
+                    message = "🛡 Acompanhe minha localização pelo Rota Certa:\n" +
+                        outcome0668.url + "\nCódigo familiar: " + outcome0668.familyPin +
+                        "\nNo primeiro acesso, informe o código de 6 dígitos.",
+                    url = "",
                 )
             }.onFailure { error0668 ->
                 status = "O percurso local foi iniciado, mas o link não pôde ser criado: ${error0668.message ?: "falha no servidor"}"
@@ -148,7 +168,29 @@ private fun WorkTrackingScreen(onClose: () -> Unit) {
     LaunchedEffect(Unit) {
         while (true) {
             refresh()
-            delay(2_000L)
+            if (localFamilyConfigured0681) {
+                runCatching { withContext(Dispatchers.IO) { shareManager0668.familyStatus0681() } }
+                    .onSuccess { remote0681 ->
+                        familyActive0668 = remote0681.active && remote0681.state == "ACTIVE"
+                        familyState0681 = remote0681.state
+                        if (remote0681.username.isNotBlank()) {
+                            familyUrl0681 = runCatching {
+                                trackingFamilyPublicUrl0681(
+                                    br.com.mapeiaia.rotacerta.trips.TripStore(context).onlineSettings().publicBaseUrl,
+                                    remote0681.username,
+                                )
+                            }.getOrDefault(familyUrl0681)
+                        }
+                    }
+                    .onFailure {
+                        familyActive0668 = false
+                        familyState0681 = "RECONNECTING"
+                    }
+            } else {
+                familyActive0668 = false
+                familyState0681 = "INACTIVE"
+            }
+            delay(5_000L)
         }
     }
 
@@ -183,9 +225,9 @@ private fun WorkTrackingScreen(onClose: () -> Unit) {
                             )
                             active = false
                             status = if (shareManager0668.hasActiveShares()) {
-                                "Rastreamento encerrado. O Rota Certa também encerrará os links ativos no servidor."
+                                "Rastreamento de trabalho parado. O acompanhamento familiar continua ativo."
                             } else {
-                                "Rastreamento encerrado."
+                                "Rastreamento de trabalho parado. Radares e alertas continuam quando habilitados."
                             }
                             refresh()
                         },
@@ -203,7 +245,7 @@ private fun WorkTrackingScreen(onClose: () -> Unit) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Compartilhamento", fontWeight = FontWeight.Bold)
                 Text(
-                    "Família acompanha toda esta sessão. Passageiros recebem links temporários individualmente nos cards das viagens.",
+                    "Família usa um endereço permanente /gps. Passageiros continuam recebendo links temporários individualmente.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -220,23 +262,39 @@ private fun WorkTrackingScreen(onClose: () -> Unit) {
                                 runCatching { withContext(Dispatchers.IO) { shareManager0668.closeFamilyShare() } }
                                     .onSuccess {
                                         familyActive0668 = false
-                                        status = "Link familiar encerrado."
+                                        familyState0681 = "INACTIVE"
+                                        localFamilyConfigured0681 = false
+                                        status = "Compartilhamento familiar encerrado. O endereço /gps continua existindo."
+                                        context.startService(
+                                            Intent(context, WorkTrackingService::class.java)
+                                                .setAction(WorkTrackingService.ACTION_RECONCILE_LOCATION_CORE_0681),
+                                        )
                                     }
                                     .onFailure { error0668 ->
                                         status = "Não foi possível confirmar o encerramento no servidor: ${error0668.message ?: "falha de conexão"}"
                                     }
                             }
                         },
-                        enabled = familyActive0668,
+                        enabled = localFamilyConfigured0681,
                         modifier = Modifier.weight(1f),
                     ) {
                         Text("Encerrar link")
                     }
                 }
                 Text(
-                    if (familyActive0668) "🟢 Link familiar ativo" else "⚫ Nenhum link familiar ativo",
+                    when (familyState0681) {
+                        "ACTIVE" -> "🟢 Compartilhamento confirmado pelo servidor"
+                        "RECONNECTING" -> "🟡 Reconectando ao servidor"
+                        else -> "🔴 Compartilhamento familiar inativo"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                 )
+                if (familyUrl0681.isNotBlank()) {
+                    Text("Link fixo: " + familyUrl0681, style = MaterialTheme.typography.bodySmall)
+                }
+                if (familyPin0681.isNotBlank() && localFamilyConfigured0681) {
+                    Text("Código familiar: " + familyPin0681, style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
 
