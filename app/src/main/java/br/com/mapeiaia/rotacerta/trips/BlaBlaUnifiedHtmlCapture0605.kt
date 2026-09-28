@@ -367,8 +367,10 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         onProgress: (String) -> Unit = {},
         targetDate0661: LocalDate? = null,
         scopedStateIsolation0662: Boolean = false,
+        transaction0610: BlaBlaHtmlCaptureTransactionState0610? = null,
     ): BlaBlaUnifiedProfileCaptureResult0605 {
         val app = context.applicationContext
+        transaction0610?.let { BlaBlaHtmlCaptureTransaction0610.heartbeat(app, it) }
         val expectedProfileUuid = BlaBlaRidesSnapshotStore0526.strongUuid(profile.authenticatedProfileUuid)
             ?: return failedProfile0605(store, account, captureId, "UNIFIED_PROFILE_IDENTITY_MISSING")
         if (!profile.identityConfirmed || !expectedProfileUuid.equals(profile.expectedProfileUuid, ignoreCase = true)) {
@@ -480,6 +482,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 var webView = createUnifiedCaptureWebView0621(app, account)
                 try {
                     for ((index, ride) in futureRides.withIndex()) {
+                        transaction0610?.let { BlaBlaHtmlCaptureTransaction0610.heartbeat(app, it) }
                         onProgress("Capturando viagem ${index + 1}/${futureRides.size} • ${ride.date} ${ride.departureTime} • ${account.displayLabel}")
                         var captured = captureTrip0605(webView, store, captureId, definition, ride, scripts)
                         var recoveryAttempt0621 = 0
@@ -489,6 +492,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                             recoveryAttempt0621 < TRANSPORT_RECOVERY_ATTEMPTS_0621
                         ) {
                             recoveryAttempt0621++
+                            transaction0610?.let { BlaBlaHtmlCaptureTransaction0610.heartbeat(app, it) }
                             val backoffMs = TRANSPORT_RECOVERY_BACKOFF_MS_0621 * recoveryAttempt0621
                             UnifiedDebugEventStore.recordAlways(
                                 "BLABLACAR_HTML_TRANSPORT_RECOVERY_0621",
@@ -502,8 +506,10 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                             delay(backoffMs)
                             webView = createUnifiedCaptureWebView0621(app, account)
                             captured = captureTrip0605(webView, store, captureId, definition, ride, scripts)
+                            transaction0610?.let { BlaBlaHtmlCaptureTransaction0610.heartbeat(app, it) }
                         }
 
+                        transaction0610?.let { BlaBlaHtmlCaptureTransaction0610.heartbeat(app, it) }
                         val recoveredAfterTransport0621 =
                             captured.operationalComplete && recoveryAttempt0621 > 0
                         if (recoveredAfterTransport0621) {
@@ -536,6 +542,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                                     rotaCertaSeatAllocation = liveSettings0617.rotaCertaSeatAllocation,
                                     seatAllocationVersion = liveSettings0617.rotaCertaSeatAllocationVersion,
                                     scopedStateIsolation0662 = scopedStateIsolation0662,
+                                    expectedTransaction0610 = transaction0610,
                                 )
                         if (liveCommitted0617) {
                             onProgress(
@@ -730,10 +737,14 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         rotaCertaSeatAllocation: Int,
         seatAllocationVersion: Long,
         scopedStateIsolation0662: Boolean = false,
+        expectedTransaction0610: BlaBlaHtmlCaptureTransactionState0610? = null,
     ): Boolean {
         val app = context.applicationContext
-        val transaction = BlaBlaHtmlCaptureTransaction0610.active(app)
-            ?.takeIf { it.captureId == captureId }
+        val transaction = if (expectedTransaction0610 != null) {
+            BlaBlaHtmlCaptureTransaction0610.heartbeat(app, expectedTransaction0610)
+        } else {
+            BlaBlaHtmlCaptureTransaction0610.active(app)
+        }?.takeIf { it.captureId == captureId }
             ?: return false
         val profileUuid = trip.profile_uuid.trim().takeIf(String::isNotBlank) ?: return false
         val tripId = trip.trip_id?.trim()?.takeIf(String::isNotBlank) ?: return false
@@ -1550,14 +1561,23 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         accounts: List<BlaBlaDynamicAccount>,
         manifest: BlaBlaRidesSnapshotManifest0526,
         stagedByAccount: Map<String, BlaBlaUnifiedProfileCaptureResult0605>,
+        expectedTransaction0610: BlaBlaHtmlCaptureTransactionState0610? = null,
     ): Boolean {
         val app = context.applicationContext
-        val transaction = BlaBlaHtmlCaptureTransaction0610.active(app)
-        if (transaction == null || transaction.captureId != manifest.captureId) {
+        val transaction = if (expectedTransaction0610 != null) {
+            BlaBlaHtmlCaptureTransaction0610.heartbeat(app, expectedTransaction0610)
+        } else {
+            BlaBlaHtmlCaptureTransaction0610.active(app)
+        }
+        if (
+            transaction == null ||
+            transaction.captureId != manifest.captureId ||
+            (expectedTransaction0610 != null && transaction.generation != expectedTransaction0610.generation)
+        ) {
             UnifiedDebugEventStore.recordAlways(
                 "BLABLACAR_GLOBAL_HTML_COMMIT_BLOCKED_0610",
                 app.packageName,
-                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} reason=transaction_not_active preservePreviousCanonical=true",
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} reason=transaction_not_active_or_owner_lost_0678 preservePreviousCanonical=true",
             )
             return false
         }
