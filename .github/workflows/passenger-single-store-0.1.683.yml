@@ -1,0 +1,265 @@
+name: Passenger single store invite-only 0.1.683
+
+on:
+  push:
+    branches:
+      - 'agent/passenger-single-store-invite-only-0.1.683'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: passenger-single-store-0683-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-build-deploy-migrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      GOOGLE_MAPS_API_KEY: ''
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Prove exact 0.1.683 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "ROTA_CERTA_GIT_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          grep -Fq 'releaseVersionName = "0.1.683"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 5_974' app/build.gradle.kts
+          grep -Fq 'PASSENGER_STORE_COLLECTION_0683 = "passengers"' trip-platform/functions/index.js
+          grep -Fq 'PASSENGER_ACCESS_POLICY_VERSION_0683 = 683' trip-platform/functions/index.js
+          grep -Fq 'path === "/v1/driver/passengers/approve"' trip-platform/functions/index.js
+          grep -Fq 'passwordClearedAtMillis0683' trip-platform/functions/index.js
+          grep -Fq 'Text("Limpar senha")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerAdminUi.kt
+          ! grep -Fq 'Gerar nova senha' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerAdminUi.kt
+          ! grep -Fq 'Reparar acesso' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerAdminUi.kt
+          ! grep -Fq 'Salvar WhatsApp de acesso' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerAdminUi.kt
+          git diff --check
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate backend and migration syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/functions/scripts/migrate-passengers-single-store-0683.js
+          node --test trip-platform/functions/test/passenger-single-store-invite-only-0683.test.js | tee /tmp/passenger-0683-node-tests.log
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Configure Firebase Android app
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run Android 0.1.683 contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerSingleStore0683Test'             --no-daemon --max-workers=2 --stacktrace | tee /tmp/passenger-0683-android-tests.log
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/passenger-0683-assemble.log
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Prove APK identity and signing
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/passenger-0683-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/passenger-0683-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/passenger-0683-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5974'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.683'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/passenger-0683-apksigner.txt
+          grep -Fq 'Verified' /tmp/passenger-0683-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/passenger-0683-dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/passenger-0683-dex-strings.txt
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.683-5974-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.683"
+            echo "versionCode=5974"
+            echo "branch=$GITHUB_REF_NAME"
+            echo "commit=$GITHUB_SHA"
+            echo "deviceTarget=Samsung SM-S911B / Android 16"
+            echo "singlePassengerStore0683=PASS"
+            echo "driverApprovalOnly0683=PASS"
+            echo "clearPasswordOnly0683=PASS"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee passenger-single-store-0683-proof.txt
+
+      - name: Authenticate Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy exact 0.1.683 backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          gcloud functions deploy tripApi             --gen2             --project="$PROJECT"             --region=southamerica-east1             --runtime=nodejs20             --source=trip-platform/functions             --entry-point=tripApi             --trigger-http             --allow-unauthenticated             --clear-secrets             --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$GITHUB_SHA"             --quiet
+
+      - name: Smoke new authorization gate before migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 20 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health-before-migration-0683.json
+          grep -Fq '"ok":true' /tmp/live-health-before-migration-0683.json
+          grep -Fq "\"backendGitSha\":\"$GITHUB_SHA\"" /tmp/live-health-before-migration-0683.json
+
+      - name: Execute one-time ALL PAX reset and canonical migration
+        shell: bash
+        env:
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          export FIREBASE_PROJECT_ID="$PROJECT"
+          node trip-platform/functions/scripts/migrate-passengers-single-store-0683.js | tee /tmp/passenger-migration-0683.json
+          grep -Eq '"completed":true|"skipped":true' /tmp/passenger-migration-0683.json
+
+      - name: Verify production migration state
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          node - <<'NODE' | tee /tmp/passenger-migration-verify-0683.json
+          const { initializeApp } = require("./trip-platform/functions/node_modules/firebase-admin/app");
+          const { getFirestore } = require("./trip-platform/functions/node_modules/firebase-admin/firestore");
+          initializeApp({ projectId: process.env.FIREBASE_PROJECT_ID || "rota-certa-7ccc8" });
+          const db = getFirestore();
+          (async () => {
+            const marker = await db.collection("systemMigrations").doc("passenger_single_store_0683").get();
+            if (!marker.exists || marker.data().completed !== true) throw new Error("migration marker missing");
+            const passengers = await db.collection("passengers").get();
+            const access = await db.collectionGroup("driverAccess0683").get();
+            const legacyNames = ["passengerAccounts","passengerDirectory0625","passengerContactIndex0625","driverPassengerAccess"];
+            const legacyCounts = {};
+            for (const name of legacyNames) legacyCounts[name] = (await db.collection(name).limit(1).get()).size;
+            let credentialsRemaining = 0;
+            for (const doc of passengers.docs) {
+              const d = doc.data();
+              if (String(d.passwordSalt || "").trim() || String(d.passwordHash || "").trim()) credentialsRemaining++;
+            }
+            const activeAccessRemaining = access.docs.filter((doc) => {
+              const d = doc.data();
+              const s = String(d.status || "").toUpperCase();
+              return (s === "AUTHORIZED" || s === "ACTIVE") && Number(d.approvedAtMillis || 0) > 0;
+            }).length;
+            const result = {
+              completed: true,
+              canonicalPassengers: passengers.size,
+              accessRecords: access.size,
+              credentialsRemaining,
+              activeAccessRemaining,
+              legacyCounts,
+              markerSummary: marker.data().summary || {},
+            };
+            console.log(JSON.stringify(result));
+            if (credentialsRemaining !== 0 || activeAccessRemaining !== 0 || Object.values(legacyCounts).some(Number)) {
+              process.exitCode = 2;
+            }
+          })().catch((error) => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          NODE
+
+      - name: Final live health proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health-0683.json
+          grep -Fq '"ok":true' /tmp/live-health-0683.json
+          grep -Fq "\"backendGitSha\":\"$GITHUB_SHA\"" /tmp/live-health-0683.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-passenger-single-store-0.1.683-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            passenger-single-store-0683-proof.txt
+            /tmp/passenger-0683-node-tests.log
+            /tmp/passenger-0683-android-tests.log
+            /tmp/passenger-0683-assemble.log
+            /tmp/passenger-0683-aapt.txt
+            /tmp/passenger-0683-apksigner.txt
+            /tmp/passenger-0683-zip-integrity.txt
+            /tmp/passenger-migration-0683.json
+            /tmp/passenger-migration-verify-0683.json
+            /tmp/live-health-before-migration-0683.json
+            /tmp/live-health-0683.json
+            app/build/test-results/testDebugUnitTest/
