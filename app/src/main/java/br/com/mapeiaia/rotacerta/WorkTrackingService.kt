@@ -66,12 +66,15 @@ class WorkTrackingService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action ?: ACTION_START) {
-            ACTION_STOP -> stopTracking()
+        when (intent?.action ?: ACTION_ENSURE_LOCATION_CORE_0681) {
+            ACTION_START -> startLocationCore0681(recordWork = true)
+            ACTION_ENSURE_LOCATION_CORE_0681 -> startLocationCore0681(recordWork = false)
+            ACTION_STOP -> stopWorkTracking0681()
+            ACTION_RECONCILE_LOCATION_CORE_0681 -> reconcileLocationCore0681()
             ACTION_DISMISS_PROXIMITY_0680 -> {
                 backgroundProximity0680.dismiss(intent?.getStringExtra(EXTRA_PROXIMITY_TARGET_0680))
             }
-            else -> startTracking()
+            else -> startLocationCore0681(recordWork = false)
         }
         return START_STICKY
     }
@@ -89,14 +92,14 @@ class WorkTrackingService : Service() {
     }
 
     @android.annotation.SuppressLint("MissingPermission")
-    private fun startTracking() {
+    private fun startLocationCore0681(recordWork: Boolean) {
         if (!hasLocationPermission()) {
-            repository.markTrackingStopped()
+            if (recordWork) repository.markTrackingStopped()
             stopSelf()
             return
         }
+        if (recordWork && !repository.isTrackingActive()) repository.markTrackingStarted()
         startForeground(NOTIFICATION_ID, buildNotification())
-        if (!repository.isTrackingActive()) repository.markTrackingStarted()
         if (latestPoint0670 == null) {
             val floor0670 = repository.sessionStartedAtMillis() ?: System.currentTimeMillis()
             latestPoint0670 = repository.readAllPoints().lastOrNull { it.recordedAtMillis >= floor0670 }
@@ -171,7 +174,8 @@ class WorkTrackingService : Service() {
         )
         val previous0670 = latestPoint0670
         if (previous0670 == null || point0670.recordedAtMillis > previous0670.recordedAtMillis) {
-            repository.append(point0670)
+            if (repository.isTrackingActive()) repository.append(point0670)
+            shareManager0668.recordLivePoint0681(point0670)
             latestPoint0670 = point0670
         }
         lastGpsCallbackAtMillis0670 = System.currentTimeMillis()
@@ -256,16 +260,26 @@ class WorkTrackingService : Service() {
         wakeLock0670 = null
     }
 
-    private fun stopTracking() {
+    private fun stopWorkTracking0681() {
+        repository.markTrackingStopped()
+        reconcileLocationCore0681()
+    }
+
+    private fun reconcileLocationCore0681() {
+        val keepLocationCore =
+            repository.isTrackingActive() ||
+                shareManager0668.hasActiveShares() ||
+                backgroundProximity0680.isLocationRequired0681()
+        if (keepLocationCore) {
+            startForeground(NOTIFICATION_ID, buildNotification())
+            startHeartbeatLoop0670()
+            if (locationCallback == null) startLocationCore0681(recordWork = false)
+            return
+        }
         heartbeatJob0670?.cancel()
         heartbeatJob0670 = null
         releaseWakeLock0670()
-        repository.markTrackingStopped()
         removeLocationUpdates()
-        val hadSharedSession0668 = shareManager0668.hasActiveShares()
-        if (hadSharedSession0668) {
-            enqueueTrackingClose0668(applicationContext)
-        }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -282,13 +296,24 @@ class WorkTrackingService : Service() {
     private fun buildNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
         .setSmallIcon(android.R.drawable.ic_menu_mylocation)
         .setContentTitle(
-            if (shareManager0668.hasActiveShares()) "Acompanhamento ao vivo ativo" else "Rastreamento de trabalho ativo",
+            when {
+                shareManager0668.hasActiveShares() -> "Acompanhamento ao vivo ativo"
+                repository.isTrackingActive() -> "Rastreamento de trabalho ativo"
+                backgroundProximity0680.isLocationRequired0681() -> "Radares e alertas ativos"
+                else -> "Localização Rota Certa ativa"
+            },
         )
         .setContentText(
-            if (shareManager0668.hasActiveShares()) {
-                "O percurso está sendo gravado e sincronizado com os links que você ativou."
-            } else {
-                "O Rota Certa está registrando o percurso somente neste aparelho."
+            when {
+                shareManager0668.hasActiveShares() && repository.isTrackingActive() ->
+                    "GPS compartilhado com a família e percurso de trabalho em registro."
+                shareManager0668.hasActiveShares() ->
+                    "GPS compartilhado com a família. O registro de trabalho está parado."
+                repository.isTrackingActive() ->
+                    "O Rota Certa está registrando o percurso somente neste aparelho."
+                backgroundProximity0680.isLocationRequired0681() ->
+                    "O GPS continua ativo somente para radares e alertas de aproximação."
+                else -> "Núcleo de localização ativo."
             },
         )
         .setOngoing(true)
@@ -330,6 +355,8 @@ class WorkTrackingService : Service() {
     companion object {
         const val ACTION_START = "br.com.mapeiaia.rotacerta.action.START_WORK_TRACKING"
         const val ACTION_STOP = "br.com.mapeiaia.rotacerta.action.STOP_WORK_TRACKING"
+        const val ACTION_ENSURE_LOCATION_CORE_0681 = "br.com.mapeiaia.rotacerta.action.ENSURE_LOCATION_CORE_0681"
+        const val ACTION_RECONCILE_LOCATION_CORE_0681 = "br.com.mapeiaia.rotacerta.action.RECONCILE_LOCATION_CORE_0681"
         const val ACTION_DISMISS_PROXIMITY_0680 = "br.com.mapeiaia.rotacerta.action.DISMISS_PROXIMITY_0680"
         const val EXTRA_PROXIMITY_TARGET_0680 = "proximity_target_0680"
         private const val CHANNEL_ID = "work_tracking"
