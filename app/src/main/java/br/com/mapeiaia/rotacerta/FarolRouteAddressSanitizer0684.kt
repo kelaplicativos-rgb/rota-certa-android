@@ -86,10 +86,15 @@ object FarolRouteAddressSanitizer0684 {
 
     fun compatibleRouteAddress(first: String?, second: String?): Boolean {
         if (first.isNullOrBlank() || second.isNullOrBlank()) return false
-        return DestinationAddressIdentityPolicy.areCompatible(
-            DestinationAddressIdentityPolicy.identity(first),
-            DestinationAddressIdentityPolicy.identity(second),
-        )
+        val firstIdentity = DestinationAddressIdentityPolicy.identity(first)
+        val secondIdentity = DestinationAddressIdentityPolicy.identity(second)
+        if (DestinationAddressIdentityPolicy.areCompatible(firstIdentity, secondIdentity)) return true
+        if (firstIdentity.streetType == null || firstIdentity.streetType != secondIdentity.streetType) return false
+        if (firstIdentity.explicitNumber == null || firstIdentity.explicitNumber != secondIdentity.explicitNumber) return false
+        val firstStreet = firstIdentity.streetNameTokens
+        val secondStreet = secondIdentity.streetNameTokens
+        if (firstStreet.isEmpty() || secondStreet.isEmpty()) return false
+        return firstStreet.first() == secondStreet.first()
     }
 
     private data class CollapseResult(
@@ -144,7 +149,7 @@ object FarolRouteAddressSanitizer0684 {
     }
 
     private fun normalizeRoutePunctuation(value: String): String = normalize(value)
-        .trim(' ', ',', ';', ':', '-', '–', '—', '|', ')')
+        .trim(' ', ',', ';', ':', '-', '–', '—', '|')
         .replace(Regex("\\s+"), " ")
         .trim()
 
