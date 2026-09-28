@@ -17,8 +17,11 @@ import androidx.core.content.ContextCompat
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -42,6 +45,21 @@ internal object PersistentTrackingPolicy0680 {
 
 internal object LocationCoreRuntime0680 {
     const val CONTRACT_MARKER = "UNIFIED_LOCATION_CORE_0680"
+
+    suspend fun reconcilePersistedIntent(context: Context): Boolean {
+        val app = context.applicationContext
+        val work = WorkTrackingRepository(app)
+        val sharing = LiveTrackingShareManager0668(app).hasActiveShares()
+        if (work.isTrackingActive() || sharing) return ensureStarted(app)
+
+        val repository = SettingsRepository(app)
+        val currentSettings = repository.settings.first()
+        if (!currentSettings.proximityAlertsEnabled) return false
+        val hasTargets =
+            repository.savedPlaces.first().any { it.type == SavedPlaceType.ProximityAlert } ||
+                repository.importedRadars.first().isNotEmpty()
+        return hasTargets && ensureStarted(app)
+    }
 
     fun ensureStarted(context: Context): Boolean {
         val app = context.applicationContext
@@ -68,10 +86,13 @@ class LocationCoreBootReceiver0680 : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         val action = intent?.action ?: return
         if (action != Intent.ACTION_BOOT_COMPLETED && action != Intent.ACTION_MY_PACKAGE_REPLACED) return
-        val work = WorkTrackingRepository(context)
-        val sharing = LiveTrackingShareManager0668(context).hasActiveShares()
-        if (work.isTrackingActive() || sharing) {
-            LocationCoreRuntime0680.ensureStarted(context)
+        val pending = goAsync()
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            try {
+                LocationCoreRuntime0680.reconcilePersistedIntent(context)
+            } finally {
+                pending.finish()
+            }
         }
     }
 }
