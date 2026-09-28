@@ -592,14 +592,6 @@ fun PassengerAdminScreen(
                 passengerAccessLabel(access)?.let { label ->
                     Text(label, style = MaterialTheme.typography.bodySmall)
                 }
-                when (access?.passwordRecoveryStatus) {
-                    "REQUESTED" -> Text("🔑 Recuperação de senha solicitada", style = MaterialTheme.typography.bodySmall)
-                    "ISSUED" -> Text("🟠 Senha temporária emitida • troca obrigatória pendente", style = MaterialTheme.typography.bodySmall)
-                    "COMPLETED" -> Text("✅ Recuperação de senha concluída", style = MaterialTheme.typography.bodySmall)
-                }
-                if (access?.accountMustChangePassword == true && access.passwordRecoveryStatus != "ISSUED") {
-                    Text("🟠 Troca de senha obrigatória pendente", style = MaterialTheme.typography.bodySmall)
-                }
                 if (access?.agendaAdmin == true) {
                     Text("🔐 Administrador da Agenda", style = MaterialTheme.typography.bodySmall)
                 }
@@ -620,7 +612,10 @@ fun PassengerAdminScreen(
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Abrir histórico do passageiro") }
 
-                    val accessAuthorized0419 = access?.status in setOf("AUTHORIZED", "ACTIVE")
+                    val accessAuthorized0419 =
+                        access?.status in setOf("AUTHORIZED", "ACTIVE") &&
+                            (access?.approvalPolicyVersion ?: 0) >= 683 &&
+                            (access?.approvedAtMillis ?: 0L) > 0L
                     Text("Administração da Agenda", style = MaterialTheme.typography.titleSmall)
                     OutlinedButton(
                         enabled = settings.configured &&
@@ -663,34 +658,7 @@ fun PassengerAdminScreen(
                     ) {
                         Text(if (access?.agendaAdmin == true) "Remover administrador" else "Definir como administrador")
                     }
-                    when {
-                        access == null -> {
-                            val accessKey0630 = passengerAdminContactKey(activeAccessWhatsapp)
-                            val localConflictCount0630 = localProfiles.count {
-                                passengerAdminContactKey(it.agendaAccessContact()) == accessKey0630 && accessKey0630.isNotBlank()
-                            }
-                            Text(
-                                if (localConflictCount0630 > 1) {
-                                    "Existem $localConflictCount0630 cadastros locais usando este WhatsApp. O acesso online não é criado automaticamente até a identidade ser consolidada."
-                                } else {
-                                    "Acesso online ainda não encontrado. Esta tela tenta sincronizar o cadastro automaticamente ao abrir e atualizar."
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                        !accessAuthorized0419 -> Text(
-                            "O acesso deste passageiro não está autorizado nesta Agenda.",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        !access.accountActivated && !access.agendaAdmin -> Text(
-                            "Você pode salvar a permissão agora. Ela aparecerá para o passageiro assim que ele ativar e entrar em Minhas Viagens.",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
 
-                    access?.referredByContact?.takeIf(String::isNotBlank)?.let {
-                    Text("Indicado por: ${maskPassengerAdminContact(it)}", style = MaterialTheme.typography.bodySmall)
-                }
                 if (access != null) {
                     Text(
                         "Créditos: ${formatCreditMoney(access.creditBalanceCents)} • ganhos ${formatCreditMoney(access.creditEarnedCents)} • usados ${formatCreditMoney(access.creditSpentCents)}",
