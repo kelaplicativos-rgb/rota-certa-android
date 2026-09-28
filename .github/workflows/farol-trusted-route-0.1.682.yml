@@ -1,0 +1,125 @@
+name: Farol trusted route 0.1.682 APK
+
+on:
+  push:
+    branches:
+      - 'agent/farol-trusted-route-0.1.682'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: farol-trusted-route-0682-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: agent/farol-trusted-route-0.1.682
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Prove exact source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
+          grep -Fq 'releaseVersionName = "0.1.682"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 5_973' app/build.gradle.kts
+          grep -Fq '"version": "0.1.682"' app/src/main/assets/release_history.json
+          grep -Fq 'trustedDirectDrivingDistancesFromAddressKm0682' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
+          grep -Fq 'selectUnbiasedGeocodeCandidate0682' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
+          grep -Fq 'FAROL_TRUSTED_DIRECT_ROUTE_RESULT_0682' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
+          grep -Fq 'S682_PROVISIONAL_COLOR_SUPPRESSED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'DECISION_VISUAL_TTL_MILLIS_0682 = 5_000L' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'TRUSTED_DIRECT_ROUTE_TIMEOUT_MILLIS_0682 = 950L' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          git diff --check
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run full Android unit regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0682-tests.log
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0682-assemble.log
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
+
+      - name: Prove APK identity signing runtime markers and final SHA
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/android-0682-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/android-0682-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/android-0682-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5973'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.682'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/android-0682-apksigner.txt
+          grep -Fq 'Verified' /tmp/android-0682-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0682-dex-strings.txt
+          grep -Fq "$ROTA_CERTA_GIT_SHA" /tmp/android-0682-dex-strings.txt
+          grep -Fq 'FAROL_TRUSTED_DIRECT_ROUTE_RESULT_0682' /tmp/android-0682-dex-strings.txt
+          grep -Fq 'FAROL_DECISION_VISUAL_EXPIRED_0682' /tmp/android-0682-dex-strings.txt
+          grep -Fq 'S682_PROVISIONAL_COLOR_SUPPRESSED' /tmp/android-0682-dex-strings.txt
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.682-5973-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.682"
+            echo "versionCode=5973"
+            echo "branch=agent/farol-trusted-route-0.1.682"
+            echo "commit=$ROTA_CERTA_GIT_SHA"
+            echo "deviceTarget=Samsung SM-S911B / Android 16"
+            echo "trustedPrimary=RAW_LAST_ADDRESS_TO_DRIVER_TARGET"
+            echo "trustedPrimaryBudgetMs=950"
+            echo "legacyFallback=PRESERVED"
+            echo "provisionalGreenRed=SUPPRESSED"
+            echo "finalColorRecomputedFromRoadDistance=ACTIVE"
+            echo "decisionVisualTtlMs=5000"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee farol-trusted-route-0682-proof.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-farol-trusted-route-0.1.682-${{ github.sha }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            farol-trusted-route-0682-proof.txt
+            /tmp/android-0682-tests.log
+            /tmp/android-0682-assemble.log
+            /tmp/android-0682-aapt.txt
+            /tmp/android-0682-apksigner.txt
+            /tmp/android-0682-zip-integrity.txt
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30
