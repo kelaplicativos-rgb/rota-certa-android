@@ -197,7 +197,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val forcePhysicalCommit: Boolean,
     )
     @Volatile private var deferredBubblePaintStage637: DeferredBubblePaintStage637? = null
-    private var decisionBubbleExpiryJob0682: Job? = null
     private val bubbleMoveEventsStage637 = AtomicLong(0L)
     private var overlayMenuView: View? = null
     private var overlayMenuParams: WindowManager.LayoutParams? = null
@@ -271,6 +270,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var universalLastActiveReadAtElapsedMillis0187: Long = 0L
     private var universalActiveRidePackageName: String? = null // universal_route_inflight_runtime_0_1_120
     private var universalActiveAddressSignature: String? = null // universal_two_address_fields_0_1_98
+    @Volatile private var universalActiveCardIdentity0683: String? = null
     private var lastImmediateScreenFingerprintChecklist13: Int? = null
     private var lastImmediateScreenPackageChecklist13: String? = null
     private var fastFarolStartedAtChecklist13: Long = 0L // simple_saved_app_fields_checklist_13
@@ -1199,6 +1199,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         universalActiveRidePackageName = null
         if (::stage36RuntimeAuthority.isInitialized) stage36RuntimeAuthority.markExplicitOff("manual_reading_disabled_stage43")
         universalActiveAddressSignature = null
+        universalActiveCardIdentity0683 = null
         lastSnapshotHash = null
         lastAnalyzedHash = null
         shortcutOverlayController.hideFarolUiKeepAlerts0644()
@@ -1263,6 +1264,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         universalActiveRidePackageName = null
         if (::stage36RuntimeAuthority.isInitialized) stage36RuntimeAuthority.markExplicitOff("work_mode_disabled")
         universalActiveAddressSignature = null
+        universalActiveCardIdentity0683 = null
         // Stage36 work-mode OFF is distinct from visual-card disappearance.
         lastSnapshotHash = null
         lastAnalyzedHash = null
@@ -2240,6 +2242,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         lastAnalyzedHash = null
         currentDistanceKm = null
         universalActiveAddressSignature = null
+        universalActiveCardIdentity0683 = null
         stage19VisualVerificationPending = true
         stage26PreCollectGate.invalidate()
         if (::stage36RuntimeAuthority.isInitialized) stage36RuntimeAuthority.markExplicitOff("stage26_apply_reading_off")
@@ -2465,6 +2468,16 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 windowId=blockStage32.windowId, windowLayer=blockStage32.windowLayer, text=blockStage32.text,
                 left=blockStage32.left, top=blockStage32.top, right=blockStage32.right, bottom=blockStage32.bottom, syntheticRoot=false,
             )))
+            val finalVisible0683 = (currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red) &&
+                currentDistanceKm != null && !universalActiveCardIdentity0683.isNullOrBlank()
+            if (finalVisible0683 && !snapshotStage32.hasAddressEvidence) {
+                FarolMaximumForensicsStage38.record(
+                    SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(),
+                    "S683_PARTIAL_NO_ADDRESS_ESCALATED_TO_FULL_SURFACE", packageStage32,
+                    details = "window=$windowStage32; index=$indexStage32; sameCardMustPersistUntilFullSurfaceProof=true",
+                )
+                return null
+            }
             val complete = completeStage32 != null
             val statsStage32 = FarolVisualIdentityStage23.CollectionStats(
                 visibleWindowsTotal=1, windowsTraversed=1, windowsSkippedSelf=0, windowsSkippedLowerLayer=0,
@@ -2844,6 +2857,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         universalScreenGeneration += 1L
         universalWindowGeneration += 1L
         universalActiveAddressSignature = null
+        universalActiveCardIdentity0683 = null
         lastAnalyzedHash = null
         currentDistanceKm = null
         stage19VisualVerificationPending = true
@@ -2880,6 +2894,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         universalScreenGeneration += 1L
         universalWindowGeneration += 1L
         universalActiveAddressSignature = null
+        universalActiveCardIdentity0683 = null
         lastAnalyzedHash = null
         currentDistanceKm = null
         stage19VisualVerificationPending = true
@@ -2922,6 +2937,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         universalScreenGeneration += 1L
         universalWindowGeneration += 1L
         universalActiveAddressSignature = null
+        universalActiveCardIdentity0683 = null
         lastAnalyzedHash = null
         currentDistanceKm = null
         stage19VisualVerificationPending = true
@@ -4682,6 +4698,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         universalWindowGeneration += 1L
         universalActiveRidePackageName = null
         universalActiveAddressSignature = null
+        universalActiveCardIdentity0683 = null
         lastSnapshotHash = null
         lastAnalyzedHash = null
         currentDistanceKm = null
@@ -5973,6 +5990,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
         if (::stage36RuntimeAuthority.isInitialized) stage36RuntimeAuthority.clearVisualLease(reason)
         universalActiveAddressSignature = null
+        universalActiveCardIdentity0683 = null
         lastSnapshotHash = null
         lastAnalyzedHash = null
         analyzing = false
@@ -6910,7 +6928,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
             traceId = stage20ExpectedPaintToken?.traceId, operationId = stage20ExpectedPaintToken?.operationId,
             details = "color=$color; distance=${distanceKm ?: -1.0}; text=${view.text}; viewCreated=${existingViewChecklist15 == null}; x=${overlayParams?.x ?: -1}; y=${overlayParams?.y ?: -1}",
         )
-        scheduleDecisionBubbleExpiry0682(color, distanceKm)
     } // no_duplicate_overlay_render_checklist_15
  // no_duplicate_overlay_render_checklist_15
 
@@ -6918,36 +6935,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val pending = deferredBubblePaintStage637 ?: return
         deferredBubblePaintStage637 = null
         renderOverlayStage40(pending.color, pending.distanceKm, pending.forcePhysicalCommit)
-    }
-
-    private fun scheduleDecisionBubbleExpiry0682(color: RadarColor, distanceKm: Double?) {
-        if (color != RadarColor.Green && color != RadarColor.Red) {
-            decisionBubbleExpiryJob0682?.cancel()
-            decisionBubbleExpiryJob0682 = null
-            return
-        }
-        decisionBubbleExpiryJob0682?.cancel()
-        val expectedSignature0682 = universalActiveAddressSignature
-        val expectedScreenGeneration0682 = universalScreenGeneration
-        val expectedWindowGeneration0682 = universalWindowGeneration
-        decisionBubbleExpiryJob0682 = scope.launch {
-            delay(DECISION_VISUAL_TTL_MILLIS_0682)
-            if (!serviceReady) return@launch
-            if (universalActiveAddressSignature != expectedSignature0682) return@launch
-            if (universalScreenGeneration != expectedScreenGeneration0682) return@launch
-            if (universalWindowGeneration != expectedWindowGeneration0682) return@launch
-            if (currentRadarColor != color || currentDistanceKm != distanceKm) return@launch
-            rememberBubbleReason(
-                "stage682_decision_ttl_expired",
-                "Resultado visual expirou após 5 segundos; aguardando confirmação atual do card.",
-            )
-            FarolFlightRecorder0163.record(
-                stage = "FAROL_DECISION_VISUAL_EXPIRED_0682",
-                packageName = universalResolvedForegroundPackage(),
-                details = "color=$color; distance=${distanceKm ?: -1.0}; signature=${expectedSignature0682.orEmpty()}",
-            )
-            showOverlay(RadarColor.Default, distanceKm = null)
-        }
     }
 
     private fun applyAgendaNotificationDecoration0416(view: TextView, color: RadarColor) {
@@ -8692,7 +8679,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     private companion object {
         const val TRUSTED_DIRECT_ROUTE_TIMEOUT_MILLIS_0682 = 950L
-        const val DECISION_VISUAL_TTL_MILLIS_0682 = 5_000L
         const val PASSENGER_VALUE_STALE_AFTER_MS_160 = 4_000L
         const val PASSENGER_VALUE_WATCHDOG_MS_160 = 6_000L
         const val PASSENGER_VALUE_SCREENSHOT_RETRIES_160 = 8
