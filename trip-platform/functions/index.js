@@ -35,7 +35,10 @@ const CAPACITY_CLAIM_TYPES = new Set(["PASSENGER", "EXTERNAL_OCCUPANCY", "RESERV
 const PROTECTED_OPERATIONAL_STATUSES = new Set(["PENDING", "CONFIRMED", "AT_LOCATION", "IN_CAR", "COMPLETED", "CANCELLED"]);
 const PROTECTED_PAYMENT_STATUSES = new Set(["UNPAID", "PAID"]);
 const PASSENGER_AUTHORIZED_ACCESS_STATUSES = new Set(["ACTIVE", "AUTHORIZED"]);
-const PASSENGER_RESTRICTED_ACCESS_STATUSES = new Set(["SUSPENDED", "BLOCKED"]);
+const PASSENGER_RESTRICTED_ACCESS_STATUSES = new Set(["SUSPENDED", "BLOCKED", "REVOKED"]);
+const PASSENGER_STORE_COLLECTION_0683 = "passengers";
+const PASSENGER_ACCESS_SUBCOLLECTION_0683 = "driverAccess0683";
+const PASSENGER_ACCESS_POLICY_VERSION_0683 = 683;
 
 const PUBLIC_DEBUG_EVENTS = new Set([
   "PUBLIC_LINK_OPENED",
@@ -5261,12 +5264,28 @@ function passengerPassword0625(value) {
   return password;
 }
 
+function passengerRecordRef0683(passengerContact) {
+  const contact = cleanText(passengerContact, 40);
+  return db.collection(PASSENGER_STORE_COLLECTION_0683).doc(sha256Hex(contact));
+}
+
 function passengerDirectoryRef0625(passengerId) {
-  return db.collection("passengerDirectory0625").doc(sha256Hex(cleanText(passengerId, 120)));
+  const stableId = cleanText(passengerId, 120);
+  return {
+    async get() {
+      if (!stableId) return { exists: false, data: () => ({}) };
+      const snapshot = await db.collection(PASSENGER_STORE_COLLECTION_0683)
+        .where("passengerId", "==", stableId)
+        .limit(2)
+        .get();
+      if (snapshot.size !== 1) return { exists: false, data: () => ({}) };
+      return snapshot.docs[0];
+    },
+  };
 }
 
 function passengerContactIndexRef0625(passengerContact) {
-  return db.collection("passengerContactIndex0625").doc(sha256Hex(cleanText(passengerContact, 40)));
+  return passengerRecordRef0683(passengerContact);
 }
 
 function writeCanonicalPassenger0625(writer, data, now = Date.now()) {
@@ -5275,67 +5294,33 @@ function writeCanonicalPassenger0625(writer, data, now = Date.now()) {
   if (!stableId || !contact) return;
   const name = cleanText(data && data.displayName, 120);
   const createdAtMillis = Math.max(0, Number(data && data.createdAtMillis || now));
-  writer.set(passengerDirectoryRef0625(stableId), {
+  writer.set(passengerRecordRef0683(contact), {
     passengerId: stableId,
     primaryContact: contact,
+    passengerContact: contact,
     displayName: name,
     source: cleanText(data && data.source, 80),
     firstSeenAtMillis: createdAtMillis,
-    updatedAtMillis: now,
-  }, { merge: true });
-  writer.set(passengerContactIndexRef0625(contact), {
-    passengerId: stableId,
-    passengerContact: contact,
-    updatedAtMillis: now,
-  }, { merge: true });
-  writer.set(db.collection("passengerAccounts").doc(sha256Hex(contact)), {
-    passengerId: stableId,
-    passengerContact: contact,
-    displayName: name,
     createdAtMillis,
     updatedAtMillis: now,
+    canonicalStoreVersion: PASSENGER_ACCESS_POLICY_VERSION_0683,
   }, { merge: true });
 }
 
 async function resolveCanonicalPassengerByContact0625(passengerContact) {
   const contact = normalizeBrazilWhatsapp(passengerContact);
-  const [indexSnap, accountSnap, accessSnap] = await Promise.all([
-    passengerContactIndexRef0625(contact).get(),
-    db.collection("passengerAccounts").doc(sha256Hex(contact)).get(),
-    db.collection("driverPassengerAccess").where("passengerContact", "==", contact).limit(50).get(),
-  ]);
+  const accountRef = passengerRecordRef0683(contact);
+  const accountSnap = await accountRef.get();
   const account = accountSnap.exists ? accountSnap.data() : {};
-  const ids = new Set();
-  const indexId = indexSnap.exists ? cleanText(indexSnap.data().passengerId, 120) : "";
-  const accountId = cleanText(account.passengerId, 120);
-  if (indexId) ids.add(indexId);
-  if (accountId) ids.add(accountId);
-  accessSnap.docs.forEach((doc) => {
-    const item = doc.data();
-    const id = cleanText(item.passengerId, 120);
-    const status = cleanText(item.status, 20).toUpperCase();
-    if (id && status !== "MOVED") ids.add(id);
-  });
-  if (ids.size > 1) {
-    throw Object.assign(
-      new Error("Este WhatsApp possui mais de uma identidade canônica. O motorista precisa corrigir o cadastro antes do acesso."),
-      { httpStatus: 409, code: "passenger_identity_conflict" },
-    );
-  }
-  const activeAccess = accessSnap.docs
-    .map((doc) => ({ id: doc.id, ...doc.data() }))
-    .find((item) => cleanText(item.status, 20).toUpperCase() !== "MOVED") || null;
-  const passengerId = [...ids][0] || (activeAccess ? "passenger_" + sha256Hex("phone:" + contact).slice(0, 40) : "");
-  const directorySnap = passengerId ? await passengerDirectoryRef0625(passengerId).get() : null;
-  const directory = directorySnap && directorySnap.exists ? directorySnap.data() : {};
+  const passengerId = cleanText(account.passengerId, 120);
   return {
     passengerContact: contact,
     passengerId,
-    displayName: cleanText(directory.displayName || account.displayName || (activeAccess && activeAccess.displayName), 120),
-    accountRef: db.collection("passengerAccounts").doc(sha256Hex(contact)),
+    displayName: cleanText(account.displayName, 120),
+    accountRef,
     accountSnap,
     account,
-    accessDocs: accessSnap.docs,
+    accessDocs: [],
     knownPassenger: Boolean(passengerId),
     passwordCreated: accountSnap.exists && passengerAccountIsActivated(account),
   };
@@ -5352,12 +5337,6 @@ async function ensureCanonicalPassengerResolved0625(identity, source = "LAZY_MIG
     source,
     createdAtMillis: Number(identity.account && identity.account.createdAtMillis || now),
   }, now);
-  identity.accessDocs.forEach((doc) => {
-    const data = doc.data();
-    if (!cleanText(data.passengerId, 120) && cleanText(data.status, 20).toUpperCase() !== "MOVED") {
-      batch.set(doc.ref, { passengerId: identity.passengerId, updatedAtMillis: now }, { merge: true });
-    }
-  });
   await batch.commit();
   return identity;
 }
@@ -5510,7 +5489,7 @@ async function openPassengerPasswordSession0625(req, res) {
   if (displayName.length < 2) {
     return fail(res, 400, "passenger_name_required", "Informe seu nome para criar seu cadastro.");
   }
-  const accountRef = db.collection("passengerAccounts").doc(sha256Hex(passengerContact));
+  const accountRef = passengerRecordRef0683(passengerContact);
   const accountSnap = identity.accountSnap;
   const account = identity.account || {};
   const alreadyActivated = accountSnap.exists && passengerAccountIsActivated(account);
@@ -5631,7 +5610,9 @@ function driverPassengerAccessId(driverUsername, passengerContact) {
 }
 
 function driverPassengerAccessRef(driverUsername, passengerContact) {
-  return db.collection("driverPassengerAccess").doc(driverPassengerAccessId(driverUsername, passengerContact));
+  return passengerRecordRef0683(passengerContact)
+    .collection(PASSENGER_ACCESS_SUBCOLLECTION_0683)
+    .doc(driverPassengerAccessId(driverUsername, passengerContact));
 }
 
 function passengerCreditLedgerRef(driverUsername, passengerContact) {
@@ -5652,13 +5633,18 @@ async function passengerAccessForPassengerId(driverUsername, passengerId) {
   const username = normalizeUsername(driverUsername);
   const canonicalPassengerId = cleanText(passengerId, 120);
   if (!username || !canonicalPassengerId) return null;
-  const snapshot = await db.collection("driverPassengerAccess")
+  const passengers = await db.collection(PASSENGER_STORE_COLLECTION_0683)
     .where("passengerId", "==", canonicalPassengerId)
-    .limit(50)
+    .limit(3)
     .get();
-  return snapshot.docs
-    .map((doc) => ({ id: doc.id, ...doc.data() }))
-    .filter((access) => normalizeUsername(access.driverUsername || "") === username)
+  if (passengers.empty) return null;
+  const accessSnapshots = await Promise.all(passengers.docs.map((doc) => {
+    const contact = cleanText(doc.data().primaryContact || doc.data().passengerContact, 40);
+    return contact ? driverPassengerAccessRef(username, contact).get() : Promise.resolve(null);
+  }));
+  return accessSnapshots
+    .filter((snap) => snap && snap.exists)
+    .map((snap) => ({ id: snap.id, ...snap.data() }))
     .filter((access) => cleanText(access.status, 20).toUpperCase() !== "MOVED")
     .sort((a, b) => Number(b.updatedAtMillis || 0) - Number(a.updatedAtMillis || 0))[0] || null;
 }
@@ -5672,7 +5658,7 @@ async function passengerAccessForIdentity(driverUsername, passengerId, passenger
 async function passengerIdentityByContactForDriver(driverUsername) {
   const username = normalizeUsername(driverUsername);
   if (!username) return new Map();
-  const snapshot = await db.collection("driverPassengerAccess")
+  const snapshot = await db.collectionGroup(PASSENGER_ACCESS_SUBCOLLECTION_0683)
     .where("driverUsername", "==", username)
     .limit(500)
     .get();
@@ -5701,7 +5687,12 @@ function passengerAccessStatus(access) {
 }
 
 function passengerAccessIsAuthorized(access) {
-  return PASSENGER_AUTHORIZED_ACCESS_STATUSES.has(cleanText(access && access.status, 20).toUpperCase());
+  return Boolean(
+    access &&
+    PASSENGER_AUTHORIZED_ACCESS_STATUSES.has(cleanText(access.status, 20).toUpperCase()) &&
+    Number(access.approvalPolicyVersion || 0) >= PASSENGER_ACCESS_POLICY_VERSION_0683 &&
+    Number(access.approvedAtMillis || 0) > 0
+  );
 }
 
 function passengerAccountIsActivated(account) {
@@ -5873,7 +5864,7 @@ async function openPassengerAgendaView(req, res) {
     return fail(res, 403, "passenger_access_unavailable", "Acesso negado. Este passageiro está marcado como Não aceito no meu carro.");
   }
 
-  const accountSnap = await db.collection("passengerAccounts").doc(sha256Hex(passengerContact)).get();
+  const accountSnap = await passengerRecordRef0683(passengerContact).get();
   const account = accountSnap.exists ? accountSnap.data() : null;
   const passengerId = cleanText(access.passengerId || (account && account.passengerId), 120);
   const view = await createPassengerAgendaViewSession(username, passengerContact, passengerId);
@@ -5948,7 +5939,7 @@ async function openPassengerPinSession0624(req, res) {
   }
 
   const accessRef = driverPassengerAccessRef(driverUsername, passengerContact);
-  const accountRef = db.collection("passengerAccounts").doc(sha256Hex(passengerContact));
+  const accountRef = passengerRecordRef0683(passengerContact);
   const now = Date.now();
   let passengerId = "";
   let createdAccount = false;
@@ -6115,7 +6106,7 @@ async function listDriverPassengers(req, res) {
     const access = safePassengerAccess(doc);
     const [ledgerSnap, accountSnap] = await Promise.all([
       passengerCreditLedgerRef(driver.username, access.passengerContact).get(),
-      db.collection("passengerAccounts").doc(sha256Hex(access.passengerContact)).get(),
+      passengerRecordRef0683(access.passengerContact).get(),
     ]);
     const ledger = ledgerSnap.exists ? ledgerSnap.data() : {};
     return {
@@ -6184,7 +6175,7 @@ async function inviteDriverPassenger(req, res) {
       createdAtMillis: Number(previousData.createdAtMillis || now),
     }, now);
   });
-  const accountSnap = await db.collection("passengerAccounts").doc(sha256Hex(passengerContact)).get();
+  const accountSnap = await passengerRecordRef0683(passengerContact).get();
   const updated = await accessRef.get();
   const passenger = safePassengerAccess(updated);
   passenger.accountActivated = accountSnap.exists && passengerAccountIsActivated(accountSnap.data());
@@ -6218,7 +6209,7 @@ async function syncDriverPassengerDirectory(req, res) {
   const [existingDocs, globalIndexDocs, accountDocs] = await Promise.all([
     Promise.all(normalized.map((item) => driverPassengerAccessRef(driver.username, item.passengerContact).get())),
     Promise.all(normalized.map((item) => passengerContactIndexRef0625(item.passengerContact).get())),
-    Promise.all(normalized.map((item) => db.collection("passengerAccounts").doc(sha256Hex(item.passengerContact)).get())),
+    Promise.all(normalized.map((item) => passengerRecordRef0683(item.passengerContact).get())),
   ]);
   for (let index = 0; index < normalized.length; index++) {
     const globalIndexId = globalIndexDocs[index].exists ? cleanText(globalIndexDocs[index].data().passengerId, 120) : "";
@@ -6543,8 +6534,8 @@ async function updateDriverPassengerWhatsapp(req, res) {
   }
 
   const sourceRef = db.collection("driverPassengerAccess").doc(currentAccess.id);
-  const oldAccountRef = db.collection("passengerAccounts").doc(sha256Hex(previousPassengerContact));
-  const newAccountRef = db.collection("passengerAccounts").doc(sha256Hex(newPassengerContact));
+  const oldAccountRef = passengerRecordRef0683(previousPassengerContact);
+  const newAccountRef = passengerRecordRef0683(newPassengerContact);
   const oldLedgerRef = passengerCreditLedgerRef(driver.username, previousPassengerContact);
   const newLedgerRef = passengerCreditLedgerRef(driver.username, newPassengerContact);
 
@@ -6787,7 +6778,7 @@ async function resetDriverPassengerPassword(req, res) {
   }
   const temporaryPassword = temporaryPassengerPassword();
   const salt = crypto.randomBytes(16).toString("hex");
-  const accountRef = db.collection("passengerAccounts").doc(sha256Hex(currentContact));
+  const accountRef = passengerRecordRef0683(currentContact);
   const currentAccount = await accountRef.get();
   const currentData = currentAccount.exists ? currentAccount.data() : {};
   const currentPassengerId = cleanText(currentData.passengerId, 120);
@@ -6928,7 +6919,7 @@ async function changePassengerPassword(req, res) {
   catch (error) { return fail(res, error.httpStatus || 400, error.code || "invalid_password", error.message); }
   const salt = crypto.randomBytes(16).toString("hex");
   const now = Date.now();
-  await db.collection("passengerAccounts").doc(sha256Hex(session.passengerContact)).set({
+  await passengerRecordRef0683(session.passengerContact).set({
     passengerContact: session.passengerContact,
     passwordSalt: salt,
     passwordHash: passengerPasswordDigest(password, salt),
@@ -7321,7 +7312,7 @@ async function signupPassengerAccount(req, res) {
 async function getPassengerMe(req, res) {
   const session = await requirePassengerSession(req, res);
   if (!session) return;
-  const accountSnap = await db.collection("passengerAccounts").doc(sha256Hex(session.passengerContact)).get();
+  const accountSnap = await passengerRecordRef0683(session.passengerContact).get();
   const resolvedDriver = await resolveDriverUsername(req.query && req.query.driverUsername);
   const driverUsername = resolvedDriver ? resolvedDriver.canonicalUsername : "";
   let access = null;
@@ -7377,7 +7368,7 @@ async function activatePassengerAccount(req, res) {
   if (!passengerId) {
     return fail(res, 409, "passenger_identity_unavailable", "Seu cadastro ainda está sendo vinculado. Tente novamente após a sincronização da agenda.");
   }
-  const accountRef = db.collection("passengerAccounts").doc(sha256Hex(passengerContact));
+  const accountRef = passengerRecordRef0683(passengerContact);
   const now = Date.now();
   const salt = crypto.randomBytes(16).toString("hex");
   try {
@@ -7437,7 +7428,7 @@ async function loginPassengerAccount(req, res) {
     }
   }
 
-  const accountRef = db.collection("passengerAccounts").doc(sha256Hex(passengerContact));
+  const accountRef = passengerRecordRef0683(passengerContact);
   const accountSnap = await accountRef.get();
   const account = accountSnap.exists ? accountSnap.data() : {};
 
