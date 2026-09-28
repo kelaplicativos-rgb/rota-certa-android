@@ -143,7 +143,7 @@ internal class LiveTrackingShareRepository0668(context: Context) {
     }
 
     fun hasActiveShares(nowMillis: Long = System.currentTimeMillis()): Boolean =
-        session()?.takeIf { it.active }?.shares.orEmpty().any { it.active && it.expiresAtMillis > nowMillis }
+        session()?.takeIf { it.active }?.shares.orEmpty().any { PersistentTrackingPolicy0680.isShareActive(it, nowMillis) }
 
     fun familyShare(nowMillis: Long = System.currentTimeMillis()): TrackingShareLocal0668? =
         session()?.shares.orEmpty().firstOrNull {
