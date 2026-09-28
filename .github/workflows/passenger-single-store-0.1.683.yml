@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: passenger-single-store-0683-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   validate-build-deploy-migrate:
@@ -154,6 +154,14 @@ jobs:
             echo "apk_sha256=$APK_SHA256"
           } | tee passenger-single-store-0683-proof.txt
 
+      - name: Prepare one-time migration token
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(openssl rand -hex 32)"
+          echo "::add-mask::$TOKEN"
+          echo "MIGRATION_TOKEN_0683=$TOKEN" >> "$GITHUB_ENV"
+
       - name: Authenticate Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -166,7 +174,18 @@ jobs:
         run: |
           set -euo pipefail
           PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
-          gcloud functions deploy tripApi             --gen2             --project="$PROJECT"             --region=southamerica-east1             --runtime=nodejs20             --source=trip-platform/functions             --entry-point=tripApi             --trigger-http             --allow-unauthenticated             --clear-secrets             --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$GITHUB_SHA"             --quiet
+          gcloud functions deploy tripApi \
+            --gen2 \
+            --project="$PROJECT" \
+            --region=southamerica-east1 \
+            --runtime=nodejs20 \
+            --source=trip-platform/functions \
+            --entry-point=tripApi \
+            --trigger-http \
+            --allow-unauthenticated \
+            --clear-secrets \
+            --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$GITHUB_SHA,ROTA_CERTA_MIGRATION_TOKEN_0683=$MIGRATION_TOKEN_0683" \
+            --quiet
 
       - name: Smoke new authorization gate before migration
         shell: bash
@@ -179,61 +198,62 @@ jobs:
 
       - name: Execute one-time ALL PAX reset and canonical migration
         shell: bash
-        env:
-          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
         run: |
           set -euo pipefail
-          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
-          export FIREBASE_PROJECT_ID="$PROJECT"
-          node trip-platform/functions/scripts/migrate-passengers-single-store-0683.js | tee /tmp/passenger-migration-0683.json
-          grep -Eq '"completed":true|"skipped":true' /tmp/passenger-migration-0683.json
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 3 --retry-delay 2 --fail-with-body --silent --show-error \
+            -X POST \
+            -H "x-rota-certa-migration-token: $MIGRATION_TOKEN_0683" \
+            "$BASE/v1/internal/migrations/passenger-single-store-0683" \
+            | tee /tmp/passenger-migration-0683.json
+          node - <<'NODE'
+          const fs = require("fs");
+          const result = JSON.parse(fs.readFileSync("/tmp/passenger-migration-0683.json", "utf8"));
+          if (!(result.completed === true || result.skipped === true)) throw new Error("migration did not complete");
+          const summary = result.summary || {};
+          if (Number(summary.passwordsRemaining || 0) !== 0) throw new Error("passwords remain");
+          if (Number(summary.activeAccessRemaining || 0) !== 0) throw new Error("active access remains");
+          for (const [name, count] of Object.entries(summary.legacyRemaining || {})) {
+            if (Number(count) !== 0) throw new Error("legacy store remains: " + name);
+          }
+          for (const [name, count] of Object.entries(summary.authRemaining || {})) {
+            if (Number(count) !== 0) throw new Error("auth state remains: " + name);
+          }
+          console.log(JSON.stringify({
+            verified: true,
+            canonicalPassengers: Number(summary.canonicalPassengers || 0),
+            canonicalAccessRecords: Number(summary.canonicalAccessRecords || 0),
+            passwordsRemaining: Number(summary.passwordsRemaining || 0),
+            activeAccessRemaining: Number(summary.activeAccessRemaining || 0),
+            legacyRemaining: summary.legacyRemaining || {},
+            authRemaining: summary.authRemaining || {},
+          }));
+          NODE
 
-      - name: Verify production migration state
+      - name: Seal one-time migration endpoint
         shell: bash
         run: |
           set -euo pipefail
           PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
-          node - <<'NODE' | tee /tmp/passenger-migration-verify-0683.json
-          const { initializeApp } = require("./trip-platform/functions/node_modules/firebase-admin/app");
-          const { getFirestore } = require("./trip-platform/functions/node_modules/firebase-admin/firestore");
-          initializeApp({ projectId: process.env.FIREBASE_PROJECT_ID || "rota-certa-7ccc8" });
-          const db = getFirestore();
-          (async () => {
-            const marker = await db.collection("systemMigrations").doc("passenger_single_store_0683").get();
-            if (!marker.exists || marker.data().completed !== true) throw new Error("migration marker missing");
-            const passengers = await db.collection("passengers").get();
-            const access = await db.collectionGroup("driverAccess0683").get();
-            const legacyNames = ["passengerAccounts","passengerDirectory0625","passengerContactIndex0625","driverPassengerAccess"];
-            const legacyCounts = {};
-            for (const name of legacyNames) legacyCounts[name] = (await db.collection(name).limit(1).get()).size;
-            let credentialsRemaining = 0;
-            for (const doc of passengers.docs) {
-              const d = doc.data();
-              if (String(d.passwordSalt || "").trim() || String(d.passwordHash || "").trim()) credentialsRemaining++;
-            }
-            const activeAccessRemaining = access.docs.filter((doc) => {
-              const d = doc.data();
-              const s = String(d.status || "").toUpperCase();
-              return (s === "AUTHORIZED" || s === "ACTIVE") && Number(d.approvedAtMillis || 0) > 0;
-            }).length;
-            const result = {
-              completed: true,
-              canonicalPassengers: passengers.size,
-              accessRecords: access.size,
-              credentialsRemaining,
-              activeAccessRemaining,
-              legacyCounts,
-              markerSummary: marker.data().summary || {},
-            };
-            console.log(JSON.stringify(result));
-            if (credentialsRemaining !== 0 || activeAccessRemaining !== 0 || Object.values(legacyCounts).some(Number)) {
-              process.exitCode = 2;
-            }
-          })().catch((error) => {
-            console.error(error);
-            process.exitCode = 1;
-          });
-          NODE
+          gcloud functions deploy tripApi \
+            --gen2 \
+            --project="$PROJECT" \
+            --region=southamerica-east1 \
+            --runtime=nodejs20 \
+            --source=trip-platform/functions \
+            --entry-point=tripApi \
+            --trigger-http \
+            --allow-unauthenticated \
+            --clear-secrets \
+            --remove-env-vars=ROTA_CERTA_MIGRATION_TOKEN_0683 \
+            --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$GITHUB_SHA" \
+            --quiet
+          BASE=https://rota-certa-7ccc8.web.app
+          HTTP_CODE="$(curl --silent --show-error -o /tmp/passenger-migration-sealed-0683.json -w '%{http_code}' \
+            -X POST \
+            -H "x-rota-certa-migration-token: $MIGRATION_TOKEN_0683" \
+            "$BASE/v1/internal/migrations/passenger-single-store-0683")"
+          test "$HTTP_CODE" = "404"
 
       - name: Final live health proof
         shell: bash
@@ -259,7 +279,7 @@ jobs:
             /tmp/passenger-0683-apksigner.txt
             /tmp/passenger-0683-zip-integrity.txt
             /tmp/passenger-migration-0683.json
-            /tmp/passenger-migration-verify-0683.json
             /tmp/live-health-before-migration-0683.json
+            /tmp/passenger-migration-sealed-0683.json
             /tmp/live-health-0683.json
             app/build/test-results/testDebugUnitTest/
