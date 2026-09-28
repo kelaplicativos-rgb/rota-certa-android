@@ -730,6 +730,7 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
     suspend fun captureAll(
         context: Context,
         onProgress: (String) -> Unit = {},
+        onGlobalCommitResult0679: (Boolean) -> Unit = {},
     ): BlaBlaRidesSnapshotManifest0526 {
         val app = context.applicationContext
         val registry = BlaBlaDynamicAccountRegistry(app)
@@ -803,6 +804,7 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
                 )
                 false
             }
+            onGlobalCommitResult0679(committed)
             onProgress(
                 if (committed) {
                     "HTML validado • cards atualizados ao vivo • verificação final concluída"

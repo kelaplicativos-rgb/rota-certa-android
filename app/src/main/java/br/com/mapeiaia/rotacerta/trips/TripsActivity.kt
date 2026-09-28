@@ -335,6 +335,7 @@ private fun TripApp(
     var timelineGlobalRefreshHandledToken0540 by rememberSaveable { mutableStateOf(0) }
     var timelineGlobalRefreshBusy0540 by rememberSaveable { mutableStateOf(false) }
     val notificationProjection0416 by DriverNotificationProjection0416.state.collectAsState()
+    val globalHtmlRefresh0679 by BlaBlaGlobalHtmlRefresh0679.state(activity).collectAsState()
     val activeNotificationTenant0416 = RotaCertaTenantRegistry(activity).activeScope().tenantId
     val driverNotifications = if (notificationProjection0416.tenantId == activeNotificationTenant0416) {
         notificationProjection0416.notifications
@@ -549,6 +550,18 @@ private fun TripApp(
         shareScope.launch { refreshDriverNotifications() }
         Unit
     }
+    val requestGlobalHtmlRefresh0679 = {
+        val started0679 = BlaBlaGlobalHtmlRefresh0679.enqueue(
+            context = activity,
+            source = "agenda_header",
+        )
+        message = when {
+            started0679 -> "Atualização BlaBlaCar iniciada em segundo plano."
+            globalHtmlRefresh0679.running -> "A atualização BlaBlaCar já está em andamento."
+            else -> globalHtmlRefresh0679.summary
+        }
+        Unit
+    }
     androidx.compose.runtime.LaunchedEffect(screen) {
         val module0507 = screen.diagnosticModule0507()
         if (module0507 != DiagnosticModule0507.UNKNOWN) {
@@ -728,6 +741,8 @@ private fun TripApp(
                     overflowActions = headerActions0396,
                     notificationUnreadCount = driverUnreadCount,
                     onNotificationsClick = openNotifications0396,
+                    globalHtmlRefreshState0679 = globalHtmlRefresh0679,
+                    onGlobalHtmlRefreshClick0679 = requestGlobalHtmlRefresh0679,
                 )
             },
         ) { padding ->

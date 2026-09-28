@@ -6,11 +6,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -152,6 +155,8 @@ internal fun AgendaModuleHeader0396(
     overflowActions: List<AgendaHeaderAction0396>,
     notificationUnreadCount: Int = 0,
     onNotificationsClick: (() -> Unit)? = null,
+    globalHtmlRefreshState0679: BlaBlaGlobalHtmlRefreshState0679 = BlaBlaGlobalHtmlRefreshState0679(),
+    onGlobalHtmlRefreshClick0679: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -228,6 +233,42 @@ internal fun AgendaModuleHeader0396(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                }
+            }
+            val globalRefreshDescription0679 = when {
+                globalHtmlRefreshState0679.needsAttention ->
+                    globalHtmlRefreshState0679.summary + if (globalHtmlRefreshState0679.errorCode.isNotBlank()) {
+                        " • " + globalHtmlRefreshState0679.errorCode
+                    } else {
+                        ""
+                    }
+                globalHtmlRefreshState0679.running -> globalHtmlRefreshState0679.summary
+                else -> "Atualizar todos os cards BlaBlaCar por HTML"
+            }
+            IconButton(
+                onClick = { onGlobalHtmlRefreshClick0679?.invoke() },
+                enabled = onGlobalHtmlRefreshClick0679 != null && !globalHtmlRefreshState0679.running,
+                modifier = Modifier.semantics { contentDescription = globalRefreshDescription0679 },
+            ) {
+                when {
+                    globalHtmlRefreshState0679.needsAttention -> {
+                        Text(
+                            text = "⚠️?",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                    globalHtmlRefreshState0679.running -> {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    }
+                    else -> {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = null,
+                        )
+                    }
                 }
             }
             val unread = notificationUnreadCount.coerceAtLeast(0)

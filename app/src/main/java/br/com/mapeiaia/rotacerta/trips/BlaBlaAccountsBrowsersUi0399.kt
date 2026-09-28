@@ -20,6 +20,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -60,7 +62,6 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
     var showAddAccount by remember { mutableStateOf(false) }
     var newAccountLabel by remember { mutableStateOf("") }
     var pendingRemovalAccountId0552 by remember { mutableStateOf<String?>(null) }
-    var ridesSnapshotRunning0526 by remember { mutableStateOf(false) }
     var ridesSnapshotDownloadRunning0527 by remember { mutableStateOf(false) }
     var ridesSnapshotJsonDownloadRunning0531 by remember { mutableStateOf(false) }
     var externalTimelineDownloadRunning0535 by remember { mutableStateOf(false) }
@@ -76,6 +77,40 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
     }
     val accounts = remember(revision) { registry.list() }
     val multiProfileAvailable = WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)
+    val globalHtmlRefresh0679 by BlaBlaGlobalHtmlRefresh0679.state(context).collectAsState()
+    val ridesSnapshotRunning0526 = globalHtmlRefresh0679.running
+
+    LaunchedEffect(globalHtmlRefresh0679.updatedAtMillis, globalHtmlRefresh0679.status) {
+        if (globalHtmlRefresh0679.progress.isNotBlank()) {
+            ridesSnapshotProgress0526 = globalHtmlRefresh0679.progress
+        }
+        val captureId0679 = globalHtmlRefresh0679.captureId
+        if (!globalHtmlRefresh0679.running && captureId0679.isNotBlank()) {
+            val manifest0679 = withContext(Dispatchers.IO) {
+                BlaBlaRidesSnapshotStore0526(context).read(captureId0679)
+            }
+            if (manifest0679 != null) {
+                lastRidesSnapshot0526 = manifest0679
+                ridesSnapshotSummary0526 = buildString {
+                    append("Captura ").append(manifest0679.captureId)
+                    append(" • ").append(manifest0679.result)
+                    manifest0679.profiles.forEach { profile ->
+                        append("\n")
+                        append(profile.displayName.ifBlank { profile.expectedProfileUuid })
+                        append(": ").append(profile.status)
+                        append(" • ").append(profile.cardCountFinal).append(" viagens")
+                        if (profile.errorCode.isNotBlank()) {
+                            append(" • ").append(profile.errorCode)
+                        }
+                    }
+                    append("\nGlobal: ").append(globalHtmlRefresh0679.summary)
+                    if (globalHtmlRefresh0679.errorCode.isNotBlank()) {
+                        append(" • ").append(globalHtmlRefresh0679.errorCode)
+                    }
+                }
+            }
+        }
+    }
 
     Text("Contas e navegadores", style = MaterialTheme.typography.titleLarge)
     Text(
@@ -137,80 +172,23 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
                             "BLABLACAR_HTML_CAPTURE_BUTTON_PRESSED_0617",
                             context.packageName,
                             "accounts=${accounts.size} multiProfileAvailable=$multiProfileAvailable " +
-                                "captureRunning=$ridesSnapshotRunning0526 explicitUserAction=true",
+                                "captureRunning=$ridesSnapshotRunning0526 explicitUserAction=true backgroundWorker0679=true",
                             diagnosticContext = DiagnosticEventContext0507(
                                 parentModule = DiagnosticModule0507.BLABLACAR,
                                 operation = "HTML_CAPTURE",
                                 result = "REQUESTED",
                             ),
                         )
-                        ridesSnapshotRunning0526 = true
                         ridesSnapshotSummary0526 = ""
                         lastRidesSnapshot0526 = null
                         externalTimeline0535 = null
-                        ridesSnapshotProgress0526 = "Preparando captura privada…"
-                        captureScope0657.launch {
-                            try {
-                                val manifest = BlaBlaRidesSnapshotCoordinator0526.captureAll(context) { progress ->
-                                    ridesSnapshotProgress0526 = progress
-                                }
-                                lastRidesSnapshot0526 = manifest
-                                ridesSnapshotSummary0526 = buildString {
-                                    append("Captura ").append(manifest.captureId)
-                                    append(" • ").append(manifest.result)
-                                    manifest.profiles.forEach { profile ->
-                                        append("\n")
-                                        append(profile.displayName.ifBlank { profile.expectedProfileUuid })
-                                        append(": ").append(profile.status)
-                                        append(" • ").append(profile.cardCountFinal).append(" viagens")
-                                        if (profile.errorCode.isNotBlank()) {
-                                            append(" • ").append(profile.errorCode)
-                                        }
-                                    }
-                                }
-                                ridesSnapshotProgress0526 = "Captura finalizada • ${manifest.result}"
-                                UnifiedDebugEventStore.recordAlways(
-                                    "BLABLACAR_HTML_CAPTURE_UI_FINISHED_0617",
-                                    context.packageName,
-                                    "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} " +
-                                        "result=${manifest.result} profiles=${manifest.profiles.size}",
-                                    diagnosticContext = DiagnosticEventContext0507(
-                                        parentModule = DiagnosticModule0507.BLABLACAR,
-                                        operation = "HTML_CAPTURE",
-                                        result = manifest.result,
-                                    ),
-                                )
-                            } catch (cancelled: CancellationException) {
-                                UnifiedDebugEventStore.recordAlways(
-                                    "BLABLACAR_HTML_CAPTURE_UI_CANCELLED_0657",
-                                    context.packageName,
-                                    "reason=ACTIVITY_LIFECYCLE_END notCompositionScope=true buttonReleased=true",
-                                    diagnosticContext = DiagnosticEventContext0507(
-                                        parentModule = DiagnosticModule0507.BLABLACAR,
-                                        operation = "HTML_CAPTURE",
-                                        result = "CANCELLED",
-                                    ),
-                                )
-                                throw cancelled
-                            } catch (error: Throwable) {
-                                ridesSnapshotProgress0526 =
-                                    "Captura interrompida com segurança • " +
-                                        (error.message ?: error.javaClass.simpleName)
-                                UnifiedDebugEventStore.recordAlways(
-                                    "BLABLACAR_HTML_CAPTURE_UI_FAILED_0617",
-                                    context.packageName,
-                                    "error=${error.javaClass.simpleName.take(80)} failClosed=true buttonReleased=true",
-                                    diagnosticContext = DiagnosticEventContext0507(
-                                        parentModule = DiagnosticModule0507.BLABLACAR,
-                                        operation = "HTML_CAPTURE",
-                                        result = "FAILED",
-                                        severity = br.com.mapeiaia.rotacerta.DiagnosticSeverity0507.ERROR,
-                                        errorCode = error.javaClass.simpleName.take(80),
-                                    ),
-                                )
-                            } finally {
-                                ridesSnapshotRunning0526 = false
-                            }
+                        ridesSnapshotProgress0526 = "Preparando captura HTML global em segundo plano…"
+                        val enqueued0679 = BlaBlaGlobalHtmlRefresh0679.enqueue(
+                            context = context,
+                            source = "blablacar_accounts_button",
+                        )
+                        if (!enqueued0679) {
+                            ridesSnapshotProgress0526 = BlaBlaGlobalHtmlRefresh0679.state(context).value.summary
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
