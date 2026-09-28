@@ -2543,6 +2543,49 @@ class LiveRideAccessibilityService : AccessibilityService() {
         stage26CurrentVisualGeneration = newGenerationStage26
     }
 
+    private fun invalidateProvenCardReplacement0683(
+        newGenerationStage26: Long,
+        eventStartedNsStage26: Long,
+        eventPackageStage19: String?,
+        candidateIdentity0683: String,
+    ) {
+        val oldIdentity0683 = universalActiveCardIdentity0683
+        if (::stage36RuntimeAuthority.isInitialized) {
+            stage36RuntimeAuthority.clearVisualLease("stage683_proven_card_replacement")
+        }
+        analyzeJob?.cancel(); analyzeJob = null
+        screenshotFallbackJob127?.cancel(); screenshotFallbackJob127 = null
+        universalRouteJob?.cancel(); universalRouteJob = null
+        stage28RouteGate.invalidateExcept(-1L, -1L)
+        stage19OcrSerial += 1L
+        stage19OcrRerunRequested = false
+        stage21OcrGate.cancelBecauseAccessibilityWon()
+        stage36BindingWorkToken.clear()
+        stage46BindingSurfaceToken.clear()
+        universalScreenGeneration += 1L
+        lastAnalyzedHash = null
+        currentDistanceKm = null
+        universalActiveAddressSignature = null
+        universalActiveCardIdentity0683 = null
+        stage19VisualVerificationPending = false
+        fastFarolStartedAtChecklist13 = System.currentTimeMillis()
+        rememberBubbleReason(
+            "stage683_proven_card_replacement",
+            "Card visual mudou; resultado anterior removido antes de calcular o novo card.",
+        )
+        showOverlay(RadarColor.Default, distanceKm = null)
+        stage26CurrentVisualGeneration = newGenerationStage26
+        FarolMaximumForensicsStage38.record(
+            SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(),
+            "S683_PROVEN_CARD_REPLACEMENT_CLEARED", eventPackageStage19,
+            details = "oldCard=${oldIdentity0683.orEmpty()}; newCard=$candidateIdentity0683; yellowCommitted=true; oldRouteCancelled=true; oldOcrInvalidated=true; noTimer=true",
+        )
+        FarolCausalLatencyStage28.Metrics.increment("stage683ProvenCardReplacementCleared")
+        FarolCausalLatencyStage28.Metrics.sample(
+            "eventToStage683CardReplacementClear",
+            SystemClock.elapsedRealtimeNanos() - eventStartedNsStage26,
+        )
+    }
     private fun collectUniversalAccessibilityBlocksStage19(): List<FarolUniversalVisualPipelineStage19.VisualBlock> =
         collectUniversalAccessibilitySnapshotStage26().blocks
 
