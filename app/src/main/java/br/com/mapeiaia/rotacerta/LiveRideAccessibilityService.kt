@@ -2059,10 +2059,26 @@ class LiveRideAccessibilityService : AccessibilityService() {
             return true
         }
 
+        val candidateCardIdentity0683 = evaluationStage19?.let(FarolCardLifeAuthority0683::identity)
+        val immediateCardReplacement0683 = FarolCardLifeAuthority0683.provesReplacement(
+            activeFinal = finalLeaseStage44.activeFinal,
+            currentIdentity = universalActiveCardIdentity0683,
+            candidateIdentity = candidateCardIdentity0683,
+        )
+        if (immediateCardReplacement0683) {
+            invalidateProvenCardReplacement0683(
+                newGenerationStage26 = admissionStage26.visualGeneration,
+                eventStartedNsStage26 = eventStartedNsStage26,
+                eventPackageStage19 = eventPackageStage19,
+                candidateIdentity0683 = candidateCardIdentity0683.orEmpty(),
+            )
+        }
+
         if (evaluationStage19 != null &&
-            FarolSemanticFinalLeaseStage44.preservesSameSemanticCard(finalLeaseStage44, evaluationStage19.addressSignature)
+            finalLeaseStage44.activeFinal &&
+            FarolCardLifeAuthority0683.sameCard(universalActiveCardIdentity0683, candidateCardIdentity0683)
         ) {
-            // Raw text/layout may change (price, timer, animation) while pickup/destination still identify the same card.
+            // Raw text/layout may change while the ordered visible locations still identify the same card.
             // Preserve the already-final Google decision and absorb the new raw snapshot as processed.
             stage19VisualVerificationPending = false
             stage19OcrSerial += 1L
@@ -2072,7 +2088,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             stage19OcrRerunRequested = false
             FarolMaximumForensicsStage38.record(
                 SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S44_SEMANTIC_SAME_CARD_FINAL_PRESERVED", eventPackageStage19, cycleId = cycleIdStage20,
-                details = "color=${finalLeaseStage44.color}; distance=${finalLeaseStage44.distanceKm ?: -1.0}; signature=${evaluationStage19.addressSignature}; snapshotHash=${collectionStage26.snapshot.hash}; admissionGeneration=${admissionStage26.visualGeneration}",
+                details = "color=${finalLeaseStage44.color}; distance=${finalLeaseStage44.distanceKm ?: -1.0}; cardIdentity=${candidateCardIdentity0683.orEmpty()}; signature=${evaluationStage19.addressSignature}; snapshotHash=${collectionStage26.snapshot.hash}; admissionGeneration=${admissionStage26.visualGeneration}; noTimer=true",
             )
             return true
         }
@@ -2080,13 +2096,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val stablePresenceStage46R4 = observeTargetSurfaceStage46R3(stage46TargetSourcePackage)
         val pendingSemanticLeaseStage635 =
             !finalLeaseStage44.activeFinal &&
-                !universalActiveAddressSignature.isNullOrBlank() &&
+                !universalActiveCardIdentity0683.isNullOrBlank() &&
                 stablePresenceStage46R4.active &&
                 (
                     evaluationStage19 == null ||
-                        DestinationAddressIdentityPolicy.sameDestinationSignatures(
-                            universalActiveAddressSignature,
-                            evaluationStage19.addressSignature,
+                        FarolCardLifeAuthority0683.sameCard(
+                            universalActiveCardIdentity0683,
+                            candidateCardIdentity0683,
                         )
                     )
         val stableActionStage46R4 = FarolStableFinalLatchStage46R4.ambiguousAction(
@@ -2141,7 +2157,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         } else {
             // A different candidate or a surface no longer owned by the confirmed target is real
             // proof. Clear immediately to Yellow/no-km before processing the replacement.
-            if (!immediateAddressReplacementStage46R8) {
+            if (!immediateAddressReplacementStage46R8 && !immediateCardReplacement0683) {
                 invalidateOldVisualBeforeCollectStage26(admissionStage26.visualGeneration, eventStartedNsStage26)
             }
             if (evaluationStage19 != null) {
