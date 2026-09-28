@@ -55,7 +55,8 @@ object FarolRouteAddressSanitizer0684 {
         value = normalizeRoutePunctuation(value)
 
         val parsed = UniversalScreenAddressParser.findAddresses(value)
-            .map(DestinationAddressIdentityPolicy::cleanDisplayAddress)
+            .map(DestinationAddressIdentityPolicy::cleanParserSegment)
+            .map(::normalizeRoutePunctuation)
             .filter(String::isNotBlank)
             .distinctBy { DestinationAddressIdentityPolicy.identity(it).canonical }
 
