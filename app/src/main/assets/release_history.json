@@ -2,6 +2,46 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.679",
+      "build": 5970,
+      "commit": null,
+      "branch": "agent/global-html-refresh-0.1.679",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "O cabeçalho da Agenda ganha uma seta de atualização global imediatamente ao lado do sino; um toque dispara a mesma captura HTML autoritativa de Atualizar BlaBlaCar para todas as contas configuradas.",
+        "A captura global passa a ser executada por WorkManager em foreground dataSync, independente da composição e da Activity, preservando a execução ao trocar de tela, minimizar ou bloquear o aparelho.",
+        "O estado global da captura é persistido e refletido tanto no cabeçalho quanto na tela BlaBlaCar; durante a execução aparece progresso e uma captura incompleta deixa o alerta ⚠️? no topo."
+      ],
+      "fixed": [
+        "O botão Atualizar BlaBlaCar deixa de possuir um caminho de execução próprio ligado ao ciclo de vida da tela e passa a enfileirar exatamente o mesmo executor global usado pela seta.",
+        "Sucesso de 100% deixa de depender apenas do manifesto forense: exige todas as contas observadas, todos os perfis completos, todos os cards-alvo completos e confirmação explícita do commit canônico final.",
+        "Uma falha em qualquer conta, card ou reconciliação final não é apresentada como sucesso; o último canônico válido permanece protegido e o cabeçalho fica em estado de atenção."
+      ],
+      "improved": [
+        "A fronteira single-flight existente permanece serial por conta e por card, sem criar coletor paralelo nem alterar a autoridade HTML.",
+        "A execução usa foreground service do WorkManager com tipo dataSync já autorizado no manifesto, sem depender de expedited quota no Android 16.",
+        "Toques duplicados enquanto a sincronização está ENQUEUED/RUNNING são bloqueados e a ação pode ser repetida após um resultado incompleto."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.678: a captura completa existia apenas dentro da tela BlaBlaCar e não podia ser disparada globalmente pelo cabeçalho.",
+        "0.1.678: o resultado do manifesto podia estar COMPLETE mesmo quando o commit canônico final retornava false, sem um estado global visual de atenção."
+      ],
+      "modulesAffected": [
+        "Cabeçalho",
+        "BlaBlaCar HTML",
+        "WorkManager",
+        "Suas viagens",
+        "Timeline",
+        "Agenda",
+        "Central do Dia",
+        "Diagnóstico",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.678",
       "build": 5969,
       "commit": null,
@@ -28,7 +68,16 @@
         "0.1.677: uma captura real de aproximadamente 20 minutos podia invalidar a própria transação aos 15 minutos e produzir transaction_not_active no finalizador.",
         "0.1.677: viagens completas capturadas após o TTL podiam ficar com liveCommitted0617=false apesar de toda a evidência operacional estar válida."
       ],
-      "modulesAffected": ["Suas viagens", "BlaBlaCar HTML", "Transação HTML", "Timeline", "Agenda", "Commit por card", "Diagnóstico", "Build"],
+      "modulesAffected": [
+        "Suas viagens",
+        "BlaBlaCar HTML",
+        "Transação HTML",
+        "Timeline",
+        "Agenda",
+        "Commit por card",
+        "Diagnóstico",
+        "Build"
+      ],
       "detailsComplete": true
     },
     {
@@ -58,7 +107,15 @@
         "0.1.672-0.1.676: trip_detail.js podia falhar deterministicamente com ReferenceError ao processar duas ou mais paradas.",
         "0.1.676: uma falha definitiva no primeiro card podia impedir a tentativa das dezenas de viagens restantes do mesmo perfil."
       ],
-      "modulesAffected": ["Suas viagens", "BlaBlaCar HTML", "Detalhe da viagem", "Rides index", "Refresh individual", "Diagnóstico", "Build"],
+      "modulesAffected": [
+        "Suas viagens",
+        "BlaBlaCar HTML",
+        "Detalhe da viagem",
+        "Rides index",
+        "Refresh individual",
+        "Diagnóstico",
+        "Build"
+      ],
       "detailsComplete": true
     },
     {
@@ -87,7 +144,14 @@
         "0.1.675: rides-index.json podia conter dezenas de tripIds válidos com tripLinks vazio, bloqueando a conclusão do perfil.",
         "0.1.675: TRIP_DETAIL_HTML_UNVERIFIED não distinguia falha de carregamento, decode, identidade ou DOM vazio."
       ],
-      "modulesAffected": ["Suas viagens", "BlaBlaCar HTML", "Rides index", "Detalhe da viagem", "Diagnóstico", "Build"],
+      "modulesAffected": [
+        "Suas viagens",
+        "BlaBlaCar HTML",
+        "Rides index",
+        "Detalhe da viagem",
+        "Diagnóstico",
+        "Build"
+      ],
       "detailsComplete": true
     },
     {
@@ -113,7 +177,14 @@
       "resolvedRegressions": [
         "0.1.674: o refresh individual podia terminar UNVERIFIED e manter o card congelado quando apenas os detalhes privados de passageiros não eram capturados."
       ],
-      "modulesAffected": ["Viagens", "Central do Dia", "HTML direto", "Passageiros", "Refresh individual", "Build"],
+      "modulesAffected": [
+        "Viagens",
+        "Central do Dia",
+        "HTML direto",
+        "Passageiros",
+        "Refresh individual",
+        "Build"
+      ],
       "detailsComplete": true
     },
     {
@@ -137,7 +208,13 @@
       ],
       "regressions": [],
       "resolvedRegressions": [],
-      "modulesAffected": ["Timeline de passageiros", "Vagas por trecho", "Acompanhamento", "Status operacional", "Build"],
+      "modulesAffected": [
+        "Timeline de passageiros",
+        "Vagas por trecho",
+        "Acompanhamento",
+        "Status operacional",
+        "Build"
+      ],
       "detailsComplete": true
     },
     {
@@ -167,7 +244,17 @@
         "0.1.672: nomes ativos podiam se repetir em vários segmentos e o bloco operacional completo continuava aparecendo abaixo, duplicando informação.",
         "0.1.672: estado operacional implícito Confirmado confundia reserva aprovada com contato já confirmado pelo motorista."
       ],
-      "modulesAffected": ["Viagens", "Central do Dia", "Timeline de passageiros", "Vagas por trecho", "Status operacional", "Mensagens prontas", "GPS", "Backend canônico", "Build"],
+      "modulesAffected": [
+        "Viagens",
+        "Central do Dia",
+        "Timeline de passageiros",
+        "Vagas por trecho",
+        "Status operacional",
+        "Mensagens prontas",
+        "GPS",
+        "Backend canônico",
+        "Build"
+      ],
       "detailsComplete": true
     },
     {
@@ -200,7 +287,16 @@
         "0.1.671: paradas intermediárias sem plannedArrival/plannedDeparture apareciam com travessão mesmo quando o HTML continha horário.",
         "0.1.671: CONFIRM_NOW usava entry.departureAtMillis e podia enviar a hora da primeira saída para um passageiro que embarcaria em outro trecho."
       ],
-      "modulesAffected": ["Viagens", "Central do Dia", "Timeline de passageiros", "Vagas por trecho", "Mensagens prontas", "Coletor HTML", "Agenda canônica", "Build"],
+      "modulesAffected": [
+        "Viagens",
+        "Central do Dia",
+        "Timeline de passageiros",
+        "Vagas por trecho",
+        "Mensagens prontas",
+        "Coletor HTML",
+        "Agenda canônica",
+        "Build"
+      ],
       "detailsComplete": true
     },
     {
@@ -229,7 +325,14 @@
       "resolvedRegressions": [
         "0.1.667-0.1.670: rota cronológica e Vagas por trecho apareciam como duas representações concorrentes no mesmo card."
       ],
-      "modulesAffected": ["Viagens", "Central do Dia", "Timeline de passageiros", "Vagas por trecho", "WhatsApp", "Build"],
+      "modulesAffected": [
+        "Viagens",
+        "Central do Dia",
+        "Timeline de passageiros",
+        "Vagas por trecho",
+        "WhatsApp",
+        "Build"
+      ],
       "detailsComplete": true
     },
     {
