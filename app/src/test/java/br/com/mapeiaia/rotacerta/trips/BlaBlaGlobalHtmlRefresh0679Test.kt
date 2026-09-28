@@ -5,6 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
+// Exact-SHA validation child: implementation is unchanged; this commit is the APK source identity.
 class BlaBlaGlobalHtmlRefresh0679Test {
     private fun manifest(
         profileStatus: String = BlaBlaRidesSnapshotStatus0526.COMPLETE,
