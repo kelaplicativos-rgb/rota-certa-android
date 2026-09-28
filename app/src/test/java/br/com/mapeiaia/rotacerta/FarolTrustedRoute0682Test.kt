@@ -34,6 +34,15 @@ class FarolTrustedRoute0682Test {
     }
 
     @Test
+    fun ambiguousKeylessGeocodeIsRejectedInsteadOfChoosingNearestDriverTarget() {
+        val maps = GoogleMapsService()
+        val saoPaulo = Coordinate(-23.5505, -46.6333)
+        val nearSamePlace = Coordinate(-23.5510, -46.6340)
+        val rio = Coordinate(-22.9068, -43.1729)
+        assertEquals(saoPaulo, maps.selectUnbiasedGeocodeCandidate0682(listOf(saoPaulo, nearSamePlace)))
+        assertEquals(null, maps.selectUnbiasedGeocodeCandidate0682(listOf(saoPaulo, rio)))
+    }
+    @Test
     fun provisionalLocalResultCannotPublishGreenOrRed() {
         val live = source("LiveRideAccessibilityService.kt")
         val start = live.indexOf("private fun applyUniversalPreliminaryColorStage637(")
