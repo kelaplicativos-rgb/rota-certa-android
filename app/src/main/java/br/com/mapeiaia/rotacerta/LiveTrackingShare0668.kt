@@ -10,6 +10,7 @@ import java.net.URL
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
+import java.util.Locale
 import kotlin.math.max
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -33,6 +34,7 @@ internal data class TrackingShareLocal0668(
     val destinationLatitude: Double? = null,
     val destinationLongitude: Double? = null,
     val destinationLabel: String = "",
+    val familyPin: String = "",
     val active: Boolean = true,
 )
 
@@ -60,6 +62,7 @@ internal data class PassengerTrackingLinkRequest0668(
 internal data class TrackingLinkOutcome0668(
     val url: String,
     val reused: Boolean,
+    val familyPin: String = "",
 )
 
 @Serializable
@@ -81,6 +84,8 @@ private data class TrackingShareRequest0668(
     val destinationLatitude: Double? = null,
     val destinationLongitude: Double? = null,
     val destinationLabel: String = "",
+    val familyPin: String = "",
+    val driverUsername: String = "",
 )
 
 @Serializable
@@ -122,6 +127,19 @@ private data class TrackingCloseRequest0668(
 private data class TrackingAck0668(
     val ok: Boolean = false,
     val acceptedThroughMillis: Long = 0L,
+)
+
+@Serializable
+internal data class TrackingFamilyStatus0681(
+    val ok: Boolean = false,
+    val active: Boolean = false,
+    val state: String = "INACTIVE",
+    val username: String = "",
+    val publicPath: String = "",
+    val deviceState: String = "",
+    val gpsState: String = "",
+    val lastDeviceHeartbeatAtMillis: Long = 0L,
+    val lastGpsAtMillis: Long = 0L,
 )
 
 internal class LiveTrackingShareRepository0668(context: Context) {
@@ -170,31 +188,54 @@ internal class LiveTrackingShareManager0668(
     private val appContext = context.applicationContext
     private val repository = LiveTrackingShareRepository0668(appContext)
     private val workRepository = WorkTrackingRepository(appContext)
+    private val familyPointBuffer0681 = LiveFamilyPointBuffer0681(appContext)
 
     fun hasActiveShares(): Boolean = repository.hasActiveShares()
+
+    fun recordLivePoint0681(point: WorkTrackPoint) {
+        if (repository.hasActiveShares()) familyPointBuffer0681.append(point)
+    }
+
+    fun familyPin0681(): String? = repository.familyShare()?.familyPin?.takeIf { it.matches(Regex("\\d{6}")) }
+
+    suspend fun familyStatus0681(): TrackingFamilyStatus0681 = withContext(Dispatchers.IO) {
+        val settings = validatedSettings()
+        TrackingRemoteClient0668(settings).familyStatus0681()
+    }
 
     fun hasPendingPoints(): Boolean {
         val session = repository.session() ?: return false
         if (!session.active || !repository.hasActiveShares()) return false
-        return workRepository.readAllPoints().any {
+        return familyPointBuffer0681.readAll().any {
             it.recordedAtMillis >= session.startedAtMillis && it.recordedAtMillis > session.lastUploadedAtMillis
         }
     }
 
     fun familyShareUrl(): String? {
         val settings = TripStore(appContext).onlineSettings()
-        val share = repository.familyShare() ?: return null
-        return trackingSharePublicUrl0668(settings.publicBaseUrl, share.token)
+        repository.familyShare() ?: return null
+        return trackingFamilyPublicUrl0681(settings.publicBaseUrl, settings.driverUsername)
     }
 
     suspend fun createFamilyLink(): TrackingLinkOutcome0668 = withContext(Dispatchers.IO) {
         val settings = validatedSettings()
-        val existing = repository.familyShare()
-        if (existing != null) {
+        val permanentUrl = trackingFamilyPublicUrl0681(settings.publicBaseUrl, settings.driverUsername)
+        val existingRaw = repository.familyShare()
+        if (existingRaw != null) {
+            val existing = if (existingRaw.familyPin.matches(Regex("\\d{6}"))) {
+                existingRaw
+            } else {
+                existingRaw.copy(familyPin = secureFamilyPin0681())
+                    .also { upgraded ->
+                        val session = repository.session() ?: error("Sessão de rastreamento não disponível.")
+                        repository.save(session.copy(shares = session.shares.map { if (it.token == upgraded.token) upgraded else it }))
+                    }
+            }
             ensureSessionAndShareRemote(settings, existing)
             return@withContext TrackingLinkOutcome0668(
-                url = trackingSharePublicUrl0668(settings.publicBaseUrl, existing.token),
+                url = permanentUrl,
                 reused = true,
+                familyPin = existing.familyPin,
             )
         }
 
@@ -205,12 +246,14 @@ internal class LiveTrackingShareManager0668(
             scope = TrackingShareScope0668.FAMILY,
             createdAtMillis = now,
             expiresAtMillis = PersistentTrackingPolicy0680.familyExpiryMillis(),
+            familyPin = secureFamilyPin0681(),
         )
         repository.save(session.copy(shares = session.shares + share))
         ensureSessionAndShareRemote(settings, share)
         TrackingLinkOutcome0668(
-            url = trackingSharePublicUrl0668(settings.publicBaseUrl, share.token),
+            url = permanentUrl,
             reused = false,
+            familyPin = share.familyPin,
         )
     }
 
@@ -259,7 +302,7 @@ internal class LiveTrackingShareManager0668(
         val session = repository.session() ?: return@withContext false
         if (!session.active || !repository.hasActiveShares()) return@withContext false
         val settings = runCatching { validatedSettings() }.getOrNull() ?: return@withContext false
-        val pending = workRepository.readAllPoints()
+        val pending = familyPointBuffer0681.readAll()
             .asSequence()
             .filter { it.recordedAtMillis >= session.startedAtMillis && it.recordedAtMillis > session.lastUploadedAtMillis }
             .sortedBy { it.recordedAtMillis }
@@ -394,7 +437,7 @@ internal class LiveTrackingShareManager0668(
 
     private suspend fun ensureSessionAndShareRemote(settings: TripOnlineSettings, share: TrackingShareLocal0668) {
         val session = repository.session() ?: error("Sessão de rastreamento não disponível.")
-        ensureSessionRemote(settings, session)
+        ensureSessionRemote(settings, session, force = true)
         TrackingRemoteClient0668(settings).createShare(
             TrackingShareRequest0668(
                 sessionId = session.sessionId,
@@ -408,12 +451,18 @@ internal class LiveTrackingShareManager0668(
                 destinationLatitude = share.destinationLatitude,
                 destinationLongitude = share.destinationLongitude,
                 destinationLabel = share.destinationLabel,
+                familyPin = share.familyPin,
+                driverUsername = settings.driverUsername,
             ),
         )
     }
 
-    private suspend fun ensureSessionRemote(settings: TripOnlineSettings, session: TrackingSessionLocal0668) {
-        if (session.serverRegistered) return
+    private suspend fun ensureSessionRemote(
+        settings: TripOnlineSettings,
+        session: TrackingSessionLocal0668,
+        force: Boolean = false,
+    ) {
+        if (session.serverRegistered && !force) return
         val response = TrackingRemoteClient0668(settings).createSession(
             TrackingSessionRequest0668(session.sessionId, session.startedAtMillis),
         )
@@ -437,7 +486,6 @@ internal class LiveTrackingShareManager0668(
     }
 
     companion object {
-        private const val FAMILY_SHARE_DURATION_MILLIS = 36L * 60L * 60L * 1000L
         private const val MIN_PASSENGER_SHARE_DURATION_MILLIS = 30L * 60L * 1000L
         private const val MAX_PASSENGER_SHARE_DURATION_MILLIS = 24L * 60L * 60L * 1000L
         private const val MAX_UPLOAD_BATCH = 100
@@ -448,6 +496,9 @@ private class TrackingRemoteClient0668(
     private val settings: TripOnlineSettings,
 ) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
+    suspend fun familyStatus0681(): TrackingFamilyStatus0681 =
+        get("/v1/driver/tracking/family/status")
 
     suspend fun createSession(body: TrackingSessionRequest0668): TrackingAck0668 =
         post("/v1/driver/tracking/sessions", json.encodeToString(body))
@@ -466,6 +517,31 @@ private class TrackingRemoteClient0668(
 
     suspend fun closeSession(body: TrackingCloseRequest0668): TrackingAck0668 =
         post("/v1/driver/tracking/sessions/close", json.encodeToString(body))
+
+    private suspend inline fun <reified T> get(path: String): T = withContext(Dispatchers.IO) {
+        var connection: HttpURLConnection? = null
+        try {
+            val opened = URL(settings.apiBaseUrl.trimEnd('/') + path).openConnection() as HttpURLConnection
+            connection = opened
+            opened.requestMethod = "GET"
+            opened.connectTimeout = 12_000
+            opened.readTimeout = 12_000
+            opened.setRequestProperty("Accept", "application/json")
+            opened.setRequestProperty("X-Rota-Certa-Driver-Token", settings.driverToken)
+            if (settings.driverUsername.isNotBlank()) {
+                opened.setRequestProperty("X-Rota-Certa-Driver-Username", settings.driverUsername)
+            }
+            val status = opened.responseCode
+            val response = (if (status in 200..299) opened.inputStream else opened.errorStream)
+                ?.bufferedReader(Charsets.UTF_8)
+                ?.use { it.readText() }
+                .orEmpty()
+            check(status in 200..299) { "Servidor de rastreamento respondeu HTTP $status." }
+            json.decodeFromString<T>(response)
+        } finally {
+            connection?.disconnect()
+        }
+    }
 
     private suspend inline fun <reified T> post(path: String, body: String): T = withContext(Dispatchers.IO) {
         var connection: HttpURLConnection? = null
@@ -513,6 +589,20 @@ internal fun trackingSharePublicUrl0668(publicBaseUrl: String, token: String): S
     require(publicBaseUrl.startsWith("https://")) { "Endereço público inválido." }
     require(token.length >= 22) { "Token de rastreamento inválido." }
     return publicBaseUrl.trimEnd('/') + "/tracking.html#" + token
+}
+
+internal fun trackingFamilyPublicUrl0681(publicBaseUrl: String, driverUsername: String): String {
+    require(publicBaseUrl.startsWith("https://")) { "Endereço público inválido." }
+    val username = driverUsername.trim().lowercase(Locale.ROOT)
+        .replace(Regex("[^a-z0-9_-]+"), "-")
+        .trim('-')
+    require(username.isNotBlank()) { "Identidade pública do motorista não configurada." }
+    return publicBaseUrl.trimEnd('/') + "/" + username + "/gps"
+}
+
+internal fun secureFamilyPin0681(): String {
+    val value = SecureRandom().nextInt(1_000_000)
+    return value.toString().padStart(6, '0')
 }
 
 internal fun shareTrackingLink0668(
