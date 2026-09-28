@@ -12,9 +12,9 @@ import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.webkit.WebViewFeature
 import androidx.work.workDataOf
 import br.com.mapeiaia.rotacerta.DiagnosticEventContext0507
 import br.com.mapeiaia.rotacerta.DiagnosticModule0507
@@ -135,6 +135,18 @@ internal object BlaBlaGlobalHtmlRefresh0679 {
             )
             return false
         }
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+            publish(
+                app,
+                BlaBlaGlobalHtmlRefreshState0679(
+                    status = BlaBlaGlobalHtmlRefreshStatus0679.INCOMPLETE,
+                    progress = "Perfis isolados do WebView indisponíveis neste aparelho.",
+                    errorCode = "MULTI_PROFILE_UNAVAILABLE",
+                    updatedAtMillis = System.currentTimeMillis(),
+                ),
+            )
+            return false
+        }
         val accountCount = BlaBlaDynamicAccountRegistry(app).list().size
         if (accountCount <= 0) {
             publish(
@@ -161,7 +173,6 @@ internal object BlaBlaGlobalHtmlRefresh0679 {
         )
         val request = OneTimeWorkRequestBuilder<BlaBlaGlobalHtmlRefreshWorker0679>()
             .setInputData(workDataOf(INPUT_SOURCE to source.take(80)))
-            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
         WorkManager.getInstance(app).enqueueUniqueWork(
             UNIQUE_WORK,
