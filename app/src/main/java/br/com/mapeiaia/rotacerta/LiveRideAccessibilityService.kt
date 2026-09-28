@@ -6265,7 +6265,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
         destinations: List<Coordinate>,
     ): List<Double?>? {
         if (originAddress.isBlank() || destinations.isEmpty()) return null
-        val origin = googleMapsService.cachedFarolCoordinate(originAddress) ?: return null
+        val approved0684 = FarolRouteAddressSanitizer0684.sanitize(originAddress)
+            .takeIf { it.accepted }?.sanitized ?: return null
+        val origin = googleMapsService.cachedFarolCoordinate(approved0684) ?: return null
         return destinations.map { GeoDistance.kilometers(origin, it) }
     }
 
@@ -6274,8 +6276,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
         destinations: List<Coordinate>,
     ): List<Double?>? {
         if (originAddress.isBlank() || destinations.isEmpty()) return null
+        val approved0684 = FarolRouteAddressSanitizer0684.sanitize(originAddress)
+            .takeIf { it.accepted }?.sanitized ?: return null
         val started = SystemClock.elapsedRealtimeNanos()
-        val origin = googleMapsService.cachedFarolCoordinate(originAddress) ?: run {
+        val origin = googleMapsService.cachedFarolCoordinate(approved0684) ?: run {
             FarolCausalLatencyStage28.Metrics.increment("geoCacheMisses")
             return null
         }
@@ -6295,13 +6299,15 @@ class LiveRideAccessibilityService : AccessibilityService() {
         apiKey: String,
     ): List<Double?> {
         if (originAddress.isBlank() || destinations.isEmpty()) return List(destinations.size) { null }
+        val approved0684 = FarolRouteAddressSanitizer0684.sanitize(originAddress)
+            .takeIf { it.accepted }?.sanitized ?: return List(destinations.size) { null }
         val started = SystemClock.elapsedRealtimeNanos()
         val runtimeToken0634 = stage36RuntimeAuthority.captureWorkToken()
         stage36RuntimeAuthority.markProcessing(runtimeToken0634, FarolRuntimeAuthorityStage36.ProcessingState.COORDINATE)
-        val cached = googleMapsService.cachedFarolCoordinate(originAddress)
+        val cached = googleMapsService.cachedFarolCoordinate(approved0684)
         // Stage634 compatibility contract: resolveFarolCoordinate( is still the fallback semantics
         // encapsulated by the Stage640 instant resolver; only the cold-path ordering changed.
-        val origin = cached ?: googleMapsService.resolveFarolCoordinateInstant642(originAddress, destinations, apiKey)
+        val origin = cached ?: googleMapsService.resolveFarolCoordinateInstant642(approved0684, destinations, apiKey)
         stage36RuntimeAuthority.markProcessing(runtimeToken0634, FarolRuntimeAuthorityStage36.ProcessingState.DISTANCE)
         if (cached != null) FarolCausalLatencyStage28.Metrics.increment("geoCacheHits")
         else FarolCausalLatencyStage28.Metrics.increment("geoCacheMisses")
