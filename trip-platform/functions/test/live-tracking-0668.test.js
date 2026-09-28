@@ -11,6 +11,7 @@ const {
   passengerDistanceToDestinationMeters0669,
   shouldClosePassengerShare0668,
   trackingShareDocId0668,
+  trackingShareExpired0680,
 } = require("../live-tracking-0668");
 
 test("passenger projection never exposes points from before share creation", () => {
@@ -198,4 +199,24 @@ test("incremental public route floor never crosses passenger privacy boundary", 
   assert.equal(trackingQueryFloor0670(passenger, session, 7_500), 7_500);
   assert.equal(trackingQueryFloor0670(passenger, session, 3_000), 5_000);
   assert.equal(trackingQueryFloor0670(family, session, 7_500), 7_500);
+});
+
+
+test("family tracking is revocation-driven while passenger tracking still expires", () => {
+  const now = 20_000_000;
+  assert.equal(trackingShareExpired0680({
+    scope:"FAMILY",
+    active:true,
+    expiresAtMillis:now - 1,
+  }, now), false);
+  assert.equal(trackingShareExpired0680({
+    scope:"PASSENGER",
+    active:true,
+    expiresAtMillis:now - 1,
+  }, now), true);
+  assert.equal(trackingShareExpired0680({
+    scope:"PASSENGER",
+    active:true,
+    expiresAtMillis:now + 1,
+  }, now), false);
 });
