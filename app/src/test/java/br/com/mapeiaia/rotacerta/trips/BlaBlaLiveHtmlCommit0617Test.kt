@@ -6,7 +6,7 @@ import kotlin.test.assertTrue
 
 class BlaBlaLiveHtmlCommit0617Test {
     @Test
-    fun profilesRunConcurrentlyButEachAccountKeepsSequentialTripNavigation0617() {
+    fun profilesRunSeriallyAndEachAccountKeepsSequentialTripNavigation0658() {
         val coordinator = File(
             "src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt",
         ).readText()
@@ -14,10 +14,9 @@ class BlaBlaLiveHtmlCommit0617Test {
             "src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt",
         ).readText()
 
-        assertTrue(coordinator.contains("coroutineScope"))
-        assertTrue(coordinator.contains("accounts.mapIndexed"))
-        assertTrue(coordinator.contains("async {"))
-        assertTrue(coordinator.contains(".awaitAll()"))
+        assertTrue(coordinator.contains("accounts.forEachIndexed"))
+        assertTrue(coordinator.contains("captura serial segura"))
+        assertFalse(coordinator.contains("accounts.mapIndexed"))
         assertTrue(capture.contains("for ((index, ride) in futureRides.withIndex())"))
         assertTrue(capture.contains("liveCardCommitMutex0617"))
     }
@@ -97,7 +96,9 @@ class BlaBlaLiveHtmlCommit0617Test {
         assertTrue(source.contains("webView = createUnifiedCaptureWebView0621(app, account)"))
         assertTrue(source.contains("BLABLACAR_HTML_TRANSPORT_RECOVERED_0621"))
         assertTrue(source.contains("BLABLACAR_HTML_TRANSPORT_RECOVERY_EXHAUSTED_0621"))
-        assertTrue(source.contains("STOP_PROFILE_PRESERVE_CANONICAL"))
+        assertTrue(source.contains("action=SKIP_FAILED_CARD_CONTINUE_PROFILE"))
+        assertTrue(source.contains("remainingUnattempted=0"))
+        assertFalse(source.contains("STOP_PROFILE_PRESERVE_CANONICAL"))
         assertTrue(source.contains("cascadePrevented=true"))
         assertTrue(source.contains("unattemptedDueTransport0621"))
         assertTrue(source.contains("TRANSPORT_RECOVERY_ATTEMPTS_0621 = 2"))
