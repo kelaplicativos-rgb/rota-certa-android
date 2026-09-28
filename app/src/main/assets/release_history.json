@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.683",
+      "build": 5974,
+      "commit": null,
+      "branch": "agent/passenger-single-store-invite-only-0.1.683",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Passageiros passam a ter uma única fonte canônica online na coleção passengers, com autorização por motorista vinculada ao próprio passageiro.",
+        "O acesso à Agenda passa a exigir convite ou indicação seguida de aprovação explícita do motorista; sincronizar o diretório local deixa de conceder acesso.",
+        "A administração individual passa a oferecer Limpar senha, sem gerar senha temporária, reparar acesso ou editar WhatsApp de acesso nessa área."
+      ],
+      "fixed": [
+        "Fechado o caminho legado em que a sessão por PIN podia criar autorização pública sem convite aprovado.",
+        "A limpeza de senha invalida sessões existentes e força o próprio passageiro aprovado a cadastrar uma nova senha no próximo acesso.",
+        "A migração 0.1.683 revoga todos os acessos anteriores, apaga senhas e sessões antigas e consolida identidades duplicadas pelo passengerId sem apagar histórico de viagens."
+      ],
+      "improved": [
+        "Autorizações carregam versão de política, data e origem da aprovação, impedindo registros AUTHORIZED legados de voltarem a valer por sincronização.",
+        "Indicações ficam pendentes até aprovação do motorista e preservam quem indicou o passageiro.",
+        "O reset global é uma migração única de implantação e não aparece como botão permanente no aplicativo."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.682 e anteriores: sincronização do diretório podia transformar cadastro local em acesso AUTHORIZED.",
+        "0.1.682 e anteriores: credenciais e identidades estavam distribuídas entre múltiplas coleções de passageiros."
+      ],
+      "modulesAffected": [
+        "Passageiros",
+        "Viagem Certa",
+        "Agenda",
+        "Autenticação",
+        "Backend",
+        "Migração",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.682",
       "build": 5973,
       "commit": null,
