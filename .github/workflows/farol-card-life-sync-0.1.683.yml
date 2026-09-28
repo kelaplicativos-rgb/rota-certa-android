@@ -1,0 +1,136 @@
+name: Farol card life sync 0.1.683 APK
+
+on:
+  push:
+    branches:
+      - 'agent/farol-card-life-sync-0.1.683'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: farol-card-life-0683-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: agent/farol-card-life-sync-0.1.683
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Prove exact source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
+          grep -Fq 'releaseVersionName = "0.1.683"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 5_974' app/build.gradle.kts
+          grep -Fq '"version": "0.1.683"' app/src/main/assets/release_history.json
+          grep -Fq 'FAROL_CARD_LIFE_AUTHORITY_0683' app/src/main/java/br/com/mapeiaia/rotacerta/FarolCardLifeAuthority0683.kt
+          grep -Fq 'NO_TIMER_CARD_OWNS_BUBBLE_0683' app/src/main/java/br/com/mapeiaia/rotacerta/FarolCardLifeAuthority0683.kt
+          grep -Fq 'S683_PROVEN_CARD_REPLACEMENT_CLEARED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'S683_AMBIGUOUS_SURFACE_FINAL_PRESERVED_FOR_VERIFY' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'S683_PARTIAL_NO_ADDRESS_ESCALATED_TO_FULL_SURFACE' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          ! grep -Fq 'DECISION_VISUAL_TTL_MILLIS_0682' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          ! grep -Fq 'scheduleDecisionBubbleExpiry0682' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'trustedDirectDrivingDistancesFromAddressKm0682' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
+          git diff --check
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run focused FAROL and preserved runtime regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.FarolCardLifeAuthority0683Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolTrustedRoute0682Test' \
+            --tests 'br.com.mapeiaia.rotacerta.PermanentFamilyGps0681Test' \
+            --tests 'br.com.mapeiaia.rotacerta.PersistentLocationCore0680Test' \
+            --tests 'br.com.mapeiaia.rotacerta.LiveTrackingShare0668Test' \
+            --tests 'br.com.mapeiaia.rotacerta.DirectionalProximityAlertEngineChecklist5Test' \
+            --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0683-tests.log
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0683-assemble.log
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
+
+      - name: Prove APK identity signing runtime markers and final SHA
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/android-0683-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/android-0683-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/android-0683-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5974'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.683'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/android-0683-apksigner.txt
+          grep -Fq 'Verified' /tmp/android-0683-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0683-dex-strings.txt
+          grep -Fq "$ROTA_CERTA_GIT_SHA" /tmp/android-0683-dex-strings.txt
+          grep -Fq 'FAROL_CARD_LIFE_AUTHORITY_0683' /tmp/android-0683-dex-strings.txt
+          grep -Fq 'S683_PROVEN_CARD_REPLACEMENT_CLEARED' /tmp/android-0683-dex-strings.txt
+          grep -Fq 'S683_AMBIGUOUS_SURFACE_FINAL_PRESERVED_FOR_VERIFY' /tmp/android-0683-dex-strings.txt
+          grep -Fq 'TRUSTED_DIRECT_0682' /tmp/android-0683-dex-strings.txt
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.683-5974-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.683"
+            echo "versionCode=5974"
+            echo "branch=agent/farol-card-life-sync-0.1.683"
+            echo "commit=$ROTA_CERTA_GIT_SHA"
+            echo "deviceTarget=Samsung SM-S911B / Android 16"
+            echo "bubbleAuthority=CARD_LIFETIME"
+            echo "visualTTL=REMOVED"
+            echo "sameCardFinal=PERSISTENT"
+            echo "provenCardReplacement=CLEAR_BEFORE_NEW_ROUTE"
+            echo "ambiguousMutation=PRESERVE_UNTIL_PROOF"
+            echo "trustedRoute0682=PRESERVED"
+            echo "legacyFallback=PRESERVED"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee farol-card-life-0683-proof.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-farol-card-life-0.1.683-${{ github.sha }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            farol-card-life-0683-proof.txt
+            /tmp/android-0683-tests.log
+            /tmp/android-0683-assemble.log
+            /tmp/android-0683-aapt.txt
+            /tmp/android-0683-apksigner.txt
+            /tmp/android-0683-zip-integrity.txt
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30
