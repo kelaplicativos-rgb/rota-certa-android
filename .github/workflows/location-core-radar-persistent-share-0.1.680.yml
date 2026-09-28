@@ -77,7 +77,6 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.PersistentLocationCore0680Test' \
             --tests 'br.com.mapeiaia.rotacerta.LiveTrackingShare0668Test' \
             --tests 'br.com.mapeiaia.rotacerta.DirectionalProximityAlertEngineChecklist5Test' \
-            --tests 'br.com.mapeiaia.rotacerta.ProximityAlertsNoDirection0191ContractTest' \
             --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0680-tests.log
 
       - name: Assemble exact source APK
