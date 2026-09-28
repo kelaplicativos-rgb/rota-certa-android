@@ -756,6 +756,7 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
         return try {
             val accountResults0658 = buildList {
                 accounts.forEachIndexed { index, account ->
+                    BlaBlaHtmlCaptureTransaction0610.heartbeat(app, transaction)
                     onProgress(
                         "Perfil ${index + 1}/${accounts.size} • ${account.displayLabel} • captura serial segura",
                     )
@@ -771,7 +772,9 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
                         account = account,
                         captureId = manifest.captureId,
                         onProgress = onProgress,
+                        transaction0610 = transaction,
                     )
+                    BlaBlaHtmlCaptureTransaction0610.heartbeat(app, transaction)
                     add(account to result)
                 }
             }
@@ -781,6 +784,7 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
             manifest = store.read(manifest.captureId) ?: manifest
 
             val finalized = store.finish(manifest.captureId) ?: manifest
+            BlaBlaHtmlCaptureTransaction0610.heartbeat(app, transaction)
             val committed = withContext(Dispatchers.IO) {
                 runCatching {
                     BlaBlaUnifiedHtmlCapture0605.commitCompletedCapture0610(
@@ -788,6 +792,7 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
                         accounts = accounts,
                         manifest = finalized,
                         stagedByAccount = stagedByAccount,
+                        expectedTransaction0610 = transaction,
                     )
                 }
             }.getOrElse { error ->
@@ -807,7 +812,7 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
             )
             finalized
         } finally {
-            BlaBlaHtmlCaptureTransaction0610.end(app, manifest.captureId)
+            BlaBlaHtmlCaptureTransaction0610.end(app, transaction)
             UnifiedDebugEventStore.recordAlways(
                 "BLABLACAR_GLOBAL_HTML_TRANSACTION_FINISHED_0610",
                 app.packageName,
