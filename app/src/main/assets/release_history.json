@@ -2,6 +2,43 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.680",
+      "build": 5971,
+      "commit": null,
+      "branch": "agent/location-core-radar-persistent-share-0.1.680",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "O WorkTrackingService passa a ser o núcleo único de GPS para rastreamento ao vivo e avaliação de radares/alertas quando está ativo.",
+        "O link familiar explícito passa a permanecer ativo até revogação do motorista, preservando o mesmo token e mantendo os links de passageiro temporários.",
+        "Radares e alertas podem ser avaliados no serviço foreground em segundo plano, com aviso sonoro e notificação de alta prioridade independentes da tela e da leitura do FAROL.",
+        "Uma intenção de rastreamento já ativa pode ser restaurada após BOOT_COMPLETED ou atualização do aplicativo, respeitando permissões e controles do Android."
+      ],
+      "fixed": [
+        "Eliminada a expiração automática de 36 horas do compartilhamento familiar.",
+        "Quando o núcleo compartilhado está ativo, o serviço de acessibilidade deixa de abrir um segundo listener GPS apenas para aproximação."
+      ],
+      "improved": [
+        "O mesmo ponto Fused Location de cinco segundos alimenta trilha, heartbeat, compartilhamento e motor de aproximação.",
+        "Forçar parada, revogar localização, desligar GPS e Encerrar compartilhamento continuam sendo autoridades explícitas do usuário/sistema."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.679: o link familiar ainda herdava o teto de 36 horas no aparelho e no backend.",
+        "0.1.679: rastreamento ao vivo e radar podiam manter listeners GPS independentes quando ambos estavam ativos."
+      ],
+      "modulesAffected": [
+        "Rastreamento ao vivo",
+        "Acompanhamento familiar",
+        "Radares",
+        "Alertas de proximidade",
+        "Foreground Service",
+        "Backend",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.679",
       "build": 5970,
       "commit": null,
