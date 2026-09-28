@@ -149,6 +149,11 @@ function trackingShareDocId0668(token) {
   return sha256Hex0668("tracking:" + token);
 }
 
+function trackingShareExpired0680(share, nowMillis = Date.now()) {
+  if (!share || share.scope !== "PASSENGER") return false;
+  return Number(share.expiresAtMillis || 0) <= nowMillis;
+}
+
 function trackingJson0668(res, status, body) {
   res.status(status);
   res.set("Content-Type", "application/json; charset=utf-8");
@@ -448,7 +453,7 @@ function createLiveTracking0668({ db, requireDriver }) {
     if (!shareSnap.exists) return trackingFail0668(res, 404, "tracking_share_not_found", "Link de acompanhamento não encontrado.");
     const share = shareSnap.data();
     const now = Date.now();
-    const shareExpired = share.scope === "PASSENGER" && Number(share.expiresAtMillis || 0) <= now;
+    const shareExpired = trackingShareExpired0680(share, now);
     if (!share.active || shareExpired) {
       return trackingFail0668(res, 410, "tracking_share_ended", "Este acompanhamento foi encerrado.");
     }
@@ -531,4 +536,5 @@ module.exports = {
   passengerDistanceToDestinationMeters0669,
   shouldClosePassengerShare0668,
   trackingShareDocId0668,
+  trackingShareExpired0680,
 };
