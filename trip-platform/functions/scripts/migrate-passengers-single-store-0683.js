@@ -4,11 +4,7 @@ const crypto = require("crypto");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 
-initializeApp({
-  projectId: process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT || "rota-certa-7ccc8",
-});
-
-const db = getFirestore();
+let db = null;
 const MIGRATION_ID = "passenger_single_store_0683";
 const POLICY_VERSION = 683;
 const PASSENGER_COLLECTION = "passengers";
@@ -67,12 +63,12 @@ async function deleteCollection(name) {
   return snapshot.size;
 }
 
-async function main() {
+async function runPassengerSingleStoreMigration0683(firestore) {
+  db = firestore;
   const markerRef = db.collection("systemMigrations").doc(MIGRATION_ID);
   const marker = await markerRef.get();
   if (marker.exists && marker.data().completed === true) {
-    console.log(JSON.stringify({ migration: MIGRATION_ID, skipped: true, reason: "already_completed", summary: marker.data().summary || {} }));
-    return;
+    return { migration: MIGRATION_ID, skipped: true, reason: "already_completed", summary: marker.data().summary || {} };
   }
 
   const startedAtMillis = Date.now();
@@ -322,18 +318,28 @@ async function main() {
     summary,
   }, { merge: true });
 
-  console.log(JSON.stringify({ migration: MIGRATION_ID, completed: true, summary }));
+  return { migration: MIGRATION_ID, completed: true, summary };
 }
 
-main().catch(async (error) => {
-  console.error(error && error.stack ? error.stack : error);
-  try {
-    await db.collection("systemMigrations").doc(MIGRATION_ID).set({
-      completed: false,
-      failedAtMillis: Date.now(),
-      error: clean(error && error.message, 500),
-      updatedAtMillis: Date.now(),
-    }, { merge: true });
-  } catch (_) {}
-  process.exitCode = 1;
-});
+module.exports = { runPassengerSingleStoreMigration0683 };
+
+if (require.main === module) {
+  initializeApp({
+    projectId: process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT || "rota-certa-7ccc8",
+  });
+  const firestore = getFirestore();
+  runPassengerSingleStoreMigration0683(firestore)
+    .then((result) => console.log(JSON.stringify(result)))
+    .catch(async (error) => {
+      console.error(error && error.stack ? error.stack : error);
+      try {
+        await firestore.collection("systemMigrations").doc(MIGRATION_ID).set({
+          completed: false,
+          failedAtMillis: Date.now(),
+          error: clean(error && error.message, 500),
+          updatedAtMillis: Date.now(),
+        }, { merge: true });
+      } catch (_) {}
+      process.exitCode = 1;
+    });
+}
