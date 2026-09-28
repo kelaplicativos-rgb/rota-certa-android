@@ -179,6 +179,14 @@ class SettingsRepository(private val context: Context) {
             settings.homeCoordinate?.let { prefs[homeCoordinate] = json.encodeToString(it) } ?: prefs.remove(homeCoordinate)
             settings.alternativeCoordinate?.let { prefs[alternativeCoordinate] = json.encodeToString(it) } ?: prefs.remove(alternativeCoordinate)
         }
+        if (settings.proximityAlertsEnabled) {
+            val hasLocationTargets0680 =
+                savedPlaces.first().any { it.type == SavedPlaceType.ProximityAlert } ||
+                    importedRadars.first().isNotEmpty()
+            if (hasLocationTargets0680) {
+                LocationCoreRuntime0680.ensureStarted(context)
+            }
+        }
         if (seatAllocationChanged) {
             publishGlobalExtraSeatsNow0520(
                 rotaCertaSeatAllocation = committedSeatAllocation,
