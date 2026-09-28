@@ -248,11 +248,11 @@ internal object BlaBlaGlobalHtmlRefresh0679 {
 
 class BlaBlaGlobalHtmlRefreshWorker0679(
     appContext: Context,
-    parameters: WorkerParameters,
-) : CoroutineWorker(appContext, parameters) {
+    private val parameters0679: WorkerParameters,
+) : CoroutineWorker(appContext, parameters0679) {
     override suspend fun doWork(): Result {
         val app = applicationContext
-        val source = BlaBlaGlobalHtmlRefresh0679.inputSource(workerParams)
+        val source = BlaBlaGlobalHtmlRefresh0679.inputSource(parameters0679)
         val expectedAccounts = BlaBlaDynamicAccountRegistry(app).list().size
         if (expectedAccounts <= 0) {
             BlaBlaGlobalHtmlRefresh0679.publish(
