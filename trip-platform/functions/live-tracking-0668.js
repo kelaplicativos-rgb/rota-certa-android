@@ -448,14 +448,15 @@ function createLiveTracking0668({ db, requireDriver }) {
     if (!shareSnap.exists) return trackingFail0668(res, 404, "tracking_share_not_found", "Link de acompanhamento não encontrado.");
     const share = shareSnap.data();
     const now = Date.now();
-    if (!share.active || Number(share.expiresAtMillis || 0) <= now) {
+    const shareExpired = share.scope === "PASSENGER" && Number(share.expiresAtMillis || 0) <= now;
+    if (!share.active || shareExpired) {
       return trackingFail0668(res, 410, "tracking_share_ended", "Este acompanhamento foi encerrado.");
     }
     const sessionRef = db.collection("tripTrackingSessions").doc(cleanText0668(share.sessionDocId, 120));
     const sessionSnap = await sessionRef.get();
     if (!sessionSnap.exists) return trackingFail0668(res, 410, "tracking_session_ended", "Sessão de acompanhamento indisponível.");
     const session = sessionSnap.data();
-    if (!session.active || Number(session.expiresAtMillis || 0) <= now) {
+    if (!session.active) {
       return trackingFail0668(res, 410, "tracking_session_ended", "Este acompanhamento foi encerrado.");
     }
 
