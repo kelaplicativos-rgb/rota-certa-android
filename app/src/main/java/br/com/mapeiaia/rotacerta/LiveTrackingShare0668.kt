@@ -204,7 +204,7 @@ internal class LiveTrackingShareManager0668(
             token = secureTrackingToken0668(),
             scope = TrackingShareScope0668.FAMILY,
             createdAtMillis = now,
-            expiresAtMillis = now + FAMILY_SHARE_DURATION_MILLIS,
+            expiresAtMillis = PersistentTrackingPolicy0680.familyExpiryMillis(),
         )
         repository.save(session.copy(shares = session.shares + share))
         ensureSessionAndShareRemote(settings, share)
