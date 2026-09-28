@@ -615,8 +615,8 @@ function createLiveTracking0668({ db, requireDriver }) {
       return trackingFail0668(res, 410, "tracking_family_inactive", "O motorista não está compartilhando a localização.");
     }
     const alias = aliasSnap.data();
-    if (alias.shareDocId !== accessSnap.data().shareDocId) {
-      return trackingFail0668(res, 401, "tracking_family_session_rotated", "A autorização precisa ser renovada.");
+    if (alias.driverKey !== accessSnap.data().driverKey) {
+      return trackingFail0668(res, 401, "tracking_family_session_invalid", "Autorização familiar inválida.");
     }
     const shareSnap = await db.collection("tripTrackingShares").doc(cleanText0668(alias.shareDocId, 128)).get();
     if (!shareSnap.exists || !shareSnap.data().active) {
