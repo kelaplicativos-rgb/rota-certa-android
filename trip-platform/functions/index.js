@@ -6240,64 +6240,6 @@ async function approveDriverPassenger(req, res) {
   }
 }
 
-async function inviteDriverPassenger(req, res) {
-  const driver = await requireDriver(req, res);
-  if (!driver) return;
-  if (!driver.username) return fail(res, 400, "driver_username_required", "Identidade pública do motorista não configurada.");
-  let passengerContact;
-  try {
-    passengerContact = normalizeBrazilWhatsapp(req.body && req.body.passengerContact);
-  } catch (error) {
-    return fail(res, error.httpStatus || 400, error.code || "invalid_whatsapp", error.message || "WhatsApp inválido.");
-  }
-  const displayName = cleanText(req.body && req.body.displayName, 120);
-  const requestedPassengerId = cleanText(req.body && req.body.passengerId, 120);
-  const passengerId = requestedPassengerId || ("passenger_" + sha256Hex("phone:" + passengerContact).slice(0, 40));
-  if (!displayName) return fail(res, 400, "passenger_name_required", "Informe o nome do passageiro.");
-  let referredByContact = "";
-  if (req.body && req.body.referredByContact) {
-    try { referredByContact = normalizeBrazilWhatsapp(req.body.referredByContact); } catch (_) { referredByContact = ""; }
-  }
-  const now = Date.now();
-  const accessRef = driverPassengerAccessRef(driver.username, passengerContact);
-  await db.runTransaction(async (tx) => {
-    const previous = await tx.get(accessRef);
-    const previousData = previous.exists ? previous.data() : {};
-    const previousPassengerId = cleanText(previousData.passengerId, 120);
-    const previousStatus = cleanText(previousData.status, 20).toUpperCase();
-    if (previous.exists && passengerId && previousPassengerId && previousPassengerId !== passengerId && previousStatus !== "MOVED") {
-      throw Object.assign(
-        new Error("Este WhatsApp já é utilizado por " + (cleanText(previousData.displayName, 120) || "outro passageiro") + "."),
-        { httpStatus: 409, code: "passenger_whatsapp_conflict" },
-      );
-    }
-    const stablePassengerId = cleanText(previousData.passengerId, 120) || passengerId;
-    tx.set(accessRef, {
-      driverUsername: driver.username,
-      passengerContact,
-      displayName,
-      passengerId: stablePassengerId,
-      status: "AUTHORIZED",
-      referredByContact: referredByContact || cleanText(previousData.referredByContact, 40),
-      referralRewardGrantedAtMillis: Number(previousData.referralRewardGrantedAtMillis || 0),
-      createdAtMillis: Number(previousData.createdAtMillis || now),
-      updatedAtMillis: now,
-    }, { merge: true });
-    writeCanonicalPassenger0625(tx, {
-      passengerId: stablePassengerId,
-      passengerContact,
-      displayName,
-      source: "DRIVER_INVITE_0625",
-      createdAtMillis: Number(previousData.createdAtMillis || now),
-    }, now);
-  });
-  const accountSnap = await passengerRecordRef0683(passengerContact).get();
-  const updated = await accessRef.get();
-  const passenger = safePassengerAccess(updated);
-  passenger.accountActivated = accountSnap.exists && passengerAccountIsActivated(accountSnap.data());
-  return json(res, 200, { passenger, temporaryPassword: "" });
-}
-
 async function syncDriverPassengerDirectory(req, res) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
