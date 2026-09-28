@@ -2,6 +2,45 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.681",
+      "build": 5972,
+      "commit": null,
+      "branch": "agent/fixed-family-gps-authority-0.1.681",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "O acompanhamento familiar passa a usar endereço público permanente no formato /<motorista>/gps, mantendo a URL estável entre sessões internas.",
+        "O primeiro acesso familiar é protegido por código de 6 dígitos; após autorização, o navegador permanece autorizado e usa somente o endereço /gps.",
+        "O aplicativo deixa de tratar o cache local como prova de atividade e consulta o servidor para exibir Ativo, Reconectando ou Inativo.",
+        "Rastreamento de trabalho, compartilhamento familiar e radares passam a ser consumidores independentes do mesmo Location Core."
+      ],
+      "fixed": [
+        "Eliminada a divergência em que o aplicativo podia mostrar link familiar verde enquanto o backend já havia encerrado a sessão.",
+        "O botão Parar deixa de encerrar o compartilhamento familiar e deixa de desligar o Location Core necessário a radares e alertas.",
+        "Pontos publicados para a família passam a usar buffer próprio e não continuam inflando o resumo do rastreamento de trabalho após Parar."
+      ],
+      "improved": [
+        "Reativar o compartilhamento mantém o mesmo endereço /gps e navegadores familiares já autorizados continuam válidos entre rotações internas.",
+        "A criação/reutilização do compartilhamento força revalidação idempotente da sessão remota antes de apresentar confirmação.",
+        "A página permanente continua existindo quando o compartilhamento está desligado e informa claramente que a localização não está sendo publicada."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.680: serverRegistered local podia impedir a revalidação remota e produzir falso estado verde.",
+        "0.1.680: Parar encerrava a sessão compartilhada e removia o mesmo serviço usado pelos radares em segundo plano."
+      ],
+      "modulesAffected": [
+        "Rastreamento ao vivo",
+        "Link familiar",
+        "Location Core",
+        "Radares e alertas",
+        "Backend",
+        "Hosting",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.680",
       "build": 5971,
       "commit": null,
