@@ -2,6 +2,7 @@ package br.com.mapeiaia.rotacerta.trips
 
 import java.io.File
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class BlaBlaLiveHtmlCommit0617Test {
