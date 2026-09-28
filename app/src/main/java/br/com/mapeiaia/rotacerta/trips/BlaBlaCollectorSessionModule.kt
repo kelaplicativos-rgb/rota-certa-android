@@ -29,16 +29,35 @@ internal data class BlaBlaHtmlCaptureTransactionState0610(
     val captureId: String,
     val generation: Long,
     val startedAtMillis: Long,
+    val lastHeartbeatMillis: Long = startedAtMillis,
 )
+
+internal fun htmlCaptureLeaseExpired0678(
+    nowMillis: Long,
+    lastHeartbeatMillis: Long,
+    staleAfterMillis: Long = 15L * 60L * 1000L,
+): Boolean =
+    lastHeartbeatMillis <= 0L ||
+        (nowMillis - lastHeartbeatMillis).coerceAtLeast(0L) > staleAfterMillis
+
+internal fun htmlCaptureOwnerMatches0678(
+    expected: BlaBlaHtmlCaptureTransactionState0610,
+    actualCaptureId: String,
+    actualGeneration: Long,
+): Boolean =
+    expected.captureId == actualCaptureId &&
+        expected.generation == actualGeneration
 
 internal object BlaBlaHtmlCaptureTransaction0610 {
     private const val PREFS = "rota_certa_html_capture_transaction_0610"
     private const val KEY_CAPTURE_ID = "capture_id"
     private const val KEY_GENERATION = "generation"
     private const val KEY_STARTED_AT = "started_at"
+    private const val KEY_LAST_HEARTBEAT = "last_heartbeat"
     private const val STALE_AFTER_MILLIS = 15L * 60L * 1000L
+    private val lock = Any()
 
-    fun begin(context: Context, captureId: String): BlaBlaHtmlCaptureTransactionState0610 {
+    fun begin(context: Context, captureId: String): BlaBlaHtmlCaptureTransactionState0610 = synchronized(lock) {
         val app = context.applicationContext
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
@@ -48,31 +67,88 @@ internal object BlaBlaHtmlCaptureTransaction0610 {
                 .putString(KEY_CAPTURE_ID, captureId)
                 .putLong(KEY_GENERATION, generation)
                 .putLong(KEY_STARTED_AT, now)
+                .putLong(KEY_LAST_HEARTBEAT, now)
                 .commit(),
         ) { "Falha ao abrir transação HTML." }
-        return BlaBlaHtmlCaptureTransactionState0610(captureId, generation, now)
+        BlaBlaHtmlCaptureTransactionState0610(captureId, generation, now, now)
     }
 
-    fun active(context: Context): BlaBlaHtmlCaptureTransactionState0610? {
+    fun active(context: Context): BlaBlaHtmlCaptureTransactionState0610? = synchronized(lock) {
         val app = context.applicationContext
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val captureId = prefs.getString(KEY_CAPTURE_ID, "").orEmpty().trim()
         val generation = prefs.getLong(KEY_GENERATION, 0L)
         val startedAt = prefs.getLong(KEY_STARTED_AT, 0L)
-        if (captureId.isBlank() || generation <= 0L || startedAt <= 0L) return null
-        if (System.currentTimeMillis() - startedAt > STALE_AFTER_MILLIS) {
-            prefs.edit().remove(KEY_CAPTURE_ID).remove(KEY_STARTED_AT).commit()
-            return null
+        if (captureId.isBlank() || generation <= 0L || startedAt <= 0L) return@synchronized null
+        val lastHeartbeat = prefs.getLong(KEY_LAST_HEARTBEAT, startedAt)
+        val now = System.currentTimeMillis()
+        if (htmlCaptureLeaseExpired0678(now, lastHeartbeat, STALE_AFTER_MILLIS)) {
+            prefs.edit()
+                .remove(KEY_CAPTURE_ID)
+                .remove(KEY_STARTED_AT)
+                .remove(KEY_LAST_HEARTBEAT)
+                .commit()
+            return@synchronized null
         }
-        return BlaBlaHtmlCaptureTransactionState0610(captureId, generation, startedAt)
+        BlaBlaHtmlCaptureTransactionState0610(captureId, generation, startedAt, lastHeartbeat)
     }
 
-    fun end(context: Context, captureId: String) {
+    fun heartbeat(
+        context: Context,
+        expected: BlaBlaHtmlCaptureTransactionState0610,
+    ): BlaBlaHtmlCaptureTransactionState0610? = synchronized(lock) {
         val app = context.applicationContext
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (prefs.getString(KEY_CAPTURE_ID, "").orEmpty() != captureId) return
+        val captureId = prefs.getString(KEY_CAPTURE_ID, "").orEmpty().trim()
+        val generation = prefs.getLong(KEY_GENERATION, 0L)
+        val startedAt = prefs.getLong(KEY_STARTED_AT, 0L)
+        if (
+            startedAt <= 0L ||
+            !htmlCaptureOwnerMatches0678(expected, captureId, generation)
+        ) {
+            return@synchronized null
+        }
+        val lastHeartbeat = prefs.getLong(KEY_LAST_HEARTBEAT, startedAt)
+        val now = System.currentTimeMillis()
+        if (htmlCaptureLeaseExpired0678(now, lastHeartbeat, STALE_AFTER_MILLIS)) {
+            prefs.edit()
+                .remove(KEY_CAPTURE_ID)
+                .remove(KEY_STARTED_AT)
+                .remove(KEY_LAST_HEARTBEAT)
+                .commit()
+            return@synchronized null
+        }
+        if (!prefs.edit().putLong(KEY_LAST_HEARTBEAT, now).commit()) {
+            return@synchronized null
+        }
+        BlaBlaHtmlCaptureTransactionState0610(captureId, generation, startedAt, now)
+    }
+
+    fun end(context: Context, expected: BlaBlaHtmlCaptureTransactionState0610) = synchronized(lock) {
+        val app = context.applicationContext
+        val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val captureId = prefs.getString(KEY_CAPTURE_ID, "").orEmpty().trim()
+        val generation = prefs.getLong(KEY_GENERATION, 0L)
+        if (!htmlCaptureOwnerMatches0678(expected, captureId, generation)) return@synchronized
         require(
-            prefs.edit().remove(KEY_CAPTURE_ID).remove(KEY_STARTED_AT).commit(),
+            prefs.edit()
+                .remove(KEY_CAPTURE_ID)
+                .remove(KEY_STARTED_AT)
+                .remove(KEY_LAST_HEARTBEAT)
+                .commit(),
+        ) { "Falha ao encerrar transação HTML." }
+    }
+
+    fun end(context: Context, captureId: String) = synchronized(lock) {
+        val app = context.applicationContext
+        val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getString(KEY_CAPTURE_ID, "").orEmpty() != captureId) return@synchronized
+        require(
+            prefs.edit()
+                .remove(KEY_CAPTURE_ID)
+                .remove(KEY_STARTED_AT)
+                .remove(KEY_LAST_HEARTBEAT)
+                .commit(),
         ) { "Falha ao encerrar transação HTML." }
     }
 }
