@@ -140,8 +140,10 @@ internal object BlaBlaDirectAccountCapture0608 {
         captureId: String,
         onProgress: (String) -> Unit = {},
         targetDate0661: LocalDate? = null,
+        transaction0610: BlaBlaHtmlCaptureTransactionState0610? = null,
     ): BlaBlaDirectAccountCaptureResult0608 {
         val app = context.applicationContext
+        transaction0610?.let { BlaBlaHtmlCaptureTransaction0610.heartbeat(app, it) }
         val expected = BlaBlaRidesSnapshotStore0526.strongUuid(account.profileUuid)
             ?: return fail(store, account, captureId, "EXPECTED_PROFILE_UUID_MISSING")
         val definition = account.verifiedDefinition()
@@ -532,6 +534,7 @@ internal object BlaBlaDirectAccountCapture0608 {
                 "fullTraversal=${targetDate0661 == null} oldController=false oldIdentityProbe=false",
         )
 
+        transaction0610?.let { BlaBlaHtmlCaptureTransaction0610.heartbeat(app, it) }
         onProgress("${account.displayLabel} • HTML de Suas viagens pronto")
         val tripResult = BlaBlaUnifiedHtmlCapture0605.captureProfile(
             context = app,
@@ -542,6 +545,7 @@ internal object BlaBlaDirectAccountCapture0608 {
             onProgress = onProgress,
             targetDate0661 = targetDate0661,
             scopedStateIsolation0662 = targetDate0661 != null,
+            transaction0610 = transaction0610,
         )
         val profileAfter = store.read(captureId)
             ?.profiles
