@@ -43,7 +43,7 @@ jobs:
           grep -Fq 'trackingFamilyPublicUrl0681' app/src/main/java/br/com/mapeiaia/rotacerta/LiveTrackingShare0668.kt
           grep -Fq 'familyStatus0681' app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingActivity.kt
           grep -Fq 'PERMANENT_FAMILY_GPS_0681' trip-platform/public/tracking.js
-          grep -Fq '"/*/gps"' trip-platform/firebase.json
+          grep -Fq '"regex": "^/[^/]+/gps/?$"' trip-platform/firebase.json
           grep -Fq 'openFamilySession0681' trip-platform/functions/live-tracking-0668.js
           grep -Fq 'getFamilyStatus0681' trip-platform/functions/live-tracking-0668.js
           grep -Fq 'getPublicFamily0681' trip-platform/functions/live-tracking-0668.js
