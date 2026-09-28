@@ -2,6 +2,7 @@
 
 const crypto = require("crypto");
 const { createLiveTracking0668 } = require("./live-tracking-0668");
+const { runPassengerSingleStoreMigration0683 } = require("./scripts/migrate-passengers-single-store-0683");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
@@ -11022,11 +11023,32 @@ exports.assistantApi = onRequest(
   },
 );
 
+async function runPassengerSingleStoreMigrationEndpoint0683(req, res) {
+  const expected = cleanText(process.env.ROTA_CERTA_MIGRATION_TOKEN_0683, 200);
+  const supplied = cleanText(req.get("x-rota-certa-migration-token"), 200);
+  if (!expected || !safeEqual(expected, supplied)) {
+    return fail(res, 404, "migration_not_available", "Migração não disponível.");
+  }
+  try {
+    const result = await runPassengerSingleStoreMigration0683(db);
+    return json(res, 200, result);
+  } catch (error) {
+    console.error("passenger_single_store_0683_failed", error);
+    return fail(
+      res,
+      500,
+      "passenger_single_store_migration_failed",
+      cleanText(error && error.message, 500) || "Falha na migração dos passageiros.",
+    );
+  }
+}
+
 exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) => {
   if (req.method === "OPTIONS") return res.status(204).send("");
   const path = (req.path || req.url || "/").split("?")[0].replace(/\/+$/, "") || "/";
   const parts = path.split("/").filter(Boolean);
   try {
+    if (req.method === "POST" && path === "/v1/internal/migrations/passenger-single-store-0683") return await runPassengerSingleStoreMigrationEndpoint0683(req, res);
     if (req.method === "POST" && path === "/v1/public/debug/events") return await recordPublicBrowserDebugEvent(req, res);
     if (req.method === "GET" && path === "/v1/admin/me") return await agendaAdmin0417.getAdminMe0417(req, res);
     if (req.method === "GET" && path === "/v1/admin/card-capabilities") return await agendaAdmin0417.getAdminCardCapabilities0470(req, res);
