@@ -80,13 +80,12 @@ class FarolTrustedRoute0682Test {
     }
 
     @Test
-    fun decisionVisualExpiresAfterFiveSecondsAndIsBoundToCurrentCard() {
+    fun trustedRouteRemainsButVisualTtlWasRemovedBy0683CardAuthority() {
         val live = source("LiveRideAccessibilityService.kt")
-        assertTrue(live.contains("DECISION_VISUAL_TTL_MILLIS_0682 = 5_000L"))
-        assertTrue(live.contains("expectedSignature0682 = universalActiveAddressSignature"))
-        assertTrue(live.contains("expectedScreenGeneration0682 = universalScreenGeneration"))
-        assertTrue(live.contains("expectedWindowGeneration0682 = universalWindowGeneration"))
-        assertTrue(live.contains("FAROL_DECISION_VISUAL_EXPIRED_0682"))
+        assertFalse(live.contains("DECISION_VISUAL_TTL_MILLIS_0682"))
+        assertFalse(live.contains("scheduleDecisionBubbleExpiry0682"))
+        assertFalse(live.contains("FAROL_DECISION_VISUAL_EXPIRED_0682"))
+        assertTrue(live.contains("TRUSTED_DIRECT_ROUTE_TIMEOUT_MILLIS_0682 = 950L"))
     }
 
     @Test
