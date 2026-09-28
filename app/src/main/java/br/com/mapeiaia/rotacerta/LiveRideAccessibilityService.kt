@@ -3649,7 +3649,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             return
         }
 
-        var routeDestination0684 = routeSanitization0684.sanitized
+        var routeDestination0684 = routeSanitization0684.sanitized.orEmpty()
         val accessibilitySource0684 = sourceStage19.startsWith("Accessibility", ignoreCase = true)
         val ocrSource0684 = sourceStage19.equals("Ocr", ignoreCase = true)
         var accessibilityPriorityApplied0684 = false
