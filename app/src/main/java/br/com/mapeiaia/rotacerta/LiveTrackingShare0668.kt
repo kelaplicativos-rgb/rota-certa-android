@@ -214,7 +214,9 @@ internal class LiveTrackingShareManager0668(
     fun familyShareUrl(): String? {
         val settings = TripStore(appContext).onlineSettings()
         repository.familyShare() ?: return null
-        return trackingFamilyPublicUrl0681(settings.publicBaseUrl, settings.driverUsername)
+        return runCatching {
+            trackingFamilyPublicUrl0681(settings.publicBaseUrl, settings.driverUsername)
+        }.getOrNull()
     }
 
     suspend fun createFamilyLink(): TrackingLinkOutcome0668 = withContext(Dispatchers.IO) {
@@ -611,9 +613,13 @@ internal fun shareTrackingLink0668(
     message: String,
     url: String,
 ) {
+    val text = buildString {
+        append(message.trim())
+        if (url.isNotBlank()) append("\n").append(url.trim())
+    }
     val share = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
-        putExtra(Intent.EXTRA_TEXT, message.trim() + "\n" + url)
+        putExtra(Intent.EXTRA_TEXT, text)
     }
     context.startActivity(Intent.createChooser(share, title).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 }
