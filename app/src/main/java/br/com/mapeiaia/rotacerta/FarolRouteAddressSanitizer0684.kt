@@ -20,7 +20,7 @@ object FarolRouteAddressSanitizer0684 {
         val reason: String,
         val cuts: List<String> = emptyList(),
     ) {
-        val changed: Boolean get() = sanitized != null && normalizeForCompare(raw) != normalizeForCompare(sanitized)
+        val changed: Boolean get() = sanitized != null && FarolRouteAddressSanitizer0684.normalizeForCompare(raw) != FarolRouteAddressSanitizer0684.normalizeForCompare(sanitized)
     }
 
     fun sanitize(raw: String): Result {
@@ -116,7 +116,7 @@ object FarolRouteAddressSanitizer0684 {
         if (!equivalent) return CollapseResult(false, value, "multiple_distinct_street_addresses", listOf("street_repeat_ambiguous"))
 
         val preferred = segments.maxWithOrNull(
-            compareBy<String> { UniversalScreenAddressParser.isCompleteNumberedAddress(it) }
+            compareBy<String> { if (UniversalScreenAddressParser.isCompleteNumberedAddress(it)) 1 else 0 }
                 .thenBy { localityEvidenceScore(it) }
                 .thenBy { it.length },
         ) ?: segments.first()
