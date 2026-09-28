@@ -3568,6 +3568,12 @@ class LiveRideAccessibilityService : AccessibilityService() {
             SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S38_CANDIDATE_SEMANTIC_VALIDATION", packageName = null, cycleId = cycleIdStage20,
             details = "source=$sourceStage19; accepted=${semanticStage21.accepted}; reason=${semanticStage21.reason}; pickup=${evaluationStage19.pickup.take(700)}; destination=${evaluationStage19.destination.take(700)}; addresses=${evaluationStage19.addresses.joinToString(" || ").take(1300)}; signature=${evaluationStage19.addressSignature}",
         )
+        val candidateCardIdentity0683 = FarolCardLifeAuthority0683.identity(evaluationStage19)
+        val previousCardIdentity0683 = universalActiveCardIdentity0683
+        val sameCardIdentity0683 = FarolCardLifeAuthority0683.sameCard(
+            previousCardIdentity0683,
+            candidateCardIdentity0683,
+        )
         val previousAddressSignatureStage635 = universalActiveAddressSignature
         val sameDestinationVariantStage635 = DestinationAddressIdentityPolicy.sameDestinationSignatures(
             previousAddressSignatureStage635,
@@ -3614,7 +3620,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val previousBindingStage20 = currentStage20BindingSnapshot()
         val windowChangedStage19 = stage19ActiveWindowId != evaluationStage19.windowId ||
             stage19ActiveBlockId != evaluationStage19.blockId
-        val visualChangedStage19 = universalActiveAddressSignature != stableAddressSignatureStage635
+        val visualChangedStage19 = !sameCardIdentity0683 || universalActiveAddressSignature != stableAddressSignatureStage635
         if (windowChangedStage19) universalWindowGeneration += 1L
         if (visualChangedStage19) {
             universalScreenGeneration += 1L
@@ -3631,6 +3637,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         stage19ActiveBlockId = evaluationStage19.blockId
         universalActiveRidePackageName = null
         universalActiveAddressSignature = stableAddressSignatureStage635
+        universalActiveCardIdentity0683 = candidateCardIdentity0683
         lastSnapshotHash = evaluationStage19.screenHash
         universalLastActiveReadAtElapsedMillis0187 = SystemClock.elapsedRealtime()
         stage19VisualVerificationPending = false
