@@ -3970,6 +3970,15 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 val radars = currentImportedRadars
                 val hasTargets = alerts.isNotEmpty() || radars.isNotEmpty()
                 val enabled = AlertRuntimePolicy0644.shouldTrack(currentSettings, hasTargets)
+                val sharedCoreOwnsGps0680 = WorkTrackingRepository(applicationContext).isTrackingActive()
+
+                if (sharedCoreOwnsGps0680) {
+                    preciseNavigationTrackerChecklist5.stop()
+                    directionalAlertOverlayChecklist5.hide()
+                    missingPreciseFixSinceChecklist5 = 0L
+                    delay(DIRECTIONAL_ALERT_IDLE_LOOP_MILLIS_CHECKLIST_5)
+                    continue
+                }
 
                 if (!enabled) {
                     preciseNavigationTrackerChecklist5.stop()
