@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.683",
+      "build": 5974,
+      "commit": null,
+      "branch": "agent/farol-card-life-sync-0.1.683",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A bolinha do FAROL passa a pertencer à vida do card visual: o resultado permanece enquanto o mesmo card continua exposto e deixa de depender de tempo.",
+        "A identidade do card passa a considerar a sequência visível de locais, permitindo distinguir troca real de card mesmo quando o destino final é igual.",
+        "Eventos parciais sem endereço, quando há resultado final ativo, são escalados para leitura completa da superfície antes de declarar desaparecimento."
+      ],
+      "fixed": [
+        "Removido o TTL visual de 5 segundos introduzido na 0.1.682 que apagava verde/vermelho com o mesmo card ainda visível.",
+        "Uma troca comprovada de card agora cancela rota/OCR antigos e limpa a bolinha antes do cálculo do novo card.",
+        "Mutações ambíguas deixam de apagar um resultado final válido; o valor permanece até existir prova de troca ou desaparecimento."
+      ],
+      "improved": [
+        "Variações equivalentes de escrita do mesmo endereço são coalescidas para evitar piscadas no mesmo card.",
+        "O caminho direto de endereço para rota da 0.1.682 e o fallback legado permanecem preservados.",
+        "Resultados assíncronos antigos ficam invalidados quando uma nova identidade de card é comprovada."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.682: verde/vermelho era apagado após 5 segundos mesmo com o mesmo card ainda exposto.",
+        "0.1.682: a preservação semântica dependia principalmente do destino e podia atrasar a limpeza quando o card mudava."
+      ],
+      "modulesAffected": [
+        "FAROL",
+        "Bolinha",
+        "Leitura de cards",
+        "Acessibilidade",
+        "Rotas",
+        "Diagnóstico",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.682",
       "build": 5973,
       "commit": null,
