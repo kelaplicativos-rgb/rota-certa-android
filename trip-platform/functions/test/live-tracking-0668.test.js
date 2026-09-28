@@ -12,6 +12,8 @@ const {
   shouldClosePassengerShare0668,
   trackingShareDocId0668,
   trackingShareExpired0680,
+  normalizeFamilyUsername0681,
+  familyPinHash0681,
 } = require("../live-tracking-0668");
 
 test("passenger projection never exposes points from before share creation", () => {
@@ -219,4 +221,21 @@ test("family tracking is revocation-driven while passenger tracking still expire
     active:true,
     expiresAtMillis:now + 1,
   }, now), false);
+});
+
+
+test("permanent family GPS username normalizes predictably", () => {
+  assert.equal(normalizeFamilyUsername0681(" Ezequiel Silva "), "ezequiel-silva");
+  assert.equal(normalizeFamilyUsername0681("Ézéquiel"), "ezequiel");
+});
+
+test("family PIN hash is scoped to the driver username", () => {
+  const first = familyPinHash0681("ezequiel", "123456");
+  const same = familyPinHash0681("EZEQUIEL", "123456");
+  const otherPin = familyPinHash0681("ezequiel", "654321");
+  const otherDriver = familyPinHash0681("barbosa", "123456");
+  assert.equal(first, same);
+  assert.notEqual(first, otherPin);
+  assert.notEqual(first, otherDriver);
+  assert.equal(first.length, 64);
 });
