@@ -5876,7 +5876,6 @@ async function openPassengerAgendaView(req, res) {
 
 async function openPassengerPinSession0624(req, res) {
   await enforceBookingRateLimit(req);
-
   let passengerContact;
   let pin;
   try {
@@ -5886,32 +5885,23 @@ async function openPassengerPinSession0624(req, res) {
     return fail(res, error.httpStatus || 400, error.code || "invalid_pin_access", error.message || "Confira seu WhatsApp e o PIN.");
   }
 
-  const displayName = cleanText(req.body && req.body.displayName, 120);
-  if (displayName.length < 2) {
-    return fail(res, 400, "passenger_name_required", "Informe seu nome para solicitar a reserva.");
-  }
-
   const publicSlug = normalizeUsername(req.body && req.body.publicSlug);
-  if (publicSlug && isReservedPublicUsername(publicSlug)) {
-    return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
-  }
   const requestedDriverUsername = publicSlug || normalizeUsername(req.body && req.body.driverUsername);
   const resolvedDriver = await resolveDriverUsername(requestedDriverUsername);
   const driverUsername = resolvedDriver ? resolvedDriver.canonicalUsername : "";
-  const agendaToken = cleanText(req.body && req.body.agendaToken, 160).replace(/[^A-Za-z0-9_-]/g, "");
-  const tripToken = cleanText(req.body && req.body.tripToken, 180).replace(/[^A-Za-z0-9_-]/g, "");
-  if (!driverUsername) {
-    return fail(res, 400, "driver_username_required", "Agenda do motorista não identificada.");
-  }
-  if (!publicSlug && !agendaToken && !tripToken) {
-    return fail(res, 400, "agenda_target_required", "Abra novamente o link da viagem para continuar.");
+  if (!driverUsername) return fail(res, 400, "driver_username_required", "Agenda do motorista não identificada.");
+
+  const accessRef = driverPassengerAccessRef(driverUsername, passengerContact);
+  const initialAccessSnap = await accessRef.get();
+  if (!initialAccessSnap.exists || !passengerAccessIsAuthorized(initialAccessSnap.data())) {
+    return fail(res, 403, "passenger_invite_required", "Acesso somente para passageiro convidado e aprovado pelo motorista.");
   }
 
+  const agendaToken = cleanText(req.body && req.body.agendaToken, 160).replace(/[^A-Za-z0-9_-]/g, "");
+  const tripToken = cleanText(req.body && req.body.tripToken, 180).replace(/[^A-Za-z0-9_-]/g, "");
   if (agendaToken) {
     const agendaHash = await publicAgendaLinkHash(driverUsername, resolvedDriver.driverSnap);
-    if (!tokenMatches(agendaToken, agendaHash)) {
-      return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
-    }
+    if (!tokenMatches(agendaToken, agendaHash)) return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
   }
   if (tripToken) {
     const tripSnap = await db.collection("trips").doc(tripToken).get();
@@ -5923,112 +5913,70 @@ async function openPassengerPinSession0624(req, res) {
   try {
     await assertPassengerPinAvailable0624(driverUsername, passengerContact);
   } catch (error) {
-    return fail(
-      res,
-      error.httpStatus || 429,
-      error.code || "pin_locked",
-      error.message || "Aguarde antes de tentar novamente.",
-      Number.isFinite(Number(error.retryAfterMillis))
-        ? { retryAfterMillis: Math.max(0, Number(error.retryAfterMillis)) }
-        : null,
-    );
+    return fail(res, error.httpStatus || 429, error.code || "pin_locked", error.message || "Aguarde antes de tentar novamente.");
   }
 
-  const accessRef = driverPassengerAccessRef(driverUsername, passengerContact);
   const accountRef = passengerRecordRef0683(passengerContact);
   const now = Date.now();
   let passengerId = "";
   let createdAccount = false;
   let contactVerified = false;
-
   try {
     await db.runTransaction(async (tx) => {
-      const [accessSnap, accountSnap] = await Promise.all([tx.get(accessRef), tx.get(accountRef)]);
-      const access = accessSnap.exists ? accessSnap.data() : {};
-      const status = cleanText(access.status, 20).toUpperCase();
-      if (PASSENGER_RESTRICTED_ACCESS_STATUSES.has(status)) {
-        throw Object.assign(
-          new Error("Este número não está disponível para reservas nesta Agenda."),
-          { httpStatus: 403, code: "passenger_access_unavailable" },
-        );
+      const accessSnap = await tx.get(accessRef);
+      const accountSnap = await tx.get(accountRef);
+      if (!accessSnap.exists || !passengerAccessIsAuthorized(accessSnap.data())) {
+        throw Object.assign(new Error("Acesso somente para passageiro convidado e aprovado pelo motorista."), {
+          httpStatus: 403,
+          code: "passenger_invite_required",
+        });
       }
-      if (status === "MOVED") {
-        throw Object.assign(
-          new Error("Este número foi substituído no cadastro do passageiro. Fale com o motorista para corrigir o acesso."),
-          { httpStatus: 409, code: "passenger_contact_moved" },
-        );
-      }
-
+      const access = accessSnap.data();
       const account = accountSnap.exists ? accountSnap.data() : {};
       passengerId = cleanText(access.passengerId || account.passengerId, 120) ||
         ("passenger_" + sha256Hex("phone:" + passengerContact).slice(0, 40));
       contactVerified = Number(account.phoneVerifiedAtMillis0623 || 0) > 0 || access.selfVerifiedPhone0623 === true;
-
       if (accountSnap.exists && passengerAccountIsActivated(account)) {
         const supplied = passengerPasswordDigest(pin, cleanText(account.passwordSalt, 80));
         if (!safeEqual(supplied, cleanText(account.passwordHash, 256))) {
-          throw Object.assign(
-            new Error("WhatsApp ou PIN incorreto."),
-            { httpStatus: 401, code: "invalid_pin" },
-          );
+          throw Object.assign(new Error("WhatsApp ou PIN incorreto."), { httpStatus: 401, code: "invalid_pin" });
         }
         tx.set(accountRef, {
-          passengerContact,
           passengerId,
-          pinLastLoginAtMillis0624: now,
+          primaryContact: passengerContact,
+          passengerContact,
           updatedAtMillis: now,
         }, { merge: true });
       } else {
         const salt = crypto.randomBytes(16).toString("hex");
         tx.set(accountRef, {
-          passengerContact,
           passengerId,
+          primaryContact: passengerContact,
+          passengerContact,
+          displayName: cleanText(access.displayName, 120),
           passwordSalt: salt,
           passwordHash: passengerPasswordDigest(pin, salt),
           mustChangePassword: false,
-          pinAuthVersion0624: 1,
-          contactVerificationStatus0624: contactVerified ? "VERIFIED_LEGACY_OTP" : "UNVERIFIED",
+          passwordFormat0625: "FOUR_DIGIT",
+          canonicalStoreVersion: PASSENGER_ACCESS_POLICY_VERSION_0683,
           createdAtMillis: Number(account.createdAtMillis || now),
           updatedAtMillis: now,
         }, { merge: true });
         createdAccount = true;
       }
-
-      tx.set(accessRef, {
-        driverUsername,
-        passengerContact,
-        displayName,
-        passengerId,
-        status: "AUTHORIZED",
-        pinAccess0624: true,
-        contactVerificationStatus0624: contactVerified ? "VERIFIED_LEGACY_OTP" : "UNVERIFIED",
-        createdAtMillis: Number(access.createdAtMillis || now),
-        updatedAtMillis: now,
-      }, { merge: true });
+      tx.set(accessRef, { passengerId, passengerContact, pinAccess0624: true, updatedAtMillis: now }, { merge: true });
     });
   } catch (error) {
     if (error.code === "invalid_pin") {
       const guard = await recordPassengerPinFailure0624(driverUsername, passengerContact).catch(() => null);
       if (guard && Number(guard.lockUntilMillis || 0) > Date.now()) {
-        return fail(
-          res,
-          429,
-          "pin_locked",
-          "Muitas tentativas de PIN. Aguarde 15 minutos antes de tentar novamente.",
-          { retryAfterMillis: Math.max(0, Number(guard.lockUntilMillis) - Date.now()) },
-        );
+        return fail(res, 429, "pin_locked", "Muitas tentativas de PIN. Aguarde 15 minutos antes de tentar novamente.");
       }
     }
-    return fail(
-      res,
-      error.httpStatus || 409,
-      error.code || "passenger_pin_session_failed",
-      error.message || "Não foi possível liberar a reserva.",
-    );
+    return fail(res, error.httpStatus || 409, error.code || "passenger_pin_session_failed", error.message || "Não foi possível liberar o acesso.");
   }
 
   await clearPassengerPinFailures0624(driverUsername, passengerContact);
-
   const session = await createPassengerSession(
     passengerContact,
     passengerId,
@@ -6036,7 +5984,6 @@ async function openPassengerPinSession0624(req, res) {
     "",
     res,
   );
-
   return json(res, 200, {
     sessionToken: session.token,
     expiresAtMillis: session.expiresAtMillis,
