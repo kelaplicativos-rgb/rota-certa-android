@@ -2,6 +2,45 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.684",
+      "build": 5975,
+      "commit": null,
+      "branch": "agent/farol-route-address-sanitizer-0.1.684",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Todo endereço de card passa por uma barreira final de sanitização antes de cache, geocodificação ou rota.",
+        "Textos operacionais como Pedidos de viagem, Solicitação já aceita, Demanda e Desempenho passam a delimitar o fim do endereço.",
+        "Quando Acessibilidade e OCR fornecem variantes compatíveis do mesmo destino, a versão sanitizada da Acessibilidade tem prioridade para a rota."
+      ],
+      "fixed": [
+        "Endereços contaminados por texto da interface deixam de chegar ao motor de rota.",
+        "Endereços equivalentes repetidos pelo OCR são colapsados antes do cálculo.",
+        "Parênteses OCR abertos que engoliam texto operacional são cortados no último trecho geograficamente válido.",
+        "Strings com dois endereços de rua diferentes no mesmo destino são rejeitadas e mantêm o FAROL amarelo."
+      ],
+      "improved": [
+        "Os caminhos legados de cache/geocodificação também passam pela mesma barreira, impedindo aprendizagem de endereço contaminado.",
+        "O diagnóstico registra texto bruto, texto sanitizado, cortes aplicados, fonte e se a prioridade da Acessibilidade foi usada.",
+        "A sincronização card/bolinha da 0.1.683 e a rota direta/fallback da 0.1.682 foram preservadas."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.683: OCR ainda podia enviar ao cálculo um destino contendo textos operacionais da interface."
+      ],
+      "modulesAffected": [
+        "FAROL",
+        "Leitura de cards",
+        "OCR",
+        "Acessibilidade",
+        "Rotas",
+        "Cache",
+        "Diagnóstico",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.683",
       "build": 5974,
       "commit": null,
