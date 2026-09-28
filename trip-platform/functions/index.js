@@ -6580,7 +6580,7 @@ async function updateDriverPassengerWhatsapp(req, res) {
       passengerId,
       passengerContact: newPassengerContact,
       displayName: displayName || cleanText(sourceData.displayName, 120),
-      status: passengerAccessStatus(sourceData) || "AUTHORIZED",
+      status: passengerAccessStatus(sourceData) || "LOCAL_ONLY",
       updatedAtMillis: now,
     }, { merge: true });
     writeCanonicalPassenger0625(batch, {
@@ -6660,7 +6660,6 @@ async function updateDriverPassengerWhatsapp(req, res) {
     updatedAtMillis: now,
   }, { merge: true }));
   if (oldAccountSnap.exists) cleanup.push((batch) => batch.delete(oldAccountRef));
-  cleanup.push((batch) => batch.delete(passengerContactIndexRef0625(previousPassengerContact)));
   if (oldLedgerSnap.exists) {
     oldLedgerEntries.docs.forEach((entry) => cleanup.push((batch) => batch.delete(entry.ref)));
     cleanup.push((batch) => batch.delete(oldLedgerRef));
