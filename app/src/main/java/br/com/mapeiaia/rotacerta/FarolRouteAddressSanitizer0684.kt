@@ -47,7 +47,11 @@ object FarolRouteAddressSanitizer0684 {
         value = repeated.value
         cuts += repeated.cuts
 
-        value = DestinationAddressIdentityPolicy.cleanDisplayAddress(value)
+        // Preserve balanced locality parentheses in the route text. cleanDisplayAddress() is
+        // identity-oriented and strips trailing wrapper punctuation, which would turn "(Bairro)"
+        // into an unbalanced route query. Parser-segment cleanup removes role wrappers without
+        // damaging a balanced geographic complement.
+        value = DestinationAddressIdentityPolicy.cleanParserSegment(value)
         value = normalizeRoutePunctuation(value)
 
         val parsed = UniversalScreenAddressParser.findAddresses(value)
