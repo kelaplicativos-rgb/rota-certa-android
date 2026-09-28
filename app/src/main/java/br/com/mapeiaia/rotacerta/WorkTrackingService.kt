@@ -45,6 +45,7 @@ class WorkTrackingService : Service() {
     private lateinit var repository: WorkTrackingRepository
     private lateinit var shareManager0668: LiveTrackingShareManager0668
     private lateinit var locationClient: FusedLocationProviderClient
+    private lateinit var backgroundProximity0680: BackgroundProximityRuntime0680
     private var locationCallback: LocationCallback? = null
     private val uploadScope0668 = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val uploadInFlight0668 = AtomicBoolean(false)
@@ -59,12 +60,17 @@ class WorkTrackingService : Service() {
         repository = WorkTrackingRepository(applicationContext)
         shareManager0668 = LiveTrackingShareManager0668(applicationContext)
         locationClient = LocationServices.getFusedLocationProviderClient(applicationContext)
+        backgroundProximity0680 = BackgroundProximityRuntime0680(this)
         createNotificationChannel()
+        backgroundProximity0680.start(uploadScope0668)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action ?: ACTION_START) {
             ACTION_STOP -> stopTracking()
+            ACTION_DISMISS_PROXIMITY_0680 -> {
+                backgroundProximity0680.dismiss(intent?.getStringExtra(EXTRA_PROXIMITY_TARGET_0680))
+            }
             else -> startTracking()
         }
         return START_STICKY
@@ -77,6 +83,7 @@ class WorkTrackingService : Service() {
         heartbeatJob0670 = null
         releaseWakeLock0670()
         removeLocationUpdates()
+        backgroundProximity0680.stop()
         uploadScope0668.cancel()
         super.onDestroy()
     }
@@ -168,6 +175,7 @@ class WorkTrackingService : Service() {
             latestPoint0670 = point0670
         }
         lastGpsCallbackAtMillis0670 = System.currentTimeMillis()
+        backgroundProximity0680.onLocation(location)
     }
 
     private fun startHeartbeatLoop0670() {
@@ -322,6 +330,8 @@ class WorkTrackingService : Service() {
     companion object {
         const val ACTION_START = "br.com.mapeiaia.rotacerta.action.START_WORK_TRACKING"
         const val ACTION_STOP = "br.com.mapeiaia.rotacerta.action.STOP_WORK_TRACKING"
+        const val ACTION_DISMISS_PROXIMITY_0680 = "br.com.mapeiaia.rotacerta.action.DISMISS_PROXIMITY_0680"
+        const val EXTRA_PROXIMITY_TARGET_0680 = "proximity_target_0680"
         private const val CHANNEL_ID = "work_tracking"
         private const val NOTIFICATION_ID = 12101
         private const val UPDATE_INTERVAL_MS = 5_000L
