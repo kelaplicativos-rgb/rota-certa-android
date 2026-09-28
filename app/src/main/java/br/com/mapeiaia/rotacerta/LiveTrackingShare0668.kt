@@ -147,7 +147,7 @@ internal class LiveTrackingShareRepository0668(context: Context) {
 
     fun familyShare(nowMillis: Long = System.currentTimeMillis()): TrackingShareLocal0668? =
         session()?.shares.orEmpty().firstOrNull {
-            it.scope == TrackingShareScope0668.FAMILY && it.active && it.expiresAtMillis > nowMillis
+            it.scope == TrackingShareScope0668.FAMILY && PersistentTrackingPolicy0680.isShareActive(it, nowMillis)
         }
 
     fun passengerShare(passengerKey: String, nowMillis: Long = System.currentTimeMillis()): TrackingShareLocal0668? =
