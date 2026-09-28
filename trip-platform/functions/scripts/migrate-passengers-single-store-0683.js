@@ -301,6 +301,21 @@ async function runPassengerSingleStoreMigration0683(firestore) {
     throw new Error("Access reset verification failed. activeAccessRemaining=" + activeAccessRemaining);
   }
 
+  const legacyRemaining = {};
+  for (const name of LEGACY_IDENTITY_COLLECTIONS) {
+    legacyRemaining[name] = (await db.collection(name).limit(1).get()).size;
+  }
+  const authRemaining = {};
+  for (const name of AUTH_COLLECTIONS_TO_CLEAR) {
+    authRemaining[name] = (await db.collection(name).limit(1).get()).size;
+  }
+  if (Object.values(legacyRemaining).some((count) => Number(count) !== 0)) {
+    throw new Error("Legacy passenger stores were not fully cleared.");
+  }
+  if (Object.values(authRemaining).some((count) => Number(count) !== 0)) {
+    throw new Error("Passenger authentication state was not fully cleared.");
+  }
+
   const summary = {
     canonicalPassengers: postPassengers.size,
     migratedLegacyAccess: legacyAccess.size,
@@ -309,6 +324,8 @@ async function runPassengerSingleStoreMigration0683(firestore) {
     activeAccessRemaining,
     legacyDeleted,
     authDeleted,
+    legacyRemaining,
+    authRemaining,
   };
   const completedAtMillis = Date.now();
   await markerRef.set({
