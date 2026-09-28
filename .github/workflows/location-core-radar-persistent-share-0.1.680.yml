@@ -1,0 +1,185 @@
+name: Location core radar persistent share 0.1.680 APK
+
+on:
+  push:
+    branches:
+      - 'agent/location-core-radar-persistent-share-0.1.680'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: location-core-radar-0680-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-deploy-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: ''
+      ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: agent/location-core-radar-persistent-share-0.1.680
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Prove exact source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
+          grep -Fq 'releaseVersionName = "0.1.680"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 5_971' app/build.gradle.kts
+          grep -Fq '"version": "0.1.680"' app/src/main/assets/release_history.json
+          grep -Fq 'UNIFIED_LOCATION_CORE_0680' app/src/main/java/br/com/mapeiaia/rotacerta/BackgroundLocationCore0680.kt
+          grep -Fq 'BackgroundProximityRuntime0680' app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingService.kt
+          grep -Fq 'PersistentTrackingPolicy0680.familyExpiryMillis()' app/src/main/java/br/com/mapeiaia/rotacerta/LiveTrackingShare0668.kt
+          grep -Fq 'FAMILY_PERSISTENT_EXPIRY_MILLIS_0680' trip-platform/functions/live-tracking-0668.js
+          grep -Fq 'trackingShareExpired0680' trip-platform/functions/live-tracking-0668.js
+          grep -Fq 'android.permission.RECEIVE_BOOT_COMPLETED' app/src/main/AndroidManifest.xml
+          grep -Fq '.LocationCoreBootReceiver0680' app/src/main/AndroidManifest.xml
+          grep -Fq 'START_STICKY' app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingService.kt
+          grep -Fq 'foregroundServiceType="location"' app/src/main/AndroidManifest.xml
+          git diff --check
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate tracking backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/live-tracking-0668.js
+          node --test trip-platform/functions/test/live-tracking-0668.test.js
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run location core and inherited regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.PersistentLocationCore0680Test' \
+            --tests 'br.com.mapeiaia.rotacerta.LiveTrackingShare0668Test' \
+            --tests 'br.com.mapeiaia.rotacerta.DirectionalProximityAlertEngineChecklist5Test' \
+            --tests 'br.com.mapeiaia.rotacerta.ProximityAlertsNoDirection0191ContractTest' \
+            --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0680-tests.log
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0680-assemble.log
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
+
+      - name: Prove APK identity signing runtime markers and final SHA
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/android-0680-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/android-0680-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/android-0680-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5971'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.680'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/android-0680-apksigner.txt
+          grep -Fq 'Verified' /tmp/android-0680-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0680-dex-strings.txt
+          grep -Fq "$ROTA_CERTA_GIT_SHA" /tmp/android-0680-dex-strings.txt
+          grep -Fq 'UNIFIED_LOCATION_CORE_0680' /tmp/android-0680-dex-strings.txt
+          grep -Fq 'FAMILY_PERSISTENT_EXPIRY_MILLIS' /tmp/android-0680-dex-strings.txt || true
+          grep -Fq 'BACKGROUND_PROXIMITY_0680' /tmp/android-0680-dex-strings.txt
+          grep -Fq 'DISMISS_PROXIMITY_0680' /tmp/android-0680-dex-strings.txt
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.680-5971-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.680"
+            echo "versionCode=5971"
+            echo "branch=agent/location-core-radar-persistent-share-0.1.680"
+            echo "commit=$ROTA_CERTA_GIT_SHA"
+            echo "deviceTarget=Samsung SM-S911B / Android 16"
+            echo "locationAuthority=WorkTrackingService"
+            echo "foregroundLocationService=ACTIVE"
+            echo "startSticky=ACTIVE"
+            echo "radarConsumesSharedGps=ACTIVE"
+            echo "familyShareLifetime=UNTIL_DRIVER_REVOKES"
+            echo "passengerShareLifetime=BOUNDED"
+            echo "bootRestore=ACTIVE_WHEN_PERMITTED"
+            echo "explicitAndroidStopControls=PRESERVED"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee location-core-radar-0680-proof.txt
+
+      - name: Authenticate Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy exact tracking backend SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          gcloud functions deploy tripApi \
+            --gen2 \
+            --project="$PROJECT" \
+            --region=southamerica-east1 \
+            --runtime=nodejs20 \
+            --source=trip-platform/functions \
+            --entry-point=tripApi \
+            --trigger-http \
+            --allow-unauthenticated \
+            --clear-secrets \
+            --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$ROTA_CERTA_GIT_SHA" \
+            --quiet
+
+      - name: Smoke exact backend SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 20 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health-0680.json
+          grep -Fq '"ok":true' /tmp/live-health-0680.json
+          grep -Fq "\"backendGitSha\":\"$ROTA_CERTA_GIT_SHA\"" /tmp/live-health-0680.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-location-core-radar-0.1.680-${{ github.sha }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            location-core-radar-0680-proof.txt
+            /tmp/android-0680-tests.log
+            /tmp/android-0680-assemble.log
+            /tmp/android-0680-aapt.txt
+            /tmp/android-0680-apksigner.txt
+            /tmp/android-0680-zip-integrity.txt
+            /tmp/live-health-0680.json
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30
