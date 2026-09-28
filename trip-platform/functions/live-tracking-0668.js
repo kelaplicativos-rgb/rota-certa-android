@@ -2,7 +2,7 @@
 
 const crypto = require("crypto");
 
-const MAX_SESSION_MILLIS_0668 = 36 * 60 * 60 * 1000;
+const FAMILY_PERSISTENT_EXPIRY_MILLIS_0680 = 253402300799000;
 const MAX_PASSENGER_MILLIS_0668 = 24 * 60 * 60 * 1000;
 const MAX_POINT_BATCH_0668 = 100;
 const MAX_PUBLIC_POINTS_0668 = 5000;
@@ -216,7 +216,7 @@ function createLiveTracking0668({ db, requireDriver }) {
     if (existing.exists && existing.data().driverKey !== identity.driverKey) {
       return trackingFail0668(res, 403, "tracking_session_owner_mismatch", "Sessão pertence a outro motorista.");
     }
-    const expiresAtMillis = Math.max(now + 60 * 60 * 1000, Math.min(startedAtMillis + MAX_SESSION_MILLIS_0668, now + MAX_SESSION_MILLIS_0668));
+    const expiresAtMillis = FAMILY_PERSISTENT_EXPIRY_MILLIS_0680;
     await ref.set({
       driverKey: identity.driverKey,
       driverUsername: identity.driver.username || "",
