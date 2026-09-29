@@ -37,5 +37,35 @@ object GeoDistance {
 
     fun normalizeDegrees(value: Double): Double = ((value % 360.0) + 360.0) % 360.0
 
+    /**
+     * Menor distância entre um alvo e o segmento formado por dois fixes GPS.
+     * Usa projeção local equiretangular ao redor do alvo, adequada para os
+     * pequenos deslocamentos usados na proteção de salto entre leituras.
+     */
+    fun distanceToSegmentMeters(
+        start: Coordinate,
+        end: Coordinate,
+        target: Coordinate,
+    ): Double {
+        if (start == end) return meters(start, target)
+        val referenceLatitudeRadians = Math.toRadians(target.latitude)
+        fun project(coordinate: Coordinate): Pair<Double, Double> {
+            val x = Math.toRadians(coordinate.longitude - target.longitude) *
+                cos(referenceLatitudeRadians) * EARTH_RADIUS_METERS
+            val y = Math.toRadians(coordinate.latitude - target.latitude) * EARTH_RADIUS_METERS
+            return x to y
+        }
+        val (startX, startY) = project(start)
+        val (endX, endY) = project(end)
+        val deltaX = endX - startX
+        val deltaY = endY - startY
+        val lengthSquared = deltaX * deltaX + deltaY * deltaY
+        if (lengthSquared <= 1e-9) return sqrt(startX * startX + startY * startY)
+        val projection = (-(startX * deltaX + startY * deltaY) / lengthSquared).coerceIn(0.0, 1.0)
+        val closestX = startX + projection * deltaX
+        val closestY = startY + projection * deltaY
+        return sqrt(closestX * closestX + closestY * closestY)
+    }
+
     private const val EARTH_RADIUS_METERS = 6_371_000.0
 }
