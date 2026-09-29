@@ -2,6 +2,39 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.694",
+      "build": 5985,
+      "commit": null,
+      "branch": "agent/family-daily-history-0.1.694",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Histórico familiar diário independente do modo Ao Vivo, acessível por calendário no endereço permanente /{motorista}/gps.",
+        "Pontos GPS passam a ser indexados também por motorista e dia em America/Sao_Paulo sem criar uma segunda coleta de localização.",
+        "API familiar separada lista dias disponíveis e carrega exclusivamente os pontos da data selecionada, inclusive após a sessão Ao Vivo encerrar."
+      ],
+      "fixed": [
+        "O antigo Ver trajeto deixa de representar somente o rastro da sessão atual e passa a ser substituído pelo módulo Histórico.",
+        "Troca de data limpa completamente o rastro anterior antes de renderizar o novo dia.",
+        "Passageiros continuam em LIVE_ONLY e não recebem calendário, lista de dias nem acesso a histórico familiar."
+      ],
+      "improved": [
+        "Rastro histórico é segmentado quando há lacunas temporais ou saltos incompatíveis, evitando linhas artificiais entre períodos sem GPS.",
+        "Calendário mensal indica os dias com dados e mantém retorno explícito ao Ao Vivo.",
+        "Compatibilidade preservada com PIN familiar fixo 0.1.693, Live First 0.1.692, Radar, Alertas e núcleo único de localização."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Acompanhamento Familiar",
+        "GPS",
+        "Backend",
+        "Acompanhamento Web",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.693",
       "build": 5984,
       "commit": null,
