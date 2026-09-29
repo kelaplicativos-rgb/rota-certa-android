@@ -723,8 +723,8 @@ class GoogleMapsService(context: Context? = null) {
             packageName = null,
             details = requestContext0699?.diagnostic(
                 provider = "google_geocode",
-                extra = "deadlineMs=\${FarolCoordinateResolution0697.GOOGLE_DEADLINE_MS}; query=\${query.take(180)}",
-            ) ?: "provider=google_geocode; deadlineMs=\${FarolCoordinateResolution0697.GOOGLE_DEADLINE_MS}; query=\${query.take(180)}",
+                extra = "deadlineMs=${FarolCoordinateResolution0697.GOOGLE_DEADLINE_MS}; query=${query.take(180)}",
+            ) ?: "provider=google_geocode; deadlineMs=${FarolCoordinateResolution0697.GOOGLE_DEADLINE_MS}; query=${query.take(180)}",
         )
         val selected = withTimeoutOrNull(FarolCoordinateResolution0697.GOOGLE_DEADLINE_MS) {
             withContext(Dispatchers.IO) { requestGeocode(query, apiKey, requestContext0699) }
@@ -737,8 +737,8 @@ class GoogleMapsService(context: Context? = null) {
                 packageName = null,
                 details = requestContext0699?.diagnostic(
                     provider = "google_geocode",
-                    extra = "elapsedMs=\${SystemClock.elapsedRealtime() - started0699}; result=null",
-                ) ?: "provider=google_geocode; elapsedMs=\${SystemClock.elapsedRealtime() - started0699}; result=null",
+                    extra = "elapsedMs=${SystemClock.elapsedRealtime() - started0699}; result=null",
+                ) ?: "provider=google_geocode; elapsedMs=${SystemClock.elapsedRealtime() - started0699}; result=null",
             )
         }
         return selected
@@ -1164,8 +1164,8 @@ class GoogleMapsService(context: Context? = null) {
                 packageName = null,
                 details = requestContext0699?.diagnostic(
                     provider = "google_geocode",
-                    extra = "elapsedMs=\${SystemClock.elapsedRealtime() - started0699}; error=\${FarolNetworkFailureIsolation0699.failureChain(error0699)}",
-                ) ?: "provider=google_geocode; elapsedMs=\${SystemClock.elapsedRealtime() - started0699}; error=\${FarolNetworkFailureIsolation0699.failureChain(error0699)}",
+                    extra = "elapsedMs=${SystemClock.elapsedRealtime() - started0699}; error=${FarolNetworkFailureIsolation0699.failureChain(error0699)}",
+                ) ?: "provider=google_geocode; elapsedMs=${SystemClock.elapsedRealtime() - started0699}; error=${FarolNetworkFailureIsolation0699.failureChain(error0699)}",
             )
             null
         } finally {
