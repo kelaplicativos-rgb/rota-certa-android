@@ -16,6 +16,9 @@ const PASSENGER_ARRIVAL_MAX_GAP_MILLIS_0691 = 20 * 1000;
 const FAMILY_ACCESS_SESSION_MILLIS_0681 = 365 * 24 * 60 * 60 * 1000;
 const FAMILY_AUTH_WINDOW_MILLIS_0681 = 10 * 60 * 1000;
 const FAMILY_AUTH_MAX_FAILURES_0681 = 5;
+const FAMILY_DAILY_HISTORY_MARKER_0694 = "FAMILY_DAILY_HISTORY_0694";
+const FAMILY_HISTORY_TIME_ZONE_0694 = "America/Sao_Paulo";
+const FAMILY_HISTORY_MAX_DAYS_0694 = 120;
 
 function sha256Hex0668(value) {
   return crypto.createHash("sha256").update(String(value || "")).digest("hex");
@@ -56,6 +59,62 @@ function continuousTrackingPoints0670(points) {
       seen.add(key);
       return true;
     });
+}
+
+function familyHistoryDayKey0694(millis) {
+  const value = Number(millis);
+  if (!Number.isFinite(value) || value <= 0) return "";
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone:FAMILY_HISTORY_TIME_ZONE_0694,
+    year:"numeric", month:"2-digit", day:"2-digit",
+  }).formatToParts(new Date(value));
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return [byType.year, byType.month, byType.day].join("-");
+}
+
+function nextHistoryDayKey0694(dayKey) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dayKey || ""));
+  if (!match) return "";
+  const utc = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + 1);
+  return new Date(utc).toISOString().slice(0, 10);
+}
+
+function timeZoneOffsetMillis0694(millis) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone:FAMILY_HISTORY_TIME_ZONE_0694,
+    year:"numeric", month:"2-digit", day:"2-digit",
+    hour:"2-digit", minute:"2-digit", second:"2-digit", hourCycle:"h23",
+  }).formatToParts(new Date(millis));
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const representedAsUtc = Date.UTC(
+    Number(values.year), Number(values.month) - 1, Number(values.day),
+    Number(values.hour), Number(values.minute), Number(values.second),
+  );
+  return representedAsUtc - Math.trunc(Number(millis) / 1000) * 1000;
+}
+
+function historyDayStartMillis0694(dayKey) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dayKey || ""));
+  if (!match) return null;
+  const y = Number(match[1]), m = Number(match[2]), d = Number(match[3]);
+  const check = new Date(Date.UTC(y, m - 1, d)).toISOString().slice(0, 10);
+  if (check !== dayKey) return null;
+  const wallMidnightAsUtc = Date.UTC(y, m - 1, d);
+  let candidate = wallMidnightAsUtc;
+  for (let i = 0; i < 3; i += 1) candidate = wallMidnightAsUtc - timeZoneOffsetMillis0694(candidate);
+  return candidate;
+}
+
+function familyHistoryDayBounds0694(dayKey) {
+  const startMillis = historyDayStartMillis0694(dayKey);
+  const nextKey = nextHistoryDayKey0694(dayKey);
+  const endMillis = nextKey ? historyDayStartMillis0694(nextKey) : null;
+  if (startMillis == null || endMillis == null || endMillis <= startMillis) return null;
+  return { startMillis, endMillis };
+}
+
+function familyHistoryDriverDocId0694(driverKey) {
+  return sha256Hex0668("family-history|" + String(driverKey || "")).slice(0, 48);
 }
 
 function trackingQueryFloor0670(share, session, sinceMillis) {
@@ -286,6 +345,120 @@ function createLiveTracking0668({ db, requireDriver }) {
     return { ref, snap, data: snap.data(), sessionId };
   }
 
+  function familyHistoryDriverRef0694(driverKey) {
+    return db.collection("tripTrackingFamilyHistoryDrivers").doc(familyHistoryDriverDocId0694(driverKey));
+  }
+
+  async function persistFamilyHistoryPoints0694(driverKey, sessionDocId, points, nowMillis) {
+    const normalized = continuousTrackingPoints0670(points);
+    if (!driverKey || !normalized.length) return 0;
+    const grouped = new Map();
+    normalized.forEach((point) => {
+      const dayKey = familyHistoryDayKey0694(point.recordedAtMillis);
+      if (!dayKey) return;
+      if (!grouped.has(dayKey)) grouped.set(dayKey, []);
+      grouped.get(dayKey).push(point);
+    });
+    if (!grouped.size) return 0;
+
+    const batch = db.batch();
+    let stored = 0;
+    const driverRef = familyHistoryDriverRef0694(driverKey);
+    batch.set(driverRef, {
+      driverKeyHash:sha256Hex0668(String(driverKey)).slice(0, 32),
+      timezone:FAMILY_HISTORY_TIME_ZONE_0694,
+      updatedAtMillis:nowMillis,
+      historyContract0694:FAMILY_DAILY_HISTORY_MARKER_0694,
+    }, { merge:true });
+    for (const [dayKey, dayPoints] of grouped.entries()) {
+      const dayRef = driverRef.collection("days").doc(dayKey);
+      batch.set(dayRef, {
+        dayKey,
+        timezone:FAMILY_HISTORY_TIME_ZONE_0694,
+        hasData:true,
+        updatedAtMillis:nowMillis,
+      }, { merge:true });
+      for (const point of dayPoints) {
+        const pointId = String(point.recordedAtMillis).padStart(16, "0") + "-" +
+          sha256Hex0668([point.latitude.toFixed(7), point.longitude.toFixed(7), point.recordedAtMillis].join("|")).slice(0, 12);
+        batch.set(dayRef.collection("points").doc(pointId), {
+          ...point,
+          sourceSessionDocId:cleanText0668(sessionDocId, 120),
+          dayKey,
+        }, { merge:true });
+        stored += 1;
+      }
+    }
+    await batch.commit();
+    return stored;
+  }
+
+  async function authorizeFamilyHistory0694(req, res, usernameRaw) {
+    const username = normalizeFamilyUsername0681(usernameRaw);
+    const sessionToken = cleanText0668(req.get("X-Rota-Certa-Family-Session") || "", 180);
+    if (!username || !/^[A-Za-z0-9_-]{22,180}$/.test(sessionToken)) {
+      trackingFail0668(res, 401, "tracking_family_session_required", "Autorize este navegador para consultar o histórico.");
+      return null;
+    }
+    const accessRef = db.collection("tripTrackingFamilyAccessSessions").doc(familySessionDocId0681(sessionToken));
+    const accessSnap = await accessRef.get();
+    const now = Date.now();
+    if (!accessSnap.exists || Number(accessSnap.data().expiresAtMillis || 0) <= now || accessSnap.data().username !== username) {
+      trackingFail0668(res, 401, "tracking_family_session_invalid", "Autorização familiar expirada.");
+      return null;
+    }
+    const access = accessSnap.data();
+    if (!access.driverKey) {
+      trackingFail0668(res, 401, "tracking_family_session_invalid", "Autorização familiar inválida.");
+      return null;
+    }
+    await accessRef.set({ updatedAtMillis:now, expiresAtMillis:now + FAMILY_ACCESS_SESSION_MILLIS_0681 }, { merge:true });
+    return { username, accessRef, access, driverKey:access.driverKey, now };
+  }
+
+  async function listPublicFamilyHistoryDays0694(req, res, usernameRaw) {
+    const auth = await authorizeFamilyHistory0694(req, res, usernameRaw);
+    if (!auth) return;
+    const daysSnap = await familyHistoryDriverRef0694(auth.driverKey)
+      .collection("days").orderBy("dayKey", "desc").limit(FAMILY_HISTORY_MAX_DAYS_0694).get();
+    const days = daysSnap.docs
+      .map((doc) => cleanText0668(doc.data().dayKey || doc.id, 10))
+      .filter((dayKey) => /^\d{4}-\d{2}-\d{2}$/.test(dayKey));
+    return trackingJson0668(res, 200, {
+      ok:true, scope:"FAMILY", mode:"FAMILY_DAILY_HISTORY",
+      historyContract0694:FAMILY_DAILY_HISTORY_MARKER_0694,
+      timezone:FAMILY_HISTORY_TIME_ZONE_0694, days,
+    });
+  }
+
+  async function getPublicFamilyHistoryDay0694(req, res, usernameRaw, dayKeyRaw) {
+    const auth = await authorizeFamilyHistory0694(req, res, usernameRaw);
+    if (!auth) return;
+    const dayKey = cleanText0668(dayKeyRaw, 10);
+    const bounds = familyHistoryDayBounds0694(dayKey);
+    if (!bounds) return trackingFail0668(res, 400, "tracking_history_day_invalid", "Data de histórico inválida.");
+    const requestedSince = finiteNumber0668(req.query && req.query.since);
+    const floor = Math.max(bounds.startMillis, requestedSince == null ? bounds.startMillis : Math.trunc(requestedSince) + 1);
+    const dayRef = familyHistoryDriverRef0694(auth.driverKey).collection("days").doc(dayKey);
+    const pointsSnap = await dayRef.collection("points")
+      .where("recordedAtMillis", ">=", floor)
+      .where("recordedAtMillis", "<", bounds.endMillis)
+      .orderBy("recordedAtMillis", "asc")
+      .limit(MAX_PUBLIC_POINTS_0668)
+      .get();
+    const points = publicTrackingPoints0668(pointsSnap.docs.map((doc) => doc.data()), {
+      scope:"FAMILY", sessionStartedAtMillis:bounds.startMillis, createdAtMillis:bounds.startMillis,
+    });
+    const last = points.length ? points[points.length - 1] : null;
+    return trackingJson0668(res, 200, {
+      ok:true, scope:"FAMILY", mode:"FAMILY_DAILY_HISTORY",
+      historyContract0694:FAMILY_DAILY_HISTORY_MARKER_0694,
+      timezone:FAMILY_HISTORY_TIME_ZONE_0694, dayKey, points,
+      hasMorePoints:pointsSnap.size >= MAX_PUBLIC_POINTS_0668,
+      nextSinceMillis:last ? Number(last.recordedAtMillis || 0) : Math.max(0, Number(requestedSince || 0)),
+    });
+  }
+
   async function applyPassengerArrival0691(sessionDocId, latest, nowMillis) {
     if (!latest) return 0;
     const shares = await db.collection("tripTrackingShares")
@@ -506,6 +679,7 @@ function createLiveTracking0668({ db, requireDriver }) {
       stored += 1;
     }
     await pointBatch.commit();
+    const familyHistoryPointsStored0694 = await persistFamilyHistoryPoints0694(identity.driverKey, selected.ref.id, accepted, now);
 
     const newest = accepted[accepted.length - 1];
     const battery = finiteNumber0668(body.batteryPercent);
@@ -542,6 +716,7 @@ function createLiveTracking0668({ db, requireDriver }) {
       ok:true,
       acceptedThroughMillis:latestOutcome.acceptedThroughMillis,
       pathPointsStored:stored,
+      familyHistoryPointsStored0694,
       passengerSharesClosed,
       latestWins0691:true,
     });
@@ -602,12 +777,16 @@ function createLiveTracking0668({ db, requireDriver }) {
       };
     });
 
+    const familyHistoryHeartbeatStored0694 = outcome.pointAllowed
+      ? await persistFamilyHistoryPoints0694(identity.driverKey, selected.ref.id, [heartbeatPoint], now)
+      : 0;
     const passengerSharesClosed = outcome.pointAllowed
       ? await applyPassengerArrival0691(selected.ref.id, heartbeatPoint, now)
       : 0;
     return trackingJson0668(res, 200, {
       ok:true,
       acceptedThroughMillis:outcome.acceptedThroughMillis,
+      familyHistoryHeartbeatStored0694,
       passengerSharesClosed,
       latestWins0691:true,
     });
@@ -932,6 +1111,8 @@ function createLiveTracking0668({ db, requireDriver }) {
     getFamilyStatus0681,
     openFamilySession0681,
     getPublicFamily0681,
+    listPublicFamilyHistoryDays0694,
+    getPublicFamilyHistoryDay0694,
     getPublic,
   };
 }
@@ -950,4 +1131,6 @@ module.exports = {
   trackingShareExpired0680,
   normalizeFamilyUsername0681,
   familyPinHash0681,
+  familyHistoryDayKey0694,
+  familyHistoryDayBounds0694,
 };
