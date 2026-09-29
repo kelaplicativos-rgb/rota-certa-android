@@ -166,7 +166,7 @@ internal fun AgendaModuleHeader0396(
 ) {
     val context = LocalContext.current
     var overflowExpanded by remember { mutableStateOf(false) }
-    val navigationDescription = "Voltar para o estágio anterior"
+    val navigationDescription = "Voltar"
     val effectiveOverflowActions = if (root && sectionLabel == AgendaRootSection0396.SCRIPTS.label) {
         val executorAction = AgendaHeaderAction0396("Executar script da Agenda") {
             context.startActivity(Intent(context, AgendaTripScriptExecutorActivity0558::class.java))
