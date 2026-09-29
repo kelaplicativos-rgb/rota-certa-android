@@ -568,14 +568,14 @@ internal fun EnhancedPassengerTimelineSection(
                 shareTrackingLink0668(
                     context = context,
                     title = "Compartilhar acompanhamento",
-                    message = "🚗 " + request0668.passengerName + ", acompanhe minha localização durante sua viagem:",
+                    message = "🚗 " + request0668.passengerName + ", acompanhe esta viagem em tempo real. Este link não mostra rastro, pode ser encaminhado a um familiar de confiança e expira automaticamente no desembarque:",
                     url = outcome0668.url,
                 )
                 onChanged(
                     if (outcome0668.reused) {
                         "Link temporário de " + request0668.passengerName + " aberto para compartilhar novamente."
                     } else {
-                        "Link temporário de " + request0668.passengerName + " criado. Ele não mostra o percurso anterior."
+                        "Link temporário de " + request0668.passengerName + " criado: ao vivo, sem rastro e com expiração no desembarque."
                     },
                 )
             }.onFailure { error0668 ->
