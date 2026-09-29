@@ -68,8 +68,7 @@ jobs:
           node --check trip-platform/public/tracking.js
           node --test             trip-platform/functions/test/live-tracking-0668.test.js             trip-platform/functions/test/passenger-live-only-0691.test.js | tee /tmp/node-0691-focused-tests.log
           npm --prefix trip-platform/functions install --no-audit --no-fund
-          npm --prefix trip-platform/functions test > /tmp/node-0691-full-tests.log 2>&1
-          tail -n 80 /tmp/node-0691-full-tests.log
+          npm --prefix trip-platform/functions test 2>&1 | tee /tmp/node-0691-full-tests.log
 
       - uses: actions/setup-java@v4
         with:
