@@ -43,8 +43,8 @@ jobs:
           grep -Fq 'FAROL_REMOTE_REFINEMENT_FAILED_SOFT_0699' app/src/main/java/br/com/mapeiaia/rotacerta/FarolNetworkFailureIsolation0699.kt
           grep -Fq 'FAROL_NETWORK_FAILURE_STATE_PRESERVED_0699' app/src/main/java/br/com/mapeiaia/rotacerta/FarolNetworkFailureIsolation0699.kt
           grep -Fq 'requestGeocode(query, apiKey, requestContext0699)' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
-          grep -Fq 'FAROL_LOCAL_SEMANTIC_FRESHNESS_0699' app/src/main/java/br/com/mapeiaia/rotacerta/FarolLocalSemanticFreshness0699.kt
-          grep -Fq 'isStage19LocalSemanticFresh0699' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'FAROL_LOCAL_SEMANTIC_FRESHNESS_0698' app/src/main/java/br/com/mapeiaia/rotacerta/FarolLocalSemanticFreshness0698.kt
+          grep -Fq 'isStage19LocalSemanticFresh0698' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -Fq 'PaintAuthority.LOCAL_SEMANTIC' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           if sed -n '/val stableAddressSignatureStage635/,/val routeSanitization0684/p' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | grep -Fq 'stage36RuntimeAuthority.bindDestination'; then
             echo "pre-sanitized Stage36 bind still present" >&2
@@ -75,7 +75,7 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.FarolPaidAiGate0695Test' \
             --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0699-focused.log
 
-      - name: Compare complete Android failures with exact 0.1.699
+      - name: Compare complete Android failures with exact 0.1.698
         shell: bash
         run: |
           set -euo pipefail
