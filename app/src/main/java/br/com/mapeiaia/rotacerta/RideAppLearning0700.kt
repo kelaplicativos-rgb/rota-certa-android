@@ -127,7 +127,7 @@ object LearnedRideReader0700 {
             applied = true,
             pickup = pickup,
             destination = destination,
-            evidence = "profileVersion=\${profile.profileVersion}; confidence=\${profile.confidence}",
+            evidence = "profileVersion=${profile.profileVersion}; confidence=${profile.confidence}",
         )
     }
 
