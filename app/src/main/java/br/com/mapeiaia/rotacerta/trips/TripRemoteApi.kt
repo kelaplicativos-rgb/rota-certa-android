@@ -1681,6 +1681,15 @@ class TripRemoteApi(
         requireDriverToken = true,
     )
 
+    suspend fun learnRideApp0700(
+        payload: RideAppLearningRequest0700,
+    ): RideAppLearningResponse0700 = request(
+        method = "POST",
+        path = "/v1/assistant/learn-ride-app",
+        body = json.encodeToString(payload),
+        requireDriverToken = true,
+    )
+
     suspend fun createPublicBooking(
         publicToken: String,
         request: PublicBookingRequest,
