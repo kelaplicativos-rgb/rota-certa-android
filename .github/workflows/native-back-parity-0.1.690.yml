@@ -1,0 +1,213 @@
+name: Native back parity 0.1.690 APK
+
+on:
+  push:
+    branches:
+      - 'agent/chatgpt-back-parity-0.1.690'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-back-parity-0690-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: 'agent/chatgpt-back-parity-0.1.690'
+      BASE_SHA: 'f60ed8059d83f74ee9b95e8d22adc5b514b8d8af'
+      EXPECTED_VERSION_NAME: '0.1.690'
+      EXPECTED_VERSION_CODE: '5981'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Prove native back visual and behavior contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'val releaseVersionName = "0.1.690"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 5_981' app/build.gradle.kts
+          grep -Fq '"version": "0.1.690"' app/src/main/assets/release_history.json
+          grep -Fq 'CHATGPT_NATIVE_BACK_PARITY_0690' app/src/main/java/br/com/mapeiaia/rotacerta/trips/ChatGptBackParity0690.kt
+          grep -Fq 'Icons.AutoMirrored.Filled.ArrowBack' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt
+          grep -Fq 'ChatGptBackParity0690.TOUCH_TARGET_DP.dp' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt
+          grep -Fq 'ChatGptBackParity0690.ICON_SIZE_DP.dp' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt
+          grep -Fq 'val navigationDescription = "Voltar"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt
+          ! grep -Fq 'text = "←"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt
+          grep -Fq 'BackHandler(enabled = true)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'onNavigationClick = navigateBack0689' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'GlobalBackNavigation0689.pop(navigationHistory0689)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          git diff --check "$BASE_SHA"...HEAD
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run native-back and preserved feature tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.ChatGptBackParity0690Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.GlobalBackNavigation0689Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.GlobalBackNavigation0689IntegrationTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeaderNavigation0396Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.UniversalTripSearch0687Test' \
+            --tests 'br.com.mapeiaia.rotacerta.KeepScreenAwakeContract0688Test' \
+            --tests 'br.com.mapeiaia.rotacerta.RadarSafetyPolicy0686Test' \
+            --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0690-focused-tests.log
+
+      - name: Compare complete unit-test failures with exact 0.1.689 base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add --detach /tmp/rc-0689 "$BASE_SHA"
+          chmod +x /tmp/rc-0689/gradlew
+
+          set +e
+          (
+            cd /tmp/rc-0689
+            ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace
+          ) > /tmp/android-0689-full-tests.log 2>&1
+          BASE_EXIT=$?
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace > /tmp/android-0690-full-tests.log 2>&1
+          HEAD_EXIT=$?
+          set -e
+
+          python3 - <<'PY'
+          import pathlib
+          import xml.etree.ElementTree as ET
+
+          def failures(root):
+              result = set()
+              d = pathlib.Path(root) / "app/build/test-results/testDebugUnitTest"
+              if not d.exists():
+                  return result
+              for f in d.glob("*.xml"):
+                  tree = ET.parse(f)
+                  for case in tree.getroot().iter("testcase"):
+                      if case.find("failure") is not None or case.find("error") is not None:
+                          result.add(f"{case.attrib.get('classname','')}::{case.attrib.get('name','')}")
+              return result
+
+          base = failures("/tmp/rc-0689")
+          head = failures(".")
+          new = sorted(head - base)
+          fixed = sorted(base - head)
+          pathlib.Path("/tmp/0689-failures.txt").write_text("\n".join(sorted(base)) + ("\n" if base else ""))
+          pathlib.Path("/tmp/0690-failures.txt").write_text("\n".join(sorted(head)) + ("\n" if head else ""))
+          pathlib.Path("/tmp/0690-new-failures.txt").write_text("\n".join(new) + ("\n" if new else ""))
+          pathlib.Path("/tmp/0690-fixed-baseline-failures.txt").write_text("\n".join(fixed) + ("\n" if fixed else ""))
+          print(f"base_failures={len(base)}")
+          print(f"head_failures={len(head)}")
+          print(f"new_failures={len(new)}")
+          if new:
+              print("\n".join(new))
+              raise SystemExit(1)
+          PY
+
+          {
+            echo "base_gradle_exit=$BASE_EXIT"
+            echo "head_gradle_exit=$HEAD_EXIT"
+            echo "new_failure_count=$(wc -l < /tmp/0690-new-failures.txt)"
+          } | tee /tmp/android-0690-regression-summary.txt
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$ROTA_CERTA_GIT_SHA" = "$GITHUB_SHA"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0690-assemble.log
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Prove APK identity signing and exact final SHA
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/android-0690-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/android-0690-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/android-0690-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/android-0690-apksigner.txt
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/android-0690-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0690-dex-strings.txt
+          require_dex() {
+            local marker="$1"
+            if ! grep -Fq "$marker" /tmp/android-0690-dex-strings.txt; then
+              echo "Missing required APK DEX marker: $marker" >&2
+              exit 1
+            fi
+            echo "DEX marker verified: $marker"
+          }
+          require_dex "$ROTA_CERTA_GIT_SHA"
+          require_dex 'CHATGPT_NATIVE_BACK_PARITY_0690'
+          require_dex 'GLOBAL_FIXED_BACK_NAVIGATION_0689'
+          require_dex 'KEEP_SCREEN_AWAKE_TOGGLE_0688'
+          require_dex 'UNIVERSAL_SEARCH_ENGINE_0687'
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.690-5981-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.690"
+            echo "versionCode=5981"
+            echo "branch=agent/chatgpt-back-parity-0.1.690"
+            echo "commit=$ROTA_CERTA_GIT_SHA"
+            echo "deviceTarget=Samsung SM-S911B / Android 16"
+            echo "backIcon=Icons.AutoMirrored.Filled.ArrowBack"
+            echo "backTouchTargetDp=48"
+            echo "backIconSizeDp=24"
+            echo "backAccessibilityLabel=Voltar"
+            echo "oneStageBack=ACTIVE"
+            echo "androidBackUsesSharedHistory=ACTIVE"
+            echo "rootPhysicalBackExit=BLOCKED"
+            echo "textArrowUnicode=REMOVED"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee native-back-parity-0690-proof.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-native-back-parity-0.1.690-${{ github.sha }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            native-back-parity-0690-proof.txt
+            /tmp/android-0690-focused-tests.log
+            /tmp/android-0689-full-tests.log
+            /tmp/android-0690-full-tests.log
+            /tmp/android-0690-regression-summary.txt
+            /tmp/0689-failures.txt
+            /tmp/0690-failures.txt
+            /tmp/0690-new-failures.txt
+            /tmp/0690-fixed-baseline-failures.txt
+            /tmp/android-0690-assemble.log
+            /tmp/android-0690-aapt.txt
+            /tmp/android-0690-apksigner.txt
+            /tmp/android-0690-zip-integrity.txt
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30
