@@ -888,8 +888,8 @@ function createLiveTracking0668({ db, requireDriver }) {
     }
     const aliasRef = db.collection("tripTrackingFamilyAliases").doc(familyAliasDocId0681(username));
     const aliasSnap = await aliasRef.get();
-    if (!aliasSnap.exists || !aliasSnap.data().active) {
-      return trackingFail0668(res, 410, "tracking_family_inactive", "O motorista não está compartilhando a localização.");
+    if (!aliasSnap.exists) {
+      return trackingFail0668(res, 404, "tracking_family_not_configured", "Acompanhamento familiar ainda não foi configurado.");
     }
     const alias = aliasSnap.data();
     const ip = cleanText0668(req.ip || req.get("X-Forwarded-For") || "unknown", 120);
