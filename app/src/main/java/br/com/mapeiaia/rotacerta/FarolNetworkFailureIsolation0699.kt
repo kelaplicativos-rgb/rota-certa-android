@@ -59,12 +59,17 @@ object FarolNetworkFailureIsolation0699 {
      * Cancellation remains structural control flow and must propagate. IOException represents
      * transport/provider unavailability. Malformed provider payloads are also provider failures.
      */
-    fun isRecoverableProviderFailure(error: Throwable): Boolean {
+    fun isRecoverableTransportFailure(error: Throwable): Boolean {
         if (error is CancellationException) return false
         return generateSequence<Throwable>(error) { it.cause }
-            .any { cause ->
-                cause is IOException || cause is SerializationException
-            }
+            .any { cause -> cause is IOException }
+    }
+
+    fun isRecoverableProviderFailure(error: Throwable): Boolean {
+        if (error is CancellationException) return false
+        if (isRecoverableTransportFailure(error)) return true
+        return generateSequence<Throwable>(error) { it.cause }
+            .any { cause -> cause is SerializationException }
     }
 
     fun failureChain(error: Throwable): String =
