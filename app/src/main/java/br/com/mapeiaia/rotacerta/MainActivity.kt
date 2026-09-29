@@ -2845,6 +2845,16 @@ private fun InstalledRideAppsCard() {
         ) {
             Text("Buscar aplicativos instalados")
         }
+        OutlinedButton(
+            onClick = { context.startActivity(Intent(context, RideAppLearningActivity0700::class.java)) },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Aprender aplicativo por APK / IA")
+        }
+        Text(
+            "Para aplicativos regionais: anexe o APK ou analise o aplicativo instalado. O APK é inspecionado localmente sem execução; a OpenAI recebe somente um dossiê reduzido e gera um Reader Profile local.",
+            style = MaterialTheme.typography.bodySmall,
+        )
         Text(
             if (usageAccessGrantedStage26) "Acesso ao uso: concedido." else "Acesso ao uso: necessário. Sem essa autorização o FAROL falha fechado e não faz leitura global.",
             style = MaterialTheme.typography.bodySmall,
