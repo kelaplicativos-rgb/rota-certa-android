@@ -11106,6 +11106,9 @@ exports.assistantApi = onRequest(
       if (req.method === "POST" && path === "/v1/assistant/farol-address") {
         return await resolveFarolPaidAddressApi0695(req, res);
       }
+      if (req.method === "POST" && path === "/v1/assistant/learn-ride-app") {
+        return await learnRideAppApi0700(req, res);
+      }
       return fail(res, 404, "assistant_route_not_found", "Rota do Assistente não encontrada.");
     } catch (error) {
       console.error("assistant_api_unhandled", error);
