@@ -1,0 +1,8 @@
+KEEP_SCREEN_AWAKE_TOGGLE_0688
+branch=agent/keep-screen-awake-0.1.688
+base=97f91c4bd3e05049374bb23de0f4d68ee143e528
+implementation_parent=7cf23797a2436e3e3390c7c20790f79ced286853
+target=Samsung SM-S911B / Android 16
+behavior=FLAG_KEEP_SCREEN_ON on persistent accessibility bubble only
+screen_timeout_mutation=none
+manual_power_button=unchanged
