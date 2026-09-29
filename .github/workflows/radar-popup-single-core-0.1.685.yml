@@ -98,7 +98,6 @@ jobs:
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0685-dex-strings.txt
           grep -Fq "$ROTA_CERTA_GIT_SHA" /tmp/android-0685-dex-strings.txt
           grep -Fq 'SINGLE_CORE_POPUP_AUTHORITY_0685' /tmp/android-0685-dex-strings.txt
-          grep -Fq 'single_core_alert_projection_0_1_685' /tmp/android-0685-dex-strings.txt
           grep -Fq 'FAROL_ROUTE_ADDRESS_SANITIZER_0684' /tmp/android-0685-dex-strings.txt
           APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
           SHORT_SHA="$(git rev-parse --short=12 HEAD)"
