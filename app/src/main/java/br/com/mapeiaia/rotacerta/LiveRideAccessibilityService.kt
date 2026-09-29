@@ -3620,8 +3620,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         } else {
             evaluationStage19.addressSignature
         }
-        stage36RuntimeAuthority.bindDestination(stableAddressSignatureStage635)
-        stage32SemanticGate.observeCandidate(stableAddressSignatureStage635)
+        // 0.1.698: the pre-sanitized signature is diagnostic only. Runtime/card authority is
+        // bound once, below, after temporal/UI noise removal and route-address sanitization.
         FarolForensicCardBlackBoxStage32.recordCandidate(
             SystemClock.elapsedRealtimeNanos(), sourceStage19, evaluationStage19.pickup, evaluationStage19.destination, stableAddressSignatureStage635,
         )
@@ -3900,6 +3900,26 @@ class LiveRideAccessibilityService : AccessibilityService() {
             isReadingBindingFreshStage26(bindingStage19) &&
             bindingStage19.addressSignature == universalActiveAddressSignature
 
+    private fun stage19LocalSemanticVerdict0698(
+        bindingStage19: FarolUniversalVisualPipelineStage19.Binding,
+    ): FarolLocalSemanticFreshness0698.Verdict {
+        if (!serviceReady || !WorkModePolicy0162.isEnabled(currentSettings)) {
+            return FarolLocalSemanticFreshness0698.Verdict.DROPPED_RUNTIME_TOKEN
+        }
+        val tokenStage36 = stage36BindingWorkToken[stage26BindingKey(bindingStage19)]
+            ?: return FarolLocalSemanticFreshness0698.Verdict.DROPPED_RUNTIME_TOKEN
+        return FarolLocalSemanticFreshness0698.evaluate(
+            runtimeTokenFresh = stage36RuntimeAuthority.isFresh(tokenStage36),
+            bindingAddressSignature = bindingStage19.addressSignature,
+            activeAddressSignature = universalActiveAddressSignature,
+        )
+    }
+
+    private fun isStage19LocalSemanticFresh0698(
+        bindingStage19: FarolUniversalVisualPipelineStage19.Binding,
+    ): Boolean = stage19LocalSemanticVerdict0698(bindingStage19) ==
+        FarolLocalSemanticFreshness0698.Verdict.ACCEPTED_SAME_DESTINATION
+
 
     private fun stage26BindingKey(bindingStage26: FarolUniversalVisualPipelineStage19.Binding): String =
         "${bindingStage26.screenGeneration}|${bindingStage26.windowGeneration}|${bindingStage26.screenHash}|${bindingStage26.addressSignature}"
@@ -4003,12 +4023,18 @@ class LiveRideAccessibilityService : AccessibilityService() {
             )
             return
         }
-        if (!isStage19BindingFresh(bindingStage19)) {
+        val localFreshness0698 = stage19LocalSemanticVerdict0698(bindingStage19)
+        UnifiedDebugEventStore.record(
+            FarolLocalSemanticFreshness0698.marker(localFreshness0698),
+            universalResolvedForegroundPackage(),
+            "binding=${bindingStage19.addressSignature}; active=${universalActiveAddressSignature.orEmpty()}; phase=after_coordinate",
+        )
+        if (localFreshness0698 != FarolLocalSemanticFreshness0698.Verdict.ACCEPTED_SAME_DESTINATION) {
             FarolCausalLatencyStage28.Metrics.increment("staleResultsDropped")
             UnifiedDebugEventStore.record(
                 FarolCoordinateResolution0697.STALE_MARKER,
                 universalResolvedForegroundPackage(),
-                "binding=${bindingStage19.addressSignature}; phase=after_coordinate",
+                "binding=${bindingStage19.addressSignature}; phase=after_coordinate; semanticVerdict=$localFreshness0698",
             )
             return
         }
@@ -4147,7 +4173,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         traceIdStage20: String,
         operationIdStage637: String,
     ) {
-        if (!isStage19BindingFresh(bindingStage19) || stage19VisualVerificationPending) return
+        if (!isStage19LocalSemanticFresh0698(bindingStage19)) return
         if (!FarolLocalDecisionAuthority0696.isFinalLocalDecision(resultStage637)) return
 
         val localFinal0696 = resultStage637.copy(
@@ -4177,9 +4203,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
             bindingStage19,
             traceIdStage20,
             operationIdStage637,
+            FarolLocalSemanticFreshness0698.PaintAuthority.LOCAL_SEMANTIC,
         )
         if (
-            isStage19BindingFresh(bindingStage19) &&
+            isStage19LocalSemanticFresh0698(bindingStage19) &&
             (currentRadarColor == RadarColor.Default || currentDistanceKm == null)
         ) {
             UnifiedDebugEventStore.record(
@@ -4192,6 +4219,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 bindingStage19,
                 traceIdStage20,
                 "LOCAL_WATCHDOG_REPAINT_0696",
+                FarolLocalSemanticFreshness0698.PaintAuthority.LOCAL_SEMANTIC,
             )
         }
     }
@@ -4200,9 +4228,19 @@ class LiveRideAccessibilityService : AccessibilityService() {
         bindingStage19: FarolUniversalVisualPipelineStage19.Binding,
         traceIdStage20: String,
         operationIdStage20: String,
+        paintAuthority0698: FarolLocalSemanticFreshness0698.PaintAuthority =
+            FarolLocalSemanticFreshness0698.PaintAuthority.VISUAL_SURFACE,
     ) {
-        val paintFreshStage20 = isStage19BindingFresh(bindingStage19) && !stage19VisualVerificationPending
-        FarolForensicTraceStage20.bindingCheck(traceIdStage20, operationIdStage20, SystemClock.elapsedRealtimeNanos(), "BEFORE_FINAL_PAINT", stage20BindingSnapshot(bindingStage19), currentStage20BindingSnapshot(), paintFreshStage20, stage19VisualVerificationPending)
+        val localSemanticPaint0698 =
+            paintAuthority0698 == FarolLocalSemanticFreshness0698.PaintAuthority.LOCAL_SEMANTIC
+        val paintFreshStage20 = if (localSemanticPaint0698) {
+            isStage19LocalSemanticFresh0698(bindingStage19)
+        } else {
+            isStage19BindingFresh(bindingStage19) && !stage19VisualVerificationPending
+        }
+        val verificationPendingForTrace0698 =
+            if (localSemanticPaint0698) false else stage19VisualVerificationPending
+        FarolForensicTraceStage20.bindingCheck(traceIdStage20, operationIdStage20, SystemClock.elapsedRealtimeNanos(), "BEFORE_FINAL_PAINT", stage20BindingSnapshot(bindingStage19), currentStage20BindingSnapshot(), paintFreshStage20, verificationPendingForTrace0698)
         if (!paintFreshStage20) return
         val colorStage19 = when (resultStage19.recommendation) {
             Recommendation.GoodRide -> RadarColor.Green
