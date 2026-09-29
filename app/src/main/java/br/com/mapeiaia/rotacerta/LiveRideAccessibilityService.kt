@@ -6558,18 +6558,33 @@ class LiveRideAccessibilityService : AccessibilityService() {
         apiKey: String,
     ): List<Double?> {
         if (originAddress.isBlank() || destinations.isEmpty()) return List(destinations.size) { null }
-        val approved0684 = FarolRouteAddressSanitizer0684.sanitize(originAddress)
+        val temporal0697 = FarolTemporalUiNoise0697.clean(originAddress)
+        if (temporal0697.changed) {
+            UnifiedDebugEventStore.record(
+                FarolTemporalUiNoise0697.REMOVED_MARKER,
+                universalResolvedForegroundPackage(),
+                "removed=${temporal0697.removed.joinToString("|").take(120)}; cleaned=${temporal0697.cleaned.take(220)}",
+            )
+        }
+        val approved0684 = FarolRouteAddressSanitizer0684.sanitize(temporal0697.cleaned)
             .takeIf { it.accepted }?.sanitized ?: return List(destinations.size) { null }
         val started = SystemClock.elapsedRealtimeNanos()
         val runtimeToken0634 = stage36RuntimeAuthority.captureWorkToken()
         stage36RuntimeAuthority.markProcessing(runtimeToken0634, FarolRuntimeAuthorityStage36.ProcessingState.COORDINATE)
         val cached = googleMapsService.cachedFarolCoordinate(approved0684)
-        // Stage634 compatibility contract: resolveFarolCoordinate( is still the fallback semantics
-        // encapsulated by the Stage640 instant resolver; only the cold-path ordering changed.
-        val origin = cached ?: googleMapsService.resolveFarolCoordinateInstant642(approved0684, destinations, apiKey)
+        val origin = cached ?: googleMapsService.resolveFarolCoordinateResilient0697(
+            approved0684,
+            destinations,
+            apiKey,
+        )
         stage36RuntimeAuthority.markProcessing(runtimeToken0634, FarolRuntimeAuthorityStage36.ProcessingState.DISTANCE)
         if (cached != null) FarolCausalLatencyStage28.Metrics.increment("geoCacheHits")
         else FarolCausalLatencyStage28.Metrics.increment("geoCacheMisses")
+        UnifiedDebugEventStore.record(
+            if (origin != null) FarolCoordinateResolution0697.RESOLVED_MARKER else FarolCoordinateResolution0697.ALL_FAILED_MARKER,
+            universalResolvedForegroundPackage(),
+            "cache=${cached != null}; resolved=${origin != null}; elapsedMs=${(SystemClock.elapsedRealtimeNanos() - started) / 1_000_000L}; address=${approved0684.take(220)}",
+        )
         val values = origin?.let { coordinate -> destinations.map { GeoDistance.kilometers(coordinate, it) } }
             ?: List(destinations.size) { null }
         FarolCausalLatencyStage28.Metrics.sample(
