@@ -36,9 +36,9 @@ data class RideApkDossier0700(
         appendLine("apkSha256=$apkSha256")
         appendLine("fileSizeBytes=$fileSizeBytes")
         appendLine("entries:")
-        relevantEntries.take(350).forEach { appendLine("- \${it.take(240)}") }
+        relevantEntries.take(350).forEach { appendLine("- ${it.take(240)}") }
         appendLine("semantic_strings:")
-        relevantStrings.take(500).forEach { appendLine("- \${it.take(260)}") }
+        relevantStrings.take(500).forEach { appendLine("- ${it.take(260)}") }
     }.take(MAX_DOSSIER_CHARS)
 
     companion object {
@@ -58,7 +58,7 @@ object RideApkAnalyzer0700 {
     )
 
     suspend fun analyzeUri(context: Context, uri: Uri): RideApkDossier0700 {
-        val temp = File(context.cacheDir, "ride-learning-\${System.currentTimeMillis()}.apk")
+        val temp = File(context.cacheDir, "ride-learning-${System.currentTimeMillis()}.apk")
         context.contentResolver.openInputStream(uri)?.use { input ->
             FileOutputStream(temp).use { output ->
                 val buffer = ByteArray(64 * 1024)
