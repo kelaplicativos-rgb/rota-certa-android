@@ -110,7 +110,7 @@ class FarolOfflineAi0642Test {
         assertTrue(live.contains("S642_OFFLINE_AI_CARD_ADMITTED"))
         assertTrue(live.contains("ocrService.extractStructuredText(localBitmap642)"))
         assertTrue(live.contains("FarolOfflineAiStage642.augmentForRoute"))
-        assertTrue(live.contains("googleMapsService.resolveFarolCoordinateInstant642("))
+        assertTrue(live.contains("googleMapsService.resolveFarolCoordinateResilient0697("))
     }
 
     @Test
