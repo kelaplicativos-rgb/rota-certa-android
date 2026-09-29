@@ -1016,6 +1016,24 @@ class LiveRideAccessibilityService : AccessibilityService() {
         error0172: Throwable,
         packageName0172: String? = null,
     ) {
+        if (FarolNetworkFailureIsolation0699.isRecoverableProviderFailure(error0172)) {
+            runCatching {
+                UnifiedDebugEventStore.record(
+                    FarolNetworkFailureIsolation0699.NETWORK_FAILURE_STATE_PRESERVED_MARKER,
+                    packageName0172 ?: universalResolvedForegroundPackage(),
+                    "stage=$stage0172; type=\${error0172::class.java.simpleName}; color=\${currentRadarColor.diagnosticLabel}; distance=\${currentDistanceKm ?: -1.0}; binding=\${universalActiveAddressSignature.orEmpty()}; action=preserve_state",
+                )
+            }
+            runCatching {
+                FarolFlightRecorder0163.record(
+                    stage = FarolNetworkFailureIsolation0699.NETWORK_FAILURE_STATE_PRESERVED_MARKER,
+                    packageName = packageName0172 ?: universalResolvedForegroundPackage(),
+                    details = "stage=$stage0172; error=\${FarolNetworkFailureIsolation0699.failureChain(error0172)}; color=\${currentRadarColor.diagnosticLabel}; distance=\${currentDistanceKm ?: -1.0}",
+                )
+            }
+            if (::bubblePrefs.isInitialized) runCatching { persistBubbleState() }
+            return
+        }
         runCatching {
             UnifiedDebugEventStore.record(
                 "UNEXPECTED_FAILURE_CONTAINED_0172",
@@ -6599,6 +6617,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         originAddress: String,
         destinations: List<Coordinate>,
         apiKey: String,
+        traceId0699: String? = null,
+        operationId0699: String? = null,
     ): List<Double?> {
         if (originAddress.isBlank() || destinations.isEmpty()) return List(destinations.size) { null }
         val temporal0697 = FarolTemporalUiNoise0697.clean(originAddress)
@@ -6613,13 +6633,37 @@ class LiveRideAccessibilityService : AccessibilityService() {
             .takeIf { it.accepted }?.sanitized ?: return List(destinations.size) { null }
         val started = SystemClock.elapsedRealtimeNanos()
         val runtimeToken0634 = stage36RuntimeAuthority.captureWorkToken()
+        val networkContext0699 = FarolNetworkFailureIsolation0699.requestContext(
+            token = runtimeToken0634,
+            traceId = traceId0699,
+            operationId = operationId0699,
+            destinationAddress = approved0684,
+        )
         stage36RuntimeAuthority.markProcessing(runtimeToken0634, FarolRuntimeAuthorityStage36.ProcessingState.COORDINATE)
         val cached = googleMapsService.cachedFarolCoordinate(approved0684)
-        val origin = cached ?: googleMapsService.resolveFarolCoordinateResilient0697(
-            approved0684,
-            destinations,
-            apiKey,
-        )
+        val origin = if (cached != null) {
+            cached
+        } else try {
+            googleMapsService.resolveFarolCoordinateResilient0697(
+                approved0684,
+                destinations,
+                apiKey,
+                networkContext0699,
+            )
+        } catch (cancelled0699: kotlinx.coroutines.CancellationException) {
+            throw cancelled0699
+        } catch (error0699: Throwable) {
+            if (!FarolNetworkFailureIsolation0699.isRecoverableProviderFailure(error0699)) throw error0699
+            UnifiedDebugEventStore.record(
+                FarolNetworkFailureIsolation0699.NETWORK_FAILURE_STATE_PRESERVED_MARKER,
+                universalResolvedForegroundPackage(),
+                networkContext0699.diagnostic(
+                    provider = "coordinate_pipeline",
+                    extra = "error=\${FarolNetworkFailureIsolation0699.failureChain(error0699)}; action=return_null_keep_yellow",
+                ),
+            )
+            null
+        }
         stage36RuntimeAuthority.markProcessing(runtimeToken0634, FarolRuntimeAuthorityStage36.ProcessingState.DISTANCE)
         if (cached != null) FarolCausalLatencyStage28.Metrics.increment("geoCacheHits")
         else FarolCausalLatencyStage28.Metrics.increment("geoCacheMisses")
