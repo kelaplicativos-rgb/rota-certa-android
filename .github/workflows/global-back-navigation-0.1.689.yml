@@ -1,0 +1,191 @@
+name: Global back navigation 0.1.689 APK
+
+on:
+  push:
+    branches:
+      - 'agent/global-back-navigation-0.1.689'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: global-back-navigation-0689-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      BASE_SHA: '59dbd31ff30b3b3edb5fa709e28f9060d1ead4af'
+      EXPECTED_VERSION_NAME: '0.1.689'
+      EXPECTED_VERSION_CODE: '5980'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Prove exact navigation source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'val releaseVersionName = "0.1.689"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 5_980' app/build.gradle.kts
+          grep -Fq '"version": "0.1.689"' app/src/main/assets/release_history.json
+          grep -Fq 'GLOBAL_FIXED_BACK_NAVIGATION_0689' app/src/main/java/br/com/mapeiaia/rotacerta/trips/GlobalBackNavigation0689.kt
+          grep -Fq 'BackHandler(enabled = true)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'onNavigationClick = navigateBack0689' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'onMenuClick0689 = if (headerIsRoot0396)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'navigationHistory0689' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'text = "←"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt
+          grep -Fq 'if (root && onMenuClick0689 != null)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt
+          ! grep -Fq 'text = if (root) "☰" else "←"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt
+          git diff --check "$BASE_SHA"...HEAD
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run focused navigation and preserved feature tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.GlobalBackNavigation0689Test'             --tests 'br.com.mapeiaia.rotacerta.trips.GlobalBackNavigation0689IntegrationTest'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeaderNavigation0396Test'             --tests 'br.com.mapeiaia.rotacerta.trips.UniversalTripSearch0687Test'             --tests 'br.com.mapeiaia.rotacerta.KeepScreenAwakeContract0688Test'             --tests 'br.com.mapeiaia.rotacerta.RadarSafetyPolicy0686Test'             --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0689-focused-tests.log
+
+      - name: Compare complete unit-test failures with exact 0.1.688 base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add --detach /tmp/rc-0688 "$BASE_SHA"
+          chmod +x /tmp/rc-0688/gradlew
+
+          set +e
+          (
+            cd /tmp/rc-0688
+            ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace
+          ) > /tmp/android-0688-full-tests.log 2>&1
+          BASE_EXIT=$?
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace > /tmp/android-0689-full-tests.log 2>&1
+          HEAD_EXIT=$?
+          set -e
+
+          python3 - <<'PY'
+          import pathlib
+          import xml.etree.ElementTree as ET
+
+          def failures(root):
+              result = set()
+              d = pathlib.Path(root) / "app/build/test-results/testDebugUnitTest"
+              if not d.exists():
+                  return result
+              for f in d.glob("*.xml"):
+                  tree = ET.parse(f)
+                  for case in tree.getroot().iter("testcase"):
+                      if case.find("failure") is not None or case.find("error") is not None:
+                          result.add(f"{case.attrib.get('classname','')}::{case.attrib.get('name','')}")
+              return result
+
+          base = failures("/tmp/rc-0688")
+          head = failures(".")
+          new = sorted(head - base)
+          fixed = sorted(base - head)
+          pathlib.Path("/tmp/0688-failures.txt").write_text("\n".join(sorted(base)) + ("\n" if base else ""))
+          pathlib.Path("/tmp/0689-failures.txt").write_text("\n".join(sorted(head)) + ("\n" if head else ""))
+          pathlib.Path("/tmp/0689-new-failures.txt").write_text("\n".join(new) + ("\n" if new else ""))
+          pathlib.Path("/tmp/0689-fixed-baseline-failures.txt").write_text("\n".join(fixed) + ("\n" if fixed else ""))
+          print(f"base_failures={len(base)}")
+          print(f"head_failures={len(head)}")
+          print(f"new_failures={len(new)}")
+          if new:
+              print("\n".join(new))
+              raise SystemExit(1)
+          PY
+
+          {
+            echo "base_gradle_exit=$BASE_EXIT"
+            echo "head_gradle_exit=$HEAD_EXIT"
+            echo "new_failure_count=$(wc -l < /tmp/0689-new-failures.txt)"
+          } | tee /tmp/android-0689-regression-summary.txt
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ROTA_CERTA_GIT_SHA="$GITHUB_SHA"
+          export ROTA_CERTA_GIT_BRANCH="$GITHUB_REF_NAME"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0689-assemble.log
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Prove APK identity signing and exact final SHA
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/android-0689-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/android-0689-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/android-0689-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/android-0689-apksigner.txt
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/android-0689-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0689-dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/android-0689-dex-strings.txt
+          grep -Fq 'GLOBAL_FIXED_BACK_NAVIGATION_0689' /tmp/android-0689-dex-strings.txt
+          grep -Fq 'KEEP_SCREEN_AWAKE_TOGGLE_0688' /tmp/android-0689-dex-strings.txt
+          grep -Fq 'UNIVERSAL_TRIP_SEARCH_0687' /tmp/android-0689-dex-strings.txt
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.689-5980-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.689"
+            echo "versionCode=5980"
+            echo "branch=agent/global-back-navigation-0.1.689"
+            echo "commit=$GITHUB_SHA"
+            echo "deviceTarget=Samsung SM-S911B / Android 16"
+            echo "fixedBackArrow=ACTIVE"
+            echo "rootDrawerMenu=SEPARATE"
+            echo "androidBackUsesSharedHistory=ACTIVE"
+            echo "rootPhysicalBackExit=BLOCKED"
+            echo "historyPersistence=REMEMBER_SAVEABLE"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee global-back-navigation-0689-proof.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-global-back-navigation-0.1.689-${{ github.sha }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            global-back-navigation-0689-proof.txt
+            /tmp/android-0689-focused-tests.log
+            /tmp/android-0688-full-tests.log
+            /tmp/android-0689-full-tests.log
+            /tmp/android-0689-regression-summary.txt
+            /tmp/0688-failures.txt
+            /tmp/0689-failures.txt
+            /tmp/0689-new-failures.txt
+            /tmp/0689-fixed-baseline-failures.txt
+            /tmp/android-0689-assemble.log
+            /tmp/android-0689-aapt.txt
+            /tmp/android-0689-apksigner.txt
+            /tmp/android-0689-zip-integrity.txt
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30
