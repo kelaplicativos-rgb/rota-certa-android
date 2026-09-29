@@ -2,6 +2,41 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.700",
+      "build": 5991,
+      "commit": null,
+      "branch": "agent/ride-app-learning-openai-0.1.700",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Aprender aplicativo de corrida: permite analisar um aplicativo instalado ou anexar um APK completo para criar um Reader Profile próprio.",
+        "APK Intelligence Extractor inspeciona package, versão, SHA-256, nomes de recursos e strings DEX relevantes localmente, sem executar o APK importado.",
+        "Backend seguro envia somente o dossiê semântico reduzido à OpenAI e exige saída estruturada declarativa, sem código executável.",
+        "Reader Profile aprendido é salvo localmente por package/SHA e executado antes do fallback universal do FAROL, sem chamada de IA por corrida."
+      ],
+      "fixed": [
+        "Aplicativos regionais deixam de depender exclusivamente do parser universal quando existe Reader Profile aprendido.",
+        "Perfil aprendido permanece isolado ao package de origem e só pode autorizar rota quando origem e destino são reconhecidos no mesmo snapshot."
+      ],
+      "improved": [
+        "Reanálise do mesmo SHA do APK reutiliza o perfil local e não gera nova chamada OpenAI.",
+        "Aplicativo aprendido é automaticamente incluído na lista autorizada do FAROL.",
+        "OpenAI nunca decide verde/vermelho, raio, quilometragem final nem aceita/rejeita corrida; decisão permanece local."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Farol",
+        "APK Learning",
+        "OpenAI",
+        "Accessibility",
+        "Apps autorizados",
+        "Backend",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.699",
       "build": 5990,
       "commit": null,
