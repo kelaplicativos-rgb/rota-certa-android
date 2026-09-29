@@ -32,6 +32,27 @@
     .auth input { width:100%; font-size:1.35rem; letter-spacing:.18em; text-align:center; padding:12px; border-radius:12px; border:1px solid #3b4b5c; background:#0f151c; color:#fff; }
     .auth button { padding:12px 16px; border:0; border-radius:12px; font-weight:700; background:#2d7dff; color:white; cursor:pointer; }
     .auth small { color:#8997a5; }
+    .history-toolbar { display:flex; align-items:center; gap:12px; }
+    .history-back { width:44px; height:44px; border:0; border-radius:999px; background:#0f151c; color:#fff; font-size:1.5rem; cursor:pointer; }
+    .history-heading { flex:1; min-width:0; }
+    .history-heading h1 { margin:0 0 4px; }
+    .history-date { border:1px solid #46576a; background:#0f151c; color:#fff; border-radius:12px; padding:9px 12px; font-weight:800; cursor:pointer; }
+    .history-status { margin-top:10px; }
+    .history-segments { display:grid; gap:8px; margin-top:12px; }
+    .history-segment { background:#0f151c; border-radius:12px; padding:10px 12px; }
+    .history-segment b { color:#fff; }
+    dialog.history-calendar { width:min(92vw,420px); border:1px solid #354659; border-radius:18px; background:#151d26; color:#fff; padding:14px; }
+    dialog.history-calendar::backdrop { background:#0009; }
+    .calendar-head { display:grid; grid-template-columns:44px 1fr 44px; align-items:center; gap:8px; margin-bottom:10px; }
+    .calendar-head button, .calendar-close { border:0; border-radius:10px; background:#0f151c; color:#fff; min-height:40px; font-weight:800; cursor:pointer; }
+    .calendar-head strong { text-align:center; text-transform:capitalize; }
+    .calendar-week, .calendar-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:5px; }
+    .calendar-week span { text-align:center; color:#8997a5; font-size:.78rem; padding:5px 0; }
+    .calendar-day { min-height:42px; border:1px solid transparent; border-radius:10px; background:#0f151c; color:#dce6ef; cursor:pointer; position:relative; }
+    .calendar-day[disabled] { opacity:.22; cursor:default; }
+    .calendar-day.available::after { content:""; position:absolute; width:5px; height:5px; border-radius:50%; background:#83e9a6; left:50%; bottom:4px; transform:translateX(-50%); }
+    .calendar-day.selected { border-color:#7cc7ff; background:#18314a; }
+    .calendar-close { width:100%; margin-top:12px; }
   </style>
 </head>
 <body>
@@ -46,9 +67,21 @@
     </div>
   </section>
 
+  <section class="card" id="historyPanel" hidden>
+    <div class="history-toolbar">
+      <button id="historyBack" class="history-back" type="button" aria-label="Voltar ao Ao Vivo">←</button>
+      <div class="history-heading">
+        <h1>Histórico</h1>
+        <button id="historyDateButton" class="history-date" type="button"><span id="historyDateLabel">—</span> 📅</button>
+      </div>
+    </div>
+    <p id="historyStatus" class="history-status warn">Selecione uma data para consultar o rastro.</p>
+    <div id="historySegments" class="history-segments"></div>
+  </section>
+
   <div class="map-wrap" id="mapWrap">
     <div id="map"></div>
-    <button id="historyToggle" class="map-action history" type="button" hidden>🗺 Ver trajeto</button>
+    <button id="historyToggle" class="map-action history" type="button" hidden>🕘 Histórico</button>
     <button id="centerVehicle" class="map-action center" type="button" hidden>◎ Centralizar</button>
   </div>
 
@@ -72,7 +105,17 @@
   </section>
   <footer id="trackingFooter">Este link é temporário e pode ser encaminhado pelo passageiro a familiares de confiança. O acesso termina automaticamente no desembarque confirmado.</footer>
 </main>
+<dialog id="historyCalendar" class="history-calendar">
+  <div class="calendar-head">
+    <button id="historyPrevMonth" type="button" aria-label="Mês anterior">‹</button>
+    <strong id="historyMonthLabel">—</strong>
+    <button id="historyNextMonth" type="button" aria-label="Próximo mês">›</button>
+  </div>
+  <div class="calendar-week"><span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span></div>
+  <div id="historyCalendarGrid" class="calendar-grid"></div>
+  <button id="historyCalendarClose" class="calendar-close" type="button">Fechar</button>
+</dialog>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-<script src="/tracking.js?v=0692"></script>
+<script src="/tracking.js?v=0694"></script>
 </body>
 </html>
