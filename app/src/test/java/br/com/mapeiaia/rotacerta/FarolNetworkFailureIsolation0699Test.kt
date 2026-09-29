@@ -30,6 +30,8 @@ class FarolNetworkFailureIsolation0699Test {
             ),
         )
         assertTrue(FarolNetworkFailureIsolation0699.isRecoverableProviderFailure(SerializationException("payload")))
+        assertTrue(FarolNetworkFailureIsolation0699.isRecoverableTransportFailure(SocketTimeoutException("timeout")))
+        assertFalse(FarolNetworkFailureIsolation0699.isRecoverableTransportFailure(SerializationException("payload")))
         assertFalse(FarolNetworkFailureIsolation0699.isRecoverableProviderFailure(CancellationException("cancel")))
         assertFalse(FarolNetworkFailureIsolation0699.isRecoverableProviderFailure(IllegalStateException("bug")))
     }
@@ -115,7 +117,7 @@ class FarolNetworkFailureIsolation0699Test {
         val end = live.indexOf("private fun containLifecycleFailure0172(", start)
         assertTrue(start >= 0 && end > start)
         val block = live.substring(start, end)
-        val recoverable = block.indexOf("isRecoverableProviderFailure(error0172)")
+        val recoverable = block.indexOf("isRecoverableTransportFailure(error0172)")
         val preserve = block.indexOf("NETWORK_FAILURE_STATE_PRESERVED_MARKER")
         val earlyReturn = block.indexOf("return", preserve)
         val hardClear = block.indexOf("hardClearUniversalTwoAddress")
