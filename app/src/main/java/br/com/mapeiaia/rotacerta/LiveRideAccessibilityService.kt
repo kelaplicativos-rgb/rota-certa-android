@@ -3683,6 +3683,29 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 accessibilityPriorityApplied0684 = true
             }
         }
+        val sanitizedAddressSignature0697 = DestinationAddressIdentityPolicy.signature(
+            packageStage47,
+            routeDestination0684,
+        )
+        val stableSanitizedAddressSignature0697 = if (
+            DestinationAddressIdentityPolicy.sameDestinationSignatures(
+                previousAddressSignatureStage635,
+                sanitizedAddressSignature0697,
+            )
+        ) {
+            previousAddressSignatureStage635 ?: sanitizedAddressSignature0697
+        } else {
+            sanitizedAddressSignature0697
+        }
+        stage36RuntimeAuthority.bindDestination(stableSanitizedAddressSignature0697)
+        stage32SemanticGate.observeCandidate(stableSanitizedAddressSignature0697)
+        if (routeSanitization0684.cuts.any { it.startsWith("temporal_ui_noise_0697:") }) {
+            UnifiedDebugEventStore.record(
+                FarolTemporalUiNoise0697.REMOVED_MARKER,
+                packageStage47,
+                "cuts=${routeSanitization0684.cuts.joinToString("|").take(300)}; sanitized=${routeDestination0684.take(220)}",
+            )
+        }
         FarolMaximumForensicsStage38.record(
             SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(),
             "S684_ROUTE_ADDRESS_APPROVED", packageStage47, cycleId = cycleIdStage20,
@@ -3708,7 +3731,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             stage19ActiveBlockId != evaluationStage19.blockId
         // 0.1.696: distance ownership follows the semantic address, not incidental card/UI churn.
         // A different hash/card identity with the SAME address must not revoke Green/Red + km.
-        val semanticAddressChanged0696 = universalActiveAddressSignature != stableAddressSignatureStage635
+        val semanticAddressChanged0696 = universalActiveAddressSignature != stableSanitizedAddressSignature0697
         val sameAddressVisualChurn0696 = !sameCardIdentity0683 && !semanticAddressChanged0696
         val visualChangedStage19 = semanticAddressChanged0696
         if (windowChangedStage19) universalWindowGeneration += 1L
@@ -3716,7 +3739,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             UnifiedDebugEventStore.record(
                 FarolLocalDecisionAuthority0696.SAME_ADDRESS_CHURN_PRESERVED_MARKER,
                 packageStage47,
-                "binding=$stableAddressSignatureStage635; color=$currentRadarColor; distance=$currentDistanceKm; routeCancelled=false",
+                "binding=$stableSanitizedAddressSignature0697; color=$currentRadarColor; distance=$currentDistanceKm; routeCancelled=false",
             )
         }
         if (visualChangedStage19) {
@@ -3733,7 +3756,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         stage19ActiveWindowId = evaluationStage19.windowId
         stage19ActiveBlockId = evaluationStage19.blockId
         universalActiveRidePackageName = null
-        universalActiveAddressSignature = stableAddressSignatureStage635
+        universalActiveAddressSignature = stableSanitizedAddressSignature0697
         universalActiveCardIdentity0683 = candidateCardIdentity0683
         lastSnapshotHash = evaluationStage19.screenHash
         universalLastActiveReadAtElapsedMillis0187 = SystemClock.elapsedRealtime()
@@ -3776,7 +3799,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             screenGeneration = universalScreenGeneration,
             windowGeneration = universalWindowGeneration,
             screenHash = evaluationStage19.screenHash,
-            addressSignature = stableAddressSignatureStage635,
+            addressSignature = stableSanitizedAddressSignature0697,
         )
         bindReadingActivationStage26(bindingStage19, stage26CandidateActivationGeneration)
         FarolReadingActivationStage26.Metrics.sample(
