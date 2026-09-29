@@ -19,6 +19,8 @@ jobs:
     timeout-minutes: 90
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: 'agent/global-back-navigation-0.1.689'
       BASE_SHA: '59dbd31ff30b3b3edb5fa709e28f9060d1ead4af'
       EXPECTED_VERSION_NAME: '0.1.689'
       EXPECTED_VERSION_CODE: '5980'
@@ -120,8 +122,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export ROTA_CERTA_GIT_SHA="$GITHUB_SHA"
-          export ROTA_CERTA_GIT_BRANCH="$GITHUB_REF_NAME"
+          test "$ROTA_CERTA_GIT_SHA" = "$GITHUB_SHA"
           ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0689-assemble.log
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
@@ -142,10 +143,18 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/android-0689-apksigner.txt
           grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/android-0689-apksigner.txt
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0689-dex-strings.txt
-          grep -Fq "$GITHUB_SHA" /tmp/android-0689-dex-strings.txt
-          grep -Fq 'GLOBAL_FIXED_BACK_NAVIGATION_0689' /tmp/android-0689-dex-strings.txt
-          grep -Fq 'KEEP_SCREEN_AWAKE_TOGGLE_0688' /tmp/android-0689-dex-strings.txt
-          grep -Fq 'UNIVERSAL_TRIP_SEARCH_0687' /tmp/android-0689-dex-strings.txt
+          require_dex() {
+            local marker="$1"
+            if ! grep -Fq "$marker" /tmp/android-0689-dex-strings.txt; then
+              echo "Missing required APK DEX marker: $marker" >&2
+              exit 1
+            fi
+            echo "DEX marker verified: $marker"
+          }
+          require_dex "$ROTA_CERTA_GIT_SHA"
+          require_dex 'GLOBAL_FIXED_BACK_NAVIGATION_0689'
+          require_dex 'KEEP_SCREEN_AWAKE_TOGGLE_0688'
+          require_dex 'UNIVERSAL_SEARCH_ENGINE_0687'
           APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
           SHORT_SHA="$(git rev-parse --short=12 HEAD)"
           FINAL="rota-certa-0.1.689-5980-$SHORT_SHA.apk"
@@ -157,7 +166,7 @@ jobs:
             echo "versionName=0.1.689"
             echo "versionCode=5980"
             echo "branch=agent/global-back-navigation-0.1.689"
-            echo "commit=$GITHUB_SHA"
+            echo "commit=$ROTA_CERTA_GIT_SHA"
             echo "deviceTarget=Samsung SM-S911B / Android 16"
             echo "fixedBackArrow=ACTIVE"
             echo "rootDrawerMenu=SEPARATE"
