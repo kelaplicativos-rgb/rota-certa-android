@@ -1,7 +1,7 @@
 "use strict";
 
 (() => {
-  const marker = "PERMANENT_FAMILY_GPS_0681";
+  const marker = "PASSENGER_LIVE_ONLY_0691";
   const pathParts = location.pathname.split("/").filter(Boolean);
   const familyUsername = pathParts.length === 2 && String(pathParts[1]).toLowerCase() === "gps"
     ? String(pathParts[0] || "").toLowerCase().replace(/[^a-z0-9_-]/g, "")
@@ -20,6 +20,9 @@
   const battery = document.getElementById("battery");
   const distanceBox = document.getElementById("distanceBox");
   const distance = document.getElementById("distance");
+  const destinationBox = document.getElementById("destinationBox");
+  const destinationLabel = document.getElementById("destinationLabel");
+  const centerVehicle0691 = document.getElementById("centerVehicle");
   const fallback = document.getElementById("fallback");
   const mapsLink = document.getElementById("mapsLink");
   const familyAuth0681 = document.getElementById("familyAuth");
@@ -37,6 +40,8 @@
   let lastRoutePointMillis0670 = 0;
   let refreshInFlight0670 = false;
   let authInFlight0681 = false;
+  let followPassenger0691 = true;
+  let currentPassengerPosition0691 = null;
 
   function readFamilySession0681() {
     try {
@@ -150,11 +155,19 @@
       maxZoom:19,
       attribution:'&copy; OpenStreetMap contributors',
     }).addTo(map);
+    map.on("dragstart", () => { followPassenger0691 = false; });
+    map.on("zoomstart", () => { followPassenger0691 = false; });
     return true;
   }
 
+  function centerPassenger0691() {
+    if (!map || !currentPassengerPosition0691) return;
+    followPassenger0691 = true;
+    map.setView(currentPassengerPosition0691, Math.max(16, map.getZoom() || 16), { animate:true });
+  }
+
   function renderMap(data) {
-    const points = routePoints0670;
+    const passenger = data.scope === "PASSENGER";
     const current = data.current;
     if (!ensureMap()) {
       fallback.hidden = false;
@@ -164,24 +177,49 @@
       return;
     }
     fallback.hidden = true;
-    const latLngs = points.map((p) => [Number(p.latitude), Number(p.longitude)]);
-    if (route) route.remove();
-    if (latLngs.length > 1) route = L.polyline(latLngs, { weight:5, opacity:.82 }).addTo(map);
+
+    if (passenger) {
+      if (route) {
+        route.remove();
+        route = null;
+      }
+    } else {
+      const latLngs = routePoints0670.map((p) => [Number(p.latitude), Number(p.longitude)]);
+      if (route) route.remove();
+      if (latLngs.length > 1) route = L.polyline(latLngs, { weight:5, opacity:.82 }).addTo(map);
+    }
 
     if (current) {
       const here = [Number(current.latitude), Number(current.longitude)];
       if (currentMarker) currentMarker.setLatLng(here);
-      else currentMarker = L.marker(here).addTo(map).bindPopup("Posição atual");
+      else currentMarker = L.marker(here).addTo(map).bindPopup(passenger ? "Localização ao vivo" : "Posição atual");
       mapsLink.href = `https://www.google.com/maps?q=${encodeURIComponent(here.join(","))}`;
+      if (passenger) {
+        currentPassengerPosition0691 = here;
+        if (followPassenger0691) {
+          map.setView(here, Math.max(16, map.getZoom() || 16), { animate:true });
+        }
+      }
     }
+
     if (data.destination) {
       const dest = [Number(data.destination.latitude), Number(data.destination.longitude)];
       if (destinationMarker) destinationMarker.setLatLng(dest);
-      else destinationMarker = L.marker(dest).addTo(map).bindPopup(data.destination.label || "Destino");
+      else destinationMarker = L.marker(dest).addTo(map).bindPopup(data.destination.label || "Desembarque");
+    } else if (destinationMarker) {
+      destinationMarker.remove();
+      destinationMarker = null;
     }
 
-    const boundsPoints = latLngs.slice();
-    if (data.destination) boundsPoints.push([Number(data.destination.latitude), Number(data.destination.longitude)]);
+    if (passenger) {
+      if (!current && data.destination) {
+        map.setView([Number(data.destination.latitude), Number(data.destination.longitude)], 15);
+      }
+      return;
+    }
+
+    const boundsPoints = routePoints0670.map((p) => [Number(p.latitude), Number(p.longitude)]);
+    if (current) boundsPoints.push([Number(current.latitude), Number(current.longitude)]);
     if (boundsPoints.length > 1) map.fitBounds(boundsPoints, { padding:[24,24], maxZoom:16 });
     else if (boundsPoints.length === 1) map.setView(boundsPoints[0], 15);
   }
@@ -195,7 +233,7 @@
         ? "🛡 GPS familiar permanente"
         : "🛡 GPS Tracker de segurança";
     privacy.textContent = passenger
-      ? "Este link mostra somente o trecho compartilhado para esta viagem e será encerrado no desembarque ou ao expirar."
+      ? "Localização ao vivo, sem rastro. Este link será encerrado automaticamente quando o desembarque for confirmado."
       : familyMode0681
         ? "Este endereço permanece o mesmo. O motorista pode ativar ou interromper o compartilhamento sem trocar o link."
         : "Acompanhamento familiar ao vivo da sessão atual, incluindo o trajeto já percorrido.";
@@ -205,7 +243,7 @@
     const deviceState = String(data.deviceState || "WAITING");
     const gpsState = String(data.gpsState || "WAITING");
     if (deviceState === "CONNECTED" && gpsState === "FRESH") {
-      status.textContent = "🟢 GPS Tracker ativo • atualização automática";
+      status.textContent = passenger ? "🟢 AO VIVO • localização atual" : "🟢 GPS Tracker ativo • atualização automática";
       status.className = "status";
     } else if (deviceState === "CONNECTED") {
       status.textContent = "🟡 Aparelho conectado • aguardando GPS";
@@ -229,6 +267,11 @@
     distance.textContent = !data.current || data.distanceToDestinationMeters == null
       ? "Aguardando localização…"
       : formatDistance(data.distanceToDestinationMeters);
+    destinationBox.hidden = !passenger || !data.destination;
+    destinationLabel.textContent = data.destination && data.destination.label
+      ? String(data.destination.label)
+      : "Destino da viagem";
+    centerVehicle0691.hidden = !passenger || !data.current;
     renderMap(data);
   }
 
@@ -283,7 +326,7 @@
     refreshInFlight0670 = true;
     try {
       let data = null;
-      let since0670 = lastRoutePointMillis0670;
+      let since0670 = familyMode0681 ? lastRoutePointMillis0670 : 0;
       for (let page0670 = 0; page0670 < 3; page0670 += 1) {
         const response = await fetchTrackingPage0670(since0670);
         if (familyMode0681 && (response.status === 401 || response.status === 403)) {
@@ -292,10 +335,19 @@
           return;
         }
         if (response.status === 410) {
+          let ended0691 = null;
+          try { ended0691 = await response.json(); } catch (_) {}
+          const passengerArrived0691 = ended0691 && ended0691.error === "passenger_arrived";
           status.textContent = familyMode0681
             ? "🔴 O motorista não está compartilhando a localização neste momento."
-            : "Compartilhamento encerrado.";
-          status.className = "ended";
+            : passengerArrived0691
+              ? "✅ Passageiro chegou ao destino • acompanhamento encerrado"
+              : "Compartilhamento encerrado.";
+          status.className = passengerArrived0691 ? "status" : "ended";
+          privacy.textContent = passengerArrived0691
+            ? "O desembarque foi confirmado. Este link não fornece mais coordenadas."
+            : privacy.textContent;
+          centerVehicle0691.hidden = true;
           if (!familyMode0681 && timer) clearInterval(timer);
           return;
         }
@@ -305,13 +357,23 @@
           return;
         }
         if (!response.ok) throw new Error("http_" + response.status);
+
         data = await response.json();
+        if (data.scope === "PASSENGER") {
+          routePoints0670 = [];
+          lastRoutePointMillis0670 = 0;
+          render(data);
+          break;
+        }
+
         mergeRoutePoints0670(data.points);
         const next0670 = Number(data.nextSinceMillis || lastRoutePointMillis0670 || 0);
-        if (!data.hasMorePoints || next0670 <= since0670) break;
+        if (!data.hasMorePoints || next0670 <= since0670) {
+          render(data);
+          break;
+        }
         since0670 = next0670;
       }
-      if (data) render(data);
     } catch (_) {
       status.textContent = "Sem conexão com o servidor. A última posição exibida permanece válida.";
       status.className = "warn";
@@ -330,6 +392,10 @@
     familyPin0681.addEventListener("keydown", (event) => {
       if (event.key === "Enter") void authorizeFamily0681();
     });
+  }
+
+  if (centerVehicle0691) {
+    centerVehicle0691.addEventListener("click", centerPassenger0691);
   }
 
   if (familyMode0681) {
