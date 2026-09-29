@@ -115,7 +115,7 @@ class RideAppLearningActivity0700 : ComponentActivity() {
             state = RideAppLearningUiState0700(
                 busy = true,
                 title = "Dossiê criado",
-                message = "\${dossier.appLabel}\\n\${dossier.packageName}\\n\${dossier.relevantEntries.size} recursos • \${dossier.relevantStrings.size} evidências. Consultando OpenAI pelo backend seguro…",
+                message = "${dossier.appLabel}\\n${dossier.packageName}\\n${dossier.relevantEntries.size} recursos • ${dossier.relevantStrings.size} evidências. Consultando OpenAI pelo backend seguro…",
                 dossier = dossier,
             )
 
@@ -176,7 +176,7 @@ class RideAppLearningActivity0700 : ComponentActivity() {
             state = RideAppLearningUiState0700(
                 busy = false,
                 title = "Aplicativo aprendido",
-                message = "\${dossier.appLabel} agora possui um Reader Profile local. Próximos cards são interpretados localmente; OpenAI não é chamada por corrida.",
+                message = "${dossier.appLabel} agora possui um Reader Profile local. Próximos cards são interpretados localmente; OpenAI não é chamada por corrida.",
                 dossier = dossier,
                 profile = profile,
             )
@@ -276,34 +276,34 @@ private fun RideAppLearningScreen0700(
                 if (state.busy) CircularProgressIndicator()
                 state.dossier?.let {
                     Text(
-                        "SHA-256: \${it.apkSha256.take(16)}… • v\${it.versionName} (\${it.versionCode})",
+                        "SHA-256: ${it.apkSha256.take(16)}… • v${it.versionName} (${it.versionCode})",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
                 state.profile?.let {
                     Text(
-                        "Confiança: \${(it.confidence * 100).toInt()}% • destino: \${it.destinationLabels.take(4).joinToString()}",
+                        "Confiança: ${(it.confidence * 100).toInt()}% • destino: ${it.destinationLabels.take(4).joinToString()}",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
             }
         }
-        Text("Readers aprendidos: \${profiles.size}", fontWeight = FontWeight.Bold)
+        Text("Readers aprendidos: ${profiles.size}", fontWeight = FontWeight.Bold)
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(profiles, key = { it.packageName }) { profile ->
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(profile.packageName, fontWeight = FontWeight.Bold)
                         Text(
-                            "v\${profile.versionName} (\${profile.versionCode}) • confiança \${(profile.confidence * 100).toInt()}%",
+                            "v${profile.versionName} (${profile.versionCode}) • confiança ${(profile.confidence * 100).toInt()}%",
                             style = MaterialTheme.typography.bodySmall,
                         )
                         Text(
-                            "Destino: \${profile.destinationLabels.take(4).joinToString().ifBlank { "por resource hints" }}",
+                            "Destino: ${profile.destinationLabels.take(4).joinToString().ifBlank { "por resource hints" }}",
                             style = MaterialTheme.typography.bodySmall,
                         )
                         Text(
-                            "Modelo: \${profile.model.ifBlank { profile.provider }}",
+                            "Modelo: ${profile.model.ifBlank { profile.provider }}",
                             style = MaterialTheme.typography.bodySmall,
                         )
                         OutlinedButton(
