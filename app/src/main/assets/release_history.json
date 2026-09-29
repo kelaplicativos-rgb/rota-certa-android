@@ -2,6 +2,37 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.701",
+      "build": 5992,
+      "commit": null,
+      "branch": "agent/live-agenda-feed-0.1.701",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Live Agenda Feed somente leitura em JSON e XML sobre a mesma fonte canônica da Agenda.",
+        "Consulta opcional por data, origem e destino com cálculo de vagas pelo mínimo entre todos os subtrechos atravessados.",
+        "Endpoint público operacional sem dados pessoais, com no-store/noindex e leitura direta da capacidade canônica reconciliada."
+      ],
+      "fixed": [
+        "Evita inferir disponibilidade apenas porque a rota passa por uma cidade; a consulta de trecho respeita cada segmento intermediário.",
+        "Pouso Alegre → São Paulo retorna 0 vagas quando qualquer trecho intermediário está lotado, ainda que um trecho posterior tenha vaga."
+      ],
+      "improved": [
+        "Feed expõe frescor da leitura, paradas, ocupação, passageiros, bloqueios e vagas por trecho sem carregar a interface web.",
+        "JSON e XML compartilham exatamente a mesma projeção operacional e a mesma política de visibilidade pública."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Agenda",
+        "Backend",
+        "Vagas por trecho",
+        "API pública",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.700",
       "build": 5991,
       "commit": null,
