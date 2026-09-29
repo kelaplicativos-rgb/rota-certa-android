@@ -1,0 +1,148 @@
+name: Radar fast local safety 0.1.686 APK
+
+on:
+  push:
+    branches:
+      - 'agent/radar-fast-local-safety-0.1.686'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: radar-fast-local-0686-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: agent/radar-fast-local-safety-0.1.686
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Prove exact radar safety source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
+          grep -Fq 'releaseVersionName = "0.1.686"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 5_977' app/build.gradle.kts
+          grep -Fq '"version": "0.1.686"' app/src/main/assets/release_history.json
+          grep -Fq 'RADAR_FAST_LOCAL_SAFETY_0686' app/src/main/java/br/com/mapeiaia/rotacerta/RadarSafetyPolicy0686.kt
+          grep -Fq 'LOCAL_LOCATION_INTERVAL_MS = 1_000L' app/src/main/java/br/com/mapeiaia/rotacerta/RadarSafetyPolicy0686.kt
+          grep -Fq 'SHARED_POINT_INTERVAL_MS = 5_000L' app/src/main/java/br/com/mapeiaia/rotacerta/RadarSafetyPolicy0686.kt
+          grep -Fq 'PREARM_RADIUS_METERS = 4_000.0' app/src/main/java/br/com/mapeiaia/rotacerta/RadarSafetyPolicy0686.kt
+          grep -Fq 'PASSED_AUTO_CLOSE_MILLIS = 5_000L' app/src/main/java/br/com/mapeiaia/rotacerta/RadarSafetyPolicy0686.kt
+          grep -Fq 'RadarSafetyPolicy0686.shouldPersistSharedPoint(' app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingService.kt
+          grep -Fq 'RadarSafetyPolicy0686.segmentCrossesTarget(' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngine.kt
+          ! grep -Fq 'REQUIRED_APPROACHING_SAMPLES' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngine.kt
+          grep -Fq 'schedulePassedAutoDismiss0686' app/src/main/java/br/com/mapeiaia/rotacerta/BackgroundLocationCore0680.kt
+          grep -Fq 'SINGLE_CORE_POPUP_AUTHORITY_0685' app/src/main/java/br/com/mapeiaia/rotacerta/ProximityAlertProjection0685.kt
+          ! grep -Fq 'directionalAlertEngineChecklist5.check(' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'FAROL_ROUTE_ADDRESS_SANITIZER_0684' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRouteAddressSanitizer0684.kt
+          git diff --check
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run focused radar GPS popup and preserved regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.RadarSafetyPolicy0686Test' \
+            --tests 'br.com.mapeiaia.rotacerta.RadarFastLocal0686ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.DirectionalProximityAlertEngineChecklist5Test' \
+            --tests 'br.com.mapeiaia.rotacerta.ProximityAlertProjection0685Test' \
+            --tests 'br.com.mapeiaia.rotacerta.RadarPopupSingleCore0685ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.PersistentLocationCore0680Test' \
+            --tests 'br.com.mapeiaia.rotacerta.PermanentFamilyGps0681Test' \
+            --tests 'br.com.mapeiaia.rotacerta.LiveTrackingShare0668Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolRouteAddressSanitizer0684Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolCardLifeAuthority0683Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolTrustedRoute0682Test' \
+            --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0686-tests.log
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0686-assemble.log
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
+
+      - name: Prove APK identity signing and exact final SHA
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/android-0686-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/android-0686-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/android-0686-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5977'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.686'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/android-0686-apksigner.txt
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/android-0686-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0686-dex-strings.txt
+          grep -Fq "$ROTA_CERTA_GIT_SHA" /tmp/android-0686-dex-strings.txt
+          grep -Fq 'RADAR_FAST_LOCAL_SAFETY_0686' /tmp/android-0686-dex-strings.txt
+          grep -Fq 'SINGLE_CORE_POPUP_AUTHORITY_0685' /tmp/android-0686-dex-strings.txt
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.686-5977-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.686"
+            echo "versionCode=5977"
+            echo "branch=agent/radar-fast-local-safety-0.1.686"
+            echo "commit=$ROTA_CERTA_GIT_SHA"
+            echo "deviceTarget=Samsung SM-S911B / Android 16"
+            echo "localGpsPreferredIntervalMs=1000"
+            echo "localGpsMinIntervalMs=500"
+            echo "sharedPointIntervalMs=5000"
+            echo "prearmRadiusMeters=4000"
+            echo "speedAccuracyAdaptiveRadius=ACTIVE"
+            echo "betweenFixSegmentBridge=ACTIVE"
+            echo "firstValidFixInsideZone=IMMEDIATE_ALERT"
+            echo "passedPopupAutoCloseMs=5000"
+            echo "passedCountdownVisible=NO"
+            echo "singleGpsCore=ACTIVE"
+            echo "singleProximityEngine=ACTIVE"
+            echo "farolDependency=NONE"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee radar-fast-local-0686-proof.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-radar-fast-local-0.1.686-${{ github.sha }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            radar-fast-local-0686-proof.txt
+            /tmp/android-0686-tests.log
+            /tmp/android-0686-assemble.log
+            /tmp/android-0686-aapt.txt
+            /tmp/android-0686-apksigner.txt
+            /tmp/android-0686-zip-integrity.txt
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30
