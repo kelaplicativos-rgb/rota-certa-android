@@ -600,7 +600,6 @@
       destinationMarker.remove();
       destinationMarker = null;
     }
-    historyBoundsApplied0692 = false;
     renderMap({ scope:"FAMILY", current:null, destination:null });
     renderHistorySegments0694();
     if (historyStatus0694) {
