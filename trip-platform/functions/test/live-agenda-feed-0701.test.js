@@ -1,0 +1,140 @@
+"use strict";
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const {
+  requestedSegment0701,
+  projectTrip0701,
+  serializeXml0701,
+  createLiveAgendaFeed0701,
+} = require("../live-agenda-feed-0701");
+
+function tripFixture() {
+  return {
+    canonicalTripId: "trip-1",
+    title: "Três Corações → São Paulo",
+    departureAtMillis: Date.parse("2026-10-02T21:30:00.000Z"),
+    timezoneId: "America/Sao_Paulo",
+    status: "PUBLISHED",
+    capacity: 4,
+    capacityReliable: true,
+    itineraryAuthoritative: true,
+    updatedAtMillis: Date.parse("2026-09-29T22:40:00.000Z"),
+    stops: [
+      { order: 0, name: "Três Corações" },
+      { order: 1, name: "Posto Fernandão - Pouso Alegre" },
+      { order: 2, name: "Extrema" },
+      { order: 3, name: "São Paulo - Metrô Penha" },
+    ],
+    segmentLoads: [4, 4, 3],
+    segmentPassengerLoads: [4, 4, 3],
+    segmentBlockedLoads: [0, 0, 0],
+    segmentAvailability: [
+      { from: "Três Corações", to: "Pouso Alegre", availableSeats: 0, passengerSeats: 4 },
+      { from: "Pouso Alegre", to: "Extrema", availableSeats: 0, passengerSeats: 4 },
+      { from: "Extrema", to: "São Paulo", availableSeats: 1, passengerSeats: 3 },
+    ],
+  };
+}
+
+test("requested segment uses the minimum vacancy across every crossed leg", () => {
+  const result = requestedSegment0701(tripFixture(), "Pouso Alegre", "São Paulo");
+  assert.equal(result.found, true);
+  assert.equal(result.reliable, true);
+  assert.equal(result.availableSeats, 0);
+  assert.equal(result.occupiedSeats, 4);
+});
+
+test("projection exposes only operational route data and preserves the local date", () => {
+  const projected = projectTrip0701(tripFixture(), {
+    date: "2026-10-02",
+    origin: "Pouso Alegre",
+    destination: "São Paulo",
+  });
+  assert.equal(projected.localDate, "2026-10-02");
+  assert.equal(projected.localTime, "18:30");
+  assert.equal(projected.requestedSegment.availableSeats, 0);
+  assert.equal(projected.segments[2].availableSeats, 1);
+  assert.equal(Object.prototype.hasOwnProperty.call(projected, "passengerName"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(projected, "passengerContact"), false);
+});
+
+test("xml serializer escapes text and includes queried segment vacancy", () => {
+  const trip = projectTrip0701(
+    { ...tripFixture(), title: 'Rota & teste <seguro>' },
+    { origin: "Pouso Alegre", destination: "São Paulo" },
+  );
+  const xml = serializeXml0701({
+    schemaVersion: "live-agenda-feed-v1",
+    driverUsername: "ezequiel",
+    generatedAtIsoUtc: "2026-09-29T22:45:00.000Z",
+    timezoneId: "America/Sao_Paulo",
+    sourceStatus: "LIVE",
+    query: { date: "", origin: "Pouso Alegre", destination: "São Paulo" },
+    latestChangeAtMillis: trip.updatedAtMillis,
+    trips: [trip],
+  });
+  assert.match(xml, /Rota &amp; teste &lt;seguro&gt;/);
+  assert.match(xml, /trechoConsultado[^>]*vagas="0"/);
+  assert.doesNotMatch(xml, /passengerContact|WhatsApp|telefone/i);
+});
+
+test("handler reads the canonical public source without passenger authentication", async () => {
+  const docs = [{
+    id: "trip-1",
+    data: () => ({
+      driverUsername: "ezequiel",
+      departureAtMillis: tripFixture().departureAtMillis,
+    }),
+  }];
+  const driverSnap = { exists: true, data: () => ({ publicAgendaEnabled: true }) };
+  const db = {
+    collection(name) {
+      assert.equal(name, "trips");
+      return {
+        where(field, op, value) {
+          assert.equal(field, "driverUsername");
+          assert.equal(op, "==");
+          assert.equal(value, "ezequiel");
+          return {
+            limit() {
+              return { get: async () => ({ docs }) };
+            },
+          };
+        },
+      };
+    },
+  };
+  const feed = createLiveAgendaFeed0701({
+    db,
+    resolveDriverUsername: async () => ({
+      canonicalUsername: "ezequiel",
+      publicUsername: "ezequiel",
+      driverSnap,
+    }),
+    selectCanonicalTripDocuments0495: (items) => items,
+    publicAgendaTripVisibility0466: () => ({ visible: true }),
+    safePublicTripWithCanonicalBookings0497: async () => tripFixture(),
+  });
+  const headers = {};
+  let statusCode = 0;
+  let payload = "";
+  const res = {
+    status(code) { statusCode = code; return this; },
+    set(key, value) { headers[key] = value; return this; },
+    send(value) { payload = String(value); return this; },
+  };
+  await feed.getLiveAgendaFeed0701({
+    query: {
+      data: "2026-10-02",
+      origem: "Pouso Alegre",
+      destino: "São Paulo",
+    },
+  }, res, "ezequiel", "json");
+  assert.equal(statusCode, 200);
+  assert.equal(headers["Cache-Control"].includes("no-store"), true);
+  assert.equal(headers["X-Robots-Tag"].includes("noindex"), true);
+  const parsed = JSON.parse(payload);
+  assert.equal(parsed.count, 1);
+  assert.equal(parsed.trips[0].requestedSegment.availableSeats, 0);
+});
