@@ -47,6 +47,7 @@
   let familyHistoryMode0692 = false;
   let followLive0692 = true;
   let currentLivePosition0692 = null;
+  let currentPassengerPosition0691 = null;
   let lastRenderedData0692 = null;
   let programmaticCameraMove0692 = false;
   let historyBoundsApplied0692 = false;
@@ -194,6 +195,10 @@
     }
   }
 
+  function centerPassenger0691() {
+    centerLive0692();
+  }
+
   function centerLive0692() {
     if (!map || !currentLivePosition0692) return;
     if (familyMode0681 && familyHistoryMode0692) {
@@ -221,7 +226,12 @@
     }
     fallback.hidden = true;
 
-    if (liveFirst) {
+    if (passenger) {
+      if (route) {
+        route.remove();
+        route = null;
+      }
+    } else if (family && !familyHistoryMode0692) {
       if (route) {
         route.remove();
         route = null;
@@ -238,6 +248,7 @@
       else currentMarker = L.marker(here).addTo(map).bindPopup(passenger ? "Localização ao vivo" : "Posição atual do motorista");
       mapsLink.href = `https://www.google.com/maps?q=${encodeURIComponent(here.join(","))}`;
       if (passenger || family) currentLivePosition0692 = here;
+      if (passenger) currentPassengerPosition0691 = here;
       if (liveFirst && followLive0692) {
         runProgrammaticCamera0692(() => {
           map.setView(here, Math.max(16, map.getZoom() || 16), { animate:true });
@@ -487,6 +498,8 @@
   }
 
   void marker;
+  void currentPassengerPosition0691;
+  void centerPassenger0691;
   void passengerLiveOnlyMarker0691;
   void familyLiveFirstMarker0692;
   refresh();
