@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -199,11 +200,14 @@ internal fun AgendaModuleHeader0396(
             IconButton(
                 onClick = onNavigationClick,
                 enabled = navigationEnabled0689,
-                modifier = Modifier.semantics { contentDescription = navigationDescription },
+                modifier = Modifier
+                    .size(ChatGptBackParity0690.TOUCH_TARGET_DP.dp)
+                    .semantics { contentDescription = navigationDescription },
             ) {
-                Text(
-                    text = "←",
-                    style = MaterialTheme.typography.titleLarge,
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = null,
+                    modifier = Modifier.size(ChatGptBackParity0690.ICON_SIZE_DP.dp),
                 )
             }
             if (root && onMenuClick0689 != null) {
