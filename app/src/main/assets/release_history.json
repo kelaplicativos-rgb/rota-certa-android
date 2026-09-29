@@ -2,6 +2,42 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.698",
+      "build": 5989,
+      "commit": null,
+      "branch": "agent/farol-semantic-freshness-0.1.698",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Local Semantic Freshness: coordenada, Haversine e primeira pintura passam a depender da sessão/leitura, lease do card e destino semântico, não de churn visual.",
+        "Stage36 deixa de receber binding pré-sanitização; a autoridade do card nasce uma única vez a partir do endereço sanitizado.",
+        "A autoridade visual Stage46 permanece para aquisição/OCR e refinamento remoto, separada da autoridade da decisão local."
+      ],
+      "fixed": [
+        "Impede que visualEpoch, windowId ou recomposição do mesmo card descartem uma coordenada local já resolvida.",
+        "Elimina a troca de lease causada por bind bruto seguido de bind sanitizado dentro do mesmo ciclo.",
+        "Preserva latest-wins: troca real de destino ou clear comprovado do card continua invalidando imediatamente o resultado antigo."
+      ],
+      "improved": [
+        "Telemetria distingue resultado local aceito para o mesmo destino, token runtime stale e mudança semântica de destino.",
+        "Testes travam churn visual do mesmo destino, transição real de destino e desaparecimento comprovado do card.",
+        "Limpeza do caminho crítico remove autoridade duplicada sem apagar componentes históricos ainda não provados como mortos."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "FAROL_COORDINATE_STALE_RESULT_DROPPED_0697 causado por churn visual do mesmo destino."
+      ],
+      "modulesAffected": [
+        "Farol",
+        "Accessibility",
+        "Geocoding",
+        "Freshness",
+        "Saúde/Diagnóstico",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.697",
       "build": 5988,
       "commit": null,
@@ -25,7 +61,13 @@
       ],
       "regressions": [],
       "resolvedRegressions": [],
-      "modulesAffected": ["Farol","Accessibility","Geocoding","Saúde/Diagnóstico","Build"],
+      "modulesAffected": [
+        "Farol",
+        "Accessibility",
+        "Geocoding",
+        "Saúde/Diagnóstico",
+        "Build"
+      ],
       "detailsComplete": true
     },
     {
