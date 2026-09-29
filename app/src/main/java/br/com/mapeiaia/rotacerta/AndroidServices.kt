@@ -8,6 +8,7 @@ import android.graphics.Bitmap
 import android.location.Geocoder
 import android.location.Location
 import android.net.Uri
+import android.os.Build
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
@@ -16,9 +17,13 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
+import kotlin.coroutines.resume
 
 data class OcrTextBlock0188(
     val id: String,
@@ -160,6 +165,52 @@ class GeocodingService(private val context: Context) {
             .getOrNull()
             ?: return@withContext null
         Coordinate(address.latitude, address.longitude)
+    }
+
+    suspend fun geocodeBounded0697(
+        query: String,
+        region: DeviceRegion,
+        timeoutMillis: Long = FarolCoordinateResolution0697.PLATFORM_DEADLINE_MS,
+    ): Coordinate? {
+        if (query.isBlank() || timeoutMillis <= 0L) return null
+        val scopedQuery = listOf(query, region.city, region.country)
+            .filter { it.isNotBlank() }
+            .joinToString(", ")
+
+        return withTimeoutOrNull(timeoutMillis) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                suspendCancellableCoroutine { continuation ->
+                    runCatching {
+                        geocoder.getFromLocationName(
+                            scopedQuery,
+                            1,
+                            object : Geocoder.GeocodeListener {
+                                override fun onGeocode(addresses: MutableList<android.location.Address>) {
+                                    if (!continuation.isActive) return
+                                    val address = addresses.firstOrNull()
+                                    continuation.resume(
+                                        address?.let { Coordinate(it.latitude, it.longitude) },
+                                    )
+                                }
+
+                                override fun onError(errorMessage: String?) {
+                                    if (continuation.isActive) continuation.resume(null)
+                                }
+                            },
+                        )
+                    }.onFailure {
+                        if (continuation.isActive) continuation.resume(null)
+                    }
+                }
+            } else {
+                runInterruptible(Dispatchers.IO) {
+                    @Suppress("DEPRECATION")
+                    geocoder.getFromLocationName(scopedQuery, 1)
+                        ?.firstOrNull()
+                        ?.let { Coordinate(it.latitude, it.longitude) }
+                }
+            }
+        }
     }
 
     suspend fun reverseGeocode(coordinate: Coordinate): DeviceRegion = withContext(Dispatchers.IO) {
