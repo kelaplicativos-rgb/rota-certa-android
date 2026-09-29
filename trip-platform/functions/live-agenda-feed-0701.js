@@ -335,8 +335,11 @@ function createLiveAgendaFeed0701({
       const origin = cleanText0701(req && req.query && (req.query.origem || req.query.origin), 180);
       const destination = cleanText0701(req && req.query && (req.query.destino || req.query.destination), 180);
       const resolvedDriver = await resolveDriverUsername(usernameRequested);
-      const username = resolvedDriver ? cleanText0701(resolvedDriver.canonicalUsername, 80) : "";
-      if (!username || !resolvedDriver.driverSnap || !resolvedDriver.driverSnap.exists) {
+      const canonicalUsername = resolvedDriver ? cleanText0701(resolvedDriver.canonicalUsername, 80) : "";
+      const publicUsername = resolvedDriver
+        ? cleanText0701(resolvedDriver.publicUsername || resolvedDriver.requestedUsername || usernameRequested, 80)
+        : "";
+      if (!canonicalUsername || !resolvedDriver.driverSnap || !resolvedDriver.driverSnap.exists) {
         return sendFeed0701(res, 404, {
           error: "agenda_not_found",
           message: "Agenda não encontrada.",
@@ -346,7 +349,7 @@ function createLiveAgendaFeed0701({
       const now = Date.now();
       const driver = resolvedDriver.driverSnap.data() || {};
       const snapshot = await db.collection("trips")
-        .where("driverUsername", "==", username)
+        .where("driverUsername", "==", canonicalUsername)
         .limit(200)
         .get();
       const canonicalDocs = selectCanonicalTripDocuments0495(snapshot.docs);
@@ -378,7 +381,7 @@ function createLiveAgendaFeed0701({
         generatedAtMillis: now,
         generatedAtIsoUtc: new Date(now).toISOString(),
         timezoneId: DEFAULT_TIMEZONE_0701,
-        driverUsername: username,
+        driverUsername: publicUsername || usernameRequested || canonicalUsername,
         query,
         count: trips.length,
         latestChangeAtMillis,

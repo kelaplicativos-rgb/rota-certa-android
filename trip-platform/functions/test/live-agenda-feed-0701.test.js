@@ -95,7 +95,7 @@ test("handler reads the canonical public source without passenger authentication
         where(field, op, value) {
           assert.equal(field, "driverUsername");
           assert.equal(op, "==");
-          assert.equal(value, "ezequiel");
+          assert.equal(value, "viagem-certa");
           return {
             limit() {
               return { get: async () => ({ docs }) };
@@ -108,7 +108,8 @@ test("handler reads the canonical public source without passenger authentication
   const feed = createLiveAgendaFeed0701({
     db,
     resolveDriverUsername: async () => ({
-      canonicalUsername: "ezequiel",
+      requestedUsername: "ezequiel",
+      canonicalUsername: "viagem-certa",
       publicUsername: "ezequiel",
       driverSnap,
     }),
@@ -135,6 +136,7 @@ test("handler reads the canonical public source without passenger authentication
   assert.equal(headers["Cache-Control"].includes("no-store"), true);
   assert.equal(headers["X-Robots-Tag"].includes("noindex"), true);
   const parsed = JSON.parse(payload);
+  assert.equal(parsed.driverUsername, "ezequiel");
   assert.equal(parsed.count, 1);
   assert.equal(parsed.trips[0].requestedSegment.availableSeats, 0);
 });
