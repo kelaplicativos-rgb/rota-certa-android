@@ -57,6 +57,7 @@ class SettingsRepository(private val context: Context) {
     private val diagnosticsEnabled = booleanKey("diagnostics_enabled")
     private val multiCardFocusLockEnabled = booleanKey("multi_card_focus_lock_enabled")
     private val proximityPopupAutoCloseEnabled = booleanKey("proximity_popup_auto_close_enabled")
+    private val proximityPopupTimeoutSeconds = intKey("proximity_popup_timeout_seconds")
     private val history = stringKey("history")
     private val liveDiagnostic = stringKey("live_diagnostic")
     private val savedPlacesKey = stringKey("saved_places")
@@ -95,7 +96,10 @@ class SettingsRepository(private val context: Context) {
             proximityAlertDistanceMeters = (prefs[proximityAlertDistanceMeters] ?: 200).coerceIn(200, 1000),
             diagnosticsEnabled = false,
             multiCardFocusLockEnabled = prefs[multiCardFocusLockEnabled] ?: true,
-            proximityPopupAutoCloseEnabled = prefs[proximityPopupAutoCloseEnabled] ?: true,
+            proximityPopupAutoCloseEnabled = prefs[proximityPopupAutoCloseEnabled] ?: false,
+            proximityPopupTimeoutSeconds = (prefs[proximityPopupTimeoutSeconds] ?: 0)
+                .takeIf { it == 0 || it == 15 || it == 20 || it == 30 }
+                ?: 0,
         )
     }
 
@@ -170,7 +174,10 @@ class SettingsRepository(private val context: Context) {
             prefs[proximityAlertDistanceMeters] = settings.proximityAlertDistanceMeters.coerceIn(200, 1000)
             prefs[diagnosticsEnabled] = false // diagnostics_manual_only_checklist_4
             prefs[multiCardFocusLockEnabled] = settings.multiCardFocusLockEnabled
-            prefs[proximityPopupAutoCloseEnabled] = settings.proximityPopupAutoCloseEnabled
+            prefs[proximityPopupAutoCloseEnabled] = settings.proximityPopupTimeoutSeconds > 0
+            prefs[proximityPopupTimeoutSeconds] = settings.proximityPopupTimeoutSeconds
+                .takeIf { it == 0 || it == 15 || it == 20 || it == 30 }
+                ?: 0
             if (settings.googleMapsApiKey.isBlank() || settings.googleMapsApiKey == BuildConfig.GOOGLE_MAPS_API_KEY) {
                 prefs.remove(googleMapsApiKey)
             } else {
@@ -267,6 +274,9 @@ class SettingsRepository(private val context: Context) {
             val updated = listOf(place) + current.filterNot { it.id == place.id }
             prefs[savedPlacesKey] = json.encodeToString(updated.take(200))
         }
+        if (place.type == SavedPlaceType.ProximityAlert && settings.first().proximityAlertsEnabled) {
+            LocationCoreRuntime0680.ensureStarted(context)
+        }
     }
 
     suspend fun updateSavedPlace(place: SavedPlace) {
@@ -274,6 +284,9 @@ class SettingsRepository(private val context: Context) {
             val current = runCatching { json.decodeFromString<List<SavedPlace>>(prefs[savedPlacesKey].orEmpty()) }
                 .getOrDefault(emptyList())
             prefs[savedPlacesKey] = json.encodeToString(current.map { if (it.id == place.id) place else it })
+        }
+        if (place.type == SavedPlaceType.ProximityAlert && settings.first().proximityAlertsEnabled) {
+            LocationCoreRuntime0680.ensureStarted(context)
         }
     }
 
@@ -306,6 +319,9 @@ class SettingsRepository(private val context: Context) {
     suspend fun replaceImportedRadars(radars: List<ImportedRadar>) {
         context.dataStore.edit { prefs ->
             prefs[importedRadarsKey] = json.encodeToString(radars.take(MAX_IMPORTED_RADARS))
+        }
+        if (radars.isNotEmpty() && settings.first().proximityAlertsEnabled) {
+            LocationCoreRuntime0680.ensureStarted(context)
         }
     }
 
