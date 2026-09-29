@@ -8,3 +8,7 @@ android_back=shared_internal_history
 root_physical_back_exit=blocked
 history=rememberSaveable_bounded_64
 deep_link_safe_previous=TIMELINE
+
+retry=apk-proof-marker-corrected
+proof_universal_marker=UNIVERSAL_SEARCH_ENGINE_0687
+build_sha_env=ROTA_CERTA_GIT_SHA_from_github_sha
