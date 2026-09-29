@@ -2,6 +2,40 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.691",
+      "build": 5982,
+      "commit": null,
+      "branch": "agent/passenger-live-map-0.1.691",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Acompanhamento público do passageiro passa a operar em modo LIVE_ONLY: entrega somente a localização atual e não consulta nem expõe o rastro da sessão.",
+        "O passageiro pode encaminhar seu link temporário a familiares de confiança sem exigir login ou instalação de aplicativo.",
+        "Mapa do familiar acompanha a posição atual, permite recentralizar o veículo e exibe o local de desembarque daquele passageiro.",
+        "Chegada ao desembarque passa a exigir confirmação robusta com três correções GPS consecutivas dentro do raio e compatibilidade de velocidade/permanência."
+      ],
+      "fixed": [
+        "Eliminado o encerramento por uma única leitura dentro de 220 m; a validação passa a usar raio de 140 m, três leituras, permanência e velocidade para reduzir falsos desembarques.",
+        "Atualizações GPS fora de ordem não podem mais substituir a posição mais recente: pontos e heartbeat aplicam latest-wins transacional.",
+        "Quando o backend confirma DESTINATION_REACHED, o token deixa de fornecer coordenadas e a página informa que o passageiro chegou ao destino."
+      ],
+      "improved": [
+        "O heartbeat pode confirmar a chegada mesmo quando não há lote de histórico pendente, preservando o fechamento do link em tempo real.",
+        "O rastreamento familiar permanente e seu rastro permanecem independentes do modo LIVE_ONLY do passageiro.",
+        "Radar, alertas e núcleo único de localização permanecem preservados e independentes da expiração de links de passageiros."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Passageiros",
+        "Viagem Certa",
+        "GPS",
+        "Acompanhamento Web",
+        "Backend"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.690",
       "build": 5981,
       "commit": null,
