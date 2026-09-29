@@ -46,6 +46,11 @@ internal object RadarSafetyPolicy0686 {
         thresholdMeters: Double,
     ): Boolean {
         if (thresholdMeters <= 0.0 || !thresholdMeters.isFinite()) return false
+        val previousDistance = GeoDistance.meters(previous, target)
+        val currentDistance = GeoDistance.meters(current, target)
+        // Esta proteção existe especificamente para o caso em que duas amostras
+        // ficaram fora da zona, mas o segmento entre elas atravessou a zona.
+        if (previousDistance <= thresholdMeters || currentDistance <= thresholdMeters) return false
         val segmentSpan = GeoDistance.meters(previous, current)
         if (!segmentSpan.isFinite() || segmentSpan <= 0.0 || segmentSpan > MAX_SEGMENT_SPAN_METERS) return false
         return GeoDistance.distanceToSegmentMeters(previous, current, target) <= thresholdMeters
