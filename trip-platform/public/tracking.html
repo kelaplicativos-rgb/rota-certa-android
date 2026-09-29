@@ -10,7 +10,7 @@
     :root { color-scheme: dark; font-family: system-ui,-apple-system,Segoe UI,sans-serif; background:#0c1117; color:#eef3f7; }
     * { box-sizing:border-box; }
     body { margin:0; background:#0c1117; }
-    main { max-width:900px; margin:0 auto; padding:18px; }
+    main { max-width:900px; margin:0 auto; padding:14px; }
     .card { background:#151d26; border:1px solid #283543; border-radius:18px; padding:16px; margin-bottom:14px; }
     h1 { font-size:1.35rem; margin:0 0 8px; }
     p { margin:5px 0; color:#cbd5df; }
@@ -20,9 +20,11 @@
     .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(145px,1fr)); gap:8px; margin-top:12px; }
     .metric { background:#0f151c; border-radius:12px; padding:10px; }
     .metric b { display:block; font-size:1.05rem; color:#fff; }
-    .map-wrap { position:relative; }
-    #map { height:min(62vh,520px); min-height:320px; border-radius:18px; overflow:hidden; border:1px solid #283543; }
-    .map-action { position:absolute; z-index:500; right:14px; bottom:14px; border:0; border-radius:999px; padding:11px 15px; font-weight:800; background:#fff; color:#101820; box-shadow:0 4px 18px #0008; cursor:pointer; }
+    .map-wrap { position:relative; margin-bottom:14px; }
+    #map { height:min(70vh,620px); min-height:380px; border-radius:18px; overflow:hidden; border:1px solid #283543; }
+    .map-action { position:absolute; z-index:500; bottom:14px; border:0; border-radius:999px; padding:11px 15px; font-weight:800; box-shadow:0 4px 18px #0008; cursor:pointer; }
+    .map-action.center { right:14px; background:#fff; color:#101820; }
+    .map-action.history { left:14px; background:#151d26; color:#fff; border:1px solid #46576a; }
     .metric.wide { grid-column:span 2; }
     a { color:#7cc7ff; }
     footer { font-size:.82rem; color:#8997a5; padding:8px 2px 20px; }
@@ -34,7 +36,23 @@
 </head>
 <body>
 <main>
-  <section class="card">
+  <section class="card" id="familyAuth" hidden>
+    <div class="auth">
+      <h1>Autorizar acompanhamento familiar</h1>
+      <p>Este é um endereço permanente. No primeiro acesso neste navegador, informe o código familiar de 6 dígitos fornecido pelo motorista.</p>
+      <input id="familyPin" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="000000">
+      <button id="familyAuthorize" type="button">Autorizar este navegador</button>
+      <small>Depois da autorização, você pode voltar usando somente este mesmo endereço /gps.</small>
+    </div>
+  </section>
+
+  <div class="map-wrap" id="mapWrap">
+    <div id="map"></div>
+    <button id="historyToggle" class="map-action history" type="button" hidden>🗺 Ver trajeto</button>
+    <button id="centerVehicle" class="map-action center" type="button" hidden>◎ Centralizar</button>
+  </div>
+
+  <section class="card" id="trackingSummary">
     <h1 id="title">Acompanhamento Rota Certa</h1>
     <p id="status" class="status">Carregando localização…</p>
     <p id="privacy"></p>
@@ -47,19 +65,7 @@
       <div class="metric"><span>Bateria do aparelho</span><b id="battery">—</b></div>
     </div>
   </section>
-  <section class="card" id="familyAuth" hidden>
-    <div class="auth">
-      <h1>Autorizar acompanhamento familiar</h1>
-      <p>Este é um endereço permanente. No primeiro acesso neste navegador, informe o código familiar de 6 dígitos fornecido pelo motorista.</p>
-      <input id="familyPin" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="000000">
-      <button id="familyAuthorize" type="button">Autorizar este navegador</button>
-      <small>Depois da autorização, você pode voltar usando somente este mesmo endereço /gps.</small>
-    </div>
-  </section>
-  <div class="map-wrap">
-    <div id="map"></div>
-    <button id="centerVehicle" class="map-action" type="button" hidden>◎ Centralizar</button>
-  </div>
+
   <section class="card" id="fallback" hidden>
     <p>O mapa de ruas não pôde carregar, mas a última posição continua disponível.</p>
     <a id="mapsLink" target="_blank" rel="noreferrer">Abrir última posição no mapa</a>
@@ -67,6 +73,6 @@
   <footer id="trackingFooter">Este link é temporário e pode ser encaminhado pelo passageiro a familiares de confiança. O acesso termina automaticamente no desembarque confirmado.</footer>
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-<script src="/tracking.js?v=0691"></script>
+<script src="/tracking.js?v=0692"></script>
 </body>
 </html>

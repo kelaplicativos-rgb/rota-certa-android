@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.692",
+      "build": 5983,
+      "commit": null,
+      "branch": "agent/family-live-first-0.1.692",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "O acompanhamento familiar permanente passa a abrir em modo LIVE_FIRST, com a posição GPS atual como foco primário do mapa.",
+        "O histórico deixa de ser carregado na abertura e passa a ser solicitado somente pelo botão Ver trajeto.",
+        "O mapa familiar ganha acompanhamento automático da posição atual, Centralizar e retorno explícito ao Ao Vivo."
+      ],
+      "fixed": [
+        "Eliminado o fitBounds do histórico na primeira tela, que afastava o zoom e deixava o motorista próximo da borda do mapa.",
+        "O modo seguir veículo deixa de ser exclusivo do passageiro e passa a funcionar também no link familiar permanente.",
+        "Movimentos programáticos da câmera não desativam inadvertidamente o smart follow."
+      ],
+      "improved": [
+        "O mapa passa a ser o primeiro bloco visual depois da autorização, inspirado no princípio de posição atual primeiro e histórico secundário.",
+        "Heartbeat e idade do GPS permanecem separados para não apresentar coordenada antiga como atualização atual.",
+        "Acompanhamento do passageiro, Radar, Alertas e núcleo único de localização permanecem preservados."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "GPS",
+        "Acompanhamento Familiar",
+        "Acompanhamento Web",
+        "Backend"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.691",
       "build": 5982,
       "commit": null,

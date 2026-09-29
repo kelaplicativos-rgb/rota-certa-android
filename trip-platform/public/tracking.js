@@ -3,6 +3,7 @@
 (() => {
   const marker = "PERMANENT_FAMILY_GPS_0681";
   const passengerLiveOnlyMarker0691 = "PASSENGER_LIVE_ONLY_0691";
+  const familyLiveFirstMarker0692 = "FAMILY_LIVE_FIRST_0692";
   const pathParts = location.pathname.split("/").filter(Boolean);
   const familyUsername = pathParts.length === 2 && String(pathParts[1]).toLowerCase() === "gps"
     ? String(pathParts[0] || "").toLowerCase().replace(/[^a-z0-9_-]/g, "")
@@ -23,14 +24,16 @@
   const distance = document.getElementById("distance");
   const destinationBox = document.getElementById("destinationBox");
   const destinationLabel = document.getElementById("destinationLabel");
-  const centerVehicle0691 = document.getElementById("centerVehicle");
+  const centerVehicle0692 = document.getElementById("centerVehicle");
+  const historyToggle0692 = document.getElementById("historyToggle");
   const fallback = document.getElementById("fallback");
   const mapsLink = document.getElementById("mapsLink");
   const familyAuth0681 = document.getElementById("familyAuth");
   const familyPin0681 = document.getElementById("familyPin");
   const familyAuthorize0681 = document.getElementById("familyAuthorize");
   const trackingFooter0681 = document.getElementById("trackingFooter");
-  const mapElement0681 = document.getElementById("map");
+  const mapWrap0692 = document.getElementById("mapWrap");
+  const trackingSummary0692 = document.getElementById("trackingSummary");
 
   let timer = null;
   let map = null;
@@ -41,8 +44,12 @@
   let lastRoutePointMillis0670 = 0;
   let refreshInFlight0670 = false;
   let authInFlight0681 = false;
-  let followPassenger0691 = true;
-  let currentPassengerPosition0691 = null;
+  let familyHistoryMode0692 = false;
+  let followLive0692 = true;
+  let currentLivePosition0692 = null;
+  let lastRenderedData0692 = null;
+  let programmaticCameraMove0692 = false;
+  let historyBoundsApplied0692 = false;
 
   function readFamilySession0681() {
     try {
@@ -83,7 +90,8 @@
   function showFamilyAuth0681(message) {
     if (!familyMode0681) return;
     familyAuth0681.hidden = false;
-    mapElement0681.hidden = true;
+    if (mapWrap0692) mapWrap0692.hidden = true;
+    if (trackingSummary0692) trackingSummary0692.hidden = true;
     fallback.hidden = true;
     title.textContent = "🛡 GPS familiar permanente";
     privacy.textContent = "Endereço permanente do motorista. Este navegador precisa ser autorizado apenas no primeiro acesso.";
@@ -95,8 +103,9 @@
   function hideFamilyAuth0681() {
     if (!familyMode0681) return;
     familyAuth0681.hidden = true;
-    mapElement0681.hidden = false;
-    trackingFooter0681.textContent = "Endereço familiar permanente e protegido. O motorista controla quando a localização está sendo compartilhada.";
+    if (mapWrap0692) mapWrap0692.hidden = false;
+    if (trackingSummary0692) trackingSummary0692.hidden = false;
+    trackingFooter0681.textContent = "Endereço familiar permanente e protegido. Ao abrir, o mapa mostra primeiro onde o motorista está agora.";
     setTimeout(() => { if (map) map.invalidateSize(); }, 0);
   }
 
@@ -136,8 +145,9 @@
       const data = await response.json();
       saveFamilySession0681(data.sessionToken);
       familyPin0681.value = "";
-      routePoints0670 = [];
-      lastRoutePointMillis0670 = 0;
+      familyHistoryMode0692 = false;
+      followLive0692 = true;
+      clearRoute0692();
       hideFamilyAuth0681();
       await refresh();
     } catch (_) {
@@ -156,19 +166,51 @@
       maxZoom:19,
       attribution:'&copy; OpenStreetMap contributors',
     }).addTo(map);
-    map.on("dragstart", () => { followPassenger0691 = false; });
-    map.on("zoomstart", () => { followPassenger0691 = false; });
+    map.on("dragstart", () => {
+      if (!familyHistoryMode0692) followLive0692 = false;
+    });
+    map.on("zoomstart", () => {
+      if (!programmaticCameraMove0692 && !familyHistoryMode0692) followLive0692 = false;
+    });
     return true;
   }
 
-  function centerPassenger0691() {
-    if (!map || !currentPassengerPosition0691) return;
-    followPassenger0691 = true;
-    map.setView(currentPassengerPosition0691, Math.max(16, map.getZoom() || 16), { animate:true });
+  function runProgrammaticCamera0692(action) {
+    programmaticCameraMove0692 = true;
+    try {
+      action();
+    } finally {
+      setTimeout(() => { programmaticCameraMove0692 = false; }, 0);
+    }
+  }
+
+  function clearRoute0692() {
+    routePoints0670 = [];
+    lastRoutePointMillis0670 = 0;
+    historyBoundsApplied0692 = false;
+    if (route) {
+      route.remove();
+      route = null;
+    }
+  }
+
+  function centerLive0692() {
+    if (!map || !currentLivePosition0692) return;
+    if (familyMode0681 && familyHistoryMode0692) {
+      familyHistoryMode0692 = false;
+      clearRoute0692();
+      if (historyToggle0692) historyToggle0692.textContent = "🗺 Ver trajeto";
+    }
+    followLive0692 = true;
+    runProgrammaticCamera0692(() => {
+      map.setView(currentLivePosition0692, Math.max(16, map.getZoom() || 16), { animate:true });
+    });
   }
 
   function renderMap(data) {
     const passenger = data.scope === "PASSENGER";
+    const family = familyMode0681 && data.scope === "FAMILY";
+    const liveFirst = passenger || (family && !familyHistoryMode0692);
     const current = data.current;
     if (!ensureMap()) {
       fallback.hidden = false;
@@ -179,7 +221,7 @@
     }
     fallback.hidden = true;
 
-    if (passenger) {
+    if (liveFirst) {
       if (route) {
         route.remove();
         route = null;
@@ -187,19 +229,19 @@
     } else {
       const latLngs = routePoints0670.map((p) => [Number(p.latitude), Number(p.longitude)]);
       if (route) route.remove();
-      if (latLngs.length > 1) route = L.polyline(latLngs, { weight:5, opacity:.82 }).addTo(map);
+      route = latLngs.length > 1 ? L.polyline(latLngs, { weight:5, opacity:.82 }).addTo(map) : null;
     }
 
     if (current) {
       const here = [Number(current.latitude), Number(current.longitude)];
       if (currentMarker) currentMarker.setLatLng(here);
-      else currentMarker = L.marker(here).addTo(map).bindPopup(passenger ? "Localização ao vivo" : "Posição atual");
+      else currentMarker = L.marker(here).addTo(map).bindPopup(passenger ? "Localização ao vivo" : "Posição atual do motorista");
       mapsLink.href = `https://www.google.com/maps?q=${encodeURIComponent(here.join(","))}`;
-      if (passenger) {
-        currentPassengerPosition0691 = here;
-        if (followPassenger0691) {
+      if (passenger || family) currentLivePosition0692 = here;
+      if (liveFirst && followLive0692) {
+        runProgrammaticCamera0692(() => {
           map.setView(here, Math.max(16, map.getZoom() || 16), { animate:true });
-        }
+        });
       }
     }
 
@@ -212,31 +254,41 @@
       destinationMarker = null;
     }
 
-    if (passenger) {
+    if (liveFirst) {
       if (!current && data.destination) {
-        map.setView([Number(data.destination.latitude), Number(data.destination.longitude)], 15);
+        runProgrammaticCamera0692(() => map.setView([Number(data.destination.latitude), Number(data.destination.longitude)], 15));
       }
       return;
     }
 
-    const boundsPoints = routePoints0670.map((p) => [Number(p.latitude), Number(p.longitude)]);
-    if (current) boundsPoints.push([Number(current.latitude), Number(current.longitude)]);
-    if (boundsPoints.length > 1) map.fitBounds(boundsPoints, { padding:[24,24], maxZoom:16 });
-    else if (boundsPoints.length === 1) map.setView(boundsPoints[0], 15);
+    if (family && familyHistoryMode0692 && !historyBoundsApplied0692) {
+      const boundsPoints = routePoints0670.map((p) => [Number(p.latitude), Number(p.longitude)]);
+      if (current) boundsPoints.push([Number(current.latitude), Number(current.longitude)]);
+      if (boundsPoints.length > 1) {
+        runProgrammaticCamera0692(() => map.fitBounds(boundsPoints, { padding:[24,24], maxZoom:16 }));
+      } else if (boundsPoints.length === 1) {
+        runProgrammaticCamera0692(() => map.setView(boundsPoints[0], 15));
+      }
+      historyBoundsApplied0692 = true;
+    }
   }
 
   function render(data) {
     hideFamilyAuth0681();
+    lastRenderedData0692 = data;
     const passenger = data.scope === "PASSENGER";
+    const family = familyMode0681 && data.scope === "FAMILY";
     title.textContent = passenger
       ? "🚗 Seu motorista está a caminho"
-      : familyMode0681
-        ? "🛡 GPS familiar permanente"
+      : family
+        ? (familyHistoryMode0692 ? "🗺 Histórico do motorista" : "📍 Localização do motorista")
         : "🛡 GPS Tracker de segurança";
     privacy.textContent = passenger
       ? "Localização ao vivo, sem rastro. Este link será encerrado automaticamente quando o desembarque for confirmado."
-      : familyMode0681
-        ? "Este endereço permanece o mesmo. O motorista pode ativar ou interromper o compartilhamento sem trocar o link."
+      : family
+        ? (familyHistoryMode0692
+            ? "Histórico da sessão atual. Toque em Voltar ao Ao Vivo para acompanhar novamente a posição real."
+            : "Ao Vivo primeiro: a posição atual fica centralizada. O histórico só é carregado quando você pedir.")
         : "Acompanhamento familiar ao vivo da sessão atual, incluindo o trajeto já percorrido.";
 
     const deviceAt = Number(data.lastDeviceHeartbeatAtMillis || data.lastUpdatedAtMillis || 0);
@@ -244,16 +296,18 @@
     const deviceState = String(data.deviceState || "WAITING");
     const gpsState = String(data.gpsState || "WAITING");
     if (deviceState === "CONNECTED" && gpsState === "FRESH") {
-      status.textContent = passenger ? "🟢 AO VIVO • localização atual" : "🟢 GPS Tracker ativo • atualização automática";
+      status.textContent = family && familyHistoryMode0692
+        ? "🗺 HISTÓRICO • posição atual preservada"
+        : "🟢 AO VIVO • localização atual";
       status.className = "status";
     } else if (deviceState === "CONNECTED") {
-      status.textContent = "🟡 Aparelho conectado • aguardando GPS";
+      status.textContent = "🟡 Aparelho conectado • GPS sem posição recente";
       status.className = "warn";
     } else if (deviceState === "DELAYED") {
       status.textContent = "🟠 Comunicação instável com o aparelho";
       status.className = "warn";
     } else if (deviceState === "OFFLINE") {
-      status.textContent = "🔴 Sem comunicação com o aparelho • última posição preservada";
+      status.textContent = "🔴 OFFLINE • última posição conhecida preservada";
       status.className = "ended";
     } else {
       status.textContent = "Aguardando o GPS Tracker conectar…";
@@ -272,7 +326,9 @@
     destinationLabel.textContent = data.destination && data.destination.label
       ? String(data.destination.label)
       : "Destino da viagem";
-    centerVehicle0691.hidden = !passenger || !data.current;
+    centerVehicle0692.hidden = !(passenger || family) || !data.current || (family && familyHistoryMode0692);
+    historyToggle0692.hidden = !family;
+    if (family) historyToggle0692.textContent = familyHistoryMode0692 ? "← Voltar ao Ao Vivo" : "🗺 Ver trajeto";
     renderMap(data);
   }
 
@@ -295,8 +351,11 @@
   }
 
   async function fetchTrackingPage0670(sinceMillis) {
-    const suffix = sinceMillis > 0 ? `?since=${encodeURIComponent(sinceMillis)}` : "";
     if (familyMode0681) {
+      const params = new URLSearchParams();
+      if (familyHistoryMode0692) params.set("trace", "1");
+      if (familyHistoryMode0692 && sinceMillis > 0) params.set("since", String(sinceMillis));
+      const suffix = params.toString() ? "?" + params.toString() : "";
       return fetch(`/v1/public/tracking/family/${encodeURIComponent(familyUsername)}${suffix}`, {
         cache:"no-store",
         headers:{
@@ -305,6 +364,7 @@
         },
       });
     }
+    const suffix = sinceMillis > 0 ? `?since=${encodeURIComponent(sinceMillis)}` : "";
     return fetch(`/v1/public/tracking/${encodeURIComponent(token)}${suffix}`, {
       cache:"no-store",
       headers:{ "Accept":"application/json" },
@@ -327,7 +387,7 @@
     refreshInFlight0670 = true;
     try {
       let data = null;
-      let since0670 = familyMode0681 ? lastRoutePointMillis0670 : 0;
+      let since0670 = familyMode0681 && !familyHistoryMode0692 ? 0 : lastRoutePointMillis0670;
       for (let page0670 = 0; page0670 < 3; page0670 += 1) {
         const response = await fetchTrackingPage0670(since0670);
         if (familyMode0681 && (response.status === 401 || response.status === 403)) {
@@ -348,7 +408,8 @@
           privacy.textContent = passengerArrived0691
             ? "O desembarque foi confirmado. Este link não fornece mais coordenadas."
             : privacy.textContent;
-          centerVehicle0691.hidden = true;
+          centerVehicle0692.hidden = true;
+          historyToggle0692.hidden = true;
           if (!familyMode0681 && timer) clearInterval(timer);
           return;
         }
@@ -360,9 +421,10 @@
         if (!response.ok) throw new Error("http_" + response.status);
 
         data = await response.json();
-        if (data.scope === "PASSENGER") {
-          routePoints0670 = [];
-          lastRoutePointMillis0670 = 0;
+        const passenger = data.scope === "PASSENGER";
+        const familyLive = familyMode0681 && data.scope === "FAMILY" && !familyHistoryMode0692;
+        if (passenger || familyLive) {
+          clearRoute0692();
           render(data);
           break;
         }
@@ -383,6 +445,23 @@
     }
   }
 
+  async function toggleFamilyHistory0692() {
+    if (!familyMode0681 || !familySession0681) return;
+    familyHistoryMode0692 = !familyHistoryMode0692;
+    clearRoute0692();
+    if (!familyHistoryMode0692) {
+      followLive0692 = true;
+      if (historyToggle0692) historyToggle0692.textContent = "🗺 Ver trajeto";
+      if (lastRenderedData0692) render(lastRenderedData0692);
+      centerLive0692();
+    } else {
+      followLive0692 = false;
+      historyBoundsApplied0692 = false;
+      if (historyToggle0692) historyToggle0692.textContent = "← Voltar ao Ao Vivo";
+    }
+    await refresh();
+  }
+
   if (familyAuthorize0681) {
     familyAuthorize0681.addEventListener("click", authorizeFamily0681);
   }
@@ -394,19 +473,22 @@
       if (event.key === "Enter") void authorizeFamily0681();
     });
   }
-
-  if (centerVehicle0691) {
-    centerVehicle0691.addEventListener("click", centerPassenger0691);
+  if (centerVehicle0692) {
+    centerVehicle0692.addEventListener("click", centerLive0692);
+  }
+  if (historyToggle0692) {
+    historyToggle0692.addEventListener("click", () => { void toggleFamilyHistory0692(); });
   }
 
   if (familyMode0681) {
-    trackingFooter0681.textContent = "Endereço familiar permanente e protegido. O motorista controla quando a localização está sendo compartilhada.";
+    trackingFooter0681.textContent = "Endereço familiar permanente e protegido. Ao Vivo é a tela principal; o histórico é carregado somente quando solicitado.";
     if (!familySession0681) showFamilyAuth0681();
     else hideFamilyAuth0681();
   }
 
   void marker;
   void passengerLiveOnlyMarker0691;
+  void familyLiveFirstMarker0692;
   refresh();
   timer = setInterval(refresh, 5000);
 })();

@@ -741,25 +741,40 @@ function createLiveTracking0668({ db, requireDriver }) {
       return trackingFail0668(res, 410, "tracking_session_ended", "O motorista não está compartilhando a localização.");
     }
     const session = sessionSnap.data();
-    const requestedSince = finiteNumber0668(req.query && req.query.since);
-    const queryFloor = trackingQueryFloor0670(share, session, requestedSince);
-    const pointsSnap = await sessionRef.collection("points")
-      .where("recordedAtMillis", ">=", queryFloor)
-      .orderBy("recordedAtMillis", "asc")
-      .limit(MAX_PUBLIC_POINTS_0668)
-      .get();
-    const points = publicTrackingPoints0668(pointsSnap.docs.map((doc) => doc.data()), {
-      scope:"FAMILY",
-      createdAtMillis:share.createdAtMillis,
-      sessionStartedAtMillis:session.startedAtMillis,
-    }).filter((point) => requestedSince == null || point.recordedAtMillis > requestedSince);
+    const traceRequested0692 = String(req.query && req.query.trace || "") === "1";
+    const requestedSince = traceRequested0692 ? finiteNumber0668(req.query && req.query.since) : null;
+    let points = [];
+    let hasMorePoints = false;
+    let nextSinceMillis = 0;
+
+    if (traceRequested0692) {
+      const queryFloor = trackingQueryFloor0670(share, session, requestedSince);
+      const pointsSnap = await sessionRef.collection("points")
+        .where("recordedAtMillis", ">=", queryFloor)
+        .orderBy("recordedAtMillis", "asc")
+        .limit(MAX_PUBLIC_POINTS_0668)
+        .get();
+      points = publicTrackingPoints0668(pointsSnap.docs.map((doc) => doc.data()), {
+        scope:"FAMILY",
+        createdAtMillis:share.createdAtMillis,
+        sessionStartedAtMillis:session.startedAtMillis,
+      }).filter((point) => requestedSince == null || point.recordedAtMillis > requestedSince);
+      const lastRoutePoint = points.length ? points[points.length - 1] : null;
+      hasMorePoints = pointsSnap.size >= MAX_PUBLIC_POINTS_0668;
+      nextSinceMillis = lastRoutePoint
+        ? Number(lastRoutePoint.recordedAtMillis || 0)
+        : Math.max(0, Number(requestedSince || 0));
+    }
+
     const latest = normalizePoint0668(session.latestPoint);
-    const lastRoutePoint = points.length ? points[points.length - 1] : null;
     const tracker0670 = publicTrackerTelemetry0670(session, share, latest, now);
     await accessRef.set({ updatedAtMillis:now, expiresAtMillis:now + FAMILY_ACCESS_SESSION_MILLIS_0681 }, { merge:true });
     return trackingJson0668(res, 200, {
       ok:true,
       scope:"FAMILY",
+      mode:traceRequested0692 ? "FAMILY_HISTORY" : "FAMILY_LIVE",
+      traceAvailable:true,
+      familyLiveFirst0692:true,
       driverDisplayName:cleanText0668(session.driverDisplayName, 120),
       startedAtMillis:Number(session.startedAtMillis || 0),
       lastUpdatedAtMillis:tracker0670.lastDeviceHeartbeatAtMillis,
@@ -770,8 +785,8 @@ function createLiveTracking0668({ db, requireDriver }) {
       serverNowMillis:now,
       batteryPercent:session.batteryPercent == null ? null : Number(session.batteryPercent),
       points,
-      hasMorePoints:pointsSnap.size >= MAX_PUBLIC_POINTS_0668,
-      nextSinceMillis:lastRoutePoint ? Number(lastRoutePoint.recordedAtMillis || 0) : Math.max(0, Number(requestedSince || 0)),
+      hasMorePoints,
+      nextSinceMillis,
       current:latest,
       destination:null,
       distanceToDestinationMeters:null,
