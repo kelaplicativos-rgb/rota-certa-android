@@ -1,0 +1,10 @@
+GLOBAL_FIXED_BACK_NAVIGATION_0689
+branch=agent/global-back-navigation-0.1.689
+base=59dbd31ff30b3b3edb5fa709e28f9060d1ead4af
+target=Samsung SM-S911B / Android 16
+fixed_back_arrow=timeline,agenda,central_and_trip_subscreens
+root_menu=separate_hamburger
+android_back=shared_internal_history
+root_physical_back_exit=blocked
+history=rememberSaveable_bounded_64
+deep_link_safe_previous=TIMELINE
