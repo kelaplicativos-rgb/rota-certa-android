@@ -20,6 +20,7 @@ import kotlin.math.roundToInt
  *
  * 0.1.685:
  * - por padrão o pop-up permanece até reconhecimento humano;
+ * - radar/alerta comprovadamente ultrapassado fecha em 5 s, sem contagem visual;
  * - timeout opcional (15/20/30 s) é contado uma única vez por targetId;
  * - atualizações de GPS/estado não reiniciam esse prazo;
  * - ultrapassar o ponto ou o motor ficar ocioso não fecha o pop-up;
@@ -383,7 +384,12 @@ class DirectionalAlertOverlayController(
         (value * context.resources.displayMetrics.density).roundToInt()
 
     private companion object {
-        val SUPPORTED_TIMEOUT_MILLIS_0685 = setOf(15_000L, 20_000L, 30_000L)
+        val SUPPORTED_TIMEOUT_MILLIS_0685 = setOf(
+            RadarSafetyPolicy0686.PASSED_AUTO_CLOSE_MILLIS,
+            15_000L,
+            20_000L,
+            30_000L,
+        )
         const val EARLY_TIMEOUT_TOLERANCE_MILLIS_0647 = 150L
     }
 }
