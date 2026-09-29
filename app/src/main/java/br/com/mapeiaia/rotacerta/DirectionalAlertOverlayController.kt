@@ -18,13 +18,14 @@ import kotlin.math.roundToInt
 /**
  * Painel único e atualizável para radar/alerta, sem recriar a janela a cada GPS.
  *
- * 0.1.647:
- * - cada targetId recebe um único prazo de 20 s contado desde a primeira exibição;
+ * 0.1.685:
+ * - por padrão o pop-up permanece até reconhecimento humano;
+ * - timeout opcional (15/20/30 s) é contado uma única vez por targetId;
  * - atualizações de GPS/estado não reiniciam esse prazo;
- * - ultrapassar o ponto ou o motor ficar ocioso não fecha antes do prazo;
- * - somente Fechar/Editar/Excluir encerram antecipadamente;
+ * - ultrapassar o ponto ou o motor ficar ocioso não fecha o pop-up;
+ * - somente Fechar/Editar/Excluir ou o timeout configurado encerram;
  * - toques fora dos botões são ignorados;
- * - timeout reconhece o alerta e aplica o mesmo dismissUntilExit do botão Fechar.
+ * - qualquer fechamento reconhece o alvo no motor central.
  */
 class DirectionalAlertOverlayController(
     private val context: Context,
@@ -41,6 +42,7 @@ class DirectionalAlertOverlayController(
     private var activeDismissAction0647: (() -> Unit)? = null
     private var activeTimeout0647: Runnable? = null
     private var activeTimeoutStartedAtNanos0647: Long? = null
+    private var activeTimeoutDurationMillis0685: Long = 0L
     private var passedLoggedTargetId0647: String? = null
 
     val isVisible: Boolean
@@ -49,6 +51,7 @@ class DirectionalAlertOverlayController(
     fun showOrUpdate(
         visual: DirectionalAlertVisual,
         actions: DirectionalAlertOverlayActions = DirectionalAlertOverlayActions(),
+        popupTimeoutMillis: Long = 0L,
     ) {
         ensureView()
         if (container == null) return
@@ -89,8 +92,18 @@ class DirectionalAlertOverlayController(
 
         configureActions(visual, actions)
 
-        if (targetChanged0647 || activeTimeout0647 == null) {
-            scheduleActiveTimeout0647(visual.targetId)
+        val normalizedTimeout0685 = popupTimeoutMillis
+            .takeIf { it in SUPPORTED_TIMEOUT_MILLIS_0685 }
+            ?: 0L
+        if (normalizedTimeout0685 == 0L) {
+            cancelActiveTimeout0647(reason = "TIMEOUT_DISABLED_0685")
+            activeTimeoutDurationMillis0685 = 0L
+        } else if (
+            targetChanged0647 ||
+            activeTimeout0647 == null ||
+            activeTimeoutDurationMillis0685 != normalizedTimeout0685
+        ) {
+            scheduleActiveTimeout0647(visual.targetId, normalizedTimeout0685)
         }
 
         if (visual.shouldClose && passedLoggedTargetId0647 != visual.targetId) {
@@ -258,8 +271,9 @@ class DirectionalAlertOverlayController(
         runCatching { acknowledge?.invoke() }
     }
 
-    private fun scheduleActiveTimeout0647(targetId: String) {
+    private fun scheduleActiveTimeout0647(targetId: String, timeoutMillis0685: Long) {
         cancelActiveTimeout0647(reason = "RESCHEDULE_GUARD")
+        activeTimeoutDurationMillis0685 = timeoutMillis0685
         val startedAtNanos = android.os.SystemClock.elapsedRealtimeNanos()
         val timeout = Runnable {
             val elapsedMs =
@@ -279,13 +293,13 @@ class DirectionalAlertOverlayController(
             FarolFlightRecorder0163.record(
                 stage = "ALERT_OVERLAY_TIMEOUT_DISMISSED_0647",
                 packageName = null,
-                details = "elapsed_ms=$elapsedMs; expected_ms=$ALERT_TIMEOUT_MILLIS_0647; target_hash=${targetId.hashCode()}; dismiss_until_exit=true",
+                details = "elapsed_ms=$elapsedMs; expected_ms=$timeoutMillis0685; target_hash=${targetId.hashCode()}; dismiss_until_exit=true",
             )
-            if (elapsedMs < ALERT_TIMEOUT_MILLIS_0647 - EARLY_TIMEOUT_TOLERANCE_MILLIS_0647) {
+            if (elapsedMs < timeoutMillis0685 - EARLY_TIMEOUT_TOLERANCE_MILLIS_0647) {
                 FarolFlightRecorder0163.record(
                     stage = "FORENSIC_ALERT_POPUP_EARLY_TIMEOUT_0193",
                     packageName = null,
-                    details = "elapsed_ms=$elapsedMs; expected_ms=$ALERT_TIMEOUT_MILLIS_0647; target_hash=${targetId.hashCode()}",
+                    details = "elapsed_ms=$elapsedMs; expected_ms=$timeoutMillis0685; target_hash=${targetId.hashCode()}",
                 )
             }
             removeView0647()
@@ -296,9 +310,9 @@ class DirectionalAlertOverlayController(
         FarolFlightRecorder0163.record(
             stage = "ALERT_OVERLAY_TIMEOUT_STARTED_0647",
             packageName = null,
-            details = "timeout_ms=$ALERT_TIMEOUT_MILLIS_0647; target_hash=${targetId.hashCode()}; starts_once_per_target=true",
+            details = "timeout_ms=$timeoutMillis0685; target_hash=${targetId.hashCode()}; starts_once_per_target=true",
         )
-        handler.postDelayed(timeout, ALERT_TIMEOUT_MILLIS_0647)
+        handler.postDelayed(timeout, timeoutMillis0685)
     }
 
     private fun cancelActiveTimeout0647(reason: String) {
@@ -310,6 +324,7 @@ class DirectionalAlertOverlayController(
         handler.removeCallbacks(timeout)
         activeTimeout0647 = null
         activeTimeoutStartedAtNanos0647 = null
+        activeTimeoutDurationMillis0685 = 0L
         FarolFlightRecorder0163.record(
             stage = "ALERT_OVERLAY_TIMEOUT_CANCELLED_0647",
             packageName = null,
@@ -368,7 +383,7 @@ class DirectionalAlertOverlayController(
         (value * context.resources.displayMetrics.density).roundToInt()
 
     private companion object {
-        const val ALERT_TIMEOUT_MILLIS_0647 = 20_000L
+        val SUPPORTED_TIMEOUT_MILLIS_0685 = setOf(15_000L, 20_000L, 30_000L)
         const val EARLY_TIMEOUT_TOLERANCE_MILLIS_0647 = 150L
     }
 }
