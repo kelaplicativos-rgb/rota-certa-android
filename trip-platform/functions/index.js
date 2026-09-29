@@ -11100,6 +11100,12 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     if (req.method === "POST" && path === "/v1/driver/tracking/sessions/close") return await liveTracking0668.closeSession(req, res);
     if (req.method === "GET" && path === "/v1/driver/tracking/family/status") return await liveTracking0668.getFamilyStatus0681(req, res);
     if (req.method === "POST" && path === "/v1/public/tracking/family/session") return await liveTracking0668.openFamilySession0681(req, res);
+    if (parts.length === 7 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "tracking" && parts[3] === "family" && parts[5] === "history" && parts[6] === "days" && req.method === "GET") {
+      return await liveTracking0668.listPublicFamilyHistoryDays0694(req, res, parts[4]);
+    }
+    if (parts.length === 7 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "tracking" && parts[3] === "family" && parts[5] === "history" && req.method === "GET") {
+      return await liveTracking0668.getPublicFamilyHistoryDay0694(req, res, parts[4], parts[6]);
+    }
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "tracking" && parts[3] === "family" && req.method === "GET") {
       return await liveTracking0668.getPublicFamily0681(req, res, parts[4]);
     }
