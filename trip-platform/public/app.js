@@ -12,7 +12,7 @@ function normalizePublicSlug(value) {
     .slice(0, 32);
 }
 
-const RESERVED_PUBLIC_SLUGS = new Set(["v1", "calendar"]);
+const RESERVED_PUBLIC_SLUGS = new Set(["v1", "calendar", "api"]);
 
 function publicSlugFromPath() {
   const parts = location.pathname.split("/").filter(Boolean);

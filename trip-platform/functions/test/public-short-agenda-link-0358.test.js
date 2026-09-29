@@ -54,11 +54,11 @@ test("legacy technical Agenda URL remains accepted", () => {
 test("only real technical routes are reserved and ordinary words remain available", () => {
   const apiReserved = between(api, "const RESERVED_PUBLIC_USERNAMES = new Set([", "]);");
   const webReserved = between(web, "const RESERVED_PUBLIC_SLUGS = new Set([", "]);");
-  for (const reserved of ["v1", "calendar"]) {
+  for (const reserved of ["v1", "calendar", "api"]) {
     assert.match(apiReserved, new RegExp('"' + reserved + '"'));
     assert.match(webReserved, new RegExp('"' + reserved + '"'));
   }
-  for (const allowed of ["agenda", "api", "admin", "login", "assets", "static", "config", "settings"]) {
+  for (const allowed of ["agenda", "admin", "login", "assets", "static", "config", "settings"]) {
     assert.doesNotMatch(apiReserved, new RegExp('"' + allowed + '"'));
     assert.doesNotMatch(webReserved, new RegExp('"' + allowed + '"'));
   }
