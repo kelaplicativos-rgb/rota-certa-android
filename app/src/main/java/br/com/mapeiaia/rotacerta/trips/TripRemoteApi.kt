@@ -1672,6 +1672,15 @@ class TripRemoteApi(
         requireDriverToken = true,
     )
 
+    suspend fun resolveFarolPaidAddress0695(
+        payload: FarolPaidAddressRequest0695,
+    ): FarolPaidAddressResponse0695 = request(
+        method = "POST",
+        path = "/v1/assistant/farol-address",
+        body = json.encodeToString(payload),
+        requireDriverToken = true,
+    )
+
     suspend fun createPublicBooking(
         publicToken: String,
         request: PublicBookingRequest,
