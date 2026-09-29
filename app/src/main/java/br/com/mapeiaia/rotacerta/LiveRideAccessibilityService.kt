@@ -5520,6 +5520,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         source0188: TextSource,
         readBinding0187: FarolReadBinding0187?,
         ocrBlocks0188: List<OcrTextBlock0188>,
+        learnedRead0700: LearnedRideReader0700.Result? = null,
     ): FarolRouteAuthorization0188? {
         val session0188 = driverCardSessionGate0162.current()
             ?.takeIf { it.packageName == packageName0188 }
@@ -5612,7 +5613,45 @@ class LiveRideAccessibilityService : AccessibilityService() {
             packageName0188,
             "source=${source0188.name}; window=$expectedWindow0188; blocks=${blocks0188.size}; reason=${decision0188.reason}; block=${decision0188.authorization?.blockId ?: "none"}",
         )
-        return decision0188.authorization
+        if (decision0188.authorization != null) return decision0188.authorization
+
+        // 0.1.700: Reader Profile recupera somente snapshot do mesmo package com origem+destino.
+        // Não mistura janelas, não decide cor/km e mantém o restante do pipeline local.
+        val learned0700 = learnedRead0700
+        if (learned0700?.applied == true && !learned0700.pickup.isNullOrBlank() && !learned0700.destination.isNullOrBlank()) {
+            val pickup0700 = DestinationAddressIdentityPolicy.cleanDisplayAddress(learned0700.pickup)
+            val destination0700 = DestinationAddressIdentityPolicy.cleanDisplayAddress(learned0700.destination)
+            val pickupSignature0700 = DestinationAddressIdentityPolicy.signature(packageName0188, pickup0700)
+            val destinationSignature0700 = DestinationAddressIdentityPolicy.signature(packageName0188, destination0700)
+            if (pickup0700.isNotBlank() && destination0700.isNotBlank() && pickupSignature0700 != destinationSignature0700) {
+                val learnedAuthorization0700 = FarolRouteAuthorization0188(
+                    packageName = packageName0188,
+                    windowId = expectedWindow0188,
+                    blockId = "learned-profile-0700",
+                    source = source0188.toFarolEvidenceSource0700(),
+                    analysisText = learned0700.text,
+                    addresses = listOf(pickup0700, destination0700),
+                    pickup = pickup0700,
+                    destination = destination0700,
+                    addressSignature = destinationSignature0700,
+                    screenHash = "$packageName0188|$expectedWindow0188|learned0700|$destinationSignature0700".hashCode(),
+                )
+                stage16AcceptedGateSnapshot = gateSnapshotStage16
+                stage16AcceptedGateAuthorization = learnedAuthorization0700
+                FarolFlightRecorder0163.record(
+                    stage = LearnedRideReader0700.APPLIED_MARKER,
+                    packageName = packageName0188,
+                    details = "phase=route_authorization; pickup=${pickup0700.take(160)}; destination=${destination0700.take(180)}; remoteCall=false; ${learned0700.evidence}",
+                )
+                return learnedAuthorization0700
+            }
+        }
+        return null
+    }
+
+    private fun TextSource.toFarolEvidenceSource0700(): FarolEvidenceSource0188 = when (this) {
+        TextSource.Accessibility -> FarolEvidenceSource0188.Accessibility
+        TextSource.Ocr -> FarolEvidenceSource0188.Ocr
     }
 
     private fun collectOcrCardBlocks0188(
@@ -5800,7 +5839,20 @@ class LiveRideAccessibilityService : AccessibilityService() {
             return
         }
 
-        val rawSnapshotText0185 = text.trim()
+        val rawSnapshotOriginal0700 = text.trim()
+        val learnedRead0700 = LearnedRideReader0700.apply(
+            profile = RideAppLearningStore0700.read(applicationContext, selectedPackageChecklist13),
+            packageName = selectedPackageChecklist13,
+            rawText = rawSnapshotOriginal0700,
+        )
+        if (learnedRead0700.applied) {
+            FarolFlightRecorder0163.record(
+                stage = LearnedRideReader0700.APPLIED_MARKER,
+                packageName = selectedPackageChecklist13,
+                details = "phase=pre_gate; pickup=${learnedRead0700.pickup.orEmpty().take(160)}; destination=${learnedRead0700.destination.orEmpty().take(180)}; remoteCall=false; ${learnedRead0700.evidence}",
+            )
+        }
+        val rawSnapshotText0185 = learnedRead0700.text
         val cardEvidence0185 = RideCardConfirmationPolicy0185.prepare(
             packageName = selectedPackageChecklist13,
             rawText = rawSnapshotText0185,
@@ -5847,6 +5899,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             source0188 = source,
             readBinding0187 = readBinding0187,
             ocrBlocks0188 = ocrBlocks0188,
+            learnedRead0700 = learnedRead0700,
         )
         if (routeAuthorization0188 == null) {
             UnifiedDebugEventStore.record(
