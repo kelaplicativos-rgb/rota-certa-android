@@ -2,6 +2,40 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.696",
+      "build": 5987,
+      "commit": null,
+      "branch": "agent/farol-local-decision-authority-0.1.696",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Farol Local Decision Authority: coordenada + Haversine passam a publicar imediatamente verde/vermelho e quilometragem sem aguardar Route Matrix ou OSRM.",
+        "Rota rodoviária passa a ser refinamento assíncrono opcional para o mesmo binding, sem autoridade para inverter a cor local.",
+        "Churn visual do mesmo endereço deixa de revogar resultado válido; apenas mudança semântica real de endereço invalida a decisão."
+      ],
+      "fixed": [
+        "Remove a supressão Stage682 que mantinha amarelo mesmo após cálculo local válido.",
+        "Evita que lentidão/falha de rota remota impeça a materialização da bolinha com km.",
+        "Adiciona watchdog de repaint quando endereço local válido ainda não materializou resultado final."
+      ],
+      "improved": [
+        "Telemetria separa commit local, início/refinamento remoto, descarte stale e endereço válido sem paint final.",
+        "Refinamento parcial preserva distância local onde a rota rodoviária não retornar um alvo.",
+        "OpenAI permanece fora do caminho de distância quando o endereço já foi reconhecido."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Farol",
+        "Accessibility",
+        "Geocoding",
+        "Roteamento",
+        "Saúde/Diagnóstico",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.695",
       "build": 5986,
       "commit": null,
