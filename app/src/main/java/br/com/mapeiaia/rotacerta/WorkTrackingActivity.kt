@@ -18,11 +18,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
@@ -38,6 +40,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import java.text.SimpleDateFormat
@@ -74,6 +77,8 @@ private fun WorkTrackingScreen(onClose: () -> Unit) {
     var familyState0681 by remember { mutableStateOf("RECONNECTING") }
     var familyUrl0681 by remember { mutableStateOf(shareManager0668.familyShareUrl().orEmpty()) }
     var familyPin0681 by remember { mutableStateOf(shareManager0668.familyPin0681().orEmpty()) }
+    var familyPinDraft0693 by remember { mutableStateOf(shareManager0668.familyPin0681().orEmpty()) }
+    var familyPinConfirmed0693 by remember { mutableStateOf(false) }
     var localFamilyConfigured0681 by remember { mutableStateOf(shareManager0668.familyShareUrl() != null) }
     var permissionPurpose0668 by remember { mutableStateOf(TrackingPermissionPurpose0668.PRIVATE) }
     var status by remember { mutableStateOf("") }
@@ -84,6 +89,9 @@ private fun WorkTrackingScreen(onClose: () -> Unit) {
         localFamilyConfigured0681 = shareManager0668.familyShareUrl() != null
         familyUrl0681 = shareManager0668.familyShareUrl().orEmpty()
         familyPin0681 = shareManager0668.familyPin0681().orEmpty()
+        if (familyPinDraft0693.isBlank() && familyPin0681.isNotBlank()) {
+            familyPinDraft0693 = familyPin0681
+        }
     }
 
     fun startTracking() {
@@ -108,13 +116,16 @@ private fun WorkTrackingScreen(onClose: () -> Unit) {
         status = "Ativando o endereço familiar permanente…"
         scope0668.launch {
             runCatching {
-                withContext(Dispatchers.IO) { shareManager0668.createFamilyLink() }
+                val requestedPin0693 = familyPinDraft0693.takeIf { it.matches(Regex("\\d{6}")) }
+                withContext(Dispatchers.IO) { shareManager0668.createFamilyLink(requestedPin0693) }
             }.onSuccess { outcome0668 ->
                 familyActive0668 = true
                 familyState0681 = "ACTIVE"
                 localFamilyConfigured0681 = true
                 familyUrl0681 = outcome0668.url
                 familyPin0681 = outcome0668.familyPin
+                familyPinDraft0693 = outcome0668.familyPin
+                familyPinConfirmed0693 = true
                 status = if (outcome0668.reused) {
                     "Endereço familiar confirmado pelo servidor."
                 } else {
@@ -134,6 +145,34 @@ private fun WorkTrackingScreen(onClose: () -> Unit) {
         }
     }
 
+    fun saveFamilyPin0693() {
+        val normalizedPin0693 = familyPinDraft0693.filter(Char::isDigit).take(6)
+        familyPinDraft0693 = normalizedPin0693
+        if (!normalizedPin0693.matches(Regex("\\d{6}"))) {
+            familyPinConfirmed0693 = false
+            status = "Digite exatamente 6 números para o código familiar."
+            return
+        }
+        ensureLocationCore0681()
+        status = "Salvando código familiar fixo no servidor…"
+        scope0668.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { shareManager0668.setFamilyPin0693(normalizedPin0693) }
+            }.onSuccess { outcome0693 ->
+                familyActive0668 = true
+                familyState0681 = "ACTIVE"
+                localFamilyConfigured0681 = true
+                familyUrl0681 = outcome0693.url
+                familyPin0681 = outcome0693.familyPin
+                familyPinDraft0693 = outcome0693.familyPin
+                familyPinConfirmed0693 = true
+                status = "✅ Código familiar confirmado pelo servidor."
+            }.onFailure { error0693 ->
+                familyPinConfirmed0693 = false
+                status = "Código não alterado: " + (error0693.message ?: "falha de conexão com o servidor")
+            }
+        }
+    }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { permissions ->
@@ -292,8 +331,40 @@ private fun WorkTrackingScreen(onClose: () -> Unit) {
                 if (familyUrl0681.isNotBlank()) {
                     Text("Link fixo: " + familyUrl0681, style = MaterialTheme.typography.bodySmall)
                 }
+                Text(
+                    "Código familiar fixo",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                OutlinedTextField(
+                    value = familyPinDraft0693,
+                    onValueChange = { raw0693 ->
+                        familyPinDraft0693 = raw0693.filter(Char::isDigit).take(6)
+                        familyPinConfirmed0693 = false
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("6 dígitos") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    supportingText = {
+                        Text(
+                            if (familyPinConfirmed0693) {
+                                "✅ Código confirmado pelo servidor. Só muda quando você salvar outro."
+                            } else {
+                                "Você define este código. Ele não será regenerado automaticamente."
+                            },
+                        )
+                    },
+                )
+                Button(
+                    onClick = { saveFamilyPin0693() },
+                    enabled = familyPinDraft0693.length == 6,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Salvar código familiar")
+                }
                 if (familyPin0681.isNotBlank() && localFamilyConfigured0681) {
-                    Text("Código familiar: " + familyPin0681, style = MaterialTheme.typography.bodySmall)
+                    Text("Código ativo: " + familyPin0681, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
