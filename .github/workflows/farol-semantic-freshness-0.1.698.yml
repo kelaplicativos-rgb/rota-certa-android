@@ -1,16 +1,16 @@
-name: FAROL network isolation 0.1.699 APK
+name: Rota Certa ride-app learning 0.1.700 APK + assistant backend
 
 on:
   push:
     branches:
-      - 'agent/farol-network-isolation-0.1.699'
+      - 'agent/ride-app-learning-openai-0.1.700'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: farol-network-isolation-0699-${{ github.sha }}
+  group: ride-app-learning-0700-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -19,9 +19,9 @@ jobs:
     timeout-minutes: 90
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-      BASE_SHA: '5ba2743d0f3369696b86065edfb39789a82e78de'
-      EXPECTED_VERSION_NAME: '0.1.699'
-      EXPECTED_VERSION_CODE: '5990'
+      BASE_SHA: '0893bf9fb270e7d1fa6dad0959e97d30482c5e2e'
+      EXPECTED_VERSION_NAME: '0.1.700'
+      EXPECTED_VERSION_CODE: '5991'
       ROTA_CERTA_GIT_SHA: ${{ github.sha }}
 
     steps:
@@ -35,9 +35,9 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          grep -Fq 'val releaseVersionName = "0.1.699"' app/build.gradle.kts
-          grep -Fq 'val releaseVersionCode = 5_990' app/build.gradle.kts
-          grep -Fq '"version": "0.1.699"' app/src/main/assets/release_history.json
+          grep -Fq 'val releaseVersionName = "0.1.700"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 5_991' app/build.gradle.kts
+          grep -Fq '"version": "0.1.700"' app/src/main/assets/release_history.json
           grep -Fq 'FAROL_NETWORK_FAILURE_ISOLATION_0699' app/src/main/java/br/com/mapeiaia/rotacerta/FarolNetworkFailureIsolation0699.kt
           grep -Fq 'FAROL_GOOGLE_GEOCODE_TRANSPORT_FAILED_0699' app/src/main/java/br/com/mapeiaia/rotacerta/FarolNetworkFailureIsolation0699.kt
           grep -Fq 'FAROL_REMOTE_REFINEMENT_FAILED_SOFT_0699' app/src/main/java/br/com/mapeiaia/rotacerta/FarolNetworkFailureIsolation0699.kt
@@ -73,9 +73,9 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.FarolLocalDecisionAuthority0696Test' \
             --tests 'br.com.mapeiaia.rotacerta.FarolAddressFirst0695Test' \
             --tests 'br.com.mapeiaia.rotacerta.FarolPaidAiGate0695Test' \
-            --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0699-focused.log
+            --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0700-focused.log
 
-      - name: Compare complete Android failures with exact 0.1.698
+      - name: Compare complete Android failures with exact 0.1.699
         shell: bash
         run: |
           set -euo pipefail
@@ -106,7 +106,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0699-assemble.log
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0700-assemble.log
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
       - name: Prove APK identity
@@ -117,34 +117,34 @@ jobs:
           APK="app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
-          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt-0699.txt
-          PACKAGE_LINE="$(grep '^package:' /tmp/aapt-0699.txt | head -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt-0700.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/aapt-0700.txt | head -1)"
           grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
-          grep -Fq "versionCode='5990'" <<< "$PACKAGE_LINE"
-          grep -Fq "versionName='0.1.699'" <<< "$PACKAGE_LINE"
-          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner-0699.txt
-          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/apksigner-0699.txt
+          grep -Fq "versionCode='5991'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.700'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner-0700.txt
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/apksigner-0700.txt
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-0699.txt
           for marker in             "$ROTA_CERTA_GIT_SHA"             'FAROL_NETWORK_FAILURE_ISOLATION_0699'             'FAROL_GOOGLE_GEOCODE_TRANSPORT_FAILED_0699'             'FAROL_REMOTE_REFINEMENT_FAILED_SOFT_0699'             'FAROL_NETWORK_FAILURE_STATE_PRESERVED_0699'             'FAROL_LOCAL_SEMANTIC_FRESHNESS_0698'             'FAROL_LOCAL_DECISION_AUTHORITY_0696'             'FAROL_COORDINATE_RESOLUTION_0697'; do
             grep -Fq "$marker" /tmp/dex-0699.txt
           done
           APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
           SHORT_SHA="$(git rev-parse --short=12 HEAD)"
-          FINAL="rota-certa-0.1.699-5990-$SHORT_SHA.apk"
+          FINAL="rota-certa-0.1.700-5991-$SHORT_SHA.apk"
           cp "$APK" "$FINAL"
           echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
           echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
-          printf 'versionName=0.1.699\nversionCode=5990\ncommit=%s\napk_sha256=%s\ndevice=Samsung SM-S911B Android 16\n' "$GITHUB_SHA" "$APK_SHA256" | tee farol-network-0699-proof.txt
+          printf 'versionName=0.1.700\nversionCode=5991\ncommit=%s\napk_sha256=%s\ndevice=Samsung SM-S911B Android 16\n' "$GITHUB_SHA" "$APK_SHA256" | tee ride-app-learning-0700-proof.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-farol-network-0.1.699-${{ github.sha }}
+          name: rota-certa-ride-app-learning-0.1.700-${{ github.sha }}
           path: |
             ${{ steps.proof.outputs.apk }}
-            farol-network-0699-proof.txt
-            /tmp/android-0699-focused.log
-            /tmp/android-0699-assemble.log
-            /tmp/aapt-0699.txt
-            /tmp/apksigner-0699.txt
+            ride-app-learning-0700-proof.txt
+            /tmp/android-0700-focused.log
+            /tmp/android-0700-assemble.log
+            /tmp/aapt-0700.txt
+            /tmp/apksigner-0700.txt
           if-no-files-found: error
           retention-days: 30
