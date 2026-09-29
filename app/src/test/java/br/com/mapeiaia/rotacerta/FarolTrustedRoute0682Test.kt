@@ -42,20 +42,22 @@ class FarolTrustedRoute0682Test {
         assertEquals(saoPaulo, maps.selectUnbiasedGeocodeCandidate0682(listOf(saoPaulo, nearSamePlace)))
         assertEquals(null, maps.selectUnbiasedGeocodeCandidate0682(listOf(saoPaulo, rio)))
     }
+
     @Test
-    fun provisionalLocalResultCannotPublishGreenOrRed() {
+    fun localResultPublishesGreenRedAndKmBeforeRoadRefinement() {
         val live = source("LiveRideAccessibilityService.kt")
-        val start = live.indexOf("private fun applyUniversalPreliminaryColorStage637(")
+        val start = live.indexOf("private suspend fun applyUniversalPreliminaryColorStage637(")
         val end = live.indexOf("private suspend fun applyUniversalTwoAddressResultStage19(", start)
         assertTrue(start >= 0 && end > start)
         val block = live.substring(start, end)
-        assertTrue(block.contains("S682_PROVISIONAL_COLOR_SUPPRESSED"))
-        assertTrue(block.contains("showOverlay(RadarColor.Default, distanceKm = null)"))
-        assertFalse(block.contains("showOverlay(colorStage637"))
+        assertTrue(block.contains("FarolLocalDecisionAuthority0696.LOCAL_COMMIT_MARKER"))
+        assertTrue(block.contains("applyUniversalTwoAddressResultStage19("))
+        assertFalse(block.contains("S682_PROVISIONAL_COLOR_SUPPRESSED"))
+        assertFalse(block.contains("showOverlay(RadarColor.Default, distanceKm = null)"))
     }
 
     @Test
-    fun finalDistanceOwnsColorDecision() {
+    fun localDistanceOwnsColorDecision() {
         val engine = DecisionEngine()
         val settings = AppSettings(homeRadiusKm = 10.0, alternativeTargetEnabled = false)
         val fields = RideFields(destination = "Rua de teste, 100")
@@ -89,10 +91,19 @@ class FarolTrustedRoute0682Test {
     }
 
     @Test
-    fun directRouteHasSubsecondBudgetBeforeLegacyFallback() {
+    fun roadRefinementHasSubsecondBudgetOnlyAfterLocalAuthority() {
         val live = source("LiveRideAccessibilityService.kt")
         assertTrue(live.contains("TRUSTED_DIRECT_ROUTE_TIMEOUT_MILLIS_0682 = 950L"))
-        assertTrue(live.contains("FAROL_TRUSTED_DIRECT_FALLBACK_0682"))
-        assertTrue(live.contains("fallback=legacy_preserved"))
+        val analyzeStart = live.indexOf("private suspend fun analyzeUniversalTwoAddressStage19(")
+        val analyzeEnd = live.indexOf("private fun attachExactRoadDistanceStage637(", analyzeStart)
+        assertTrue(analyzeStart >= 0 && analyzeEnd > analyzeStart)
+        val block = live.substring(analyzeStart, analyzeEnd)
+        val localIndex = block.indexOf("localDistancesFromAddressKm(")
+        val localCommitIndex = block.indexOf("applyUniversalPreliminaryColorStage637(")
+        val remoteIndex = block.indexOf("trustedDirectDrivingDistancesFromAddressKm0682(")
+        assertTrue(localIndex >= 0)
+        assertTrue(localCommitIndex > localIndex)
+        assertTrue(remoteIndex > localCommitIndex)
+        assertTrue(block.contains("FarolLocalDecisionAuthority0696.REMOTE_STARTED_MARKER"))
     }
 }
