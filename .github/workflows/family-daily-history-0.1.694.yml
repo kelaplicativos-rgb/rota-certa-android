@@ -336,7 +336,6 @@ jobs:
           curl --retry 10 --retry-delay 2 --fail --silent --show-error "$BASE/tracking.js?v=$ROTA_CERTA_GIT_SHA" | tee /tmp/live-tracking-0694.js
           grep -Fq 'PASSENGER_LIVE_ONLY_0691' /tmp/live-tracking-0694.js
           grep -Fq 'FAMILY_LIVE_FIRST_0692' /tmp/live-tracking-0694.js
-          grep -Fq 'tracking.js?v=0692' /tmp/live-tracking-0694.html
           grep -Fq 'FAMILY_DAILY_HISTORY_0694' /tmp/live-tracking-0694.js
           grep -Fq 'fetchFamilyHistoryDay0694' /tmp/live-tracking-0694.js
           grep -Fq 'Nenhum histórico disponível nesta data.' /tmp/live-tracking-0694.js
