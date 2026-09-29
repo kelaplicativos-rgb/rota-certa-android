@@ -20,17 +20,19 @@ test("family live endpoint does not query history unless trace is requested", ()
   assert.ok(familyStart >= 0 && queryIndex > familyStart && pointsIndex > queryIndex);
 });
 
-test("family browser opens live-first with smart follow and lazy history", () => {
+test("family browser opens live-first with smart follow and lazy daily history", () => {
   assert.match(client, /FAMILY_LIVE_FIRST_0692/);
+  assert.match(client, /FAMILY_DAILY_HISTORY_0694/);
   assert.match(client, /familyHistoryMode0692 = false/);
-  assert.match(client, /if \(familyHistoryMode0692\) params\.set\("trace", "1"\)/);
+  assert.doesNotMatch(client, /params\.set\("trace", "1"\)/);
+  assert.match(client, /fetchFamilyHistoryDay0694/);
   assert.match(client, /followLive0692 = true/);
   assert.match(client, /map\.setView\(here, Math\.max\(16/);
-  assert.match(client, /familyHistoryMode0692 \? "← Voltar ao Ao Vivo" : "🗺 Ver trajeto"/);
+  assert.match(client, /🕘 Histórico/);
 });
 
 test("family page makes the live map primary and exposes history as a separate action", () => {
   assert.ok(html.indexOf('id="mapWrap"') < html.indexOf('id="trackingSummary"'));
   assert.match(html, /id="historyToggle"/);
-  assert.match(html, /tracking\.js\?v=0692/);
+  assert.match(html, /tracking\.js\?v=0694/);
 });
