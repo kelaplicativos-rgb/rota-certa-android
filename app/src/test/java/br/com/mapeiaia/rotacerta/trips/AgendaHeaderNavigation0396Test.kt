@@ -45,7 +45,10 @@ class AgendaHeaderNavigation0396Test {
 
     @Test
     fun headerSeparatesRootNavigationContextAndOverflow() {
-        assertTrue(header.contains("text = if (root) \"☰\" else \"←\""))
+        assertTrue(header.contains("text = \"←\""))
+        assertTrue(header.contains("enabled = navigationEnabled0689"))
+        assertTrue(header.contains("if (root && onMenuClick0689 != null)"))
+        assertTrue(header.contains("text = \"☰\""))
         assertTrue(header.contains("Text(\"⋮\""))
         assertTrue(header.contains("Text(\n                        \"Rota Certa\""))
         assertTrue(header.contains("sectionLabel"))
