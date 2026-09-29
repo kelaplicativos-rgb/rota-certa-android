@@ -161,10 +161,20 @@ class DirectionalProximityAlertEngine(
         val key = savedKey(alert)
         val runtime = runtimeById.getOrPut(key) { RuntimeState() }
         val distance = GeoDistance.meters(fix.coordinate, alert.coordinate)
+        val previousCoordinate0686 = runtime.lastCoordinate
+        val crossedBetweenFixes0686 = previousCoordinate0686?.let { previous ->
+            RadarSafetyPolicy0686.segmentCrossesTarget(
+                previous = previous,
+                current = fix.coordinate,
+                target = alert.coordinate,
+                thresholdMeters = threshold.toDouble(),
+            )
+        } ?: false
 
         if (!runtime.zoneInitialized) {
             runtime.zoneInitialized = true
             runtime.lastDistanceMeters = distance
+            runtime.lastCoordinate = fix.coordinate
             runtime.minimumDistanceMeters = distance
             if (distance <= threshold) {
                 runtime.mutedUntilExit = true
@@ -173,25 +183,49 @@ class DirectionalProximityAlertEngine(
             }
         }
 
+        if (
+            crossedBetweenFixes0686 &&
+            !dismissGate0178.isDismissed(key) &&
+            !runtime.passed &&
+            DirectionalAlertPolicy.isFixUsable(fix, threshold, now)
+        ) {
+            runtime.observe(distance, fix.accuracyMeters, fix.coordinate)
+            runtime.passed = true
+            runtime.mutedUntilExit = true
+            return Evaluation(
+                candidate = Candidate(
+                    key = key,
+                    kind = DirectionalAlertKind.SavedPlace,
+                    title = alert.name.ifBlank { "Alerta de proximidade" },
+                    distanceMeters = distance,
+                    thresholdMeters = threshold,
+                    runtime = runtime,
+                    alert = alert,
+                    status = "Alerta ultrapassado",
+                    shouldClose = true,
+                ),
+            )
+        }
+
         if (distance > threshold + RESET_BUFFER_METERS) {
             dismissGate0178.clearAfterExit(key)
-            runtime.resetAfterExit(distance)
+            runtime.resetAfterExit(distance, fix.coordinate)
             return null
         }
         if (dismissGate0178.isDismissed(key)) {
-            runtime.observe(distance, fix.accuracyMeters)
+            runtime.observe(distance, fix.accuracyMeters, fix.coordinate)
             return null
         }
         if (runtime.mutedUntilExit) {
-            runtime.observe(distance, fix.accuracyMeters)
+            runtime.observe(distance, fix.accuracyMeters, fix.coordinate)
             return null
         }
         if (!DirectionalAlertPolicy.isFixUsable(fix, threshold, now)) {
-            runtime.observe(distance, fix.accuracyMeters)
+            runtime.observe(distance, fix.accuracyMeters, fix.coordinate)
             return null
         }
 
-        runtime.observe(distance, fix.accuracyMeters)
+        runtime.observe(distance, fix.accuracyMeters, fix.coordinate)
         runtime.insideZone = distance <= threshold
 
         if (runtime.hasPassed(distance)) {
@@ -216,9 +250,7 @@ class DirectionalProximityAlertEngine(
             )
         }
 
-        val eligible = distance <= threshold &&
-            runtime.approachingSamples >= REQUIRED_APPROACHING_SAMPLES &&
-            !runtime.passed
+        val eligible = distance <= threshold && !runtime.passed
         if (!eligible) return null
 
         return Evaluation(
@@ -243,23 +275,59 @@ class DirectionalProximityAlertEngine(
         val key = radarKey(radar)
         val runtime = runtimeById.getOrPut(key) { RuntimeState() }
         val distance = GeoDistance.meters(fix.coordinate, radar.coordinate)
+        val previousCoordinate0686 = runtime.lastCoordinate
+        val crossedBetweenFixes0686 = previousCoordinate0686?.let { previous ->
+            RadarSafetyPolicy0686.segmentCrossesTarget(
+                previous = previous,
+                current = fix.coordinate,
+                target = radar.coordinate,
+                thresholdMeters = threshold.toDouble(),
+            )
+        } ?: false
+
+        if (
+            crossedBetweenFixes0686 &&
+            !dismissGate0178.isDismissed(key) &&
+            !runtime.passed &&
+            DirectionalAlertPolicy.isFixUsable(fix, threshold, now)
+        ) {
+            runtime.observe(distance, fix.accuracyMeters, fix.coordinate)
+            runtime.passed = true
+            runtime.mutedUntilExit = true
+            return Evaluation(
+                candidate = Candidate(
+                    key = key,
+                    kind = DirectionalAlertKind.ImportedRadar,
+                    title = radarTitle(radar),
+                    distanceMeters = distance,
+                    thresholdMeters = threshold,
+                    runtime = runtime,
+                    radar = radar,
+                    status = "Radar ultrapassado",
+                    shouldClose = true,
+                ),
+            )
+        }
 
         if (distance > threshold + RESET_BUFFER_METERS) {
             dismissGate0178.clearAfterExit(key)
-            runtime.resetAfterExit(distance)
+            runtime.resetAfterExit(distance, fix.coordinate)
             return null
         }
         if (dismissGate0178.isDismissed(key)) {
-            runtime.observe(distance, fix.accuracyMeters)
+            runtime.observe(distance, fix.accuracyMeters, fix.coordinate)
             return null
         }
-        if (runtime.passed) return null
+        if (runtime.passed) {
+            runtime.observe(distance, fix.accuracyMeters, fix.coordinate)
+            return null
+        }
         if (!DirectionalAlertPolicy.isFixUsable(fix, threshold, now)) {
-            runtime.observe(distance, fix.accuracyMeters)
+            runtime.observe(distance, fix.accuracyMeters, fix.coordinate)
             return null
         }
 
-        runtime.observe(distance, fix.accuracyMeters)
+        runtime.observe(distance, fix.accuracyMeters, fix.coordinate)
         runtime.insideZone = distance <= threshold
 
         if (runtime.hasPassed(distance)) {
@@ -285,9 +353,7 @@ class DirectionalProximityAlertEngine(
             )
         }
 
-        val eligible = distance <= threshold &&
-            runtime.approachingSamples >= REQUIRED_APPROACHING_SAMPLES &&
-            !runtime.passed
+        val eligible = distance <= threshold && !runtime.passed
         if (!eligible) return null
 
         return Evaluation(
@@ -328,6 +394,8 @@ class DirectionalProximityAlertEngine(
         val runtime: RuntimeState,
         val alert: SavedPlace? = null,
         val radar: ImportedRadar? = null,
+        val status: String = "Aproximando",
+        val shouldClose: Boolean = false,
     ) {
         fun toVisual(fix: PreciseNavigationFix): DirectionalAlertVisual = DirectionalAlertVisual(
             targetId = key,
@@ -338,9 +406,9 @@ class DirectionalProximityAlertEngine(
             accuracyMeters = fix.accuracyMeters,
             speedKilometersPerHour = fix.speedKilometersPerHour,
             headingSource = fix.headingSource,
-            status = "Aproximando",
+            status = status,
             gpsReliable = true,
-            shouldClose = false,
+            shouldClose = shouldClose,
             savedPlaceId = alert?.id,
             radarId = radar?.id,
             speedLimitKmh = radar?.speedKmh,
@@ -351,6 +419,7 @@ class DirectionalProximityAlertEngine(
         var spokenCount: Int = 0,
         var lastSpokenAtMillis: Long = 0L,
         var lastDistanceMeters: Double? = null,
+        var lastCoordinate: Coordinate? = null,
         var minimumDistanceMeters: Double = Double.MAX_VALUE,
         var approachingSamples: Int = 0,
         var increasingSamples: Int = 0,
@@ -359,7 +428,7 @@ class DirectionalProximityAlertEngine(
         var insideZone: Boolean = false,
         var passed: Boolean = false,
     ) {
-        fun observe(distanceMeters: Double, accuracyMeters: Double) {
+        fun observe(distanceMeters: Double, accuracyMeters: Double, coordinate: Coordinate) {
             val previous = lastDistanceMeters
             if (previous != null) {
                 if (DirectionalAlertPolicy.isApproaching(previous, distanceMeters, accuracyMeters)) {
@@ -372,6 +441,7 @@ class DirectionalProximityAlertEngine(
             }
             minimumDistanceMeters = minOf(minimumDistanceMeters, distanceMeters)
             lastDistanceMeters = distanceMeters
+            lastCoordinate = coordinate
         }
 
         fun hasPassed(distanceMeters: Double): Boolean =
@@ -389,10 +459,11 @@ class DirectionalProximityAlertEngine(
             lastSpokenAtMillis = nowMillis
         }
 
-        fun resetAfterExit(distanceMeters: Double) {
+        fun resetAfterExit(distanceMeters: Double, coordinate: Coordinate) {
             spokenCount = 0
             lastSpokenAtMillis = 0L
             lastDistanceMeters = distanceMeters
+            lastCoordinate = coordinate
             minimumDistanceMeters = distanceMeters
             approachingSamples = 0
             increasingSamples = 0
@@ -405,7 +476,6 @@ class DirectionalProximityAlertEngine(
 
     private companion object {
         const val RESET_BUFFER_METERS = 140.0
-        const val REQUIRED_APPROACHING_SAMPLES = 2
         const val SPEECH_REPEAT_GAP_MILLIS = 20_000L
         const val MAX_SAVED_ALERT_SPEECH_COUNT = 2
         const val MAX_RADAR_SPEECH_COUNT = 1
