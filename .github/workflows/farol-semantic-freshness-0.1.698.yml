@@ -66,6 +66,143 @@ jobs:
           fi
           git diff --check "$BASE_SHA"...HEAD
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate ride-app learning backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/functions/ride-app-learning-0700.js
+          node --test \
+            trip-platform/functions/test/ride-app-learning-0700.test.js \
+            trip-platform/functions/test/farol-paid-address-0695.test.js | tee /tmp/node-0700-focused.log
+
+      - name: Compare complete backend failures with exact 0.1.699
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add --detach /tmp/rc-node-base "$BASE_SHA"
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+          npm --prefix /tmp/rc-node-base/trip-platform/functions install --no-audit --no-fund
+          set +e
+          npm --prefix /tmp/rc-node-base/trip-platform/functions test > /tmp/node-base-full.log 2>&1
+          BASE_EXIT=$?
+          npm --prefix trip-platform/functions test > /tmp/node-head-full.log 2>&1
+          HEAD_EXIT=$?
+          set -e
+          python3 - <<'PY'
+          import pathlib,re
+          pat=re.compile(r'^not ok\\s+\\d+\\s+-\\s+(.+?)\\s*
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run focused FAROL tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.FarolNetworkFailureIsolation0699Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolLocalSemanticFreshness0698Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolCoordinateResilience0697ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolCoordinateResolution0697Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolTemporalUiNoise0697Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolLocalDecisionAuthority0696Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolAddressFirst0695Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolPaidAiGate0695Test' \
+            --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0700-focused.log
+
+      - name: Compare complete Android failures with exact 0.1.699
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add --detach /tmp/rc-base "$BASE_SHA"
+          chmod +x /tmp/rc-base/gradlew
+          set +e
+          (cd /tmp/rc-base && ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace) > /tmp/base-full.log 2>&1
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace > /tmp/head-full.log 2>&1
+          set -e
+          python3 - <<'PY'
+          import pathlib, xml.etree.ElementTree as ET
+          def failures(root):
+              out=set(); d=pathlib.Path(root)/"app/build/test-results/testDebugUnitTest"
+              if d.exists():
+                  for f in d.glob("*.xml"):
+                      tree=ET.parse(f)
+                      for case in tree.getroot().iter("testcase"):
+                          if case.find("failure") is not None or case.find("error") is not None:
+                              out.add(f"{case.attrib.get('classname','')}::{case.attrib.get('name','')}")
+              return out
+          base=failures("/tmp/rc-base"); head=failures("."); new=sorted(head-base)
+          print(f"base_failures={len(base)} head_failures={len(head)} new_failures={len(new)}")
+          if new:
+              print("\n".join(new)); raise SystemExit(1)
+          PY
+
+      - name: Assemble exact APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0700-assemble.log
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Prove APK identity
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt-0700.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/aapt-0700.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5991'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.700'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner-0700.txt
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/apksigner-0700.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-0699.txt
+          for marker in             "$ROTA_CERTA_GIT_SHA"             'FAROL_NETWORK_FAILURE_ISOLATION_0699'             'FAROL_GOOGLE_GEOCODE_TRANSPORT_FAILED_0699'             'FAROL_REMOTE_REFINEMENT_FAILED_SOFT_0699'             'FAROL_NETWORK_FAILURE_STATE_PRESERVED_0699'             'FAROL_LOCAL_SEMANTIC_FRESHNESS_0698'             'FAROL_LOCAL_DECISION_AUTHORITY_0696'             'FAROL_COORDINATE_RESOLUTION_0697'; do
+            grep -Fq "$marker" /tmp/dex-0699.txt
+          done
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.700-5991-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          printf 'versionName=0.1.700\nversionCode=5991\ncommit=%s\napk_sha256=%s\ndevice=Samsung SM-S911B Android 16\n' "$GITHUB_SHA" "$APK_SHA256" | tee ride-app-learning-0700-proof.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-ride-app-learning-0.1.700-${{ github.sha }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            ride-app-learning-0700-proof.txt
+            /tmp/android-0700-focused.log
+            /tmp/android-0700-assemble.log
+            /tmp/aapt-0700.txt
+            /tmp/apksigner-0700.txt
+          if-no-files-found: error
+          retention-days: 30
+)
+          def failures(path):
+              out=set()
+              for line in pathlib.Path(path).read_text(errors='replace').splitlines():
+                  m=pat.match(line.strip())
+                  if m: out.add(m.group(1))
+              return out
+          base=failures('/tmp/node-base-full.log'); head=failures('/tmp/node-head-full.log')
+          new=sorted(head-base)
+          print(f'base_failures={len(base)} head_failures={len(head)} new_failures={len(new)}')
+          if new:
+              print('\\n'.join(new)); raise SystemExit(1)
+          PY
+          printf 'base_node_exit=%s\\nhead_node_exit=%s\\n' "$BASE_EXIT" "$HEAD_EXIT" | tee /tmp/node-0700-regression-summary.txt
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
