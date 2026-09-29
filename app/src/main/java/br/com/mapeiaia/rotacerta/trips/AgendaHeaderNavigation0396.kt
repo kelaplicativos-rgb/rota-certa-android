@@ -153,6 +153,8 @@ internal fun AgendaModuleHeader0396(
     sectionLabel: String,
     root: Boolean,
     onNavigationClick: () -> Unit,
+    onMenuClick0689: (() -> Unit)? = null,
+    navigationEnabled0689: Boolean = true,
     overflowActions: List<AgendaHeaderAction0396>,
     notificationUnreadCount: Int = 0,
     onNotificationsClick: (() -> Unit)? = null,
@@ -163,11 +165,7 @@ internal fun AgendaModuleHeader0396(
 ) {
     val context = LocalContext.current
     var overflowExpanded by remember { mutableStateOf(false) }
-    val navigationDescription = if (root) {
-        "Abrir navegação da Agenda de Viagens"
-    } else {
-        "Voltar para a tela anterior"
-    }
+    val navigationDescription = "Voltar para o estágio anterior"
     val effectiveOverflowActions = if (root && sectionLabel == AgendaRootSection0396.SCRIPTS.label) {
         val executorAction = AgendaHeaderAction0396("Executar script da Agenda") {
             context.startActivity(Intent(context, AgendaTripScriptExecutorActivity0558::class.java))
@@ -200,12 +198,26 @@ internal fun AgendaModuleHeader0396(
         ) {
             IconButton(
                 onClick = onNavigationClick,
+                enabled = navigationEnabled0689,
                 modifier = Modifier.semantics { contentDescription = navigationDescription },
             ) {
                 Text(
-                    text = if (root) "☰" else "←",
+                    text = "←",
                     style = MaterialTheme.typography.titleLarge,
                 )
+            }
+            if (root && onMenuClick0689 != null) {
+                IconButton(
+                    onClick = onMenuClick0689,
+                    modifier = Modifier.semantics {
+                        contentDescription = "Abrir navegação da Agenda de Viagens"
+                    },
+                ) {
+                    Text(
+                        text = "☰",
+                        style = MaterialTheme.typography.titleLarge,
+                    )
+                }
             }
             Column(
                 modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
