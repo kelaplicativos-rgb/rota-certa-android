@@ -6,8 +6,13 @@ const FAMILY_PERSISTENT_EXPIRY_MILLIS_0680 = 253402300799000;
 const MAX_PASSENGER_MILLIS_0668 = 24 * 60 * 60 * 1000;
 const MAX_POINT_BATCH_0668 = 100;
 const MAX_PUBLIC_POINTS_0668 = 5000;
-const PASSENGER_DESTINATION_RADIUS_METERS_0668 = 220;
-const PASSENGER_MIN_ACTIVE_MILLIS_0668 = 10 * 60 * 1000;
+const PASSENGER_DESTINATION_RADIUS_METERS_0691 = 140;
+const PASSENGER_MIN_ACTIVE_MILLIS_0691 = 60 * 1000;
+const PASSENGER_ARRIVAL_REQUIRED_HITS_0691 = 3;
+const PASSENGER_ARRIVAL_MIN_DWELL_MILLIS_0691 = 8 * 1000;
+const PASSENGER_ARRIVAL_FALLBACK_DWELL_MILLIS_0691 = 15 * 1000;
+const PASSENGER_ARRIVAL_MAX_SPEED_MPS_0691 = 8.5;
+const PASSENGER_ARRIVAL_MAX_GAP_MILLIS_0691 = 20 * 1000;
 const FAMILY_ACCESS_SESSION_MILLIS_0681 = 365 * 24 * 60 * 60 * 1000;
 const FAMILY_AUTH_WINDOW_MILLIS_0681 = 10 * 60 * 1000;
 const FAMILY_AUTH_MAX_FAILURES_0681 = 5;
@@ -124,20 +129,66 @@ function publicTrackerTelemetry0670(session, share, current, nowMillis = Date.no
   };
 }
 
-function shouldClosePassengerShare0668(share, latest, nowMillis = Date.now()) {
-  if (!share || share.scope !== "PASSENGER" || !share.active || !latest) return false;
+function passengerArrivalProgress0691(share, latest, nowMillis = Date.now()) {
+  const reset = (distanceMeters = null) => ({
+    shouldClose:false,
+    distanceMeters,
+    arrivalHitCount0691:0,
+    arrivalCandidateSinceMillis0691:0,
+    arrivalLastHitAtMillis0691:0,
+  });
+  if (!share || share.scope !== "PASSENGER" || !share.active || !latest) return reset();
   const created = Number(share.createdAtMillis || 0);
   const latestRecordedAt = Number(latest.recordedAtMillis || 0);
-  if (latestRecordedAt < created) return false;
-  if (nowMillis - created < PASSENGER_MIN_ACTIVE_MILLIS_0668) return false;
+  if (created <= 0 || latestRecordedAt < created) return reset();
+  if (nowMillis - created < PASSENGER_MIN_ACTIVE_MILLIS_0691) return reset();
+
   const destLat = finiteNumber0668(share.destinationLatitude);
   const destLon = finiteNumber0668(share.destinationLongitude);
   const lat = finiteNumber0668(latest.latitude);
   const lon = finiteNumber0668(latest.longitude);
-  if (!validCoordinate0668(destLat, destLon) || !validCoordinate0668(lat, lon)) return false;
-  return distanceMeters0668(lat, lon, destLat, destLon) <= PASSENGER_DESTINATION_RADIUS_METERS_0668;
+  if (!validCoordinate0668(destLat, destLon) || !validCoordinate0668(lat, lon)) return reset();
+
+  const accuracy = finiteNumber0668(latest.accuracyMeters);
+  if (accuracy != null && (accuracy <= 0 || accuracy > 80)) return reset();
+
+  const distanceMeters = Math.round(distanceMeters0668(lat, lon, destLat, destLon));
+  if (distanceMeters > PASSENGER_DESTINATION_RADIUS_METERS_0691) return reset(distanceMeters);
+
+  const previousHitAt = Number(share.arrivalLastHitAtMillis0691 || 0);
+  const previousCandidateSince = Number(share.arrivalCandidateSinceMillis0691 || 0);
+  const previousHitCount = Math.max(0, Math.trunc(Number(share.arrivalHitCount0691 || 0)));
+  const consecutive = previousHitAt > 0 &&
+    latestRecordedAt > previousHitAt &&
+    latestRecordedAt - previousHitAt <= PASSENGER_ARRIVAL_MAX_GAP_MILLIS_0691;
+  const arrivalHitCount0691 = consecutive
+    ? Math.min(PASSENGER_ARRIVAL_REQUIRED_HITS_0691, previousHitCount + 1)
+    : 1;
+  const arrivalCandidateSinceMillis0691 = consecutive && previousCandidateSince > 0
+    ? previousCandidateSince
+    : latestRecordedAt;
+  const arrivalLastHitAtMillis0691 = latestRecordedAt;
+  const dwellMillis = Math.max(0, latestRecordedAt - arrivalCandidateSinceMillis0691);
+  const speed = finiteNumber0668(latest.speedMetersPerSecond);
+  const speedCompatible = speed == null
+    ? dwellMillis >= PASSENGER_ARRIVAL_FALLBACK_DWELL_MILLIS_0691
+    : speed <= PASSENGER_ARRIVAL_MAX_SPEED_MPS_0691;
+  const shouldClose = arrivalHitCount0691 >= PASSENGER_ARRIVAL_REQUIRED_HITS_0691 &&
+    dwellMillis >= PASSENGER_ARRIVAL_MIN_DWELL_MILLIS_0691 &&
+    speedCompatible;
+
+  return {
+    shouldClose,
+    distanceMeters,
+    arrivalHitCount0691,
+    arrivalCandidateSinceMillis0691,
+    arrivalLastHitAtMillis0691,
+  };
 }
 
+function shouldClosePassengerShare0668(share, latest, nowMillis = Date.now()) {
+  return passengerArrivalProgress0691(share, latest, nowMillis).shouldClose;
+}
 function trackingDriverKey0668(req, driver) {
   if (driver && driver.username) return "u:" + cleanText0668(driver.username, 80).toLowerCase();
   const supplied = req.get("X-Rota-Certa-Driver-Token") || "";
@@ -233,6 +284,42 @@ function createLiveTracking0668({ db, requireDriver }) {
       return null;
     }
     return { ref, snap, data: snap.data(), sessionId };
+  }
+
+  async function applyPassengerArrival0691(sessionDocId, latest, nowMillis) {
+    if (!latest) return 0;
+    const shares = await db.collection("tripTrackingShares")
+      .where("sessionDocId", "==", sessionDocId)
+      .limit(100)
+      .get();
+    const activePassengerShares = shares.docs.filter((doc) => {
+      const data = doc.data();
+      return data.active && data.scope === "PASSENGER";
+    });
+    if (!activePassengerShares.length) return 0;
+
+    const batch = db.batch();
+    let closed = 0;
+    for (const doc of activePassengerShares) {
+      const progress = passengerArrivalProgress0691(doc.data(), latest, nowMillis);
+      const update = {
+        arrivalHitCount0691:progress.arrivalHitCount0691,
+        arrivalCandidateSinceMillis0691:progress.arrivalCandidateSinceMillis0691,
+        arrivalLastHitAtMillis0691:progress.arrivalLastHitAtMillis0691,
+        arrivalDistanceMeters0691:progress.distanceMeters,
+        updatedAtMillis:nowMillis,
+      };
+      if (progress.shouldClose) {
+        update.active = false;
+        update.endedAtMillis = nowMillis;
+        update.endReason = "DESTINATION_REACHED";
+        update.arrivalConfirmedAtMillis0691 = Number(latest.recordedAtMillis || nowMillis);
+        closed += 1;
+      }
+      batch.set(doc.ref, update, { merge:true });
+    }
+    await batch.commit();
+    return closed;
   }
 
   async function createSession(req, res) {
@@ -357,12 +444,14 @@ function createLiveTracking0668({ db, requireDriver }) {
     if (!selected.data.active) {
       return trackingFail0668(res, 409, "tracking_session_closed", "Sessão de rastreamento encerrada.");
     }
+
     const rawPoints = Array.isArray(body.points) ? body.points : [];
     if (!rawPoints.length || rawPoints.length > MAX_POINT_BATCH_0668) {
       return trackingFail0668(res, 400, "tracking_points_invalid", "Lote de pontos inválido.");
     }
     const points = continuousTrackingPoints0670(rawPoints);
     if (!points.length) return trackingFail0668(res, 400, "tracking_points_invalid", "Nenhum ponto GPS válido.");
+
     const now = Date.now();
     const sessionStarted = Number(selected.data.startedAtMillis || 0);
     const accepted = points.filter((point) =>
@@ -371,47 +460,53 @@ function createLiveTracking0668({ db, requireDriver }) {
     );
     if (!accepted.length) return trackingFail0668(res, 400, "tracking_points_out_of_window", "Pontos fora da sessão.");
 
-    const batch = db.batch();
+    const pointBatch = db.batch();
     let stored = 0;
     for (const point of accepted) {
       const pointId = String(point.recordedAtMillis).padStart(16, "0") + "-" +
         sha256Hex0668([point.latitude.toFixed(7), point.longitude.toFixed(7), point.recordedAtMillis].join("|")).slice(0, 12);
-      batch.set(selected.ref.collection("points").doc(pointId), point, { merge: true });
+      pointBatch.set(selected.ref.collection("points").doc(pointId), point, { merge:true });
       stored += 1;
     }
-    const latest = accepted[accepted.length - 1];
-    const battery = finiteNumber0668(body.batteryPercent);
-    batch.set(selected.ref, {
-      latestPoint: latest,
-      latestPointAtMillis: latest.recordedAtMillis,
-      lastGpsAtMillis: latest.recordedAtMillis,
-      lastDeviceHeartbeatAtMillis: now,
-      batteryPercent: battery == null ? null : Math.max(0, Math.min(100, Math.trunc(battery))),
-      updatedAtMillis: now,
-    }, { merge: true });
-    await batch.commit();
+    await pointBatch.commit();
 
-    const shares = await db.collection("tripTrackingShares")
-      .where("sessionDocId", "==", selected.ref.id)
-      .limit(100)
-      .get();
-    const closing = shares.docs.filter((doc) => doc.data().active && shouldClosePassengerShare0668(doc.data(), latest, now));
-    if (closing.length) {
-      const closeBatch = db.batch();
-      closing.forEach((doc) => closeBatch.set(doc.ref, {
-        active: false,
-        endedAtMillis: now,
-        endReason: "DESTINATION_REACHED",
-        updatedAtMillis: now,
-      }, { merge: true }));
-      await closeBatch.commit();
-    }
+    const newest = accepted[accepted.length - 1];
+    const battery = finiteNumber0668(body.batteryPercent);
+    const latestOutcome = await db.runTransaction(async (tx) => {
+      const currentSnap = await tx.get(selected.ref);
+      if (!currentSnap.exists || !currentSnap.data().active) {
+        throw Object.assign(new Error("tracking_session_closed"), { code:"tracking_session_closed" });
+      }
+      const currentData = currentSnap.data();
+      const previousGpsAt = Number(currentData.latestPointAtMillis || 0);
+      const applyLatest = newest.recordedAtMillis > previousGpsAt;
+      const update = {
+        lastDeviceHeartbeatAtMillis:now,
+        batteryPercent:battery == null ? (currentData.batteryPercent ?? null) : Math.max(0, Math.min(100, Math.trunc(battery))),
+        updatedAtMillis:now,
+      };
+      if (applyLatest) {
+        update.latestPoint = newest;
+        update.latestPointAtMillis = newest.recordedAtMillis;
+        update.lastGpsAtMillis = newest.recordedAtMillis;
+      }
+      tx.set(selected.ref, update, { merge:true });
+      return {
+        applyLatest,
+        acceptedThroughMillis:applyLatest ? newest.recordedAtMillis : previousGpsAt,
+      };
+    });
+
+    const passengerSharesClosed = latestOutcome.applyLatest
+      ? await applyPassengerArrival0691(selected.ref.id, newest, now)
+      : 0;
 
     return trackingJson0668(res, 200, {
-      ok: true,
-      acceptedThroughMillis: latest.recordedAtMillis,
-      pathPointsStored: stored,
-      passengerSharesClosed: closing.length,
+      ok:true,
+      acceptedThroughMillis:latestOutcome.acceptedThroughMillis,
+      pathPointsStored:stored,
+      passengerSharesClosed,
+      latestWins0691:true,
     });
   }
 
@@ -429,38 +524,55 @@ function createLiveTracking0668({ db, requireDriver }) {
     const sessionStarted = Number(selected.data.startedAtMillis || 0);
     const battery = finiteNumber0668(body.batteryPercent);
     const lastGpsAtMillis = Math.trunc(Number(body.lastGpsAtMillis || 0));
-    const latitude = finiteNumber0668(body.latitude);
-    const longitude = finiteNumber0668(body.longitude);
     const heartbeatPoint = normalizePoint0668({
-      latitude,
-      longitude,
-      recordedAtMillis: lastGpsAtMillis,
-      accuracyMeters: body.accuracyMeters,
-      speedMetersPerSecond: body.speedMetersPerSecond,
+      latitude:finiteNumber0668(body.latitude),
+      longitude:finiteNumber0668(body.longitude),
+      recordedAtMillis:lastGpsAtMillis,
+      accuracyMeters:body.accuracyMeters,
+      speedMetersPerSecond:body.speedMetersPerSecond,
     });
-    const previousGpsAt = Number(selected.data.latestPointAtMillis || 0);
-    const pointAllowed = heartbeatPoint &&
-      heartbeatPoint.recordedAtMillis >= sessionStarted - 60 * 1000 &&
-      heartbeatPoint.recordedAtMillis <= now + 5 * 60 * 1000 &&
-      heartbeatPoint.recordedAtMillis >= previousGpsAt;
 
-    const update = {
-      lastDeviceHeartbeatAtMillis: now,
-      clientHeartbeatAtMillis: Math.trunc(Number(body.deviceHeartbeatAtMillis || now)),
-      batteryPercent: battery == null ? selected.data.batteryPercent ?? null : Math.max(0, Math.min(100, Math.trunc(battery))),
-      trackingActive: body.trackingActive !== false,
-      trackerProtocolVersion: "0670",
-      updatedAtMillis: now,
-    };
-    if (pointAllowed) {
-      update.latestPoint = heartbeatPoint;
-      update.latestPointAtMillis = heartbeatPoint.recordedAtMillis;
-      update.lastGpsAtMillis = heartbeatPoint.recordedAtMillis;
-    }
-    await selected.ref.set(update, { merge: true });
+    const outcome = await db.runTransaction(async (tx) => {
+      const currentSnap = await tx.get(selected.ref);
+      if (!currentSnap.exists || !currentSnap.data().active) {
+        throw Object.assign(new Error("tracking_session_closed"), { code:"tracking_session_closed" });
+      }
+      const currentData = currentSnap.data();
+      const previousGpsAt = Number(currentData.latestPointAtMillis || 0);
+      const pointAllowed = Boolean(
+        heartbeatPoint &&
+        heartbeatPoint.recordedAtMillis >= sessionStarted - 60 * 1000 &&
+        heartbeatPoint.recordedAtMillis <= now + 5 * 60 * 1000 &&
+        heartbeatPoint.recordedAtMillis > previousGpsAt
+      );
+      const update = {
+        lastDeviceHeartbeatAtMillis:now,
+        clientHeartbeatAtMillis:Math.trunc(Number(body.deviceHeartbeatAtMillis || now)),
+        batteryPercent:battery == null ? (currentData.batteryPercent ?? null) : Math.max(0, Math.min(100, Math.trunc(battery))),
+        trackingActive:body.trackingActive !== false,
+        trackerProtocolVersion:"0691",
+        updatedAtMillis:now,
+      };
+      if (pointAllowed) {
+        update.latestPoint = heartbeatPoint;
+        update.latestPointAtMillis = heartbeatPoint.recordedAtMillis;
+        update.lastGpsAtMillis = heartbeatPoint.recordedAtMillis;
+      }
+      tx.set(selected.ref, update, { merge:true });
+      return {
+        pointAllowed,
+        acceptedThroughMillis:pointAllowed ? heartbeatPoint.recordedAtMillis : previousGpsAt,
+      };
+    });
+
+    const passengerSharesClosed = outcome.pointAllowed
+      ? await applyPassengerArrival0691(selected.ref.id, heartbeatPoint, now)
+      : 0;
     return trackingJson0668(res, 200, {
-      ok: true,
-      acceptedThroughMillis: pointAllowed ? heartbeatPoint.recordedAtMillis : previousGpsAt,
+      ok:true,
+      acceptedThroughMillis:outcome.acceptedThroughMillis,
+      passengerSharesClosed,
+      latestWins0691:true,
     });
   }
 
@@ -674,12 +786,17 @@ function createLiveTracking0668({ db, requireDriver }) {
     }
     const shareSnap = await db.collection("tripTrackingShares").doc(trackingShareDocId0668(token)).get();
     if (!shareSnap.exists) return trackingFail0668(res, 404, "tracking_share_not_found", "Link de acompanhamento não encontrado.");
+
     const share = shareSnap.data();
     const now = Date.now();
     const shareExpired = trackingShareExpired0680(share, now);
     if (!share.active || shareExpired) {
+      if (share.scope === "PASSENGER" && share.endReason === "DESTINATION_REACHED") {
+        return trackingFail0668(res, 410, "passenger_arrived", "Passageiro chegou ao destino. Este acompanhamento foi encerrado.");
+      }
       return trackingFail0668(res, 410, "tracking_share_ended", "Este acompanhamento foi encerrado.");
     }
+
     const sessionRef = db.collection("tripTrackingSessions").doc(cleanText0668(share.sessionDocId, 120));
     const sessionSnap = await sessionRef.get();
     if (!sessionSnap.exists) return trackingFail0668(res, 410, "tracking_session_ended", "Sessão de acompanhamento indisponível.");
@@ -689,52 +806,67 @@ function createLiveTracking0668({ db, requireDriver }) {
     }
 
     const privacyFloor = trackingQueryFloor0670(share, session, 0);
-    const requestedSince = finiteNumber0668(req.query && req.query.since);
-    const queryFloor = trackingQueryFloor0670(share, session, requestedSince);
-    const pointsSnap = await sessionRef.collection("points")
-      .where("recordedAtMillis", ">=", queryFloor)
-      .orderBy("recordedAtMillis", "asc")
-      .limit(MAX_PUBLIC_POINTS_0668)
-      .get();
-    const points = publicTrackingPoints0668(pointsSnap.docs.map((doc) => doc.data()), {
-      scope: share.scope,
-      createdAtMillis: share.createdAtMillis,
-      sessionStartedAtMillis: session.startedAtMillis,
-    }).filter((point) => requestedSince == null || point.recordedAtMillis > requestedSince);
+    const passengerLiveOnly0691 = share.scope === "PASSENGER";
+    let points = [];
+    let hasMorePoints = false;
+    let nextSinceMillis = 0;
+
+    if (!passengerLiveOnly0691) {
+      const requestedSince = finiteNumber0668(req.query && req.query.since);
+      const queryFloor = trackingQueryFloor0670(share, session, requestedSince);
+      const pointsSnap = await sessionRef.collection("points")
+        .where("recordedAtMillis", ">=", queryFloor)
+        .orderBy("recordedAtMillis", "asc")
+        .limit(MAX_PUBLIC_POINTS_0668)
+        .get();
+      points = publicTrackingPoints0668(pointsSnap.docs.map((doc) => doc.data()), {
+        scope:share.scope,
+        createdAtMillis:share.createdAtMillis,
+        sessionStartedAtMillis:session.startedAtMillis,
+      }).filter((point) => requestedSince == null || point.recordedAtMillis > requestedSince);
+      const lastRoutePoint = points.length ? points[points.length - 1] : null;
+      hasMorePoints = pointsSnap.size >= MAX_PUBLIC_POINTS_0668;
+      nextSinceMillis = lastRoutePoint
+        ? Number(lastRoutePoint.recordedAtMillis || 0)
+        : Math.max(0, Number(requestedSince || 0));
+    }
 
     const latest = normalizePoint0668(session.latestPoint);
     const current = latest && latest.recordedAtMillis >= privacyFloor ? latest : null;
-    const lastRoutePoint = points.length ? points[points.length - 1] : null;
-    const hasMorePoints = pointsSnap.size >= MAX_PUBLIC_POINTS_0668;
-    const nextSinceMillis = lastRoutePoint ? Number(lastRoutePoint.recordedAtMillis || 0) : Math.max(0, Number(requestedSince || 0));
-    const destinationLatitude = share.scope === "PASSENGER" ? finiteNumber0668(share.destinationLatitude) : null;
-    const destinationLongitude = share.scope === "PASSENGER" ? finiteNumber0668(share.destinationLongitude) : null;
+    const destinationLatitude = passengerLiveOnly0691 ? finiteNumber0668(share.destinationLatitude) : null;
+    const destinationLongitude = passengerLiveOnly0691 ? finiteNumber0668(share.destinationLongitude) : null;
     const distanceToDestinationMeters = passengerDistanceToDestinationMeters0669(current, share);
     const tracker0670 = publicTrackerTelemetry0670(session, share, current, now);
 
     return trackingJson0668(res, 200, {
-      ok: true,
-      scope: share.scope,
-      driverDisplayName: cleanText0668(session.driverDisplayName, 120),
-      startedAtMillis: share.scope === "PASSENGER" ? Number(share.createdAtMillis || privacyFloor) : Number(session.startedAtMillis || privacyFloor),
-      expiresAtMillis: Number(share.expiresAtMillis || 0),
-      lastUpdatedAtMillis: tracker0670.lastDeviceHeartbeatAtMillis,
-      lastDeviceHeartbeatAtMillis: tracker0670.lastDeviceHeartbeatAtMillis,
-      lastGpsAtMillis: tracker0670.lastGpsAtMillis,
-      deviceState: tracker0670.deviceState,
-      gpsState: tracker0670.gpsState,
-      serverNowMillis: now,
-      batteryPercent: session.batteryPercent == null ? null : Number(session.batteryPercent),
+      ok:true,
+      scope:share.scope,
+      mode:passengerLiveOnly0691 ? "LIVE_ONLY" : "LIVE_WITH_TRACE",
+      traceAvailable:!passengerLiveOnly0691,
+      driverDisplayName:cleanText0668(session.driverDisplayName, 120),
+      startedAtMillis:passengerLiveOnly0691 ? Number(share.createdAtMillis || privacyFloor) : Number(session.startedAtMillis || privacyFloor),
+      expiresAtMillis:Number(share.expiresAtMillis || 0),
+      lastUpdatedAtMillis:tracker0670.lastDeviceHeartbeatAtMillis,
+      lastDeviceHeartbeatAtMillis:tracker0670.lastDeviceHeartbeatAtMillis,
+      lastGpsAtMillis:tracker0670.lastGpsAtMillis,
+      deviceState:tracker0670.deviceState,
+      gpsState:tracker0670.gpsState,
+      serverNowMillis:now,
+      batteryPercent:session.batteryPercent == null ? null : Number(session.batteryPercent),
       points,
       hasMorePoints,
       nextSinceMillis,
       current,
-      destination: share.scope === "PASSENGER" && validCoordinate0668(destinationLatitude, destinationLongitude) ? {
-        latitude: destinationLatitude,
-        longitude: destinationLongitude,
-        label: cleanText0668(share.destinationLabel, 220),
+      destination:passengerLiveOnly0691 && validCoordinate0668(destinationLatitude, destinationLongitude) ? {
+        latitude:destinationLatitude,
+        longitude:destinationLongitude,
+        label:cleanText0668(share.destinationLabel, 220),
       } : null,
       distanceToDestinationMeters,
+      arrivalConfirmation:{
+        requiredHits:PASSENGER_ARRIVAL_REQUIRED_HITS_0691,
+        radiusMeters:PASSENGER_DESTINATION_RADIUS_METERS_0691,
+      },
     });
   }
 
@@ -761,6 +893,7 @@ module.exports = {
   publicTrackerTelemetry0670,
   passengerDistanceToDestinationMeters0669,
   shouldClosePassengerShare0668,
+  passengerArrivalProgress0691,
   trackingShareDocId0668,
   trackingShareExpired0680,
   normalizeFamilyUsername0681,
