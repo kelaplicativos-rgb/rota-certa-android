@@ -4005,6 +4005,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
         if (!isStage19BindingFresh(bindingStage19)) {
             FarolCausalLatencyStage28.Metrics.increment("staleResultsDropped")
+            UnifiedDebugEventStore.record(
+                FarolCoordinateResolution0697.STALE_MARKER,
+                universalResolvedForegroundPackage(),
+                "binding=${bindingStage19.addressSignature}; phase=after_coordinate",
+            )
             return
         }
 
