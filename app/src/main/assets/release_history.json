@@ -2,6 +2,39 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.690",
+      "build": 5981,
+      "commit": null,
+      "branch": "agent/chatgpt-back-parity-0.1.690",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A seta de retorno deixa de ser texto e passa a usar o ícone vetorial nativo AutoMirrored ArrowBack do Material.",
+        "Área de toque da seta fixada em 48x48 dp e desenho visual em 24x24 dp, preservando ripple, tema e acessibilidade nativos.",
+        "A descrição de acessibilidade da ação foi simplificada para Voltar, no padrão nativo."
+      ],
+      "fixed": [
+        "Eliminada a diferença visual causada pelo caractere Unicode ←.",
+        "A seta continua retornando exatamente um estágio da pilha interna por toque.",
+        "O Voltar físico/gesto do Android continua usando a mesma pilha e não encerra a Agenda/Timeline na raiz."
+      ],
+      "improved": [
+        "Testes impedem regressão para seta textual no cabeçalho.",
+        "Menu lateral, busca universal, atualização HTML e notificações permanecem independentes da ação Voltar.",
+        "Compatibilidade preservada com Timeline, Agenda, Central do Dia e subtelas."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Timeline",
+        "Agenda",
+        "Central do Dia",
+        "Cabeçalho",
+        "Navegação"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.689",
       "build": 5980,
       "commit": null,
