@@ -99,7 +99,7 @@ class FarolEdge0634Test {
         assertFalse(live.contains("googleMapsService.drivingDistancesFromAddressKm("))
         assertFalse(live.contains("googleMapsService.cachedDrivingDistancesFromAddressKm("))
         assertTrue(live.contains("cachedFarolCoordinate("))
-        assertTrue(live.contains("resolveFarolCoordinate("))
+        assertTrue(live.contains("resolveFarolCoordinateResilient0697("))
         assertTrue(live.contains("GeoDistance.kilometers("))
         assertTrue(live.contains("staleResultsDropped"))
     }
