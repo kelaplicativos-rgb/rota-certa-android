@@ -43,6 +43,10 @@
             android:exported="false"
             android:label="Aplicativos que ativam a leitura" />
         <activity
+            android:name=".RideAppLearningActivity0700"
+            android:exported="false"
+            android:label="Aprender aplicativo de corrida" />
+        <activity
             android:name=".QuickRepliesActivity"
             android:exported="false"
             android:excludeFromRecents="true"
