@@ -4172,109 +4172,60 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (proximityAlertMonitorStarted || !serviceReady) return
         proximityAlertMonitorStarted = true
         scope.launch {
-            while (serviceReady) {
-                val alerts = currentSavedPlaces.filter { it.type == SavedPlaceType.ProximityAlert }
-                val radars = currentImportedRadars
-                val hasTargets = alerts.isNotEmpty() || radars.isNotEmpty()
-                val enabled = AlertRuntimePolicy0644.shouldTrack(currentSettings, hasTargets)
-                val sharedCoreOwnsGps0680 = WorkTrackingRepository(applicationContext).isTrackingActive()
-
-                if (sharedCoreOwnsGps0680) {
-                    preciseNavigationTrackerChecklist5.stop()
+            ProximityAlertProjection0685.state.collect { projection0685 ->
+                lastDirectionalFix0184 = projection0685.latestFix
+                val visual0685 = projection0685.visual
+                if (visual0685 == null) {
                     directionalAlertOverlayChecklist5.hide()
-                    missingPreciseFixSinceChecklist5 = 0L
-                    delay(DIRECTIONAL_ALERT_IDLE_LOOP_MILLIS_CHECKLIST_5)
-                    continue
+                    return@collect
                 }
-
-                if (!enabled) {
-                    preciseNavigationTrackerChecklist5.stop()
-                    directionalAlertOverlayChecklist5.hide()
-                    missingPreciseFixSinceChecklist5 = 0L
-                    if (radars.isEmpty()) directionalRadarSpatialIndexChecklist5.clear()
-                    delay(DIRECTIONAL_ALERT_IDLE_LOOP_MILLIS_CHECKLIST_5)
-                    continue
-                }
-
-                preciseNavigationTrackerChecklist5.start()
-                checkDirectionalProximityAlertsChecklist5(alerts, radars)
-                delay(DIRECTIONAL_ALERT_ACTIVE_LOOP_MILLIS_CHECKLIST_5)
+                directionalAlertOverlayChecklist5.showOrUpdate(
+                    visual = visual0685,
+                    actions = DirectionalAlertOverlayActions(
+                        onDismiss = { dismissCentralProximityTarget0685(visual0685.targetId) },
+                        onEdit = { savedPlaceId ->
+                            currentSavedPlaces.firstOrNull { it.id == savedPlaceId }
+                                ?.let(::openSavedPlaceEditor)
+                        },
+                        onDelete = { savedPlaceId ->
+                            scope.launch {
+                                repository.removeSavedPlace(savedPlaceId)
+                                toast("Alerta excluído.")
+                            }
+                        },
+                        onEditRadar = { radarId ->
+                            currentImportedRadars.firstOrNull { it.id == radarId }
+                                ?.let(::openImportedRadarEditor0178)
+                        },
+                        onDeleteRadar = { radarId ->
+                            scope.launch {
+                                repository.removeImportedRadar(radarId)
+                                toast("Radar excluído.")
+                            }
+                        },
+                    ),
+                    popupTimeoutMillis = projection0685.popupTimeoutMillis,
+                )
             }
         }
-    } // directional_alert_monitor_checklist_5
+    } // single_core_alert_projection_0_1_685
 
-    private fun checkDirectionalProximityAlertsChecklist5(
-        alerts: List<SavedPlace>,
-        radars: List<ImportedRadar>,
-    ) {
-        if (!AlertRuntimePolicy0644.isEnabled(currentSettings)) {
-            directionalAlertOverlayChecklist5.hide()
-            return
+    private fun dismissCentralProximityTarget0685(targetId0685: String) {
+        if (targetId0685.isBlank()) return
+        ProximityAlertProjection0685.clearVisual(targetId0685)
+        val intent0685 = Intent(applicationContext, WorkTrackingService::class.java)
+            .setAction(WorkTrackingService.ACTION_DISMISS_PROXIMITY_0680)
+            .putExtra(WorkTrackingService.EXTRA_PROXIMITY_TARGET_0680, targetId0685)
+        runCatching {
+            ContextCompat.startForegroundService(applicationContext, intent0685)
+        }.onFailure { error0685 ->
+            UnifiedDebugEventStore.record(
+                "PROXIMITY_DISMISS_DISPATCH_FAILED_0685",
+                packageName,
+                "target_hash=${targetId0685.hashCode()}; error=${error0685::class.java.simpleName}",
+            )
         }
-
-        val now = System.currentTimeMillis()
-        val fix = preciseNavigationTrackerChecklist5.currentFix(now)
-        if (fix == null) {
-            if (missingPreciseFixSinceChecklist5 == 0L) missingPreciseFixSinceChecklist5 = now
-            if (now - missingPreciseFixSinceChecklist5 >= PRECISE_FIX_OVERLAY_GRACE_MILLIS_CHECKLIST_5) {
-                directionalAlertOverlayChecklist5.hide()
-            }
-            return
-        }
-        missingPreciseFixSinceChecklist5 = 0L
-        lastDirectionalFix0184 = fix
-
-        val searchRadiusMeters = currentSettings.proximityAlertDistanceMeters
-            .coerceIn(200, 1000)
-            .toDouble() + DIRECTIONAL_RADAR_QUERY_BUFFER_METERS_CHECKLIST_5
-        val nearbyRadars = directionalRadarSpatialIndexChecklist5.query(
-            source = radars,
-            center = fix.coordinate,
-            radiusMeters = searchRadiusMeters,
-        ).radars
-
-        directionalAlertEngineChecklist5.check(
-            alerts = alerts,
-            radars = nearbyRadars,
-            fix = fix,
-            settings = currentSettings,
-            onVisual = { visual ->
-                if (visual == null) {
-                    directionalAlertOverlayChecklist5.hideFromEngineIdle()
-                } else {
-                    directionalAlertOverlayChecklist5.showOrUpdate(
-                        visual = visual,
-                        actions = DirectionalAlertOverlayActions(
-                            onDismiss = { directionalAlertEngineChecklist5.dismissUntilExit(visual.targetId) },
-                            onEdit = { savedPlaceId ->
-                                currentSavedPlaces.firstOrNull { it.id == savedPlaceId }
-                                    ?.let(::openSavedPlaceEditor)
-                            },
-                            onDelete = { savedPlaceId ->
-                                scope.launch {
-                                    repository.removeSavedPlace(savedPlaceId)
-                                    directionalAlertOverlayChecklist5.hide()
-                                    toast("Alerta excluído.")
-                                }
-                            },
-                            onEditRadar = { radarId ->
-                                currentImportedRadars.firstOrNull { it.id == radarId }
-                                    ?.let(::openImportedRadarEditor0178)
-                            },
-                            onDeleteRadar = { radarId ->
-                                directionalAlertEngineChecklist5.dismissUntilExit(visual.targetId)
-                                scope.launch {
-                                    repository.removeImportedRadar(radarId)
-                                    directionalAlertOverlayChecklist5.hide()
-                                    toast("Radar excluído.")
-                                }
-                            },
-                        ),
-                    )
-                }
-            },
-        )
-    } // directional_alert_check_checklist_5
+    }
 
     private fun scheduleVisibleTextAnalysis(delayMs: Long, allowPopupCandidate: Boolean = false) {
         val scheduledActivationStage26 = stage26ReadingActivation.snapshot()
