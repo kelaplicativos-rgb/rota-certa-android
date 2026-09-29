@@ -2,6 +2,41 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.695",
+      "build": 5986,
+      "commit": null,
+      "branch": "agent/farol-address-first-paid-fallback-0.1.695",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Farol ganha admissão address-first conservadora: falha de assinatura/layout não interrompe o pipeline quando o card selecionado ainda possui evidência segura de endereço e semântica de corrida.",
+        "Fallback pago OpenAI é acionado somente depois de Accessibility, parser, OCR/ML Kit e IA local falharem, retornando exclusivamente endereço estruturado.",
+        "Cache persistente e fingerprint estável garantem no máximo uma tentativa paga por card, com supressão de eventos repetidos e cooldown após falha."
+      ],
+      "fixed": [
+        "Solicitações válidas do inDrive deixam de ficar presas em estado neutro sem quilometragem apenas porque o marcador Fechar/Aceitar do layout não foi capturado.",
+        "Stage46 R6 e Stage47 passam a receber a oportunidade de validar destino único/seguro antes do veto definitivo do gate visual legado.",
+        "Resultado da IA paga nunca define cor, raio ou quilometragem; toda decisão final continua no motor local do Farol."
+      ],
+      "improved": [
+        "Texto enviado ao fallback remoto é reduzido e redigido para telefone/valor antes da chamada.",
+        "assistantApi passa a ter deploy explícito com OPENAI_API_KEY e ROTA_CERTA_DRIVER_TOKEN vinculados como secrets, mais smoke real pós-deploy.",
+        "Telemetria do fallback registra fingerprint, latência, provider, modelo, confiança e sucesso sem registrar o endereço bruto."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Farol",
+        "Accessibility",
+        "OCR",
+        "IA local",
+        "IA paga",
+        "Backend",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.694",
       "build": 5985,
       "commit": null,
