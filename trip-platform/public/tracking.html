@@ -20,7 +20,10 @@
     .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(145px,1fr)); gap:8px; margin-top:12px; }
     .metric { background:#0f151c; border-radius:12px; padding:10px; }
     .metric b { display:block; font-size:1.05rem; color:#fff; }
+    .map-wrap { position:relative; }
     #map { height:min(62vh,520px); min-height:320px; border-radius:18px; overflow:hidden; border:1px solid #283543; }
+    .map-action { position:absolute; z-index:500; right:14px; bottom:14px; border:0; border-radius:999px; padding:11px 15px; font-weight:800; background:#fff; color:#101820; box-shadow:0 4px 18px #0008; cursor:pointer; }
+    .metric.wide { grid-column:span 2; }
     a { color:#7cc7ff; }
     footer { font-size:.82rem; color:#8997a5; padding:8px 2px 20px; }
     .auth { display:grid; gap:10px; }
@@ -40,6 +43,7 @@
       <div class="metric"><span>GPS</span><b id="gpsUpdated">—</b></div>
       <div class="metric"><span>Início</span><b id="started">—</b></div>
       <div class="metric" id="distanceBox" hidden><span>Até o desembarque</span><b id="distance">—</b></div>
+      <div class="metric wide" id="destinationBox" hidden><span>Local de desembarque</span><b id="destinationLabel">—</b></div>
       <div class="metric"><span>Bateria do aparelho</span><b id="battery">—</b></div>
     </div>
   </section>
@@ -52,7 +56,10 @@
       <small>Depois da autorização, você pode voltar usando somente este mesmo endereço /gps.</small>
     </div>
   </section>
-  <div id="map"></div>
+  <div class="map-wrap">
+    <div id="map"></div>
+    <button id="centerVehicle" class="map-action" type="button" hidden>◎ Centralizar</button>
+  </div>
   <section class="card" id="fallback" hidden>
     <p>O mapa de ruas não pôde carregar, mas a última posição continua disponível.</p>
     <a id="mapsLink" target="_blank" rel="noreferrer">Abrir última posição no mapa</a>
@@ -60,6 +67,6 @@
   <footer id="trackingFooter">O link é privado e temporário. Não encaminhe para pessoas que não devam acompanhar esta viagem.</footer>
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-<script src="/tracking.js?v=0681"></script>
+<script src="/tracking.js?v=0691"></script>
 </body>
 </html>
