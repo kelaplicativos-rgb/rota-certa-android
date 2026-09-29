@@ -4012,7 +4012,29 @@ class LiveRideAccessibilityService : AccessibilityService() {
             originAddress = fieldsStage19.destination.orEmpty(),
             destinations = targetsStage19.destinations,
             apiKey = apiKeyStage19,
+            traceId0699 = traceIdStage20,
+            operationId0699 = routeJobIdStage20,
         )
+        val localFreshness0698 = stage19LocalSemanticVerdict0698(bindingStage19)
+        UnifiedDebugEventStore.record(
+            FarolLocalSemanticFreshness0698.marker(localFreshness0698),
+            universalResolvedForegroundPackage(),
+            "binding=\${bindingStage19.addressSignature}; active=\${universalActiveAddressSignature.orEmpty()}; phase=after_coordinate",
+        )
+        if (localFreshness0698 != FarolLocalSemanticFreshness0698.Verdict.ACCEPTED_SAME_DESTINATION) {
+            FarolCausalLatencyStage28.Metrics.increment("staleResultsDropped")
+            UnifiedDebugEventStore.record(
+                FarolNetworkFailureIsolation0699.LATE_RESULT_DROPPED_MARKER,
+                universalResolvedForegroundPackage(),
+                "trace=$traceIdStage20; operation=$routeJobIdStage20; binding=\${bindingStage19.addressSignature}; active=\${universalActiveAddressSignature.orEmpty()}; verdict=$localFreshness0698",
+            )
+            UnifiedDebugEventStore.record(
+                FarolCoordinateResolution0697.STALE_MARKER,
+                universalResolvedForegroundPackage(),
+                "binding=\${bindingStage19.addressSignature}; phase=after_coordinate; semanticVerdict=$localFreshness0698",
+            )
+            return
+        }
         val localResult0696 = decideFastWorkRegionChecklist13(
             snapshotText = snapshotTextStage19,
             fields = fieldsStage19,
@@ -4038,21 +4060,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 traceId = traceIdStage20,
                 operationId = routeJobIdStage20,
                 details = "destination=${fieldsStage19.destination.orEmpty().take(300)}; localDistances=$localDistances0696; remoteColorAuthority=false",
-            )
-            return
-        }
-        val localFreshness0698 = stage19LocalSemanticVerdict0698(bindingStage19)
-        UnifiedDebugEventStore.record(
-            FarolLocalSemanticFreshness0698.marker(localFreshness0698),
-            universalResolvedForegroundPackage(),
-            "binding=${bindingStage19.addressSignature}; active=${universalActiveAddressSignature.orEmpty()}; phase=after_coordinate",
-        )
-        if (localFreshness0698 != FarolLocalSemanticFreshness0698.Verdict.ACCEPTED_SAME_DESTINATION) {
-            FarolCausalLatencyStage28.Metrics.increment("staleResultsDropped")
-            UnifiedDebugEventStore.record(
-                FarolCoordinateResolution0697.STALE_MARKER,
-                universalResolvedForegroundPackage(),
-                "binding=${bindingStage19.addressSignature}; phase=after_coordinate; semanticVerdict=$localFreshness0698",
             )
             return
         }
