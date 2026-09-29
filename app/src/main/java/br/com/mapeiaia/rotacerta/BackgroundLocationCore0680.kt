@@ -137,6 +137,7 @@ internal class BackgroundProximityRuntime0680(
                     )
                 ) {
                     activeVisual = null
+                    ProximityAlertProjection0685.clearAll()
                     notificationManager.cancel(ALERT_NOTIFICATION_ID)
                 }
             }
@@ -147,6 +148,7 @@ internal class BackgroundProximityRuntime0680(
         configJob?.cancel()
         configJob = null
         activeVisual = null
+        ProximityAlertProjection0685.clearAll()
         notificationManager.cancel(ALERT_NOTIFICATION_ID)
         speech.stop()
         spatialIndex.clear()
@@ -155,6 +157,7 @@ internal class BackgroundProximityRuntime0680(
     fun dismiss(targetId: String?) {
         targetId?.takeIf(String::isNotBlank)?.let(engine::dismissUntilExit)
         activeVisual = null
+        ProximityAlertProjection0685.clearVisual(targetId)
         notificationManager.cancel(ALERT_NOTIFICATION_ID)
     }
 
@@ -180,6 +183,7 @@ internal class BackgroundProximityRuntime0680(
             provider = location.provider.orEmpty(),
             altitudeMeters = location.altitude.takeIf { location.hasAltitude() },
         )
+        ProximityAlertProjection0685.publishFix(fix)
         val radius = currentSettings.proximityAlertDistanceMeters.coerceIn(200, 1000).toDouble() + 220.0
         val nearby = spatialIndex.query(currentRadars, fix.coordinate, radius).radars
         engine.check(
@@ -194,6 +198,11 @@ internal class BackgroundProximityRuntime0680(
                     return@check
                 }
                 activeVisual = visual
+                ProximityAlertProjection0685.publishVisual(
+                    visual = visual,
+                    fix = fix,
+                    popupTimeoutMillis = ProximityAlertProjection0685.popupTimeoutMillis(currentSettings),
+                )
                 showAlertNotification(visual)
             },
             onDiagnostic = { diagnostic ->
