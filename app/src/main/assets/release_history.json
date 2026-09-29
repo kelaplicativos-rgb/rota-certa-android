@@ -2,6 +2,37 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.693",
+      "build": 5984,
+      "commit": null,
+      "branch": "agent/family-driver-pin-0.1.693",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Motorista passa a definir manualmente um código familiar fixo de 6 dígitos no módulo Rastreamento de trabalho.",
+        "O código só é considerado confirmado depois que o backend aceita exatamente o mesmo PIN e responde familyPinConfirmed=true.",
+        "O código fixo permanece persistido no aparelho e é reutilizado ao reativar o endereço familiar permanente."
+      ],
+      "fixed": [
+        "Eliminado o falso positivo em que o app mostrava um PIN local enquanto o selo verde apenas confirmava que o compartilhamento remoto estava ativo.",
+        "Salvar o código familiar limpa bloqueios de tentativas antigas para permitir autenticação imediata.",
+        "Ao trocar o código, autorizações familiares antigas são invalidadas para que somente o novo PIN funcione."
+      ],
+      "improved": [
+        "Código familiar deixa de ser regenerado automaticamente em uma nova ativação quando já existe um PIN fixo definido pelo motorista.",
+        "Acompanhamento Live First 0.1.692, passageiro LIVE_ONLY, Radar e Alertas permanecem preservados."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Rastreamento de trabalho",
+        "Acompanhamento Familiar",
+        "Backend",
+        "GPS"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.692",
       "build": 5983,
       "commit": null,
