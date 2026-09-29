@@ -2,6 +2,41 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.687",
+      "build": 5978,
+      "commit": null,
+      "branch": "agent/universal-search-0.1.687",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Busca Universal única e compartilhada por Timeline, Agenda e Central do Dia, acessível pela lupa no cabeçalho principal.",
+        "O índice local pesquisa viagens, reservas, passageiros, metadados privados de reserva, observações e histórico de viagens sem depender de rede no momento da consulta.",
+        "Busca literal por substring aceita consultas de apenas um caractere ou número, incluindo o caso 17 em qualquer posição do conteúdo indexado.",
+        "Resultados preservam os identificadores operacionais necessários para abrir diretamente a viagem, reserva ou área do passageiro correspondente."
+      ],
+      "fixed": [
+        "A pesquisa deixa de depender de palavra completa ou prefixo, evitando perder ocorrências curtas em datas, horários, telefones, valores, endereços, códigos e IDs.",
+        "Acentos e diferenças entre maiúsculas/minúsculas deixam de impedir correspondências equivalentes.",
+        "Telefones passam a ser pesquisáveis tanto no formato exibido quanto como sequência contínua de dígitos."
+      ],
+      "improved": [
+        "Datas e horários recebem aliases locais em múltiplos formatos, e valores monetários recebem representações em centavos e reais para ampliar a cobertura sem alterar a fonte canônica.",
+        "A montagem do snapshot pesquisável é executada fora da thread principal para preservar a fluidez da interface.",
+        "A lupa reutiliza o mesmo motor e a mesma fonte de dados em todos os módulos, evitando índices divergentes entre Timeline, Agenda e Central."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Agenda",
+        "Timeline",
+        "Central do Dia",
+        "Passageiros",
+        "Busca",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.686",
       "build": 5977,
       "commit": null,
