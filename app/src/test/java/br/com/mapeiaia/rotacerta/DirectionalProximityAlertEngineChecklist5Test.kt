@@ -8,6 +8,52 @@ import org.junit.Test
 
 class DirectionalProximityAlertEngineChecklist5Test {
     @Test
+    fun `primeiro fix valido dentro da zona ja dispara radar`() {
+        val speech = FakeSpeech()
+        val engine = DirectionalProximityAlertEngine(speech) { NOW }
+        var visual: DirectionalAlertVisual? = null
+
+        engine.check(
+            emptyList(),
+            listOf(eastboundRadar()),
+            fix(longitude = -0.0010, heading = 90.0),
+            settings(),
+            { visual = it },
+        )
+
+        assertNotNull(visual)
+        assertTrue(requireNotNull(visual).status.contains("Aproximando"))
+        assertEquals(1, speech.radarCalls)
+    }
+
+    @Test
+    fun `salto entre dois fixes externos ainda notifica radar ultrapassado`() {
+        val speech = FakeSpeech()
+        val engine = DirectionalProximityAlertEngine(speech) { NOW }
+        val visuals = mutableListOf<DirectionalAlertVisual?>()
+
+        engine.check(
+            emptyList(),
+            listOf(eastboundRadar()),
+            fix(longitude = -0.0040, heading = 90.0),
+            settings(),
+            visuals::add,
+        )
+        engine.check(
+            emptyList(),
+            listOf(eastboundRadar()),
+            fix(longitude = 0.0040, heading = 90.0),
+            settings(),
+            visuals::add,
+        )
+
+        val crossed = visuals.filterNotNull().last()
+        assertTrue(crossed.shouldClose)
+        assertTrue(crossed.status.contains("ultrapassado"))
+        assertEquals(1, speech.radarCalls)
+    }
+
+    @Test
     fun `radar a frente mostra contagem e fala uma vez`() {
         val speech = FakeSpeech()
         val engine = DirectionalProximityAlertEngine(speech) { NOW }
