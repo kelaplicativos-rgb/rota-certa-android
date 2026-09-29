@@ -2,6 +2,46 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.699",
+      "build": 5990,
+      "commit": null,
+      "branch": "agent/farol-network-isolation-0.1.699",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Network Failure Isolation: falhas recuperáveis de transporte/provider deixam de possuir autoridade para limpar estado do FAROL.",
+        "Google geocode 0697 passa a tratar IOException/timeout/payload inválido como provider indisponível e retorna null formalmente.",
+        "Requisições geográficas carregam traceId, operationId, readingEpoch, leaseId e destinationKey para diagnóstico de I/O tardio.",
+        "Resultado de coordenada tardio é revalidado semanticamente antes de alterar razão, decisão ou pintura de um card mais novo."
+      ],
+      "fixed": [
+        "SocketTimeoutException não pode mais alcançar hardClearUniversalTwoAddress por ser apenas falha de rede.",
+        "Refinamento rodoviário opcional é fail-soft: Green/Red + km local permanecem quando Google/OSM/OSRM falham.",
+        "Falha de rede antes da primeira coordenada mantém o card em amarelo e encerra por ALL_PROVIDERS_FAILED, sem Idle destrutivo.",
+        "Backstop global preserva cor, distância e binding se uma IOException recuperável escapar de um provider futuro."
+      ],
+      "improved": [
+        "Stage28 route gate agora é finalizado em finally também quando o refinamento falha.",
+        "Telemetria 0699 distingue geocode iniciado, provider indisponível, falha de transporte, resultado tardio descartado e estado preservado.",
+        "Cancelamento de coroutine continua sendo controle estrutural e não é classificado como falha recuperável de provider."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "SocketTimeoutException -> UNEXPECTED_FAILURE_CONTAINED_0172 -> BUBBLE_CLEAR_REQUEST.",
+        "Falha remota opcional apagando decisão local válida."
+      ],
+      "modulesAffected": [
+        "Farol",
+        "GoogleMapsService",
+        "Geocoding",
+        "Network",
+        "Accessibility",
+        "Saúde/Diagnóstico",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.698",
       "build": 5989,
       "commit": null,
