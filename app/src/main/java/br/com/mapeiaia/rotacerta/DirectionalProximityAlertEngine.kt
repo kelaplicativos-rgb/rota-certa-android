@@ -40,9 +40,23 @@ class DirectionalProximityAlertEngine(
 
         val thresholds = buildList {
             proximityAlerts.forEach { alert ->
-                add((alert.alertDistanceMeters ?: settings.proximityAlertDistanceMeters).coerceIn(200, 1000))
+                add(
+                    RadarSafetyPolicy0686.effectiveThresholdMeters(
+                        configuredThresholdMeters = alert.alertDistanceMeters ?: settings.proximityAlertDistanceMeters,
+                        speedMetersPerSecond = fix.speedMetersPerSecond,
+                        accuracyMeters = fix.accuracyMeters,
+                    ),
+                )
             }
-            if (radars.isNotEmpty()) add(settings.proximityAlertDistanceMeters.coerceIn(200, 1000))
+            if (radars.isNotEmpty()) {
+                add(
+                    RadarSafetyPolicy0686.effectiveThresholdMeters(
+                        configuredThresholdMeters = settings.proximityAlertDistanceMeters,
+                        speedMetersPerSecond = fix.speedMetersPerSecond,
+                        accuracyMeters = fix.accuracyMeters,
+                    ),
+                )
+            }
         }
         val fixUsableForAnyTarget = thresholds.any { threshold ->
             DirectionalAlertPolicy.isFixUsable(fix, threshold, now)
@@ -52,7 +66,11 @@ class DirectionalProximityAlertEngine(
         val candidates = mutableListOf<Candidate>()
 
         proximityAlerts.forEach { alert ->
-            val threshold = (alert.alertDistanceMeters ?: settings.proximityAlertDistanceMeters).coerceIn(200, 1000)
+            val threshold = RadarSafetyPolicy0686.effectiveThresholdMeters(
+                configuredThresholdMeters = alert.alertDistanceMeters ?: settings.proximityAlertDistanceMeters,
+                speedMetersPerSecond = fix.speedMetersPerSecond,
+                accuracyMeters = fix.accuracyMeters,
+            )
             evaluateSavedAlert(alert, threshold, fix, now)?.let { evaluation ->
                 if (evaluation.passedVisual != null) passedVisual = evaluation.passedVisual
                 evaluation.candidate?.let(candidates::add)
@@ -60,7 +78,11 @@ class DirectionalProximityAlertEngine(
         }
 
         radars.forEach { radar ->
-            val threshold = settings.proximityAlertDistanceMeters.coerceIn(200, 1000)
+            val threshold = RadarSafetyPolicy0686.effectiveThresholdMeters(
+                configuredThresholdMeters = settings.proximityAlertDistanceMeters,
+                speedMetersPerSecond = fix.speedMetersPerSecond,
+                accuracyMeters = fix.accuracyMeters,
+            )
             evaluateRadar(radar, threshold, fix, now)?.let { evaluation ->
                 if (evaluation.passedVisual != null) passedVisual = evaluation.passedVisual
                 evaluation.candidate?.let(candidates::add)
