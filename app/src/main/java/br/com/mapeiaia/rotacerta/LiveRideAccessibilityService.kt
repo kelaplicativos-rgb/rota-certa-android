@@ -4094,37 +4094,79 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
         if (!stage28RouteGate.begin(routeKeyStage28)) return
         val routeStartedNsStage26 = SystemClock.elapsedRealtimeNanos()
-
-        val trustedDirectDistances0696 = withTimeoutOrNull(TRUSTED_DIRECT_ROUTE_TIMEOUT_MILLIS_0682) {
-            googleMapsService.trustedDirectDrivingDistancesFromAddressKm0682(
-                originAddress = fieldsStage19.destination.orEmpty(),
-                destinations = targetsStage19.destinations,
-                apiKey = apiKeyStage19,
+        val remoteToken0699 = stage36BindingWorkToken[stage26BindingKey(bindingStage19)]
+        val remoteContext0699 = FarolNetworkFailureIsolation0699.requestContext(
+            token = remoteToken0699,
+            traceId = traceIdStage20,
+            operationId = routeJobIdStage20,
+            destinationAddress = fieldsStage19.destination.orEmpty(),
+        )
+        var trustedDirectDistances0696: List<Double?>? = null
+        var exactRoadDistancesCandidate0699: List<Double?>? = null
+        var remoteFailure0699: Throwable? = null
+        try {
+            trustedDirectDistances0696 = withTimeoutOrNull(TRUSTED_DIRECT_ROUTE_TIMEOUT_MILLIS_0682) {
+                googleMapsService.trustedDirectDrivingDistancesFromAddressKm0682(
+                    originAddress = fieldsStage19.destination.orEmpty(),
+                    destinations = targetsStage19.destinations,
+                    apiKey = apiKeyStage19,
+                )
+            }
+            exactRoadDistancesCandidate0699 = trustedDirectDistances0696
+                ?: googleMapsService.trafficAwareDrivingDistancesFromAddressKm(
+                    originAddress = fieldsStage19.destination.orEmpty(),
+                    destinations = targetsStage19.destinations,
+                    apiKey = apiKeyStage19,
+                )
+        } catch (cancelled0699: kotlinx.coroutines.CancellationException) {
+            throw cancelled0699
+        } catch (error0699: Throwable) {
+            if (!FarolNetworkFailureIsolation0699.isRecoverableProviderFailure(error0699)) throw error0699
+            remoteFailure0699 = error0699
+            UnifiedDebugEventStore.record(
+                FarolNetworkFailureIsolation0699.REMOTE_REFINEMENT_FAILED_SOFT_MARKER,
+                universalResolvedForegroundPackage(),
+                remoteContext0699.diagnostic(
+                    provider = "road_refinement",
+                    extra = "error=\${FarolNetworkFailureIsolation0699.failureChain(error0699)}; localColorPreserved=true; localDistance=\${FarolLocalDecisionAuthority0696.nearestDistanceKm(localResult0696)}",
+                ),
+            )
+        } finally {
+            val routeEndedNsStage26 = SystemClock.elapsedRealtimeNanos()
+            stage28RouteGate.finish(routeKeyStage28)
+            stage26RouteResponseNs = routeEndedNsStage26
+            FarolReadingActivationStage26.Metrics.sample("route", routeEndedNsStage26 - routeStartedNsStage26)
+            FarolCausalLatencyStage28.Metrics.sample("route", routeEndedNsStage26 - routeStartedNsStage26)
+            FarolForensicTraceStage20.routeCallFinished(
+                traceIdStage20,
+                routeJobIdStage20,
+                routeEndedNsStage26,
+                "refinement0696=$exactRoadDistancesCandidate0699; softFailure=\${remoteFailure0699?.let(FarolNetworkFailureIsolation0699::failureChain).orEmpty()}",
+            )
+            FarolForensicCardBlackBoxStage32.recordRouteResponse(
+                routeEndedNsStage26,
+                exactRoadDistancesCandidate0699?.any { it != null } == true,
+                routeEndedNsStage26 - routeStartedNsStage26,
             )
         }
-        val exactRoadDistances0696 = trustedDirectDistances0696
-            ?: googleMapsService.trafficAwareDrivingDistancesFromAddressKm(
-                originAddress = fieldsStage19.destination.orEmpty(),
-                destinations = targetsStage19.destinations,
-                apiKey = apiKeyStage19,
+        val exactRoadDistances0696 = exactRoadDistancesCandidate0699 ?: run {
+            rememberBubbleReason(
+                "stage699_remote_refinement_failed_soft",
+                if (remoteFailure0699 != null) "Decisão local preservada; falha recuperável no refinamento rodoviário."
+                else "Decisão local preservada; refinamento rodoviário indisponível nesta tentativa.",
             )
-
-        val routeEndedNsStage26 = SystemClock.elapsedRealtimeNanos()
-        stage28RouteGate.finish(routeKeyStage28)
-        stage26RouteResponseNs = routeEndedNsStage26
-        FarolReadingActivationStage26.Metrics.sample("route", routeEndedNsStage26 - routeStartedNsStage26)
-        FarolCausalLatencyStage28.Metrics.sample("route", routeEndedNsStage26 - routeStartedNsStage26)
-        FarolForensicTraceStage20.routeCallFinished(
-            traceIdStage20,
-            routeJobIdStage20,
-            routeEndedNsStage26,
-            "refinement0696=$exactRoadDistances0696",
-        )
-        FarolForensicCardBlackBoxStage32.recordRouteResponse(
-            routeEndedNsStage26,
-            exactRoadDistances0696.any { it != null },
-            routeEndedNsStage26 - routeStartedNsStage26,
-        )
+            if (remoteFailure0699 != null) {
+                FarolFlightRecorder0163.record(
+                    stage = FarolNetworkFailureIsolation0699.REMOTE_REFINEMENT_FAILED_SOFT_MARKER,
+                    packageName = universalResolvedForegroundPackage(),
+                    details = remoteContext0699.diagnostic(
+                        provider = "road_refinement",
+                        extra = "state=preserved; error=\${FarolNetworkFailureIsolation0699.failureChain(remoteFailure0699!!)}",
+                    ),
+                )
+            }
+            return
+        }
 
         if (!isStage19BindingFresh(bindingStage19)) {
             FarolCausalLatencyStage28.Metrics.increment("staleResultsDropped")
