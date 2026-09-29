@@ -2,6 +2,41 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.689",
+      "build": 5980,
+      "commit": null,
+      "branch": "agent/global-back-navigation-0.1.689",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Seta fixa ← no topo da Timeline, Agenda, Central do Dia e demais telas do módulo de viagens.",
+        "Histórico interno de navegação retorna um estágio por toque sem reconstruir o fluxo a partir da raiz.",
+        "O botão/gesto Voltar do Android usa exatamente a mesma pilha da seta visual."
+      ],
+      "fixed": [
+        "Telas raiz não usam mais o ícone de menu como substituto do retorno; o menu ☰ fica separado da seta ←.",
+        "Ao chegar à raiz sem histórico, o Voltar físico é absorvido para evitar saída acidental da Agenda/Timeline.",
+        "Aberturas diretas por reserva, passageiro, edição ou deep link recebem Timeline como estágio anterior seguro."
+      ],
+      "improved": [
+        "Histórico limitado e persistível por rememberSaveable para sobreviver a recomposições e mudanças de configuração.",
+        "Subtela de histórico do passageiro continua usando seu retorno próprio antes de consumir a pilha global.",
+        "Busca universal, atualização HTML global, notificações e menu lateral permanecem independentes da seta de retorno."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Timeline",
+        "Agenda",
+        "Central do Dia",
+        "Busca universal",
+        "Reservas",
+        "Passageiros",
+        "Navegação"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.688",
       "build": 5979,
       "commit": null,
