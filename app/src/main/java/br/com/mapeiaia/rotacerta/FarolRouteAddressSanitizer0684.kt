@@ -27,8 +27,12 @@ object FarolRouteAddressSanitizer0684 {
         val original = normalize(raw)
         if (original.isBlank()) return Result(false, raw, null, "blank")
 
-        val cuts = ArrayList<String>(4)
-        var value = original
+        val cuts = ArrayList<String>(6)
+        val temporal0697 = FarolTemporalUiNoise0697.clean(original)
+        var value = temporal0697.cleaned
+        if (temporal0697.changed) {
+            cuts += "temporal_ui_noise_0697:" + temporal0697.removed.joinToString("|").take(120)
+        }
 
         val boundary = operationalBoundary.find(value)
         if (boundary != null) {
