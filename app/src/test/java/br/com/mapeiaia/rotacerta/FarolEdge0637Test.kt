@@ -87,26 +87,30 @@ class FarolEdge0637Test {
     }
 
     @Test
-    fun local_color_hides_km_until_traffic_aware_road_result() {
+    fun local_color_and_km_publish_before_optional_road_refinement() {
         val live = src("LiveRideAccessibilityService.kt")
         assertTrue(live.contains("applyUniversalPreliminaryColorStage637"))
-        assertTrue(live.contains("showOverlay(colorStage637, null)"))
+        assertTrue(live.contains("FarolLocalDecisionAuthority0696.LOCAL_COMMIT_MARKER"))
+        assertTrue(live.contains("applyUniversalTwoAddressResultStage19("))
+        assertFalse(live.contains("S682_PROVISIONAL_COLOR_SUPPRESSED"))
+        assertFalse(live.contains("stage682_local_preview_suppressed"))
         assertTrue(live.contains("cachedTrafficAwareDrivingDistancesFromAddressKm"))
         assertTrue(live.contains("trafficAwareDrivingDistancesFromAddressKm"))
         val maps = src("GoogleMapsService.kt")
         assertTrue(maps.contains("\"routingPreference\": \"TRAFFIC_AWARE\""))
         assertTrue(maps.contains("PERSISTENT_TRAFFIC_ADDRESS_ROUTE_PREFIX"))
-        assertTrue(maps.indexOf("trafficAwareAddressRouteMatrixBody") < maps.indexOf("requestOpenStreetMapAddressRoutes", maps.indexOf("trafficAwareDrivingDistancesFromAddressKm")))
     }
 
     @Test
     fun exact_road_km_never_redecides_the_local_radius_color() {
         val live = src("LiveRideAccessibilityService.kt")
         val start = live.indexOf("private fun attachExactRoadDistanceStage637")
-        val end = live.indexOf("private fun applyUniversalPreliminaryColorStage637", start)
+        val end = live.indexOf("private suspend fun applyUniversalPreliminaryColorStage637", start)
         assertTrue(start >= 0 && end > start)
         val helper = live.substring(start, end)
         assertTrue(helper.contains("recommendation = preliminaryStage637.recommendation"))
+        assertTrue(helper.contains("?: preliminaryStage637.pickupToHomeKm"))
+        assertTrue(helper.contains("?: preliminaryStage637.pickupToAlternativeKm"))
         assertFalse(helper.contains("decisionEngine.decideWorkRegion"))
     }
 
