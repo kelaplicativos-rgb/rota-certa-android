@@ -133,7 +133,7 @@ class TripsActivity : ComponentActivity() {
     }
 }
 
-private enum class TripScreen { LIST, CENTRAL_DAY, TIMELINE, RESERVATIONS, ASSISTANT, NOTIFICATIONS, PUBLIC_SEARCH, CREATE, SETTINGS, APP_SETTINGS, EXTRA_SEATS, PASSENGERS, AUTO_SYNC, SCRIPTS, DEBUG_REPORT }
+private enum class TripScreen { LIST, CENTRAL_DAY, TIMELINE, SEARCH, RESERVATIONS, ASSISTANT, NOTIFICATIONS, PUBLIC_SEARCH, CREATE, SETTINGS, APP_SETTINGS, EXTRA_SEATS, PASSENGERS, AUTO_SYNC, SCRIPTS, DEBUG_REPORT }
 
 private fun TripScreen.isAgendaRoot0396(): Boolean =
     this == TripScreen.CENTRAL_DAY ||
@@ -205,6 +205,7 @@ private fun recordModuleObservation0507(
 private fun TripScreen.agendaHeaderLabel0396(): String = when (this) {
     TripScreen.CENTRAL_DAY -> "Central do Dia"
     TripScreen.TIMELINE -> "Viagens"
+    TripScreen.SEARCH -> "Busca universal"
     TripScreen.RESERVATIONS -> "Reservas"
     TripScreen.ASSISTANT -> "Assistente Rota Certa"
     TripScreen.NOTIFICATIONS -> "Notificações"
@@ -741,13 +742,21 @@ private fun TripApp(
                     overflowActions = headerActions0396,
                     notificationUnreadCount = driverUnreadCount,
                     onNotificationsClick = openNotifications0396,
+                    onUniversalSearchClick0687 = if (headerIsRoot0396) {
+                        {
+                            parentRootScreen0396 = screen
+                            screen = TripScreen.SEARCH
+                        }
+                    } else {
+                        null
+                    },
                     globalHtmlRefreshState0679 = globalHtmlRefresh0679,
                     onGlobalHtmlRefreshClick0679 = requestGlobalHtmlRefresh0679,
                 )
             },
         ) { padding ->
             Column(
-                modifier = if (screen == TripScreen.TIMELINE || screen == TripScreen.DEBUG_REPORT || screen == TripScreen.LIST) {
+                modifier = if (screen == TripScreen.TIMELINE || screen == TripScreen.SEARCH || screen == TripScreen.DEBUG_REPORT || screen == TripScreen.LIST) {
                     Modifier
                         .padding(padding)
                         .padding(16.dp)
@@ -784,6 +793,50 @@ private fun TripApp(
                         screen = TripScreen.RESERVATIONS
                     },
                     onMessage = { message = it },
+                )
+                TripScreen.SEARCH -> UniversalSearchScreen0687(
+                    trips = trips,
+                    bookings = bookings,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    onOpenResult = { hit ->
+                        val document = hit.document
+                        when (document.kind) {
+                            UniversalSearchKind0687.TRIP -> {
+                                val localTripId = document.tripId.takeIf { id -> trips.any { it.id == id } }
+                                if (localTripId != null) {
+                                    selectedId = localTripId
+                                    focusedTripId = localTripId
+                                    screen = TripScreen.LIST
+                                } else {
+                                    message = "A viagem foi localizada no índice, mas o card local ainda não está disponível."
+                                }
+                            }
+                            UniversalSearchKind0687.BOOKING -> {
+                                if (document.bookingId.isNotBlank()) {
+                                    focusedTripId = document.tripId.takeIf(String::isNotBlank)
+                                    focusedBookingId = document.bookingId
+                                    reservationPendingOnly = false
+                                    parentRootScreen0396 = TripScreen.RESERVATIONS
+                                    screen = TripScreen.RESERVATIONS
+                                } else {
+                                    message = "A reserva foi localizada, mas ainda não possui vínculo operacional navegável."
+                                }
+                            }
+                            UniversalSearchKind0687.PASSENGER -> {
+                                if (document.bookingId.isNotBlank()) {
+                                    focusedTripId = document.tripId.takeIf(String::isNotBlank)
+                                    focusedBookingId = document.bookingId
+                                    reservationPendingOnly = false
+                                    parentRootScreen0396 = TripScreen.RESERVATIONS
+                                    screen = TripScreen.RESERVATIONS
+                                } else {
+                                    parentRootScreen0396 = TripScreen.PASSENGERS
+                                    passengerSubscreenOpen0396 = false
+                                    screen = TripScreen.PASSENGERS
+                                }
+                            }
+                        }
+                    },
                 )
                 TripScreen.DEBUG_REPORT -> ContextualDebugReportScreen0507(activeDebugModule0507)
                 TripScreen.CREATE -> TripEditor(
