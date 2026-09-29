@@ -2,6 +2,45 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.685",
+      "build": 5976,
+      "commit": null,
+      "branch": "agent/radar-popup-single-core-0.1.685",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Radares e alertas passam a usar um único motor de proximidade alimentado pelo núcleo compartilhado de GPS.",
+        "O serviço de acessibilidade deixa de calcular proximidade e passa a apenas renderizar a projeção visual publicada pelo núcleo central.",
+        "O pop-up passa a permanecer fixo por padrão até reconhecimento humano, com timeout opcional de 15, 20 ou 30 segundos."
+      ],
+      "fixed": [
+        "Removido o desvio que escondia o pop-up quando o rastreamento compartilhado possuía o GPS.",
+        "Reconhecimento pelo pop-up e pela notificação convergem para o mesmo targetId no motor central, evitando reabertura por motores independentes.",
+        "Salvar um novo alerta ou importar radares garante a inicialização do núcleo de localização quando o recurso estiver habilitado."
+      ],
+      "improved": [
+        "Voz, notificação e pop-up recebem o mesmo evento calculado pelo mesmo motor, preservando a notificação Android como redundância.",
+        "O último fix preciso do núcleo central continua disponível para criação manual de radar sem iniciar um segundo rastreador.",
+        "Timeout do pop-up é persistido de forma explícita; zero significa permanecer até reconhecimento."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.680-0.1.684: o pop-up era escondido quando o núcleo compartilhado de GPS assumia a localização."
+      ],
+      "modulesAffected": [
+        "Radares",
+        "Alertas de proximidade",
+        "GPS",
+        "Rastreamento",
+        "Pop-up",
+        "Acessibilidade",
+        "Notificações",
+        "Configurações",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.684",
       "build": 5975,
       "commit": null,
