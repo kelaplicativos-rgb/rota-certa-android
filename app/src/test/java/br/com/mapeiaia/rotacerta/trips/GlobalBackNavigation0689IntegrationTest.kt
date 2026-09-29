@@ -22,7 +22,10 @@ class GlobalBackNavigation0689IntegrationTest {
 
     @Test
     fun rootKeepsDrawerWithoutReplacingBackArrow() {
-        assertTrue(header.contains("text = \"←\""))
+        assertTrue(header.contains("Icons.AutoMirrored.Filled.ArrowBack"))
+        assertTrue(header.contains("ChatGptBackParity0690.TOUCH_TARGET_DP.dp"))
+        assertTrue(header.contains("ChatGptBackParity0690.ICON_SIZE_DP.dp"))
+        assertFalse(header.contains("text = \"←\""))
         assertTrue(header.contains("if (root && onMenuClick0689 != null)"))
         assertTrue(header.contains("text = \"☰\""))
         assertFalse(header.contains("text = if (root) \"☰\" else \"←\""))
