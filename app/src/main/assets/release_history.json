@@ -2,6 +2,48 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.686",
+      "build": 5977,
+      "commit": null,
+      "branch": "agent/radar-fast-local-safety-0.1.686",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "O núcleo único de localização passa a consumir GPS local em aproximadamente 1 segundo, mantendo persistência, compartilhamento e heartbeat em 5 segundos.",
+        "Radares são pré-armados em uma janela espacial de 4 km para que o motor acompanhe candidatos antes da zona de aviso.",
+        "A distância efetiva de aviso cresce automaticamente conforme velocidade atual e precisão do GPS, sem reduzir o raio configurado.",
+        "O motor detecta quando o segmento entre dois fixes externos atravessa a zona do radar, evitando perda por salto entre leituras.",
+        "O primeiro fix GPS válido dentro da zona já pode disparar o aviso, sem aguardar múltiplas amostras de aproximação.",
+        "Após confirmação de ultrapassagem, o pop-up fecha automaticamente em 5 segundos sem exibir contagem regressiva."
+      ],
+      "fixed": [
+        "Eliminada a dependência do ciclo mínimo de 5 segundos para o cálculo local de proximidade.",
+        "Eliminada a janela em que duas amostras poderiam ficar fora do raio enquanto o veículo atravessava a região do radar entre elas.",
+        "O estado ultrapassado deixa de permanecer preso indefinidamente quando o motorista não toca no pop-up."
+      ],
+      "improved": [
+        "O aumento da frequência local não aumenta a frequência de upload nem o volume de pontos persistidos.",
+        "O fechamento de 5 segundos é independente do timeout configurável de 15, 20 ou 30 segundos para alertas normais.",
+        "A arquitetura de motor único, pop-up, voz e notificação da 0.1.685 é preservada."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.685: cálculo local ainda herdava a solicitação mínima de GPS em 5 segundos do serviço compartilhado.",
+        "0.1.685: o primeiro aviso ainda dependia de múltiplas amostras de aproximação."
+      ],
+      "modulesAffected": [
+        "Radares",
+        "Alertas de proximidade",
+        "GPS",
+        "Rastreamento",
+        "Compartilhamento",
+        "Pop-up",
+        "Notificações",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.685",
       "build": 5976,
       "commit": null,
