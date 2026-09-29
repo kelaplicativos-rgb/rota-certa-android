@@ -5,6 +5,7 @@ import android.os.SystemClock
 import android.content.SharedPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
@@ -143,6 +144,83 @@ class GoogleMapsService(context: Context? = null) {
         geocode(originAddress, DeviceRegion(), apiKey)?.also { coordinate ->
             learnOfflineAtlas642(originAddress, coordinate)
         }
+    }
+
+    suspend fun resolveFarolCoordinateResilient0697(
+        originAddress: String,
+        targetHints: List<Coordinate>,
+        apiKey: String,
+    ): Coordinate? {
+        if (originAddress.isBlank()) return null
+        cachedFarolCoordinate(originAddress)?.let { coordinate ->
+            FarolFlightRecorder0163.record(
+                stage = FarolCoordinateResolution0697.RESOLVED_MARKER,
+                packageName = null,
+                details = "provider=cache; elapsed_ms=0",
+            )
+            return coordinate
+        }
+
+        val started = SystemClock.elapsedRealtime()
+        FarolFlightRecorder0163.record(
+            stage = FarolCoordinateResolution0697.STARTED_MARKER,
+            packageName = null,
+            details = "globalDeadlineMs=${FarolCoordinateResolution0697.GLOBAL_DEADLINE_MS}",
+        )
+
+        val result = withTimeoutOrNull(FarolCoordinateResolution0697.GLOBAL_DEADLINE_MS) {
+            resolvePlatformOrigin0697(originAddress)?.let { coordinate ->
+                learnOfflineAtlas642(originAddress, coordinate)
+                FarolFlightRecorder0163.record(
+                    stage = FarolCoordinateResolution0697.RESOLVED_MARKER,
+                    packageName = null,
+                    details = "provider=android; elapsed_ms=${SystemClock.elapsedRealtime() - started}",
+                )
+                return@withTimeoutOrNull coordinate
+            }
+
+            FarolFlightRecorder0163.record(
+                stage = FarolCoordinateResolution0697.FALLBACK_MARKER,
+                packageName = null,
+                details = "from=android; to=osm",
+            )
+            resolveFreeOrigin0697(originAddress, targetHints)?.let { coordinate ->
+                learnOfflineAtlas642(originAddress, coordinate)
+                FarolFlightRecorder0163.record(
+                    stage = FarolCoordinateResolution0697.RESOLVED_MARKER,
+                    packageName = null,
+                    details = "provider=osm; elapsed_ms=${SystemClock.elapsedRealtime() - started}",
+                )
+                return@withTimeoutOrNull coordinate
+            }
+
+            if (apiKey.isNotBlank()) {
+                FarolFlightRecorder0163.record(
+                    stage = FarolCoordinateResolution0697.FALLBACK_MARKER,
+                    packageName = null,
+                    details = "from=osm; to=google",
+                )
+                resolveGoogleOrigin0697(originAddress, apiKey)?.let { coordinate ->
+                    learnOfflineAtlas642(originAddress, coordinate)
+                    FarolFlightRecorder0163.record(
+                        stage = FarolCoordinateResolution0697.RESOLVED_MARKER,
+                        packageName = null,
+                        details = "provider=google; elapsed_ms=${SystemClock.elapsedRealtime() - started}",
+                    )
+                    return@withTimeoutOrNull coordinate
+                }
+            }
+            null
+        }
+
+        if (result == null) {
+            FarolFlightRecorder0163.record(
+                stage = FarolCoordinateResolution0697.ALL_FAILED_MARKER,
+                packageName = null,
+                details = "elapsed_ms=${SystemClock.elapsedRealtime() - started}; deadline_ms=${FarolCoordinateResolution0697.GLOBAL_DEADLINE_MS}",
+            )
+        }
+        return result
     }
 
     suspend fun drivingDistanceKm(origin: Coordinate, destination: Coordinate, apiKey: String): Double? =
@@ -593,6 +671,69 @@ class GoogleMapsService(context: Context? = null) {
         )
     }
 
+    private suspend fun resolvePlatformOrigin0697(originAddress: String): Coordinate? {
+        val platformGeocoder = platformGeocodingService0547 ?: return null
+        val query = geocodeQueries0547(originAddress).firstOrNull() ?: return null
+        FarolFlightRecorder0163.record(
+            stage = FarolCoordinateResolution0697.PLATFORM_STARTED_MARKER,
+            packageName = null,
+            details = "deadline_ms=${FarolCoordinateResolution0697.PLATFORM_DEADLINE_MS}",
+        )
+        val started = SystemClock.elapsedRealtime()
+        val selected = platformGeocoder.geocodeBounded0697(
+            query = query,
+            region = DeviceRegion(city = "", country = ""),
+            timeoutMillis = FarolCoordinateResolution0697.PLATFORM_DEADLINE_MS,
+        )
+        if (
+            selected == null &&
+            SystemClock.elapsedRealtime() - started >= FarolCoordinateResolution0697.PLATFORM_DEADLINE_MS - 25L
+        ) {
+            FarolFlightRecorder0163.record(
+                stage = FarolCoordinateResolution0697.PLATFORM_TIMEOUT_MARKER,
+                packageName = null,
+                details = "elapsed_ms=${SystemClock.elapsedRealtime() - started}",
+            )
+        }
+        if (selected != null) cacheCoordinateAliases0697(originAddress, selected)
+        return selected
+    }
+
+    private suspend fun resolveFreeOrigin0697(
+        originAddress: String,
+        destinations: List<Coordinate>,
+    ): Coordinate? = withContext(Dispatchers.IO) {
+        val query = geocodeQueries0547(originAddress).firstOrNull() ?: return@withContext null
+        val candidates = requestNominatimGeocodeCandidates0697(query).orEmpty()
+        val selected = selectNearestGeocodeCandidate0547(candidates, destinations)
+        if (selected != null) cacheCoordinateAliases0697(originAddress, selected)
+        selected
+    }
+
+    private suspend fun resolveGoogleOrigin0697(
+        originAddress: String,
+        apiKey: String,
+    ): Coordinate? {
+        val query = geocodeQueries(originAddress, DeviceRegion()).firstOrNull() ?: return null
+        val selected = withTimeoutOrNull(FarolCoordinateResolution0697.GOOGLE_DEADLINE_MS) {
+            withContext(Dispatchers.IO) { requestGeocode(query, apiKey) }
+        }
+        if (selected != null) cacheCoordinateAliases0697(originAddress, selected)
+        return selected
+    }
+
+    private fun cacheCoordinateAliases0697(originAddress: String, coordinate: Coordinate) {
+        val normalizedOrigin = normalizeAddress(originAddress)
+        val keys = buildList {
+            add("osm_origin|${normalizedOrigin}")
+            geocodeQueries0547(originAddress).forEach { add(it.lowercase(Locale.ROOT)) }
+        }.distinct()
+        keys.forEach { key ->
+            geocodeCache[key] = coordinate
+            persistCoordinate(key, coordinate)
+        }
+    }
+
     private suspend fun resolvePlatformFirstOrigin640(originAddress: String): Coordinate? {
         val platformGeocoder = platformGeocodingService0547 ?: return null
         val normalizedOrigin = normalizeAddress(originAddress)
@@ -755,6 +896,39 @@ class GoogleMapsService(context: Context? = null) {
 
     private fun requestNominatimGeocode(query: String): Coordinate? =
         requestNominatimGeocodeCandidates0547(query)?.firstOrNull()
+
+    private fun requestNominatimGeocodeCandidates0697(query: String): List<Coordinate>? {
+        val encodedAddress = URLEncoder.encode(query.trim(), "UTF-8")
+        val url = URL(
+            "$OSM_NOMINATIM_URL?format=jsonv2&limit=5&accept-language=${URLEncoder.encode(Locale.getDefault().toLanguageTag(), Charsets.UTF_8.name())}&q=$encodedAddress",
+        )
+        val connection = (url.openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = FarolCoordinateResolution0697.OSM_CONNECT_TIMEOUT_MS
+            readTimeout = FarolCoordinateResolution0697.OSM_READ_TIMEOUT_MS
+            useCaches = false
+            setRequestProperty("Connection", "close")
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("User-Agent", "RotaCerta/${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})")
+        }
+        return try {
+            val code = connection.responseCode
+            if (code !in 200..299) return null
+            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            json.parseToJsonElement(body).jsonArray.mapNotNull { item ->
+                val objectValue = item.jsonObject
+                val latitude = objectValue["lat"]?.jsonPrimitive?.content?.toDoubleOrNull()
+                    ?: return@mapNotNull null
+                val longitude = objectValue["lon"]?.jsonPrimitive?.content?.toDoubleOrNull()
+                    ?: return@mapNotNull null
+                Coordinate(latitude, longitude)
+            }
+        } catch (_: Throwable) {
+            null
+        } finally {
+            connection.disconnect()
+        }
+    }
 
     private fun requestNominatimGeocodeCandidates0547(query: String): List<Coordinate>? {
         val encodedAddress = URLEncoder.encode(query.trim(), "UTF-8")
