@@ -23,6 +23,8 @@ jobs:
       EXPECTED_VERSION_NAME: '0.1.700'
       EXPECTED_VERSION_CODE: '5991'
       ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 
     steps:
       - uses: actions/checkout@v4
@@ -38,6 +40,18 @@ jobs:
           grep -Fq 'val releaseVersionName = "0.1.700"' app/build.gradle.kts
           grep -Fq 'val releaseVersionCode = 5_991' app/build.gradle.kts
           grep -Fq '"version": "0.1.700"' app/src/main/assets/release_history.json
+          grep -Fq 'RIDE_APP_LEARNING_PROFILE_STORE_0700' app/src/main/java/br/com/mapeiaia/rotacerta/RideAppLearning0700.kt
+          grep -Fq 'LEARNED_RIDE_READER_0700' app/src/main/java/br/com/mapeiaia/rotacerta/RideAppLearning0700.kt
+          grep -Fq 'RIDE_APK_STATIC_ANALYZER_0700' app/src/main/java/br/com/mapeiaia/rotacerta/RideApkAnalyzer0700.kt
+          grep -Fq 'IMPORTED_APK_NEVER_EXECUTED_0700' app/src/main/java/br/com/mapeiaia/rotacerta/RideApkAnalyzer0700.kt
+          grep -Fq 'ONLY_REDUCED_SEMANTIC_DOSSIER_SENT_0700' app/src/main/java/br/com/mapeiaia/rotacerta/RideApkAnalyzer0700.kt
+          grep -Fq 'ActivityResultContracts.OpenDocument' app/src/main/java/br/com/mapeiaia/rotacerta/RideAppLearningActivity0700.kt
+          grep -Fq 'Aprender aplicativo por APK / IA' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          grep -Fq 'RideAppLearningActivity0700' app/src/main/AndroidManifest.xml
+          grep -Fq 'LearnedRideReader0700.apply' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq '/v1/assistant/learn-ride-app' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          grep -Fq 'RIDE_APP_OPENAI_LEARNING_0700' trip-platform/functions/ride-app-learning-0700.js
+          grep -Fq '/v1/assistant/learn-ride-app' trip-platform/functions/index.js
           grep -Fq 'FAROL_NETWORK_FAILURE_ISOLATION_0699' app/src/main/java/br/com/mapeiaia/rotacerta/FarolNetworkFailureIsolation0699.kt
           grep -Fq 'FAROL_GOOGLE_GEOCODE_TRANSPORT_FAILED_0699' app/src/main/java/br/com/mapeiaia/rotacerta/FarolNetworkFailureIsolation0699.kt
           grep -Fq 'FAROL_REMOTE_REFINEMENT_FAILED_SOFT_0699' app/src/main/java/br/com/mapeiaia/rotacerta/FarolNetworkFailureIsolation0699.kt
