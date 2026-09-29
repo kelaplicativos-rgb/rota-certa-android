@@ -175,7 +175,7 @@ internal object UniversalSearchEngine0687 {
                 ).joinToString(" ")
             }
             docs += finalize(
-                key = "trip:$" + "{trip.id}",
+                key = "trip:" + trip.id,
                 kind = UniversalSearchKind0687.TRIP,
                 tripId = trip.id,
                 title = trip.title.ifBlank { route.ifBlank { "Viagem" } },
@@ -218,7 +218,7 @@ internal object UniversalSearchEngine0687 {
                 }
             }
             docs += finalize(
-                key = "booking:$" + "{booking.id}",
+                key = "booking:" + booking.id,
                 kind = UniversalSearchKind0687.BOOKING,
                 tripId = booking.tripId,
                 bookingId = booking.id,
@@ -257,7 +257,7 @@ internal object UniversalSearchEngine0687 {
             val latestBooking = profileBookings.maxByOrNull(Booking::updatedAtMillis)
             val contact = profile.agendaAccessContact()
             docs += finalize(
-                key = "passenger:$" + "{profile.id}",
+                key = "passenger:" + profile.id,
                 kind = UniversalSearchKind0687.PASSENGER,
                 tripId = latestBooking?.tripId.orEmpty(),
                 bookingId = latestBooking?.id.orEmpty(),
@@ -291,7 +291,7 @@ internal object UniversalSearchEngine0687 {
             .filter { metadata -> metadata.reservationKey.isNotBlank() && !knownReservationKeys.contains(metadata.reservationKey) }
             .forEach { metadata ->
                 docs += finalize(
-                    key = "external:$" + "{metadata.reservationKey}",
+                    key = "external:" + metadata.reservationKey,
                     kind = UniversalSearchKind0687.PASSENGER,
                     tripId = metadata.externalTripId,
                     passengerId = metadata.passengerId,
