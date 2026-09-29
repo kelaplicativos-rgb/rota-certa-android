@@ -1021,14 +1021,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 UnifiedDebugEventStore.record(
                     FarolNetworkFailureIsolation0699.NETWORK_FAILURE_STATE_PRESERVED_MARKER,
                     packageName0172 ?: universalResolvedForegroundPackage(),
-                    "stage=$stage0172; type=\${error0172::class.java.simpleName}; color=\${currentRadarColor.diagnosticLabel}; distance=\${currentDistanceKm ?: -1.0}; binding=\${universalActiveAddressSignature.orEmpty()}; action=preserve_state",
+                    "stage=$stage0172; type=${error0172::class.java.simpleName}; color=${currentRadarColor.diagnosticLabel}; distance=${currentDistanceKm ?: -1.0}; binding=${universalActiveAddressSignature.orEmpty()}; action=preserve_state",
                 )
             }
             runCatching {
                 FarolFlightRecorder0163.record(
                     stage = FarolNetworkFailureIsolation0699.NETWORK_FAILURE_STATE_PRESERVED_MARKER,
                     packageName = packageName0172 ?: universalResolvedForegroundPackage(),
-                    details = "stage=$stage0172; error=\${FarolNetworkFailureIsolation0699.failureChain(error0172)}; color=\${currentRadarColor.diagnosticLabel}; distance=\${currentDistanceKm ?: -1.0}",
+                    details = "stage=$stage0172; error=${FarolNetworkFailureIsolation0699.failureChain(error0172)}; color=${currentRadarColor.diagnosticLabel}; distance=${currentDistanceKm ?: -1.0}",
                 )
             }
             if (::bubblePrefs.isInitialized) runCatching { persistBubbleState() }
@@ -4019,19 +4019,19 @@ class LiveRideAccessibilityService : AccessibilityService() {
         UnifiedDebugEventStore.record(
             FarolLocalSemanticFreshness0698.marker(localFreshness0698),
             universalResolvedForegroundPackage(),
-            "binding=\${bindingStage19.addressSignature}; active=\${universalActiveAddressSignature.orEmpty()}; phase=after_coordinate",
+            "binding=${bindingStage19.addressSignature}; active=${universalActiveAddressSignature.orEmpty()}; phase=after_coordinate",
         )
         if (localFreshness0698 != FarolLocalSemanticFreshness0698.Verdict.ACCEPTED_SAME_DESTINATION) {
             FarolCausalLatencyStage28.Metrics.increment("staleResultsDropped")
             UnifiedDebugEventStore.record(
                 FarolNetworkFailureIsolation0699.LATE_RESULT_DROPPED_MARKER,
                 universalResolvedForegroundPackage(),
-                "trace=$traceIdStage20; operation=$routeJobIdStage20; binding=\${bindingStage19.addressSignature}; active=\${universalActiveAddressSignature.orEmpty()}; verdict=$localFreshness0698",
+                "trace=$traceIdStage20; operation=$routeJobIdStage20; binding=${bindingStage19.addressSignature}; active=${universalActiveAddressSignature.orEmpty()}; verdict=$localFreshness0698",
             )
             UnifiedDebugEventStore.record(
                 FarolCoordinateResolution0697.STALE_MARKER,
                 universalResolvedForegroundPackage(),
-                "binding=\${bindingStage19.addressSignature}; phase=after_coordinate; semanticVerdict=$localFreshness0698",
+                "binding=${bindingStage19.addressSignature}; phase=after_coordinate; semanticVerdict=$localFreshness0698",
             )
             return
         }
@@ -4128,7 +4128,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 universalResolvedForegroundPackage(),
                 remoteContext0699.diagnostic(
                     provider = "road_refinement",
-                    extra = "error=\${FarolNetworkFailureIsolation0699.failureChain(error0699)}; localColorPreserved=true; localDistance=\${FarolLocalDecisionAuthority0696.nearestDistanceKm(localResult0696)}",
+                    extra = "error=${FarolNetworkFailureIsolation0699.failureChain(error0699)}; localColorPreserved=true; localDistance=${FarolLocalDecisionAuthority0696.nearestDistanceKm(localResult0696)}",
                 ),
             )
         } finally {
@@ -4141,7 +4141,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 traceIdStage20,
                 routeJobIdStage20,
                 routeEndedNsStage26,
-                "refinement0696=$exactRoadDistancesCandidate0699; softFailure=\${remoteFailure0699?.let(FarolNetworkFailureIsolation0699::failureChain).orEmpty()}",
+                "refinement0696=$exactRoadDistancesCandidate0699; softFailure=${remoteFailure0699?.let(FarolNetworkFailureIsolation0699::failureChain).orEmpty()}",
             )
             FarolForensicCardBlackBoxStage32.recordRouteResponse(
                 routeEndedNsStage26,
@@ -4161,7 +4161,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                     packageName = universalResolvedForegroundPackage(),
                     details = remoteContext0699.diagnostic(
                         provider = "road_refinement",
-                        extra = "state=preserved; error=\${FarolNetworkFailureIsolation0699.failureChain(remoteFailure0699!!)}",
+                        extra = "state=preserved; error=${FarolNetworkFailureIsolation0699.failureChain(remoteFailure0699!!)}",
                     ),
                 )
             }
@@ -6708,7 +6708,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 universalResolvedForegroundPackage(),
                 networkContext0699.diagnostic(
                     provider = "coordinate_pipeline",
-                    extra = "error=\${FarolNetworkFailureIsolation0699.failureChain(error0699)}; action=return_null_keep_yellow",
+                    extra = "error=${FarolNetworkFailureIsolation0699.failureChain(error0699)}; action=return_null_keep_yellow",
                 ),
             )
             null
