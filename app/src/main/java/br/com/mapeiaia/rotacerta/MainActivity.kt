@@ -2563,6 +2563,34 @@ private fun SystemControlCard(settings: AppSettings, onChange: (AppSettings) -> 
             checked = settings.proximityAlertsEnabled,
             onCheckedChange = { enabled -> onChange(settings.copy(proximityAlertsEnabled = enabled)) },
         )
+        Text("Fechamento do pop-up de radar/alerta", fontWeight = FontWeight.Bold)
+        listOf(
+            0 to "Até reconhecer",
+            15 to "15 segundos",
+            20 to "20 segundos",
+            30 to "30 segundos",
+        ).forEach { (seconds0685, label0685) ->
+            OutlinedButton(
+                onClick = {
+                    onChange(
+                        settings.copy(
+                            proximityPopupTimeoutSeconds = seconds0685,
+                            proximityPopupAutoCloseEnabled = seconds0685 > 0,
+                        ),
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    (if (settings.proximityPopupTimeoutSeconds == seconds0685) "✓  " else "") +
+                        label0685,
+                )
+            }
+        }
+        Text(
+            "Por padrão, o aviso permanece na tela até você reconhecer. O timeout é opcional e não interfere no cálculo, na voz nem na notificação.",
+            style = MaterialTheme.typography.bodySmall,
+        )
         val speechStore0186 = remember { SpeechOutputPreferenceStore0186(context) }
         var speechMode0186 by remember { mutableStateOf(speechStore0186.read()) }
         Text("Saída dos avisos sonoros", fontWeight = FontWeight.Bold)
