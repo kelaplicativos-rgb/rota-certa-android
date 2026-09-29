@@ -259,6 +259,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     // directional_alert_fields_checklist_5
     private lateinit var shortcutOverlayController: BubbleShortcutOverlayController
     private lateinit var shortcutGridStore0179: ShortcutGridPreferenceStore0179
+    private lateinit var keepScreenAwakeStore0688: KeepScreenAwakePreferenceStore0688
     private lateinit var radarDetectionCue: RadarDetectionCue
     private val universalRouteCache = LiveRideRouteCache()
     private var universalRouteJob: Job? = null
@@ -345,6 +346,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         bubblePrefs = getSharedPreferences(BUBBLE_PREFS, Context.MODE_PRIVATE)
         ShortcutGridPolicy0173.clearLegacyPreferences(applicationContext)
         shortcutGridStore0179 = ShortcutGridPreferenceStore0179(applicationContext)
+        keepScreenAwakeStore0688 = KeepScreenAwakePreferenceStore0688(applicationContext)
         val restoredExactRoutes = universalRouteCache.importSnapshot(
             bubblePrefs.getString("persistent_exact_route_cache_v1", "").orEmpty(),
         )
@@ -7072,16 +7074,27 @@ class LiveRideAccessibilityService : AccessibilityService() {
         overlayParams = null
     }
 
-    private fun overlayLayoutParams(): WindowManager.LayoutParams = WindowManager.LayoutParams(
-        dp(66),
-        dp(66),
-        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-        PixelFormat.TRANSLUCENT,
-    ).apply {
+    private fun overlayLayoutParams(): WindowManager.LayoutParams {
+        val keepScreenFlag0688 = if (
+            ::keepScreenAwakeStore0688.isInitialized && keepScreenAwakeStore0688.isEnabled()
+        ) {
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        } else {
+            0
+        }
+        return WindowManager.LayoutParams(
+            dp(66),
+            dp(66),
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                keepScreenFlag0688,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
         gravity = Gravity.TOP or Gravity.START
         x = bubblePrefs.getInt(KEY_BUBBLE_X, dp(18))
         y = bubblePrefs.getInt(KEY_BUBBLE_Y, dp(90))
+        }
     }
 
     private fun clearClipboardFromBubble() {
@@ -7131,7 +7144,20 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     private fun toggleResourceShortcuts() {
         val params = overlayParams ?: return
-        val shortcuts0184 = shortcutGridStore0179.readResolved()
+        val keepScreenEnabled0688 = ::keepScreenAwakeStore0688.isInitialized && keepScreenAwakeStore0688.isEnabled()
+        val keepScreenLabel0688 = KeepScreenAwakeContract0688.displayLabel(keepScreenEnabled0688)
+        val shortcuts0184 = shortcutGridStore0179.readResolved().map { entry0184 ->
+            if (entry0184.shortcutId == KeepScreenAwakeContract0688.SHORTCUT_ID) {
+                entry0184.copy(
+                    spec = entry0184.spec.copy(
+                        label = keepScreenLabel0688,
+                        displayLabel = keepScreenLabel0688,
+                    ),
+                )
+            } else {
+                entry0184
+            }
+        }
         if (shortcuts0184.isEmpty()) {
             launchShortcutActivity0176(
                 shortcutId = "empty_action_grid_0184",
@@ -7153,6 +7179,39 @@ class LiveRideAccessibilityService : AccessibilityService() {
         persistResourceShortcutState()
         Unit /* diagnostics_off_checklist_4 */
         Unit /* diagnostics_off_checklist_4 */
+    }
+
+    private fun toggleKeepScreenAwake0688() {
+        if (!::keepScreenAwakeStore0688.isInitialized) return
+        val enabled0688 = keepScreenAwakeStore0688.toggle()
+        applyKeepScreenAwakeWindowFlag0688(enabled0688)
+        UnifiedDebugEventStore.record(
+            "KEEP_SCREEN_AWAKE_0688",
+            universalResolvedForegroundPackage(),
+            "enabled=$enabled0688; overlayPresent=${overlayView != null}",
+        )
+        toast(KeepScreenAwakeContract0688.statusMessage(enabled0688))
+    }
+
+    private fun applyKeepScreenAwakeWindowFlag0688(enabled0688: Boolean) {
+        val manager0688 = windowManager ?: return
+        val view0688 = overlayView ?: return
+        val params0688 = overlayParams ?: return
+        val updatedFlags0688 = if (enabled0688) {
+            params0688.flags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        } else {
+            params0688.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON.inv()
+        }
+        if (updatedFlags0688 == params0688.flags) return
+        params0688.flags = updatedFlags0688
+        runCatching { manager0688.updateViewLayout(view0688, params0688) }
+            .onFailure { error0688 ->
+                UnifiedDebugEventStore.record(
+                    "KEEP_SCREEN_AWAKE_WINDOW_UPDATE_FAILED_0688",
+                    universalResolvedForegroundPackage(),
+                    error0688::class.java.simpleName,
+                )
+            }
     }
 
     private fun executeShortcutQuickTap0180(entry0180: ResolvedShortcutGridEntry0179) {
@@ -7590,6 +7649,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             BubbleShortcutAction.CreateAlert -> saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert, requireNotNull(spec.defaultName))
             BubbleShortcutAction.CreateSavedPlace -> saveCurrentPlaceFromBubble(SavedPlaceType.Place, requireNotNull(spec.defaultName))
             BubbleShortcutAction.ToggleReading -> toggleLiveReadingFromBubble()
+            BubbleShortcutAction.ToggleKeepScreenAwake -> toggleKeepScreenAwake0688()
         }
     }
 

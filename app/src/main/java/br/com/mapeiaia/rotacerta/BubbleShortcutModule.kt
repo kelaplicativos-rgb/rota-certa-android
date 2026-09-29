@@ -23,6 +23,7 @@ enum class BubbleShortcutAction {
     CreateAlert,
     CreateSavedPlace,
     ToggleReading,
+    ToggleKeepScreenAwake,
     OpenSettings,
     CaptureCurrentAppAndScreen,
     OpenAuthorizedAppsAndCards,

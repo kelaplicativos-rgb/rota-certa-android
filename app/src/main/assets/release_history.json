@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.688",
+      "build": 5979,
+      "commit": null,
+      "branch": "agent/keep-screen-awake-0.1.688",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Novo atalho 💡 Tela na grade flutuante alterna imediatamente entre Tela ON e Tela OFF.",
+        "Quando Tela ON está ativo, a janela persistente da bolinha aplica FLAG_KEEP_SCREEN_ON e impede apenas o bloqueio automático por inatividade.",
+        "O estado do recurso é persistido e restaurado quando o serviço de acessibilidade recria a bolinha."
+      ],
+      "fixed": [
+        "O recurso não altera SCREEN_OFF_TIMEOUT nem outras configurações globais do Samsung.",
+        "Ao desligar Tela OFF, FLAG_KEEP_SCREEN_ON é removida imediatamente da janela da bolinha e o bloqueio automático volta ao comportamento normal."
+      ],
+      "improved": [
+        "Atualizações existentes recebem o novo atalho automaticamente sem apagar, reordenar ou recriar a grade atual quando há espaço disponível.",
+        "O texto do próprio atalho reflete o estado real Tela ON ou Tela OFF sempre que a grade é aberta.",
+        "O botão físico de energia continua podendo apagar e bloquear a tela normalmente."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Atalhos",
+        "Bolinha",
+        "Acessibilidade",
+        "Tela",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.687",
       "build": 5978,
       "commit": null,

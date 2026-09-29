@@ -87,6 +87,13 @@ object ShortcutActionCatalog0184 {
             action = BubbleShortcutAction.OpenScreenWhatsApp,
         ),
         BubbleShortcutSpec(
+            id = KeepScreenAwakeContract0688.SHORTCUT_ID,
+            emoji = "💡",
+            label = "Tela acesa",
+            displayLabel = "Tela OFF",
+            action = BubbleShortcutAction.ToggleKeepScreenAwake,
+        ),
+        BubbleShortcutSpec(
             id = "action_open_work_tracking",
             emoji = "🗺️",
             label = "Abrir rastreamento de trabalho",
