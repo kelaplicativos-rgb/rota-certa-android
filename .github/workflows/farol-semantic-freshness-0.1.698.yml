@@ -1,0 +1,136 @@
+name: FAROL semantic freshness 0.1.698 APK
+
+on:
+  push:
+    branches:
+      - 'agent/farol-semantic-freshness-0.1.698'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: farol-semantic-freshness-0698-${{ github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      BASE_SHA: 'd109f5873e49cdb0075dbabb55e6c92b7dce1a7c'
+      EXPECTED_VERSION_NAME: '0.1.698'
+      EXPECTED_VERSION_CODE: '5989'
+      ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Prove source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'val releaseVersionName = "0.1.698"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 5_989' app/build.gradle.kts
+          grep -Fq '"version": "0.1.698"' app/src/main/assets/release_history.json
+          grep -Fq 'FAROL_LOCAL_SEMANTIC_FRESHNESS_0698' app/src/main/java/br/com/mapeiaia/rotacerta/FarolLocalSemanticFreshness0698.kt
+          grep -Fq 'isStage19LocalSemanticFresh0698' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'PaintAuthority.LOCAL_SEMANTIC' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          if sed -n '/val stableAddressSignatureStage635/,/val routeSanitization0684/p' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | grep -Fq 'stage36RuntimeAuthority.bindDestination'; then
+            echo "pre-sanitized Stage36 bind still present" >&2
+            exit 1
+          fi
+          git diff --check "$BASE_SHA"...HEAD
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run focused FAROL tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.FarolLocalSemanticFreshness0698Test'             --tests 'br.com.mapeiaia.rotacerta.FarolCoordinateResilience0697ContractTest'             --tests 'br.com.mapeiaia.rotacerta.FarolCoordinateResolution0697Test'             --tests 'br.com.mapeiaia.rotacerta.FarolTemporalUiNoise0697Test'             --tests 'br.com.mapeiaia.rotacerta.FarolLocalDecisionAuthority0696Test'             --tests 'br.com.mapeiaia.rotacerta.FarolAddressFirst0695Test'             --tests 'br.com.mapeiaia.rotacerta.FarolPaidAiGate0695Test'             --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0698-focused.log
+
+      - name: Compare complete Android failures with exact 0.1.697
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add --detach /tmp/rc-base "$BASE_SHA"
+          chmod +x /tmp/rc-base/gradlew
+          set +e
+          (cd /tmp/rc-base && ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace) > /tmp/base-full.log 2>&1
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace > /tmp/head-full.log 2>&1
+          set -e
+          python3 - <<'PY'
+          import pathlib, xml.etree.ElementTree as ET
+          def failures(root):
+              out=set(); d=pathlib.Path(root)/"app/build/test-results/testDebugUnitTest"
+              if d.exists():
+                  for f in d.glob("*.xml"):
+                      tree=ET.parse(f)
+                      for case in tree.getroot().iter("testcase"):
+                          if case.find("failure") is not None or case.find("error") is not None:
+                              out.add(f"{case.attrib.get('classname','')}::{case.attrib.get('name','')}")
+              return out
+          base=failures("/tmp/rc-base"); head=failures("."); new=sorted(head-base)
+          print(f"base_failures={len(base)} head_failures={len(head)} new_failures={len(new)}")
+          if new:
+              print("\n".join(new)); raise SystemExit(1)
+          PY
+
+      - name: Assemble exact APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0698-assemble.log
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Prove APK identity
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt-0698.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/aapt-0698.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5989'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.698'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner-0698.txt
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/apksigner-0698.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-0698.txt
+          for marker in             "$ROTA_CERTA_GIT_SHA"             'FAROL_LOCAL_SEMANTIC_FRESHNESS_0698'             'FAROL_LOCAL_RESULT_ACCEPTED_SAME_DESTINATION_0698'             'FAROL_LOCAL_DECISION_AUTHORITY_0696'             'FAROL_COORDINATE_RESOLUTION_0697'; do
+            grep -Fq "$marker" /tmp/dex-0698.txt
+          done
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.698-5989-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          printf 'versionName=0.1.698\nversionCode=5989\ncommit=%s\napk_sha256=%s\ndevice=Samsung SM-S911B Android 16\n' "$GITHUB_SHA" "$APK_SHA256" | tee farol-semantic-0698-proof.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-farol-semantic-0.1.698-${{ github.sha }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            farol-semantic-0698-proof.txt
+            /tmp/android-0698-focused.log
+            /tmp/android-0698-assemble.log
+            /tmp/aapt-0698.txt
+            /tmp/apksigner-0698.txt
+          if-no-files-found: error
+          retention-days: 30
