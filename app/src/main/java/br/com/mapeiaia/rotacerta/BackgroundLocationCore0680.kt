@@ -19,6 +19,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -111,6 +112,9 @@ internal class BackgroundProximityRuntime0680(
     @Volatile private var savedPlaces: List<SavedPlace> = emptyList()
     @Volatile private var radars: List<ImportedRadar> = emptyList()
     private var configJob: Job? = null
+    private var runtimeScope0686: CoroutineScope? = null
+    private var passedDismissJob0686: Job? = null
+    private var passedDismissTargetId0686: String? = null
     private var activeVisual: DirectionalAlertVisual? = null
 
     fun isLocationRequired0681(): Boolean {
@@ -121,6 +125,7 @@ internal class BackgroundProximityRuntime0680(
     }
 
     fun start(scope: CoroutineScope) {
+        runtimeScope0686 = scope
         createChannel()
         speech.start()
         if (configJob?.isActive == true) return
@@ -136,6 +141,7 @@ internal class BackgroundProximityRuntime0680(
                         nextPlaces.any { it.type == SavedPlaceType.ProximityAlert } || nextRadars.isNotEmpty(),
                     )
                 ) {
+                    cancelPassedAutoDismiss0686()
                     activeVisual = null
                     ProximityAlertProjection0685.clearAll()
                     notificationManager.cancel(ALERT_NOTIFICATION_ID)
@@ -147,6 +153,8 @@ internal class BackgroundProximityRuntime0680(
     fun stop() {
         configJob?.cancel()
         configJob = null
+        cancelPassedAutoDismiss0686()
+        runtimeScope0686 = null
         activeVisual = null
         ProximityAlertProjection0685.clearAll()
         notificationManager.cancel(ALERT_NOTIFICATION_ID)
@@ -155,10 +163,17 @@ internal class BackgroundProximityRuntime0680(
     }
 
     fun dismiss(targetId: String?) {
-        targetId?.takeIf(String::isNotBlank)?.let(engine::dismissUntilExit)
-        activeVisual = null
-        ProximityAlertProjection0685.clearVisual(targetId)
-        notificationManager.cancel(ALERT_NOTIFICATION_ID)
+        val normalizedTarget0686 = targetId?.takeIf(String::isNotBlank)
+        normalizedTarget0686?.let(engine::dismissUntilExit)
+        if (normalizedTarget0686 == null || passedDismissTargetId0686 == normalizedTarget0686) {
+            cancelPassedAutoDismiss0686()
+        }
+        val activeTarget0686 = activeVisual?.targetId
+        ProximityAlertProjection0685.clearVisual(normalizedTarget0686)
+        if (normalizedTarget0686 == null || activeTarget0686 == null || activeTarget0686 == normalizedTarget0686) {
+            activeVisual = null
+            notificationManager.cancel(ALERT_NOTIFICATION_ID)
+        }
     }
 
     fun onLocation(location: Location) {
@@ -184,8 +199,11 @@ internal class BackgroundProximityRuntime0680(
             altitudeMeters = location.altitude.takeIf { location.hasAltitude() },
         )
         ProximityAlertProjection0685.publishFix(fix)
-        val radius = currentSettings.proximityAlertDistanceMeters.coerceIn(200, 1000).toDouble() + 220.0
-        val nearby = spatialIndex.query(currentRadars, fix.coordinate, radius).radars
+        val nearby = spatialIndex.query(
+            source = currentRadars,
+            center = fix.coordinate,
+            radiusMeters = RadarSafetyPolicy0686.PREARM_RADIUS_METERS,
+        ).radars
         engine.check(
             alerts = alerts,
             radars = nearby,
@@ -198,11 +216,21 @@ internal class BackgroundProximityRuntime0680(
                     return@check
                 }
                 activeVisual = visual
+                val popupTimeout0686 = if (visual.shouldClose) {
+                    RadarSafetyPolicy0686.PASSED_AUTO_CLOSE_MILLIS
+                } else {
+                    ProximityAlertProjection0685.popupTimeoutMillis(currentSettings)
+                }
                 ProximityAlertProjection0685.publishVisual(
                     visual = visual,
                     fix = fix,
-                    popupTimeoutMillis = ProximityAlertProjection0685.popupTimeoutMillis(currentSettings),
+                    popupTimeoutMillis = popupTimeout0686,
                 )
+                if (visual.shouldClose) {
+                    schedulePassedAutoDismiss0686(visual.targetId)
+                } else if (passedDismissTargetId0686 != null && passedDismissTargetId0686 != visual.targetId) {
+                    cancelPassedAutoDismiss0686()
+                }
                 showAlertNotification(visual)
             },
             onDiagnostic = { diagnostic ->
@@ -213,6 +241,31 @@ internal class BackgroundProximityRuntime0680(
                 )
             },
         )
+    }
+
+    private fun schedulePassedAutoDismiss0686(targetId: String) {
+        if (passedDismissTargetId0686 == targetId && passedDismissJob0686?.isActive == true) return
+        cancelPassedAutoDismiss0686()
+        passedDismissTargetId0686 = targetId
+        val scope0686 = runtimeScope0686 ?: return
+        passedDismissJob0686 = scope0686.launch {
+            delay(RadarSafetyPolicy0686.PASSED_AUTO_CLOSE_MILLIS)
+            if (passedDismissTargetId0686 != targetId) return@launch
+            passedDismissTargetId0686 = null
+            passedDismissJob0686 = null
+            engine.dismissUntilExit(targetId)
+            if (activeVisual?.targetId == targetId) {
+                activeVisual = null
+                ProximityAlertProjection0685.clearVisual(targetId)
+                notificationManager.cancel(ALERT_NOTIFICATION_ID)
+            }
+        }
+    }
+
+    private fun cancelPassedAutoDismiss0686() {
+        passedDismissJob0686?.cancel()
+        passedDismissJob0686 = null
+        passedDismissTargetId0686 = null
     }
 
     private fun showAlertNotification(visual: DirectionalAlertVisual) {
