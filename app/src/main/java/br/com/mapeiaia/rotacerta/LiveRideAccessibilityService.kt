@@ -247,6 +247,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private lateinit var parser: RideTextParser
     private lateinit var decisionEngine: DecisionEngine
     private lateinit var bubblePrefs: SharedPreferences
+    private lateinit var farolPaidAiGate0695: FarolPaidAiGate0695
     private lateinit var speechEngine: LiveSpeechEngine
     private lateinit var speechOutputStore0186: SpeechOutputPreferenceStore0186
     private lateinit var proximityAlertEngine: ProximityAlertEngine
@@ -344,6 +345,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         decisionEngine = DecisionEngine()
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         bubblePrefs = getSharedPreferences(BUBBLE_PREFS, Context.MODE_PRIVATE)
+        farolPaidAiGate0695 = FarolPaidAiGate0695.create(applicationContext)
         ShortcutGridPolicy0173.clearLegacyPreferences(applicationContext)
         shortcutGridStore0179 = ShortcutGridPreferenceStore0179(applicationContext)
         keepScreenAwakeStore0688 = KeepScreenAwakePreferenceStore0688(applicationContext)
@@ -793,11 +795,16 @@ class LiveRideAccessibilityService : AccessibilityService() {
             packageName = resolvedPackage,
             rawText = immediateTextChecklist13,
         )
-        if (cardEvidence0185.rejectedFeed) {
+        val addressFirst0695 = FarolAddressFirst0695.evaluate(
+            packageName = resolvedPackage,
+            rawText = immediateTextChecklist13,
+            rejectedByLayoutGate = cardEvidence0185.rejectedFeed,
+        )
+        if (cardEvidence0185.rejectedFeed && !addressFirst0695.allowPipeline) {
             UnifiedDebugEventStore.record(
                 "BUBBLE_UNCONFIRMED_CARD_REJECTED_0185",
                 resolvedPackage,
-                "motivo=${cardEvidence0185.reason}; tamanho=${immediateTextChecklist13.length}; hash=${FarolUnifiedVisual0168.semanticHash(immediateTextChecklist13)}; signatureGate=false; localOcrFallback=true",
+                "motivo=${cardEvidence0185.reason}; addressFirst=${addressFirst0695.reason}; addresses=${addressFirst0695.uniqueAddressCount}; tamanho=${immediateTextChecklist13.length}; hash=${FarolUnifiedVisual0168.semanticHash(immediateTextChecklist13)}; signatureGate=false; localOcrFallback=true",
             )
             lastImmediateScreenPackageChecklist13 = resolvedPackage
             lastImmediateScreenFingerprintChecklist13 = FarolUnifiedVisual0168.semanticHash(immediateTextChecklist13)
@@ -808,7 +815,18 @@ class LiveRideAccessibilityService : AccessibilityService() {
             scheduleOfflineAiAdmission642(resolvedPackage, "semantic_card_evidence_miss_643")
             return
         }
-        val immediateAnalysisText0185 = cardEvidence0185.analysisText
+        if (cardEvidence0185.rejectedFeed) {
+            UnifiedDebugEventStore.record(
+                "BUBBLE_ADDRESS_FIRST_SECOND_CHANCE_0695",
+                resolvedPackage,
+                "reason=${addressFirst0695.reason}; addresses=${addressFirst0695.uniqueAddressCount}; downstreamGatesRetained=true",
+            )
+        }
+        val immediateAnalysisText0185 = if (cardEvidence0185.rejectedFeed) {
+            addressFirst0695.analysisText
+        } else {
+            cardEvidence0185.analysisText
+        }
         val activeRootWindowId0166 = rootHandle0187.windowId
         val stableWindowId151 = FarolSelectedAppInputPolicy0166.resolveStableWindowId(
             eventPackageName = if (visualAuthorityOverridesEventStage16) resolvedPackage else eventPackage,
@@ -4798,6 +4816,181 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
     }
 
+    private fun schedulePaidAiAddressFallback0695(
+        packageName0695: String,
+        rawText0695: String,
+        windowId0695: Int,
+        ocrBlocks0695: List<OcrTextBlock0188> = emptyList(),
+        reason0695: String,
+    ) {
+        if (!::farolPaidAiGate0695.isInitialized) return
+        if (rawText0695.isBlank() || rawText0695.contains(FarolPaidAiGate0695.RESULT_MARKER)) return
+        val normalizedPackage0695 = normalizePackageName(packageName0695) ?: return
+        if (normalizedPackage0695 !in SelectedRideAppStore.read(applicationContext)) return
+
+        when (val start0695 = farolPaidAiGate0695.start(normalizedPackage0695, rawText0695)) {
+            is FarolPaidAiGate0695.Start.Suppressed -> {
+                FarolFlightRecorder0163.record(
+                    stage = "S695_PAID_AI_SUPPRESSED",
+                    packageName = normalizedPackage0695,
+                    details = "reason=${start0695.reason}; key=${start0695.key.take(16)}; trigger=$reason0695",
+                )
+            }
+            is FarolPaidAiGate0695.Start.Cached -> {
+                FarolFlightRecorder0163.record(
+                    stage = "S695_PAID_AI_CACHE_HIT",
+                    packageName = normalizedPackage0695,
+                    details = "key=${start0695.key.take(16)}; confidence=${start0695.confidence}; trigger=$reason0695; paidCall=false",
+                )
+                scope.launch {
+                    injectPaidAiAddress0695(
+                        packageName0695 = normalizedPackage0695,
+                        address0695 = start0695.address,
+                        confidence0695 = start0695.confidence,
+                        rawText0695 = rawText0695,
+                        windowId0695 = windowId0695,
+                        ocrBlocks0695 = ocrBlocks0695,
+                        source0695 = "persistent_cache",
+                    )
+                }
+            }
+            is FarolPaidAiGate0695.Start.Network -> {
+                FarolFlightRecorder0163.record(
+                    stage = "S695_PAID_AI_REQUESTED",
+                    packageName = normalizedPackage0695,
+                    details = "key=${start0695.ticket.key.take(16)}; trigger=$reason0695; localStagesExhausted=true",
+                )
+                scope.launch {
+                    val online0695 = runCatching {
+                        br.com.mapeiaia.rotacerta.trips.TripStore(applicationContext).onlineSettings()
+                    }.getOrNull()
+                    if (online0695 == null || !online0695.configured) {
+                        farolPaidAiGate0695.failure(start0695.ticket)
+                        FarolFlightRecorder0163.record(
+                            stage = "S695_PAID_AI_UNAVAILABLE",
+                            packageName = normalizedPackage0695,
+                            details = "reason=driver_backend_not_configured; key=${start0695.ticket.key.take(16)}",
+                        )
+                        return@launch
+                    }
+
+                    val response0695 = runCatching {
+                        withContext(Dispatchers.IO) {
+                            br.com.mapeiaia.rotacerta.trips.TripRemoteApi(online0695).resolveFarolPaidAddress0695(
+                                br.com.mapeiaia.rotacerta.trips.FarolPaidAddressRequest0695(
+                                    text = start0695.ticket.sanitizedText,
+                                    packageName = normalizedPackage0695,
+                                    fingerprint = start0695.ticket.key,
+                                ),
+                            )
+                        }
+                    }.getOrElse { error0695 ->
+                        farolPaidAiGate0695.failure(start0695.ticket)
+                        FarolFlightRecorder0163.record(
+                            stage = "S695_PAID_AI_FAILED",
+                            packageName = normalizedPackage0695,
+                            details = "type=${error0695::class.java.simpleName}; key=${start0695.ticket.key.take(16)}; oneAttempt=true",
+                        )
+                        return@launch
+                    }
+
+                    if (!response0695.resolved) {
+                        farolPaidAiGate0695.failure(start0695.ticket)
+                        FarolFlightRecorder0163.record(
+                            stage = "S695_PAID_AI_UNRESOLVED",
+                            packageName = normalizedPackage0695,
+                            details = "confidence=${response0695.confidence}; reason=${response0695.reason.take(120)}; key=${start0695.ticket.key.take(16)}",
+                        )
+                        return@launch
+                    }
+
+                    farolPaidAiGate0695.success(
+                        start0695.ticket,
+                        response0695.address,
+                        response0695.confidence,
+                    )
+                    FarolFlightRecorder0163.record(
+                        stage = "S695_PAID_AI_RESOLVED",
+                        packageName = normalizedPackage0695,
+                        details = "confidence=${response0695.confidence}; provider=${response0695.provider}; model=${response0695.model}; key=${start0695.ticket.key.take(16)}; colorDecisionRemote=false",
+                    )
+                    injectPaidAiAddress0695(
+                        packageName0695 = normalizedPackage0695,
+                        address0695 = response0695.address,
+                        confidence0695 = response0695.confidence,
+                        rawText0695 = rawText0695,
+                        windowId0695 = windowId0695,
+                        ocrBlocks0695 = ocrBlocks0695,
+                        source0695 = "openai",
+                    )
+                }
+            }
+        }
+    }
+
+    private suspend fun injectPaidAiAddress0695(
+        packageName0695: String,
+        address0695: String,
+        confidence0695: Double,
+        rawText0695: String,
+        windowId0695: Int,
+        ocrBlocks0695: List<OcrTextBlock0188>,
+        source0695: String,
+    ) {
+        if (!serviceReady || !WorkModePolicy0162.isEnabled(currentSettings) || bubbleGestureActive) return
+        val currentRoot0695 = captureRootHandle0187() ?: return
+        if (normalizePackageName(currentRoot0695.packageName) != packageName0695) return
+
+        val effectiveWindow0695 = currentRoot0695.windowId ?: windowId0695
+        driverCardSessionGate0162.begin(packageName0695, effectiveWindow0695)
+        universalForegroundPackageName = packageName0695
+        activePackageName = packageName0695
+        lastExternalWindowPackageName = packageName0695
+
+        val baseBlocks0695 = if (ocrBlocks0695.isNotEmpty()) {
+            ocrBlocks0695.take(100)
+        } else {
+            listOf(
+                OcrTextBlock0188(
+                    id = "paid-ai-0695-context",
+                    text = rawText0695.take(1600),
+                    left = 0,
+                    top = 0,
+                    right = 1080,
+                    bottom = 900,
+                ),
+            )
+        }
+        val maxBottom0695 = baseBlocks0695.maxOfOrNull { it.bottom }?.coerceAtLeast(0) ?: 900
+        val maxRight0695 = baseBlocks0695.maxOfOrNull { it.right }?.coerceAtLeast(720) ?: 1080
+        val augmentedBlocks0695 = baseBlocks0695 + OcrTextBlock0188(
+            id = "paid-ai-0695-destination",
+            text = "Destino: ${address0695.trim()}",
+            left = 0,
+            top = maxBottom0695 + 8,
+            right = maxRight0695,
+            bottom = maxBottom0695 + 128,
+        )
+        val augmentedText0695 = buildString {
+            append(rawText0695.trim())
+            append("\nDestino: ").append(address0695.trim())
+            append("\n").append(FarolPaidAiGate0695.RESULT_MARKER)
+        }
+
+        FarolFlightRecorder0163.record(
+            stage = "S695_PAID_AI_REINJECTED",
+            packageName = packageName0695,
+            details = "source=$source0695; confidence=$confidence0695; window=$effectiveWindow0695; downstreamRouteAndColorLocal=true",
+        )
+        processRideText(
+            textRaw0168 = augmentedText0695,
+            source = TextSource.Ocr,
+            allowPopupCandidate = true,
+            packageHint152 = packageName0695,
+            ocrBlocks0188 = augmentedBlocks0695,
+        )
+    }
+
     private fun scheduleOfflineAiAdmission642(
         packageName642: String,
         triggerReason642: String,
@@ -4864,7 +5057,16 @@ class LiveRideAccessibilityService : AccessibilityService() {
                                     packageName = normalizedPackage642,
                                     details = "recognized=${recognition642.recognizedRideCard}; confidence=${recognition642.confidence}; addresses=${recognition642.addressCount}; anchors=${recognition642.rideAnchorCount}; visual=${recognition642.visualSimilarity ?: -1.0}; reason=${recognition642.reason}; destination=${recognition642.destination?.address.orEmpty()}; remoteAi=false",
                                 )
-                                if (!recognition642.recognizedRideCard || recognition642.destination == null) return@launch
+                                if (!recognition642.recognizedRideCard || recognition642.destination == null) {
+                                    schedulePaidAiAddressFallback0695(
+                                        packageName0695 = normalizedPackage642,
+                                        rawText0695 = structured642.text,
+                                        windowId0695 = rootWindow642,
+                                        ocrBlocks0695 = structured642.blocks,
+                                        reason0695 = "offline_ai_unresolved",
+                                    )
+                                    return@launch
+                                }
 
                                 val verifiedRoot642 = captureRootHandle0187() ?: return@launch
                                 if (normalizePackageName(verifiedRoot642.packageName) != normalizedPackage642) return@launch
@@ -5423,17 +5625,41 @@ class LiveRideAccessibilityService : AccessibilityService() {
             packageName = selectedPackageChecklist13,
             rawText = rawSnapshotText0185,
         )
-        if (cardEvidence0185.rejectedFeed) {
+        val addressFirst0695 = FarolAddressFirst0695.evaluate(
+            packageName = selectedPackageChecklist13,
+            rawText = rawSnapshotText0185,
+            rejectedByLayoutGate = cardEvidence0185.rejectedFeed,
+        )
+        if (cardEvidence0185.rejectedFeed && !addressFirst0695.allowPipeline) {
             UnifiedDebugEventStore.record(
                 "BUBBLE_UNCONFIRMED_CARD_REJECTED_0185",
                 selectedPackageChecklist13,
-                "fonte=${source.name}; motivo=${cardEvidence0185.reason}; hash=${FarolUnifiedVisual0168.semanticHash(rawSnapshotText0185)}",
+                "fonte=${source.name}; motivo=${cardEvidence0185.reason}; addressFirst=${addressFirst0695.reason}; addresses=${addressFirst0695.uniqueAddressCount}; hash=${FarolUnifiedVisual0168.semanticHash(rawSnapshotText0185)}",
             )
             hardClearUniversalTwoAddress(
                 reason = cardEvidence0185.reason,
                 keepWaitingYellow = true,
             )
+            if (
+                source == TextSource.Ocr &&
+                !rawSnapshotText0185.contains(FarolPaidAiGate0695.RESULT_MARKER)
+            ) {
+                schedulePaidAiAddressFallback0695(
+                    packageName0695 = selectedPackageChecklist13,
+                    rawText0695 = rawSnapshotText0185,
+                    windowId0695 = driverCardSessionGate0162.current()?.windowId ?: 0,
+                    ocrBlocks0695 = ocrBlocks0188,
+                    reason0695 = "layout_gate_rejected_after_local_ocr",
+                )
+            }
             return
+        }
+        if (cardEvidence0185.rejectedFeed) {
+            UnifiedDebugEventStore.record(
+                "BUBBLE_ADDRESS_FIRST_SECOND_CHANCE_0695",
+                selectedPackageChecklist13,
+                "source=${source.name}; reason=${addressFirst0695.reason}; addresses=${addressFirst0695.uniqueAddressCount}; downstreamGatesRetained=true",
+            )
         }
         val routeAuthorization0188 = authorizeRoute0188(
             packageName0188 = selectedPackageChecklist13,
@@ -5452,7 +5678,17 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 reason = "Aplicativo selecionado ativo, mas nenhum card atual com destino final confirmado.",
                 keepWaitingYellow = true,
             )
-            if (source == TextSource.Accessibility) scheduleScreenshotFallback127(selectedPackageChecklist13)
+            if (source == TextSource.Accessibility) {
+                scheduleScreenshotFallback127(selectedPackageChecklist13)
+            } else if (!rawSnapshotText0185.contains(FarolPaidAiGate0695.RESULT_MARKER)) {
+                schedulePaidAiAddressFallback0695(
+                    packageName0695 = selectedPackageChecklist13,
+                    rawText0695 = rawSnapshotText0185,
+                    windowId0695 = driverCardSessionGate0162.current()?.windowId ?: 0,
+                    ocrBlocks0695 = ocrBlocks0188,
+                    reason0695 = "route_gate_rejected_after_local_ocr",
+                )
+            }
             return
         }
         val snapshotTextChecklist13 = routeAuthorization0188.analysisText
