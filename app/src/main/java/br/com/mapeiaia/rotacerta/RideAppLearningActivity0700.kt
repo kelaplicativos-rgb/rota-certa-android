@@ -1,0 +1,320 @@
+package br.com.mapeiaia.rotacerta
+
+import android.os.Bundle
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
+import br.com.mapeiaia.rotacerta.trips.RideAppLearningRequest0700
+import br.com.mapeiaia.rotacerta.trips.TripRemoteApi
+import br.com.mapeiaia.rotacerta.trips.TripStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+data class RideAppLearningUiState0700(
+    val busy: Boolean = false,
+    val title: String = "Aprender aplicativo de corrida",
+    val message: String = "Anexe o APK completo ou escolha um aplicativo instalado. A análise local produz um dossiê reduzido; somente esse dossiê é enviado ao backend OpenAI.",
+    val dossier: RideApkDossier0700? = null,
+    val profile: RideReaderProfile0700? = null,
+)
+
+class RideAppLearningActivity0700 : ComponentActivity() {
+    private var state by mutableStateOf(RideAppLearningUiState0700())
+    private var profiles by mutableStateOf<List<RideReaderProfile0700>>(emptyList())
+    private var installedApps by mutableStateOf<List<Pair<String, String>>>(emptyList())
+    private var showInstalledPicker by mutableStateOf(false)
+    private val settingsRepository by lazy { SettingsRepository(applicationContext) }
+
+    private val apkPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) lifecycleScope.launch {
+            analyzeAndLearn { RideApkAnalyzer0700.analyzeUri(applicationContext, uri) }
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        refreshProfiles()
+        lifecycleScope.launch(Dispatchers.Default) {
+            val apps = RideApkAnalyzer0700.launchableApps(applicationContext)
+            withContext(Dispatchers.Main) { installedApps = apps }
+        }
+        setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                RideAppLearningScreen0700(
+                    state = state,
+                    profiles = profiles,
+                    installedApps = installedApps,
+                    showInstalledPicker = showInstalledPicker,
+                    onShowInstalled = { showInstalledPicker = true },
+                    onDismissInstalled = { showInstalledPicker = false },
+                    onInstalledSelected = { pkg ->
+                        showInstalledPicker = false
+                        lifecycleScope.launch {
+                            analyzeAndLearn { RideApkAnalyzer0700.analyzeInstalled(applicationContext, pkg) }
+                        }
+                    },
+                    onPickApk = {
+                        apkPicker.launch(
+                            arrayOf(
+                                "application/vnd.android.package-archive",
+                                "application/octet-stream",
+                                "*/*",
+                            ),
+                        )
+                    },
+                    onRemove = { packageName ->
+                        RideAppLearningStore0700.remove(applicationContext, packageName)
+                        refreshProfiles()
+                    },
+                    onClose = ::finish,
+                )
+            }
+        }
+    }
+
+    private suspend fun analyzeAndLearn(loader: suspend () -> RideApkDossier0700) {
+        if (state.busy) return
+        state = RideAppLearningUiState0700(
+            busy = true,
+            title = "Analisando APK",
+            message = "Extraindo package, versão, nomes de recursos e evidências semânticas localmente. O APK não é executado.",
+        )
+        try {
+            val dossier = withContext(Dispatchers.IO) { loader() }
+            state = RideAppLearningUiState0700(
+                busy = true,
+                title = "Dossiê criado",
+                message = "\${dossier.appLabel}\\n\${dossier.packageName}\\n\${dossier.relevantEntries.size} recursos • \${dossier.relevantStrings.size} evidências. Consultando OpenAI pelo backend seguro…",
+                dossier = dossier,
+            )
+
+            RideAppLearningStore0700.findByApkSha(applicationContext, dossier.apkSha256)?.let { cached ->
+                activateProfile(cached)
+                state = RideAppLearningUiState0700(
+                    busy = false,
+                    title = "Já aprendido",
+                    message = "Este SHA do APK já possui Reader Profile local. Nenhuma nova chamada OpenAI foi feita.",
+                    dossier = dossier,
+                    profile = cached,
+                )
+                return
+            }
+
+            val online = TripStore(applicationContext).onlineSettings()
+            check(online.configured) {
+                "Backend do motorista não configurado. Configure a Agenda/Viagem Certa antes de usar o aprendizado por IA."
+            }
+
+            val response = withContext(Dispatchers.IO) {
+                TripRemoteApi(online).learnRideApp0700(
+                    RideAppLearningRequest0700(
+                        packageName = dossier.packageName,
+                        versionName = dossier.versionName,
+                        versionCode = dossier.versionCode,
+                        apkSha256 = dossier.apkSha256,
+                        dossier = dossier.toModelDossier(),
+                    ),
+                )
+            }
+            check(response.learned) {
+                response.reason.ifBlank { "A IA não encontrou evidência suficiente para gerar um leitor seguro." }
+            }
+
+            val profile = RideReaderProfile0700(
+                packageName = dossier.packageName,
+                versionName = dossier.versionName,
+                versionCode = dossier.versionCode,
+                apkSha256 = dossier.apkSha256.lowercase(),
+                profileVersion = response.profileVersion.coerceAtLeast(1),
+                confidence = response.confidence.coerceIn(0.0, 1.0),
+                pickupLabels = response.pickupLabels,
+                destinationLabels = response.destinationLabels,
+                fareLabels = response.fareLabels,
+                distanceLabels = response.distanceLabels,
+                rideAnchors = response.rideAnchors,
+                actionLabels = response.actionLabels,
+                resourceHints = response.resourceHints,
+                ignoreLabels = response.ignoreLabels,
+                provider = response.provider,
+                model = response.model,
+                reason = response.reason,
+                learnedAtMillis = System.currentTimeMillis(),
+            )
+            RideAppLearningStore0700.save(applicationContext, profile)
+            activateProfile(profile)
+            state = RideAppLearningUiState0700(
+                busy = false,
+                title = "Aplicativo aprendido",
+                message = "\${dossier.appLabel} agora possui um Reader Profile local. Próximos cards são interpretados localmente; OpenAI não é chamada por corrida.",
+                dossier = dossier,
+                profile = profile,
+            )
+            refreshProfiles()
+            Toast.makeText(applicationContext, "Aplicativo aprendido e autorizado no FAROL.", Toast.LENGTH_LONG).show()
+        } catch (error: Throwable) {
+            state = state.copy(
+                busy = false,
+                title = "Aprendizado não concluído",
+                message = error.message ?: error::class.java.simpleName,
+            )
+        }
+    }
+
+    private suspend fun activateProfile(profile: RideReaderProfile0700) {
+        SelectedRideAppStore.add(applicationContext, profile.packageName)
+        val selected = SelectedRideAppStore.read(applicationContext)
+        val current = settingsRepository.settings.first()
+        settingsRepository.saveSettings(
+            current.copy(
+                restrictToSelectedRideApps = true,
+                extraMonitoredPackages = selected.sorted().joinToString(","),
+            ),
+        )
+    }
+
+    private fun refreshProfiles() {
+        profiles = RideAppLearningStore0700.all(applicationContext)
+    }
+}
+
+@Composable
+private fun RideAppLearningScreen0700(
+    state: RideAppLearningUiState0700,
+    profiles: List<RideReaderProfile0700>,
+    installedApps: List<Pair<String, String>>,
+    showInstalledPicker: Boolean,
+    onShowInstalled: () -> Unit,
+    onDismissInstalled: () -> Unit,
+    onInstalledSelected: (String) -> Unit,
+    onPickApk: () -> Unit,
+    onRemove: (String) -> Unit,
+    onClose: () -> Unit,
+) {
+    if (showInstalledPicker) {
+        AlertDialog(
+            onDismissRequest = onDismissInstalled,
+            title = { Text("Escolha o aplicativo") },
+            text = {
+                LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                    items(installedApps, key = { it.second }) { (label, pkg) ->
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { onInstalledSelected(pkg) }
+                                .padding(vertical = 10.dp),
+                        ) {
+                            Text(label, fontWeight = FontWeight.Bold)
+                            Text(pkg, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = onDismissInstalled) { Text("Cancelar") } },
+        )
+    }
+
+    Column(
+        Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("Aprender aplicativo", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            OutlinedButton(onClick = onClose) { Text("Fechar") }
+        }
+        Text(
+            "A IA ensina uma vez; o Reader Profile resultante executa localmente e nunca contém código executável.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Button(onClick = onPickApk, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
+            Text("Anexar APK completo")
+        }
+        OutlinedButton(
+            onClick = onShowInstalled,
+            enabled = !state.busy && installedApps.isNotEmpty(),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Analisar aplicativo instalado")
+        }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(state.title, fontWeight = FontWeight.Bold)
+                Text(state.message, style = MaterialTheme.typography.bodySmall)
+                if (state.busy) CircularProgressIndicator()
+                state.dossier?.let {
+                    Text(
+                        "SHA-256: \${it.apkSha256.take(16)}… • v\${it.versionName} (\${it.versionCode})",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                state.profile?.let {
+                    Text(
+                        "Confiança: \${(it.confidence * 100).toInt()}% • destino: \${it.destinationLabels.take(4).joinToString()}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+        Text("Readers aprendidos: \${profiles.size}", fontWeight = FontWeight.Bold)
+        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(profiles, key = { it.packageName }) { profile ->
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(profile.packageName, fontWeight = FontWeight.Bold)
+                        Text(
+                            "v\${profile.versionName} (\${profile.versionCode}) • confiança \${(profile.confidence * 100).toInt()}%",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Text(
+                            "Destino: \${profile.destinationLabels.take(4).joinToString().ifBlank { "por resource hints" }}",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Text(
+                            "Modelo: \${profile.model.ifBlank { profile.provider }}",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        OutlinedButton(
+                            onClick = { onRemove(profile.packageName) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Remover aprendizado")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
