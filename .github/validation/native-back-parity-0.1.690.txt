@@ -1,0 +1,12 @@
+CHATGPT_NATIVE_BACK_PARITY_0690
+branch=agent/chatgpt-back-parity-0.1.690
+base=f60ed8059d83f74ee9b95e8d22adc5b514b8d8af
+target=Samsung SM-S911B / Android 16
+back_icon=Icons.AutoMirrored.Filled.ArrowBack
+touch_target_dp=48
+icon_size_dp=24
+accessibility_label=Voltar
+text_arrow_unicode=removed
+one_stage_back=shared_history
+physical_back=shared_history
+root_physical_exit=blocked
