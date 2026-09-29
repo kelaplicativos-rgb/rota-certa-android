@@ -68,7 +68,58 @@ jobs:
           node --check trip-platform/public/tracking.js
           node --test             trip-platform/functions/test/live-tracking-0668.test.js             trip-platform/functions/test/passenger-live-only-0691.test.js | tee /tmp/node-0691-focused-tests.log
           npm --prefix trip-platform/functions install --no-audit --no-fund
-          npm --prefix trip-platform/functions test 2>&1 | tee /tmp/node-0691-full-tests.log
+
+      - name: Compare complete backend test failures with exact 0.1.690 base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add --detach /tmp/rc-0690-node "$BASE_SHA"
+          npm --prefix /tmp/rc-0690-node/trip-platform/functions install --no-audit --no-fund
+
+          set +e
+          npm --prefix /tmp/rc-0690-node/trip-platform/functions test > /tmp/node-0690-full-tests.log 2>&1
+          BASE_EXIT=$?
+          npm --prefix trip-platform/functions test > /tmp/node-0691-full-tests.log 2>&1
+          HEAD_EXIT=$?
+          set -e
+
+          python3 - <<'PY'
+          import pathlib
+          import re
+
+          pattern = re.compile(r"^not ok\s+\d+\s+-\s+(.+?)\s*$")
+
+          def failures(path):
+              result = set()
+              for line in pathlib.Path(path).read_text(errors="replace").splitlines():
+                  match = pattern.match(line.strip())
+                  if match:
+                      result.add(match.group(1))
+              return result
+
+          base = failures("/tmp/node-0690-full-tests.log")
+          head = failures("/tmp/node-0691-full-tests.log")
+          new = sorted(head - base)
+          fixed = sorted(base - head)
+
+          pathlib.Path("/tmp/node-0690-failures.txt").write_text("\n".join(sorted(base)) + ("\n" if base else ""))
+          pathlib.Path("/tmp/node-0691-failures.txt").write_text("\n".join(sorted(head)) + ("\n" if head else ""))
+          pathlib.Path("/tmp/node-0691-new-failures.txt").write_text("\n".join(new) + ("\n" if new else ""))
+          pathlib.Path("/tmp/node-0691-fixed-baseline-failures.txt").write_text("\n".join(fixed) + ("\n" if fixed else ""))
+
+          print(f"base_failures={len(base)}")
+          print(f"head_failures={len(head)}")
+          print(f"new_failures={len(new)}")
+          if new:
+              print("\n".join(new))
+              raise SystemExit(1)
+          PY
+
+          {
+            echo "base_node_exit=$BASE_EXIT"
+            echo "head_node_exit=$HEAD_EXIT"
+            echo "new_failure_count=$(wc -l < /tmp/node-0691-new-failures.txt)"
+          } | tee /tmp/node-0691-regression-summary.txt
 
       - uses: actions/setup-java@v4
         with:
@@ -264,7 +315,13 @@ jobs:
             ${{ steps.proof.outputs.apk }}
             passenger-live-map-0691-proof.txt
             /tmp/node-0691-focused-tests.log
+            /tmp/node-0690-full-tests.log
             /tmp/node-0691-full-tests.log
+            /tmp/node-0691-regression-summary.txt
+            /tmp/node-0690-failures.txt
+            /tmp/node-0691-failures.txt
+            /tmp/node-0691-new-failures.txt
+            /tmp/node-0691-fixed-baseline-failures.txt
             /tmp/android-0691-focused-tests.log
             /tmp/android-0690-full-tests.log
             /tmp/android-0691-full-tests.log
