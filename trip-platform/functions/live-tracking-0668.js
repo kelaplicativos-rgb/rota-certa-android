@@ -417,21 +417,52 @@ function createLiveTracking0668({ db, requireDriver }) {
       familyUsername0681,
       updatedAtMillis: now,
     }, { merge: true });
+    let familyPinConfirmed0693 = false;
+    let familyPinRevision0693 = 0;
     if (scope === "FAMILY") {
-      await db.collection("tripTrackingFamilyAliases").doc(familyAliasDocId0681(familyUsername0681)).set({
+      const aliasRef0693 = db.collection("tripTrackingFamilyAliases").doc(familyAliasDocId0681(familyUsername0681));
+      const aliasBefore0693 = await aliasRef0693.get();
+      const previousAlias0693 = aliasBefore0693.exists ? aliasBefore0693.data() : {};
+      if (aliasBefore0693.exists && previousAlias0693.driverKey && previousAlias0693.driverKey !== identity.driverKey) {
+        return trackingFail0668(res, 409, "tracking_family_owner_mismatch", "Endereço familiar pertence a outro motorista.");
+      }
+      const newPinHash0693 = familyPinHash0681(familyUsername0681, familyPin0681);
+      const oldPinHash0693 = cleanText0668(previousAlias0693.pinHash, 128);
+      const pinChanged0693 = Boolean(oldPinHash0693 && oldPinHash0693 !== newPinHash0693);
+      familyPinRevision0693 = Math.max(0, Number(previousAlias0693.pinRevision0693 || 0)) + (pinChanged0693 ? 1 : 0);
+
+      if (pinChanged0693) {
+        const [accessSessions0693, authAttempts0693] = await Promise.all([
+          db.collection("tripTrackingFamilyAccessSessions").where("username", "==", familyUsername0681).limit(400).get(),
+          db.collection("tripTrackingFamilyAuthAttempts").where("username", "==", familyUsername0681).limit(80).get(),
+        ]);
+        const revokeBatch0693 = db.batch();
+        accessSessions0693.docs.forEach((doc) => revokeBatch0693.delete(doc.ref));
+        authAttempts0693.docs.forEach((doc) => revokeBatch0693.delete(doc.ref));
+        await revokeBatch0693.commit();
+      }
+
+      await aliasRef0693.set({
         driverKey: identity.driverKey,
         driverUsername: familyUsername0681,
         shareDocId: shareRef.id,
         active: true,
-        pinHash: familyPinHash0681(familyUsername0681, familyPin0681),
-        createdAtMillis: existing.exists ? Number(existing.data().createdAtMillis || now) : now,
+        pinHash: newPinHash0693,
+        pinRevision0693: familyPinRevision0693,
+        pinUpdatedAtMillis0693: now,
+        createdAtMillis: aliasBefore0693.exists
+          ? Number(previousAlias0693.createdAtMillis || now)
+          : now,
         updatedAtMillis: now,
       }, { merge: true });
+      familyPinConfirmed0693 = true;
     }
     return trackingJson0668(res, 200, {
       ok: true,
       acceptedThroughMillis: 0,
       familyUsername: scope === "FAMILY" ? familyUsername0681 : "",
+      familyPinConfirmed: familyPinConfirmed0693,
+      familyPinRevision: familyPinRevision0693,
     });
   }
 
