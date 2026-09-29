@@ -10,6 +10,7 @@ const {
   publicTrackerTelemetry0670,
   passengerDistanceToDestinationMeters0669,
   shouldClosePassengerShare0668,
+  passengerArrivalProgress0691,
   trackingShareDocId0668,
   trackingShareExpired0680,
   normalizeFamilyUsername0681,
@@ -37,31 +38,96 @@ test("passenger projection never exposes points from before share creation", () 
   assert.deepEqual(family.map((p) => p.recordedAtMillis), [1000, 2000, 3000]);
 });
 
-test("passenger share closes only near destination after minimum active window", () => {
+test("passenger arrival needs consecutive low-speed fixes before closing", () => {
   const now = 2_000_000;
-  const share = {
+  let share = {
     scope:"PASSENGER",
     active:true,
-    createdAtMillis:now - 11 * 60 * 1000,
+    createdAtMillis:now - 2 * 60 * 1000,
     destinationLatitude:-23.5505,
     destinationLongitude:-46.6333,
   };
-  assert.equal(shouldClosePassengerShare0668(share, {
+
+  const first = passengerArrivalProgress0691(share, {
+    latitude:-23.5506,
+    longitude:-46.6332,
+    recordedAtMillis:now - 10_000,
+    accuracyMeters:5,
+    speedMetersPerSecond:3,
+  }, now);
+  assert.equal(first.shouldClose, false);
+  assert.equal(first.arrivalHitCount0691, 1);
+  share = { ...share, ...first };
+
+  const second = passengerArrivalProgress0691(share, {
+    latitude:-23.5506,
+    longitude:-46.6332,
+    recordedAtMillis:now - 5_000,
+    accuracyMeters:5,
+    speedMetersPerSecond:2,
+  }, now);
+  assert.equal(second.shouldClose, false);
+  assert.equal(second.arrivalHitCount0691, 2);
+  share = { ...share, ...second };
+
+  const third = passengerArrivalProgress0691(share, {
     latitude:-23.5506,
     longitude:-46.6332,
     recordedAtMillis:now,
-  }, now), true);
-  assert.equal(shouldClosePassengerShare0668({ ...share, createdAtMillis:now - 2 * 60 * 1000 }, {
-    latitude:-23.5506,
-    longitude:-46.6332,
-    recordedAtMillis:now,
-  }, now), false);
-  assert.equal(shouldClosePassengerShare0668(share, {
+    accuracyMeters:5,
+    speedMetersPerSecond:1,
+  }, now);
+  assert.equal(third.arrivalHitCount0691, 3);
+  assert.equal(third.shouldClose, true);
+});
+
+test("passenger arrival does not close while merely passing destination at road speed", () => {
+  const now = 2_500_000;
+  let share = {
+    scope:"PASSENGER",
+    active:true,
+    createdAtMillis:now - 2 * 60 * 1000,
+    destinationLatitude:-23.5505,
+    destinationLongitude:-46.6333,
+  };
+  for (const offset of [10_000, 5_000, 0]) {
+    const progress = passengerArrivalProgress0691(share, {
+      latitude:-23.5506,
+      longitude:-46.6332,
+      recordedAtMillis:now - offset,
+      accuracyMeters:6,
+      speedMetersPerSecond:22,
+    }, now);
+    share = { ...share, ...progress };
+  }
+  assert.equal(share.arrivalHitCount0691, 3);
+  assert.equal(share.shouldClose, false);
+});
+
+test("passenger arrival resets after leaving destination radius", () => {
+  const now = 2_800_000;
+  const share = {
+    scope:"PASSENGER",
+    active:true,
+    createdAtMillis:now - 2 * 60 * 1000,
+    destinationLatitude:-23.5505,
+    destinationLongitude:-46.6333,
+    arrivalHitCount0691:2,
+    arrivalCandidateSinceMillis0691:now - 10_000,
+    arrivalLastHitAtMillis0691:now - 5_000,
+  };
+  const progress = passengerArrivalProgress0691(share, {
     latitude:-23.5000,
     longitude:-46.6000,
     recordedAtMillis:now,
-  }, now), false);
+    accuracyMeters:5,
+    speedMetersPerSecond:2,
+  }, now);
+  assert.equal(progress.shouldClose, false);
+  assert.equal(progress.arrivalHitCount0691, 0);
+  assert.equal(progress.arrivalCandidateSinceMillis0691, 0);
 });
+
 
 test("share id stores only hash and distance is physically plausible", () => {
   const token = "abcdefghijklmnopqrstuv0123456789ABCDEFG";
@@ -107,16 +173,22 @@ test("passenger auto-close ignores a queued GPS point from before link creation"
   const share = {
     scope:"PASSENGER",
     active:true,
-    createdAtMillis:now - 11 * 60 * 1000,
+    createdAtMillis:now - 2 * 60 * 1000,
     destinationLatitude:-23.5505,
     destinationLongitude:-46.6333,
+    arrivalHitCount0691:2,
+    arrivalCandidateSinceMillis0691:now - 10_000,
+    arrivalLastHitAtMillis0691:now - 5_000,
   };
   assert.equal(shouldClosePassengerShare0668(share, {
     latitude:-23.5506,
     longitude:-46.6332,
     recordedAtMillis:share.createdAtMillis - 1,
+    accuracyMeters:5,
+    speedMetersPerSecond:0,
   }, now), false);
 });
+
 
 
 test("tracker heartbeat stays connected even when GPS position does not move", () => {
