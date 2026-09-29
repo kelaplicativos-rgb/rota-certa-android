@@ -310,6 +310,19 @@ jobs:
           PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
           gcloud functions deploy tripApi             --gen2             --project="$PROJECT"             --region=southamerica-east1             --runtime=nodejs20             --source=trip-platform/functions             --entry-point=tripApi             --trigger-http             --allow-unauthenticated             --clear-secrets             --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$ROTA_CERTA_GIT_SHA"             --quiet
 
+      - name: Stage exact APK for direct install
+        id: hosted_apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          HOSTED_NAME="rota-certa-0.1.694-5985-$SHORT_SHA.apk"
+          mkdir -p trip-platform/public/downloads
+          cp "${{ steps.proof.outputs.apk }}" "trip-platform/public/downloads/$HOSTED_NAME"
+          test "$(sha256sum "trip-platform/public/downloads/$HOSTED_NAME" | awk '{print $1}')" = "${{ steps.proof.outputs.apk_sha256 }}"
+          echo "name=$HOSTED_NAME" >> "$GITHUB_OUTPUT"
+          echo "url=https://rota-certa-7ccc8.web.app/downloads/$HOSTED_NAME" >> "$GITHUB_OUTPUT"
+
       - name: Deploy exact 0.1.694 tracking page SHA
         shell: bash
         run: |
@@ -342,6 +355,9 @@ jobs:
           grep -Fq 'PERMANENT_FAMILY_GPS_0681' /tmp/live-tracking-0694.js
           grep -Fq 'Passageiro chegou ao destino' /tmp/live-tracking-0694.js
           grep -Fq 'routePoints0670 = []' /tmp/live-tracking-0694.js
+
+          curl --retry 10 --retry-delay 2 --fail --silent --show-error "${{ steps.hosted_apk.outputs.url }}" -o /tmp/live-rota-certa-0694.apk
+          test "$(sha256sum /tmp/live-rota-certa-0694.apk | awk '{print $1}')" = "${{ steps.proof.outputs.apk_sha256 }}"
 
           curl --retry 10 --retry-delay 2 --fail --silent --show-error "$BASE/ezequiel/gps" | tee /tmp/live-family-page-0694.html
           grep -Fq 'Autorizar acompanhamento familiar' /tmp/live-family-page-0694.html
@@ -379,6 +395,7 @@ jobs:
             /tmp/live-tracking-0694.html
             /tmp/live-tracking-0694.js
             /tmp/live-family-page-0694.html
+            /tmp/live-rota-certa-0694.apk
             app/build/test-results/testDebugUnitTest/
           if-no-files-found: error
           retention-days: 30
