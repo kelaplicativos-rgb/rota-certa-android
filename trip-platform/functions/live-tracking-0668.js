@@ -431,14 +431,20 @@ function createLiveTracking0668({ db, requireDriver }) {
       const pinChanged0693 = Boolean(oldPinHash0693 && oldPinHash0693 !== newPinHash0693);
       familyPinRevision0693 = Math.max(0, Number(previousAlias0693.pinRevision0693 || 0)) + (pinChanged0693 ? 1 : 0);
 
-      if (pinChanged0693) {
-        const [accessSessions0693, authAttempts0693] = await Promise.all([
-          db.collection("tripTrackingFamilyAccessSessions").where("username", "==", familyUsername0681).limit(400).get(),
-          db.collection("tripTrackingFamilyAuthAttempts").where("username", "==", familyUsername0681).limit(80).get(),
-        ]);
+      const authAttempts0693 = await db.collection("tripTrackingFamilyAuthAttempts")
+        .where("username", "==", familyUsername0681)
+        .limit(80)
+        .get();
+      const accessSessions0693 = pinChanged0693
+        ? await db.collection("tripTrackingFamilyAccessSessions")
+            .where("username", "==", familyUsername0681)
+            .limit(400)
+            .get()
+        : null;
+      if (authAttempts0693.size > 0 || (accessSessions0693 && accessSessions0693.size > 0)) {
         const revokeBatch0693 = db.batch();
-        accessSessions0693.docs.forEach((doc) => revokeBatch0693.delete(doc.ref));
         authAttempts0693.docs.forEach((doc) => revokeBatch0693.delete(doc.ref));
+        if (accessSessions0693) accessSessions0693.docs.forEach((doc) => revokeBatch0693.delete(doc.ref));
         await revokeBatch0693.commit();
       }
 
