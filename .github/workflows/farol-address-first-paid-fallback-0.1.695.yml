@@ -1,0 +1,445 @@
+name: FAROL address-first + paid fallback 0.1.695 APK and server
+
+on:
+  push:
+    branches:
+      - 'agent/farol-address-first-paid-fallback-0.1.695'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: farol-address-first-paid-fallback-0695-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-deploy-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: 'agent/farol-address-first-paid-fallback-0.1.695'
+      BASE_SHA: '6e7f00096c37e0386cea36dd3164b47c91dd0958'
+      EXPECTED_VERSION_NAME: '0.1.695'
+      EXPECTED_VERSION_CODE: '5986'
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Prove exact 0.1.695 source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$ROTA_CERTA_GIT_SHA" = "$GITHUB_SHA"
+          grep -Fq 'val releaseVersionName = "0.1.695"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 5_986' app/build.gradle.kts
+          grep -Fq '"version": "0.1.695"' app/src/main/assets/release_history.json
+          grep -Fq 'PASSENGER_LIVE_ONLY_ARRIVAL_0691' app/src/main/java/br/com/mapeiaia/rotacerta/PassengerLiveTracking0691.kt
+          grep -Fq 'FAMILY_LIVE_FIRST_0692' app/src/main/java/br/com/mapeiaia/rotacerta/FamilyLiveFirst0692.kt
+          grep -Fq 'FAMILY_DRIVER_PIN_0693' app/src/main/java/br/com/mapeiaia/rotacerta/FamilyDriverPin0693.kt
+          grep -Fq 'FAMILY_DAILY_HISTORY_0694' app/src/main/java/br/com/mapeiaia/rotacerta/FamilyDailyHistory0694.kt
+          grep -Fq 'FAROL_ADDRESS_FIRST_0695' app/src/main/java/br/com/mapeiaia/rotacerta/FarolAddressFirst0695.kt
+          grep -Fq 'FAROL_PAID_AI_GATE_0695' app/src/main/java/br/com/mapeiaia/rotacerta/FarolPaidAiGate0695.kt
+          grep -Fq 'FAROL_PAID_AI_ADDRESS_FALLBACK_0695' trip-platform/functions/farol-paid-address-0695.js
+          grep -Fq '/v1/assistant/farol-address' trip-platform/functions/index.js
+          grep -Fq 'resolveFarolPaidAddress0695' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          grep -Fq 'setFamilyPin0693' app/src/main/java/br/com/mapeiaia/rotacerta/LiveTrackingShare0668.kt
+          grep -Fq 'Salvar código familiar' app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingActivity.kt
+          grep -Fq 'familyPinConfirmed0693' trip-platform/functions/live-tracking-0668.js
+          grep -Fq 'traceRequested0692' trip-platform/functions/live-tracking-0668.js
+          grep -Fq 'familyLiveFirst0692:true' trip-platform/functions/live-tracking-0668.js
+          grep -Fq 'FAMILY_DAILY_HISTORY_0694' trip-platform/functions/live-tracking-0668.js
+          grep -Fq 'tripTrackingFamilyHistoryDrivers' trip-platform/functions/live-tracking-0668.js
+          grep -Fq 'listPublicFamilyHistoryDays0694' trip-platform/functions/live-tracking-0668.js
+          grep -Fq 'getPublicFamilyHistoryDay0694' trip-platform/functions/live-tracking-0668.js
+          grep -Fq 'FAMILY_LIVE_FIRST_0692' trip-platform/public/tracking.js
+          grep -Fq 'id="historyToggle"' trip-platform/public/tracking.html
+          grep -Fq 'id="historyCalendar"' trip-platform/public/tracking.html
+          grep -Fq '🕘 Histórico' trip-platform/public/tracking.html
+          grep -Fq 'tracking.js?v=0694' trip-platform/public/tracking.html
+          grep -Fq 'FAMILY_DAILY_HISTORY_0694' trip-platform/public/tracking.js
+          grep -Fq 'splitHistorySegments0694' trip-platform/public/tracking.js
+          ! grep -Fq 'params.set("trace", "1")' trip-platform/public/tracking.js
+          grep -Fq 'pode ser encaminhado a um familiar de confiança' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'PASSENGER_DESTINATION_RADIUS_METERS_0691 = 140' trip-platform/functions/live-tracking-0668.js
+          grep -Fq 'PASSENGER_ARRIVAL_REQUIRED_HITS_0691 = 3' trip-platform/functions/live-tracking-0668.js
+          grep -Fq 'passengerArrivalProgress0691' trip-platform/functions/live-tracking-0668.js
+          grep -Fq 'mode:passengerLiveOnly0691 ? "LIVE_ONLY" : "LIVE_WITH_TRACE"' trip-platform/functions/live-tracking-0668.js
+          grep -Fq 'latestWins0691:true' trip-platform/functions/live-tracking-0668.js
+          grep -Fq 'PASSENGER_LIVE_ONLY_0691' trip-platform/public/tracking.js
+          grep -Fq 'PERMANENT_FAMILY_GPS_0681' trip-platform/public/tracking.js
+          grep -Fq 'id="centerVehicle"' trip-platform/public/tracking.html
+          grep -Fq 'Local de desembarque' trip-platform/public/tracking.html
+          git diff --check "$BASE_SHA"...HEAD
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate tracking backend and public page
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/functions/live-tracking-0668.js
+          node --check trip-platform/public/tracking.js
+          node --test             trip-platform/functions/test/live-tracking-0668.test.js             trip-platform/functions/test/passenger-live-only-0691.test.js             trip-platform/functions/test/family-live-first-0692.test.js             trip-platform/functions/test/family-driver-pin-0693.test.js             trip-platform/functions/test/family-daily-history-0694.test.js             trip-platform/functions/test/farol-paid-address-0695.test.js | tee /tmp/node-0694-focused-tests.log
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Compare complete backend test failures with exact 0.1.692 base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add --detach /tmp/rc-0690-node "$BASE_SHA"
+          npm --prefix /tmp/rc-0690-node/trip-platform/functions install --no-audit --no-fund
+
+          set +e
+          npm --prefix /tmp/rc-0690-node/trip-platform/functions test > /tmp/node-0690-full-tests.log 2>&1
+          BASE_EXIT=$?
+          npm --prefix trip-platform/functions test > /tmp/node-0691-full-tests.log 2>&1
+          HEAD_EXIT=$?
+          set -e
+
+          python3 - <<'PY'
+          import pathlib
+          import re
+
+          pattern = re.compile(r"^not ok\s+\d+\s+-\s+(.+?)\s*$")
+
+          def failures(path):
+              result = set()
+              for line in pathlib.Path(path).read_text(errors="replace").splitlines():
+                  match = pattern.match(line.strip())
+                  if match:
+                      result.add(match.group(1))
+              return result
+
+          base = failures("/tmp/node-0690-full-tests.log")
+          head = failures("/tmp/node-0691-full-tests.log")
+          new = sorted(head - base)
+          fixed = sorted(base - head)
+
+          pathlib.Path("/tmp/node-0690-failures.txt").write_text("\n".join(sorted(base)) + ("\n" if base else ""))
+          pathlib.Path("/tmp/node-0691-failures.txt").write_text("\n".join(sorted(head)) + ("\n" if head else ""))
+          pathlib.Path("/tmp/node-0691-new-failures.txt").write_text("\n".join(new) + ("\n" if new else ""))
+          pathlib.Path("/tmp/node-0691-fixed-baseline-failures.txt").write_text("\n".join(fixed) + ("\n" if fixed else ""))
+
+          print(f"base_failures={len(base)}")
+          print(f"head_failures={len(head)}")
+          print(f"new_failures={len(new)}")
+          if new:
+              print("\n".join(new))
+              raise SystemExit(1)
+          PY
+
+          {
+            echo "base_node_exit=$BASE_EXIT"
+            echo "head_node_exit=$HEAD_EXIT"
+            echo "new_failure_count=$(wc -l < /tmp/node-0691-new-failures.txt)"
+          } | tee /tmp/node-0691-regression-summary.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run passenger tracking and preserved feature tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.FamilyDailyHistory0694Test'             --tests 'br.com.mapeiaia.rotacerta.FarolAddressFirst0695Test'             --tests 'br.com.mapeiaia.rotacerta.FarolPaidAiGate0695Test'             --tests 'br.com.mapeiaia.rotacerta.FamilyDriverPin0693Test'             --tests 'br.com.mapeiaia.rotacerta.FamilyLiveFirst0692Test'             --tests 'br.com.mapeiaia.rotacerta.PassengerLiveTracking0691Test'             --tests 'br.com.mapeiaia.rotacerta.LiveTrackingShare0668Test'             --tests 'br.com.mapeiaia.rotacerta.PermanentFamilyGps0681Test'             --tests 'br.com.mapeiaia.rotacerta.PersistentLocationCore0680Test'             --tests 'br.com.mapeiaia.rotacerta.trips.ChatGptBackParity0690Test'             --tests 'br.com.mapeiaia.rotacerta.trips.GlobalBackNavigation0689Test'             --tests 'br.com.mapeiaia.rotacerta.trips.GlobalBackNavigation0689IntegrationTest'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeaderNavigation0396Test'             --tests 'br.com.mapeiaia.rotacerta.trips.UniversalTripSearch0687Test'             --tests 'br.com.mapeiaia.rotacerta.KeepScreenAwakeContract0688Test'             --tests 'br.com.mapeiaia.rotacerta.RadarSafetyPolicy0686Test'             --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0694-focused-tests.log
+
+      - name: Compare complete Android unit-test failures with exact 0.1.692 base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add --detach /tmp/rc-0690 "$BASE_SHA"
+          chmod +x /tmp/rc-0690/gradlew
+
+          set +e
+          (
+            cd /tmp/rc-0690
+            ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace
+          ) > /tmp/android-0690-full-tests.log 2>&1
+          BASE_EXIT=$?
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace > /tmp/android-0691-full-tests.log 2>&1
+          HEAD_EXIT=$?
+          set -e
+
+          python3 - <<'PY'
+          import pathlib
+          import xml.etree.ElementTree as ET
+
+          def failures(root):
+              result = set()
+              d = pathlib.Path(root) / "app/build/test-results/testDebugUnitTest"
+              if not d.exists():
+                  return result
+              for f in d.glob("*.xml"):
+                  tree = ET.parse(f)
+                  for case in tree.getroot().iter("testcase"):
+                      if case.find("failure") is not None or case.find("error") is not None:
+                          result.add(f"{case.attrib.get('classname','')}::{case.attrib.get('name','')}")
+              return result
+
+          base = failures("/tmp/rc-0690")
+          head = failures(".")
+          new = sorted(head - base)
+          fixed = sorted(base - head)
+          pathlib.Path("/tmp/0690-failures.txt").write_text("\n".join(sorted(base)) + ("\n" if base else ""))
+          pathlib.Path("/tmp/0691-failures.txt").write_text("\n".join(sorted(head)) + ("\n" if head else ""))
+          pathlib.Path("/tmp/0691-new-failures.txt").write_text("\n".join(new) + ("\n" if new else ""))
+          pathlib.Path("/tmp/0691-fixed-baseline-failures.txt").write_text("\n".join(fixed) + ("\n" if fixed else ""))
+          print(f"base_failures={len(base)}")
+          print(f"head_failures={len(head)}")
+          print(f"new_failures={len(new)}")
+          if new:
+              print("\n".join(new))
+              raise SystemExit(1)
+          PY
+
+          {
+            echo "base_gradle_exit=$BASE_EXIT"
+            echo "head_gradle_exit=$HEAD_EXIT"
+            echo "new_failure_count=$(wc -l < /tmp/0691-new-failures.txt)"
+          } | tee /tmp/android-0691-regression-summary.txt
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$ROTA_CERTA_GIT_SHA" = "$GITHUB_SHA"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0694-assemble.log
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Prove APK identity signing and exact final SHA
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/android-0694-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/android-0694-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/android-0694-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/android-0694-apksigner.txt
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/android-0694-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0694-dex-strings.txt
+          require_dex() {
+            local marker="$1"
+            if ! grep -Fq "$marker" /tmp/android-0694-dex-strings.txt; then
+              echo "Missing required APK DEX marker: $marker" >&2
+              exit 1
+            fi
+            echo "DEX marker verified: $marker"
+          }
+          require_dex "$ROTA_CERTA_GIT_SHA"
+          require_dex 'PASSENGER_LIVE_ONLY_ARRIVAL_0691'
+          require_dex 'FAMILY_LIVE_FIRST_0692'
+          require_dex 'FAMILY_DRIVER_PIN_0693'
+          require_dex 'FAMILY_DAILY_HISTORY_0694'
+          require_dex 'FAROL_ADDRESS_FIRST_0695'
+          require_dex 'FAROL_PAID_AI_GATE_0695'
+          require_dex 'ONE_PAID_CALL_PER_CARD_FINGERPRINT_0695'
+          require_dex 'LIVE_TRACKING_POINTS_SYNCED_0668'
+          require_dex 'ENSURE_LOCATION_CORE_0681'
+          require_dex 'CHATGPT_NATIVE_BACK_PARITY_0690'
+          require_dex 'GLOBAL_FIXED_BACK_NAVIGATION_0689'
+          require_dex 'KEEP_SCREEN_AWAKE_TOGGLE_0688'
+          require_dex 'UNIVERSAL_SEARCH_ENGINE_0687'
+
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.695-5986-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.695"
+            echo "versionCode=5986"
+            echo "branch=agent/farol-address-first-paid-fallback-0.1.695"
+            echo "commit=$ROTA_CERTA_GIT_SHA"
+            echo "deviceTarget=Samsung SM-S911B / Android 16"
+            echo "passengerPublicMode=LIVE_ONLY"
+            echo "passengerPublicTrace=false"
+            echo "passengerLinkForwardable=true"
+            echo "arrivalRadiusMeters=140"
+            echo "arrivalRequiredFixes=3"
+            echo "arrivalServerEnforced=true"
+            echo "latestWins=TRANSACTIONAL"
+            echo "familyPinMode=DRIVER_DEFINED_FIXED"
+            echo "familyPinServerConfirmed=true"
+            echo "familyPinAutoRegenerate=false"
+            echo "familyPinOldAccessRevoked=true"
+            echo "familyAuthLockoutResetOnSave=true"
+            echo "familyDefaultMode=LIVE_FIRST"
+            echo "familyGpsCentered=true"
+            echo "familyTraceLoadedOnStartup=false"
+            echo "familySmartFollow=true"
+            echo "familyRecenterAvailable=true"
+            echo "familyHistoryLazyLoad=true"
+            echo "familyReturnToLive=true"
+            echo "familyDailyHistory=true"
+            echo "familyHistoryTimezone=America/Sao_Paulo"
+            echo "familyHistoryCalendar=true"
+            echo "passengerHistoryAccess=false"
+            echo "radarLocationCore=PRESERVED"
+            echo "farolAddressFirst=true"
+            echo "layoutMissSafeSecondChance=true"
+            echo "multiCardAmbiguityBlocked=true"
+            echo "paidAiFallback=LAST_RESORT"
+            echo "paidAiOneAttemptPerFingerprint=true"
+            echo "paidAiPersistentCache=true"
+            echo "paidAiNeverDecidesColorOrKm=true"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee farol-address-first-paid-fallback-0695-proof.txt
+
+      - name: Authenticate Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy exact 0.1.695 tracking backend SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          gcloud functions deploy tripApi             --gen2             --project="$PROJECT"             --region=southamerica-east1             --runtime=nodejs20             --source=trip-platform/functions             --entry-point=tripApi             --trigger-http             --allow-unauthenticated             --clear-secrets             --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$ROTA_CERTA_GIT_SHA"             --quiet
+
+      - name: Prove paid AI secrets and deploy assistantApi
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          gcloud secrets versions access latest --secret=OPENAI_API_KEY --project="$PROJECT" >/dev/null
+          gcloud secrets versions access latest --secret=ROTA_CERTA_DRIVER_TOKEN --project="$PROJECT" >/dev/null
+          gcloud functions deploy assistantApi \
+            --gen2 \
+            --project="$PROJECT" \
+            --region=southamerica-east1 \
+            --runtime=nodejs20 \
+            --source=trip-platform/functions \
+            --entry-point=assistantApi \
+            --trigger-http \
+            --allow-unauthenticated \
+            --set-secrets=OPENAI_API_KEY=OPENAI_API_KEY:latest,ROTA_CERTA_DRIVER_TOKEN=ROTA_CERTA_DRIVER_TOKEN:latest \
+            --quiet
+      - name: Stage exact APK for direct install
+        id: hosted_apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          HOSTED_NAME="rota-certa-0.1.695-5986-$SHORT_SHA.apk"
+          mkdir -p trip-platform/public/downloads
+          cp "${{ steps.proof.outputs.apk }}" "trip-platform/public/downloads/$HOSTED_NAME"
+          test "$(sha256sum "trip-platform/public/downloads/$HOSTED_NAME" | awk '{print $1}')" = "${{ steps.proof.outputs.apk_sha256 }}"
+          echo "name=$HOSTED_NAME" >> "$GITHUB_OUTPUT"
+          echo "url=https://rota-certa-7ccc8.web.app/downloads/$HOSTED_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy exact 0.1.695 tracking page SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+          chmod 600 /tmp/firebase-sa.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          npx --yes firebase-tools@14.12.0 deploy             --only hosting             --project "$PROJECT"             --config trip-platform/firebase.json             --non-interactive
+
+      - name: Smoke exact deployed backend and web tracker
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 20 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health-0694.json
+          grep -Fq '"ok":true' /tmp/live-health-0694.json
+          grep -Fq "\"backendGitSha\":\"$ROTA_CERTA_GIT_SHA\"" /tmp/live-health-0694.json
+
+          curl --retry 10 --retry-delay 2 --fail --silent --show-error "$BASE/tracking.html?v=$ROTA_CERTA_GIT_SHA" | tee /tmp/live-tracking-0694.html
+          grep -Fq 'id="centerVehicle"' /tmp/live-tracking-0694.html
+          grep -Fq 'tracking.js?v=0694' /tmp/live-tracking-0694.html
+
+          curl --retry 10 --retry-delay 2 --fail --silent --show-error "$BASE/tracking.js?v=$ROTA_CERTA_GIT_SHA" | tee /tmp/live-tracking-0694.js
+          grep -Fq 'PASSENGER_LIVE_ONLY_0691' /tmp/live-tracking-0694.js
+          grep -Fq 'FAMILY_LIVE_FIRST_0692' /tmp/live-tracking-0694.js
+          grep -Fq 'FAMILY_DAILY_HISTORY_0694' /tmp/live-tracking-0694.js
+          grep -Fq 'fetchFamilyHistoryDay0694' /tmp/live-tracking-0694.js
+          grep -Fq 'Nenhum histórico disponível nesta data.' /tmp/live-tracking-0694.js
+          grep -Fq 'PERMANENT_FAMILY_GPS_0681' /tmp/live-tracking-0694.js
+          grep -Fq 'Passageiro chegou ao destino' /tmp/live-tracking-0694.js
+          grep -Fq 'routePoints0670 = []' /tmp/live-tracking-0694.js
+
+          curl --retry 10 --retry-delay 2 --fail --silent --show-error "${{ steps.hosted_apk.outputs.url }}" -o /tmp/live-rota-certa-0694.apk
+          test "$(sha256sum /tmp/live-rota-certa-0694.apk | awk '{print $1}')" = "${{ steps.proof.outputs.apk_sha256 }}"
+
+          curl --retry 10 --retry-delay 2 --fail --silent --show-error "$BASE/ezequiel/gps" | tee /tmp/live-family-page-0694.html
+          grep -Fq 'Autorizar acompanhamento familiar' /tmp/live-family-page-0694.html
+
+          CODE="$(curl --silent --show-error -o /tmp/live-tracking-unknown-0691.json -w '%{http_code}' "$BASE/v1/public/tracking/abcdefghijklmnopqrstuv0123456789ABCDEFG")"
+          test "$CODE" = "404"
+          LEGACY_TOKEN="$(gcloud secrets versions access latest --secret=ROTA_CERTA_DRIVER_TOKEN --project="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}")"
+          test -n "$LEGACY_TOKEN"
+          curl --fail --silent --show-error \
+            -H "Content-Type: application/json" \
+            -H "X-Rota-Certa-Driver-Token: $LEGACY_TOKEN" \
+            --data '{"text":"Pedido de viagem\\nDestino: Rua Vergueiro, 1000, Vila Mariana, São Paulo - SP\\nAceitar","packageName":"sinet.startup.indriver","fingerprint":"workflow-smoke-0695"}' \
+            "$BASE/v1/assistant/farol-address" | tee /tmp/live-farol-paid-ai-0695.json
+          unset LEGACY_TOKEN
+          grep -Fq '"status":"RESOLVED"' /tmp/live-farol-paid-ai-0695.json
+          grep -Fq '"provider":"openai"' /tmp/live-farol-paid-ai-0695.json
+          grep -Fq '"contract":"FAROL_PAID_AI_ADDRESS_FALLBACK_0695"' /tmp/live-farol-paid-ai-0695.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-farol-address-first-paid-fallback-0.1.695-${{ github.sha }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            passenger-live-map-0691-proof.txt
+            /tmp/node-0694-focused-tests.log
+            /tmp/node-0690-full-tests.log
+            /tmp/node-0691-full-tests.log
+            /tmp/node-0691-regression-summary.txt
+            /tmp/node-0690-failures.txt
+            /tmp/node-0691-failures.txt
+            /tmp/node-0691-new-failures.txt
+            /tmp/node-0691-fixed-baseline-failures.txt
+            /tmp/android-0694-focused-tests.log
+            /tmp/android-0690-full-tests.log
+            /tmp/android-0691-full-tests.log
+            /tmp/android-0691-regression-summary.txt
+            /tmp/0690-failures.txt
+            /tmp/0691-failures.txt
+            /tmp/0691-new-failures.txt
+            /tmp/0691-fixed-baseline-failures.txt
+            /tmp/android-0694-assemble.log
+            /tmp/android-0694-aapt.txt
+            /tmp/android-0694-apksigner.txt
+            /tmp/android-0694-zip-integrity.txt
+            /tmp/live-health-0694.json
+            /tmp/live-tracking-0694.html
+            /tmp/live-tracking-0694.js
+            /tmp/live-family-page-0694.html
+            /tmp/live-rota-certa-0694.apk
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30
