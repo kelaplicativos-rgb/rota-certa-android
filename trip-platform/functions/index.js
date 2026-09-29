@@ -11045,6 +11045,35 @@ async function resolveFarolPaidAddressApi0695(req, res) {
   }
 }
 
+async function learnRideAppApi0700(req, res) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const packageName = cleanText(body.packageName, 160).toLowerCase();
+  const versionName = cleanText(body.versionName, 80);
+  const versionCode = Math.max(0, Number(body.versionCode || 0));
+  const apkSha256 = cleanText(body.apkSha256, 80).toLowerCase();
+  const dossier = cleanText(body.dossier, 38000);
+  if (!packageName || !apkSha256 || dossier.length < 80) {
+    return fail(res, 400, "ride_app_dossier_required", "Dossiê do APK ausente ou incompleto.");
+  }
+  try {
+    const result = await learnRideApp0700({
+      packageName,
+      versionName,
+      versionCode,
+      apkSha256,
+      dossier,
+      apiKey: openaiApiKeySecret.value() || "",
+    });
+    return json(res, 200, result);
+  } catch (error) {
+    const status = error instanceof RideAppLearningError0700 ? error.httpStatus : 502;
+    const code = error instanceof RideAppLearningError0700 ? error.code : "ride_app_learning_failed";
+    return fail(res, status, code, error.message || "Falha ao aprender o aplicativo.");
+  }
+}
+
 const liveTracking0668 = createLiveTracking0668({ db, requireDriver });
 
 const agendaAdmin0417 = createAgendaAdmin0417({
