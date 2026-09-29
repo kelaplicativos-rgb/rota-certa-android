@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.lazy.LazyColumn
@@ -316,6 +317,16 @@ private fun TripApp(
         else -> TripScreen.TIMELINE
     }
     var screen by rememberSaveable { mutableStateOf(initialScreen0396) }
+    var navigationHistory0689 by rememberSaveable {
+        mutableStateOf(
+            GlobalBackNavigation0689.initialHistory(
+                initialScreen = initialScreen0396.name,
+                defaultRoot = TripScreen.TIMELINE.name,
+            ),
+        )
+    }
+    var navigationObservedScreen0689 by rememberSaveable { mutableStateOf(initialScreen0396.name) }
+    var navigationBackTarget0689 by rememberSaveable { mutableStateOf<String?>(null) }
     var parentRootScreen0396 by rememberSaveable { mutableStateOf(TripScreen.TIMELINE) }
     var passengerSubscreenOpen0396 by rememberSaveable { mutableStateOf(false) }
     var passengerExternalBackToken0396 by remember { mutableStateOf(0) }
@@ -349,6 +360,23 @@ private fun TripApp(
         0
     }
     val shareScope = rememberCoroutineScope()
+
+    androidx.compose.runtime.LaunchedEffect(screen) {
+        val currentScreenName0689 = screen.name
+        val previousScreenName0689 = navigationObservedScreen0689
+        if (currentScreenName0689 != previousScreenName0689) {
+            if (navigationBackTarget0689 == currentScreenName0689) {
+                navigationBackTarget0689 = null
+            } else {
+                navigationHistory0689 = GlobalBackNavigation0689.recordForward(
+                    history = navigationHistory0689,
+                    currentScreen = previousScreenName0689,
+                    destinationScreen = currentScreenName0689,
+                )
+            }
+            navigationObservedScreen0689 = currentScreenName0689
+        }
+    }
 
     val refreshDriverNotifications: suspend () -> Unit = {
         DriverNotificationProjection0416.refresh(activity)
@@ -650,6 +678,35 @@ private fun TripApp(
         baseHeaderActions0396
     }
     val passengerSubscreenActive0396 = screen == TripScreen.PASSENGERS && passengerSubscreenOpen0396
+    val navigationCanGoBack0689 = GlobalBackNavigation0689.canNavigateBack(
+        history = navigationHistory0689,
+        currentScreen = screen.name,
+        defaultRoot = TripScreen.TIMELINE.name,
+        nestedStageOpen = passengerSubscreenActive0396,
+    )
+    val navigateBack0689: () -> Unit = {
+        when {
+            passengerSubscreenActive0396 -> {
+                passengerExternalBackToken0396 += 1
+            }
+            navigationHistory0689.isNotEmpty() -> {
+                val popped0689 = GlobalBackNavigation0689.pop(navigationHistory0689)
+                navigationHistory0689 = popped0689.history
+                popped0689.target?.let { target0689 ->
+                    navigationBackTarget0689 = target0689
+                    screen = TripScreen.valueOf(target0689)
+                }
+            }
+            screen != TripScreen.TIMELINE -> {
+                navigationBackTarget0689 = TripScreen.TIMELINE.name
+                screen = TripScreen.TIMELINE
+            }
+            else -> Unit
+        }
+    }
+    BackHandler(enabled = true) {
+        navigateBack0689()
+    }
     val headerIsRoot0396 = screen.isAgendaRoot0396() && !passengerSubscreenActive0396
     val activeDebugModule0507 = runCatching { DiagnosticModule0507.valueOf(debugReportModule0507) }
         .getOrDefault(DiagnosticModule0507.ALL_TRIPS)
@@ -732,13 +789,13 @@ private fun TripApp(
                 AgendaModuleHeader0396(
                     sectionLabel = headerLabel0396,
                     root = headerIsRoot0396,
-                    onNavigationClick = {
-                        when {
-                            passengerSubscreenActive0396 -> passengerExternalBackToken0396 += 1
-                            screen.isAgendaRoot0396() -> openDrawer0396()
-                            else -> screen = parentRootScreen0396
-                        }
+                    onNavigationClick = navigateBack0689,
+                    onMenuClick0689 = if (headerIsRoot0396) {
+                        openDrawer0396
+                    } else {
+                        null
                     },
+                    navigationEnabled0689 = navigationCanGoBack0689,
                     overflowActions = headerActions0396,
                     notificationUnreadCount = driverUnreadCount,
                     onNotificationsClick = openNotifications0396,
