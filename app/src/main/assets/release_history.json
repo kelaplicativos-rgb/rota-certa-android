@@ -2,6 +2,33 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.697",
+      "build": 5988,
+      "commit": null,
+      "branch": "agent/farol-coordinate-0.1.697",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Coordinate Resolution Resilience: cache/atlas, Android Geocoder assíncrono com deadline, OSM limitado e Google limitado sob teto global de 3 segundos.",
+        "Sanitização temporal remove ruído de UI como Agora mesmo antes da identidade e geocodificação do endereço.",
+        "Binding semântico passa a usar o endereço sanitizado para que rótulos temporais não simulem troca de card."
+      ],
+      "fixed": [
+        "Elimina o bloqueio observado por mais de 17 minutos dentro do Android Geocoder.",
+        "Corrige Avenida dos Nacionalistas Agora mesmo, 564 para Avenida dos Nacionalistas, 564 antes do resolvedor.",
+        "Garante desfecho formal de coordenada resolvida, todos provedores falharam ou resultado stale."
+      ],
+      "improved": [
+        "Telemetria identifica início, timeout do Android, fallback de provider, resolução, falha total e stale.",
+        "Resultados geográficos válidos alimentam cache persistente e OfflineAddressAtlas642.",
+        "Mantém integralmente a autoridade local da 0.1.696 e a rota rodoviária apenas como refinamento."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": ["Farol","Accessibility","Geocoding","Saúde/Diagnóstico","Build"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.696",
       "build": 5987,
       "commit": null,
