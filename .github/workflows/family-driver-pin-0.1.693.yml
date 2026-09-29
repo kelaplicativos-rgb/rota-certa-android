@@ -238,7 +238,6 @@ jobs:
           require_dex 'PASSENGER_LIVE_ONLY_ARRIVAL_0691'
           require_dex 'FAMILY_LIVE_FIRST_0692'
           require_dex 'FAMILY_DRIVER_PIN_0693'
-          require_dex 'Salvar código familiar'
           require_dex 'LIVE_TRACKING_POINTS_SYNCED_0668'
           require_dex 'ENSURE_LOCATION_CORE_0681'
           require_dex 'CHATGPT_NATIVE_BACK_PARITY_0690'
