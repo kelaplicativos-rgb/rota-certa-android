@@ -1,7 +1,8 @@
 "use strict";
 
 (() => {
-  const marker = "PASSENGER_LIVE_ONLY_0691";
+  const marker = "PERMANENT_FAMILY_GPS_0681";
+  const passengerLiveOnlyMarker0691 = "PASSENGER_LIVE_ONLY_0691";
   const pathParts = location.pathname.split("/").filter(Boolean);
   const familyUsername = pathParts.length === 2 && String(pathParts[1]).toLowerCase() === "gps"
     ? String(pathParts[0] || "").toLowerCase().replace(/[^a-z0-9_-]/g, "")
@@ -405,6 +406,7 @@
   }
 
   void marker;
+  void passengerLiveOnlyMarker0691;
   refresh();
   timer = setInterval(refresh, 5000);
 })();
