@@ -127,6 +127,8 @@ private data class TrackingCloseRequest0668(
 private data class TrackingAck0668(
     val ok: Boolean = false,
     val acceptedThroughMillis: Long = 0L,
+    val familyPinConfirmed: Boolean = false,
+    val familyPinRevision: Long = 0L,
 )
 
 @Serializable
@@ -147,6 +149,7 @@ internal class LiveTrackingShareRepository0668(context: Context) {
     private val tenantScope = RotaCertaTenantRegistry(appContext).activeScope()
     private val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val key = tenantScope.key(KEY_SESSION)
+    private val fixedFamilyPinKey0693 = tenantScope.key(KEY_FIXED_FAMILY_PIN_0693)
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     @Synchronized
@@ -158,6 +161,18 @@ internal class LiveTrackingShareRepository0668(context: Context) {
         val editor = prefs.edit()
         if (session == null) editor.remove(key) else editor.putString(key, json.encodeToString(session))
         check(editor.commit()) { "Falha ao persistir sessão de rastreamento." }
+    }
+
+    @Synchronized
+    fun fixedFamilyPin0693(): String? =
+        prefs.getString(fixedFamilyPinKey0693, null)?.takeIf { it.matches(Regex("\\d{6}")) }
+
+    @Synchronized
+    fun saveFixedFamilyPin0693(pin: String) {
+        require(pin.matches(Regex("\\d{6}"))) { "Código familiar deve ter 6 dígitos." }
+        check(prefs.edit().putString(fixedFamilyPinKey0693, pin).commit()) {
+            "Falha ao persistir código familiar fixo."
+        }
     }
 
     fun hasActiveShares(nowMillis: Long = System.currentTimeMillis()): Boolean =
@@ -179,6 +194,7 @@ internal class LiveTrackingShareRepository0668(context: Context) {
     companion object {
         private const val PREFS = "rota_certa_live_tracking_0668"
         private const val KEY_SESSION = "session"
+        private const val KEY_FIXED_FAMILY_PIN_0693 = "fixed_family_pin_0693"
     }
 }
 
@@ -196,7 +212,9 @@ internal class LiveTrackingShareManager0668(
         if (repository.hasActiveShares()) familyPointBuffer0681.append(point)
     }
 
-    fun familyPin0681(): String? = repository.familyShare()?.familyPin?.takeIf { it.matches(Regex("\\d{6}")) }
+    fun familyPin0681(): String? =
+        repository.fixedFamilyPin0693()
+            ?: repository.familyShare()?.familyPin?.takeIf { it.matches(Regex("\\d{6}")) }
 
     suspend fun familyStatus0681(): TrackingFamilyStatus0681 = withContext(Dispatchers.IO) {
         val settings = validatedSettings()
@@ -219,44 +237,55 @@ internal class LiveTrackingShareManager0668(
         }.getOrNull()
     }
 
-    suspend fun createFamilyLink(): TrackingLinkOutcome0668 = withContext(Dispatchers.IO) {
+    suspend fun createFamilyLink(requestedFamilyPin0693: String? = null): TrackingLinkOutcome0668 = withContext(Dispatchers.IO) {
         val settings = validatedSettings()
         val permanentUrl = trackingFamilyPublicUrl0681(settings.publicBaseUrl, settings.driverUsername)
         val existingRaw = repository.familyShare()
-        if (existingRaw != null) {
-            val existing = if (existingRaw.familyPin.matches(Regex("\\d{6}"))) {
-                existingRaw
-            } else {
-                existingRaw.copy(familyPin = secureFamilyPin0681())
-                    .also { upgraded ->
-                        val session = repository.session() ?: error("Sessão de rastreamento não disponível.")
-                        repository.save(session.copy(shares = session.shares.map { if (it.token == upgraded.token) upgraded else it }))
-                    }
-            }
-            ensureSessionAndShareRemote(settings, existing)
-            return@withContext TrackingLinkOutcome0668(
-                url = permanentUrl,
-                reused = true,
-                familyPin = existing.familyPin,
-            )
-        }
+        val requested = requestedFamilyPin0693
+            ?.filter(Char::isDigit)
+            ?.takeIf { it.matches(Regex("\\d{6}")) }
+        val fixed = repository.fixedFamilyPin0693()
+        val existingPin = existingRaw?.familyPin?.takeIf { it.matches(Regex("\\d{6}")) }
+        val desiredPin0693 = requested ?: fixed ?: existingPin
+            ?: error("Defina um código familiar fixo de 6 dígitos antes de ativar.")
 
         val now = System.currentTimeMillis()
         val session = ensureLocalSession(now)
-        val share = TrackingShareLocal0668(
-            token = secureTrackingToken0668(),
-            scope = TrackingShareScope0668.FAMILY,
-            createdAtMillis = now,
-            expiresAtMillis = PersistentTrackingPolicy0680.familyExpiryMillis(),
-            familyPin = secureFamilyPin0681(),
-        )
-        repository.save(session.copy(shares = session.shares + share))
-        ensureSessionAndShareRemote(settings, share)
+        val share = if (existingRaw != null) {
+            existingRaw.copy(familyPin = desiredPin0693)
+        } else {
+            TrackingShareLocal0668(
+                token = secureTrackingToken0668(),
+                scope = TrackingShareScope0668.FAMILY,
+                createdAtMillis = now,
+                expiresAtMillis = PersistentTrackingPolicy0680.familyExpiryMillis(),
+                familyPin = desiredPin0693,
+            )
+        }
+
+        val ack0693 = ensureSessionAndShareRemote(settings, share)
+        check(ack0693.familyPinConfirmed) { "Servidor não confirmou o código familiar informado." }
+
+        val current = repository.session() ?: session
+        val updatedShares = if (existingRaw != null) {
+            current.shares.map { if (it.token == share.token) share else it }
+        } else {
+            current.shares + share
+        }
+        repository.save(current.copy(shares = updatedShares))
+        repository.saveFixedFamilyPin0693(desiredPin0693)
+
         TrackingLinkOutcome0668(
             url = permanentUrl,
-            reused = false,
-            familyPin = share.familyPin,
+            reused = existingRaw != null,
+            familyPin = desiredPin0693,
         )
+    }
+
+    suspend fun setFamilyPin0693(pinRaw: String): TrackingLinkOutcome0668 = withContext(Dispatchers.IO) {
+        val pin = pinRaw.filter(Char::isDigit)
+        require(pin.matches(Regex("\\d{6}"))) { "Código familiar deve ter exatamente 6 dígitos." }
+        createFamilyLink(pin)
     }
 
     suspend fun createPassengerLink(request: PassengerTrackingLinkRequest0668): TrackingLinkOutcome0668 =
@@ -437,10 +466,13 @@ internal class LiveTrackingShareManager0668(
         ).also(repository::save)
     }
 
-    private suspend fun ensureSessionAndShareRemote(settings: TripOnlineSettings, share: TrackingShareLocal0668) {
+    private suspend fun ensureSessionAndShareRemote(
+        settings: TripOnlineSettings,
+        share: TrackingShareLocal0668,
+    ): TrackingAck0668 {
         val session = repository.session() ?: error("Sessão de rastreamento não disponível.")
         ensureSessionRemote(settings, session, force = true)
-        TrackingRemoteClient0668(settings).createShare(
+        val response = TrackingRemoteClient0668(settings).createShare(
             TrackingShareRequest0668(
                 sessionId = session.sessionId,
                 token = share.token,
@@ -457,6 +489,11 @@ internal class LiveTrackingShareManager0668(
                 driverUsername = settings.driverUsername,
             ),
         )
+        check(response.ok) { "Servidor não confirmou o compartilhamento." }
+        if (share.scope == TrackingShareScope0668.FAMILY) {
+            check(response.familyPinConfirmed) { "Servidor não confirmou o código familiar." }
+        }
+        return response
     }
 
     private suspend fun ensureSessionRemote(
