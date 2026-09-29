@@ -1016,7 +1016,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         error0172: Throwable,
         packageName0172: String? = null,
     ) {
-        if (FarolNetworkFailureIsolation0699.isRecoverableProviderFailure(error0172)) {
+        if (FarolNetworkFailureIsolation0699.isRecoverableTransportFailure(error0172)) {
             runCatching {
                 UnifiedDebugEventStore.record(
                     FarolNetworkFailureIsolation0699.NETWORK_FAILURE_STATE_PRESERVED_MARKER,
