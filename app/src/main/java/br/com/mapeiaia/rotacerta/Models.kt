@@ -29,7 +29,10 @@ data class AppSettings(
     val proximityAlertDistanceMeters: Int = 500,
     val diagnosticsEnabled: Boolean = false,
     val multiCardFocusLockEnabled: Boolean = true,
-    val proximityPopupAutoCloseEnabled: Boolean = true,
+    /** Legacy field kept for older backups; 0.1.685 uses proximityPopupTimeoutSeconds. */
+    val proximityPopupAutoCloseEnabled: Boolean = false,
+    /** 0 = fixed until acknowledgement; supported automatic values: 15, 20 or 30 seconds. */
+    val proximityPopupTimeoutSeconds: Int = 0,
     /** Global extra seats added to the BlaBlaCar quota for every current and future trip. */
     val rotaCertaSeatAllocation: Int = 0,
     /** Monotonic global extra-seat configuration version owned by SettingsRepository. */
