@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
@@ -155,6 +156,7 @@ internal fun AgendaModuleHeader0396(
     overflowActions: List<AgendaHeaderAction0396>,
     notificationUnreadCount: Int = 0,
     onNotificationsClick: (() -> Unit)? = null,
+    onUniversalSearchClick0687: (() -> Unit)? = null,
     globalHtmlRefreshState0679: BlaBlaGlobalHtmlRefreshState0679 = BlaBlaGlobalHtmlRefreshState0679(),
     onGlobalHtmlRefreshClick0679: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -232,6 +234,19 @@ internal fun AgendaModuleHeader0396(
                         textAlign = TextAlign.Center,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            if (onUniversalSearchClick0687 != null) {
+                IconButton(
+                    onClick = onUniversalSearchClick0687,
+                    modifier = Modifier.semantics {
+                        contentDescription = "Busca universal em Timeline, Agenda e Central"
+                    },
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Search,
+                        contentDescription = null,
                     )
                 }
             }
