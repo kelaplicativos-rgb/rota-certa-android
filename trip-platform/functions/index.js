@@ -8,6 +8,7 @@ const { getMessaging } = require("firebase-admin/messaging");
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const { interpretAssistantCommand0410, AssistantInterpreterError0410, normalizeAllowedActions0410 } = require("./assistant-command-interpreter-0410");
+const { resolveFarolAddress0695, FarolPaidAddressError0695 } = require("./farol-paid-address-0695");
 const { buildProfileUpdate } = require("./public-profile-policy");
 const { cleanIdentifier, deriveRotationToken, tokenMatches } = require("./public-agenda-link-policy");
 const { createAgendaAdmin0417, safeVisibility0417 } = require("./agenda-admin-0417");
@@ -10999,6 +11000,50 @@ async function interpretAssistant0410(req, res) {
   }
 }
 
+async function resolveFarolPaidAddressApi0695(req, res) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const textValue = cleanText(body.text, 1800);
+  const packageName = cleanText(body.packageName, 120);
+  const fingerprint = cleanText(body.fingerprint, 80);
+  if (!textValue) return fail(res, 400, "farol_ai_text_required", "Texto do card ausente.");
+
+  const startedAt = Date.now();
+  const driverHash = sha256Hex(driver.username || "legacy").slice(0, 16);
+  try {
+    const result = await resolveFarolAddress0695({
+      text: textValue,
+      packageName,
+      fingerprint,
+      apiKey: openaiApiKeySecret.value() || "",
+    });
+    console.log("farol_paid_ai_0695", JSON.stringify({
+      driverHash,
+      fingerprint,
+      status: result.status,
+      confidence: result.confidence,
+      provider: result.provider,
+      model: result.model,
+      latencyMs: Date.now() - startedAt,
+      success: result.status === "RESOLVED",
+    }));
+    return json(res, 200, result);
+  } catch (error) {
+    const status = error instanceof FarolPaidAddressError0695 ? error.httpStatus : 502;
+    const code = error instanceof FarolPaidAddressError0695 ? error.code : "farol_paid_ai_failed";
+    console.log("farol_paid_ai_0695", JSON.stringify({
+      driverHash,
+      fingerprint,
+      status: "FAILED",
+      errorCode: code,
+      latencyMs: Date.now() - startedAt,
+      success: false,
+    }));
+    return fail(res, status, code, error.message || "Falha no fallback pago do Farol.");
+  }
+}
+
 const liveTracking0668 = createLiveTracking0668({ db, requireDriver });
 
 const agendaAdmin0417 = createAgendaAdmin0417({
@@ -11027,6 +11072,9 @@ exports.assistantApi = onRequest(
     try {
       if (req.method === "POST" && path === "/v1/assistant/interpret") {
         return await interpretAssistant0410(req, res);
+      }
+      if (req.method === "POST" && path === "/v1/assistant/farol-address") {
+        return await resolveFarolPaidAddressApi0695(req, res);
       }
       return fail(res, 404, "assistant_route_not_found", "Rota do Assistente não encontrada.");
     } catch (error) {
