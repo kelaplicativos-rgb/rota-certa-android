@@ -10,6 +10,7 @@ const { defineSecret } = require("firebase-functions/params");
 const { interpretAssistantCommand0410, AssistantInterpreterError0410, normalizeAllowedActions0410 } = require("./assistant-command-interpreter-0410");
 const { resolveFarolAddress0695, FarolPaidAddressError0695 } = require("./farol-paid-address-0695");
 const { learnRideApp0700, RideAppLearningError0700 } = require("./ride-app-learning-0700");
+const { createLiveAgendaFeed0701 } = require("./live-agenda-feed-0701");
 const { buildProfileUpdate } = require("./public-profile-policy");
 const { cleanIdentifier, deriveRotationToken, tokenMatches } = require("./public-agenda-link-policy");
 const { createAgendaAdmin0417, safeVisibility0417 } = require("./agenda-admin-0417");
@@ -106,6 +107,7 @@ function normalizeUsername(value) {
 const RESERVED_PUBLIC_USERNAMES = new Set([
   "v1",
   "calendar",
+  "api",
 ]);
 
 function isReservedPublicUsername(value) {
@@ -11074,6 +11076,14 @@ async function learnRideAppApi0700(req, res) {
   }
 }
 
+const liveAgendaFeed0701 = createLiveAgendaFeed0701({
+  db,
+  resolveDriverUsername,
+  selectCanonicalTripDocuments0495,
+  publicAgendaTripVisibility0466,
+  safePublicTripWithCanonicalBookings0497,
+});
+
 const liveTracking0668 = createLiveTracking0668({ db, requireDriver });
 
 const agendaAdmin0417 = createAgendaAdmin0417({
@@ -11272,6 +11282,21 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     }
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "bookings" && req.method === "GET") {
       return await listDriverBookings(req, res, parts[3]);
+    }
+    const agendaFeedRoute0701 =
+      (parts.length === 4 && parts[0] === "api" && parts[1] === "v1" && parts[2] === "agenda") ||
+      (parts.length === 4 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "agenda-feed");
+    if (req.method === "GET" && agendaFeedRoute0701) {
+      const feedMatch0701 = /^([A-Za-z0-9-]{1,80})\.(xml|json)$/i.exec(parts[3] || "");
+      if (!feedMatch0701 || isReservedPublicUsername(feedMatch0701[1])) {
+        return fail(res, 404, "agenda_feed_not_found", "Feed da agenda não encontrado.");
+      }
+      return await liveAgendaFeed0701.getLiveAgendaFeed0701(
+        req,
+        res,
+        feedMatch0701[1],
+        feedMatch0701[2],
+      );
     }
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "agenda" && parts[4] === "changes" && req.method === "GET") {
       if (isReservedPublicUsername(parts[3])) return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
