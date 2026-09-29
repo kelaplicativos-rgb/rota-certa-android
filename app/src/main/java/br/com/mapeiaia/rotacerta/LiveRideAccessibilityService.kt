@@ -3706,12 +3706,23 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val previousBindingStage20 = currentStage20BindingSnapshot()
         val windowChangedStage19 = stage19ActiveWindowId != evaluationStage19.windowId ||
             stage19ActiveBlockId != evaluationStage19.blockId
-        val visualChangedStage19 = !sameCardIdentity0683 || universalActiveAddressSignature != stableAddressSignatureStage635
+        // 0.1.696: distance ownership follows the semantic address, not incidental card/UI churn.
+        // A different hash/card identity with the SAME address must not revoke Green/Red + km.
+        val semanticAddressChanged0696 = universalActiveAddressSignature != stableAddressSignatureStage635
+        val sameAddressVisualChurn0696 = !sameCardIdentity0683 && !semanticAddressChanged0696
+        val visualChangedStage19 = semanticAddressChanged0696
         if (windowChangedStage19) universalWindowGeneration += 1L
+        if (sameAddressVisualChurn0696) {
+            UnifiedDebugEventStore.record(
+                FarolLocalDecisionAuthority0696.SAME_ADDRESS_CHURN_PRESERVED_MARKER,
+                packageStage47,
+                "binding=$stableAddressSignatureStage635; color=$currentRadarColor; distance=$currentDistanceKm; routeCancelled=false",
+            )
+        }
         if (visualChangedStage19) {
             universalScreenGeneration += 1L
             if (universalRouteJob?.isActive == true) {
-                FarolForensicTraceStage20.routeCancelled(FarolForensicTraceStage20.traceFor(previousBindingStage20), null, SystemClock.elapsedRealtimeNanos(), "visual_changed")
+                FarolForensicTraceStage20.routeCancelled(FarolForensicTraceStage20.traceFor(previousBindingStage20), null, SystemClock.elapsedRealtimeNanos(), "semantic_address_changed_0696")
             }
             universalRouteJob?.cancel()
             universalRouteJob = null
@@ -3756,7 +3767,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             if (singleImmediateAddressStage46R7) "Primeiro endereço válido atual detectado; calculando rota real imediatamente."
             else "Múltiplos endereços atuais detectados; o último endereço visual é o destino da rota.",
         )
-        if (currentRadarColor != RadarColor.Default || currentDistanceKm != null) {
+        if (semanticAddressChanged0696 && (currentRadarColor != RadarColor.Default || currentDistanceKm != null)) {
             showOverlay(RadarColor.Default, distanceKm = null)
         }
         if (targetsStage19.destinations.isEmpty()) return
@@ -4139,6 +4150,22 @@ class LiveRideAccessibilityService : AccessibilityService() {
             traceIdStage20,
             operationIdStage637,
         )
+        if (
+            isStage19BindingFresh(bindingStage19) &&
+            (currentRadarColor == RadarColor.Default || currentDistanceKm == null)
+        ) {
+            UnifiedDebugEventStore.record(
+                FarolLocalDecisionAuthority0696.WATCHDOG_REPAINT_MARKER,
+                universalResolvedForegroundPackage(),
+                "binding=${bindingStage19.addressSignature}; expected=${localFinal0696.recommendation}; distance=${FarolLocalDecisionAuthority0696.nearestDistanceKm(localFinal0696)}",
+            )
+            applyUniversalTwoAddressResultStage19(
+                localFinal0696,
+                bindingStage19,
+                traceIdStage20,
+                "LOCAL_WATCHDOG_REPAINT_0696",
+            )
+        }
     }
     private suspend fun applyUniversalTwoAddressResultStage19(
         resultStage19: AnalysisResult,
