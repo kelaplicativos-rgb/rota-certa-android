@@ -14,7 +14,14 @@ const {
 test("learned profile is returned from cache without reacquiring OpenAI lease", () => {
   const profile = { status: "LEARNED", packageName: "regional.driver", confidence: 0.91, destinationLabels: ["Destino"] };
   const decision = cacheDecision0702({ status: "LEARNED", profile }, 1_000);
-  assert.equal(decision.action, "RETURN_LEARNED");
+  assert.equal(decision.action, "RETURN_PROFILE");
+  assert.equal(decision.profile, profile);
+});
+
+test("unresolved model result is also cached to prevent repeat paid analysis", () => {
+  const profile = { status: "UNRESOLVED", packageName: "regional.driver", confidence: 0.3, reason: "insufficient evidence" };
+  const decision = cacheDecision0702({ status: "UNRESOLVED", profile }, 1_000);
+  assert.equal(decision.action, "RETURN_PROFILE");
   assert.equal(decision.profile, profile);
 });
 
