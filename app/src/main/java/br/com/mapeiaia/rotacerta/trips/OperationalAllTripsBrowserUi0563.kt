@@ -146,8 +146,8 @@ internal fun OperationalAllTripsBrowserScreen0563(
     val context = LocalContext.current
     val fallbackRefreshScope0663 = rememberCoroutineScope()
     val activity0707 = remember(context) { context.findComponentActivity0663() }
-    val cardRefreshScope0663 = remember(activity0707, fallbackRefreshScope0663) {
-        activity0707?.lifecycleScope ?: fallbackRefreshScope0663
+    val cardRefreshScope0663 = remember(context, fallbackRefreshScope0663) {
+        context.findComponentActivity0663()?.lifecycleScope ?: fallbackRefreshScope0663
     }
     val refreshingTripIds0663 = remember { mutableStateMapOf<String, Boolean>() }
     val pendingFollowUpTripIds0707 = remember { mutableStateMapOf<String, Boolean>() }
@@ -660,9 +660,7 @@ internal fun OperationalAllTripsBrowserScreen0563(
                         onRefreshLocal()
                     },
                     refreshRunning0663 = refreshingTripIds0663[canonicalTripId0654] == true,
-                    onRefreshCard0663 = {
-                        refreshRow0663(row, OperationalTripCardRefreshReason0707.MANUAL)
-                    },
+                    onRefreshCard0663 = { refreshRow0663(row) },
                     onOpenIntegrity0654 = { onOpenTripIntegrity(canonicalTripId0654) },
                     onOpen = { openRow(row) },
                 )
