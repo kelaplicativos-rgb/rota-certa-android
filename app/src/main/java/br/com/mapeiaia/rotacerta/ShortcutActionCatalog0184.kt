@@ -87,6 +87,13 @@ object ShortcutActionCatalog0184 {
             action = BubbleShortcutAction.OpenScreenWhatsApp,
         ),
         BubbleShortcutSpec(
+            id = RideAppLearningContract0702.SHORTCUT_ID,
+            emoji = "🧠",
+            label = "Aprender aplicativo de corrida",
+            displayLabel = "Aprender App",
+            action = BubbleShortcutAction.OpenRideAppLearning,
+        ),
+        BubbleShortcutSpec(
             id = KeepScreenAwakeContract0688.SHORTCUT_ID,
             emoji = "💡",
             label = "Tela acesa",
@@ -137,6 +144,7 @@ object ShortcutActionCatalog0184 {
         "radars" to listOf("action_create_radar_here"),
         "backup" to listOf("action_create_backup", "action_restore_backup"),
         "whatsapp" to listOf("action_open_whatsapp_app"),
+        "reading" to listOf(RideAppLearningContract0702.SHORTCUT_ID),
         "copy_trip_confirmation" to listOf("action_copy_visible_text"),
         "clear_clipboard" to listOf("action_clear_cache"),
         "quick_replies" to listOf("action_create_quick_reply"),
