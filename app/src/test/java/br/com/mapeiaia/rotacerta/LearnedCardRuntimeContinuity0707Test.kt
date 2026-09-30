@@ -54,6 +54,6 @@ class LearnedCardRuntimeContinuity0707Test {
         assertTrue(hold > routeNull)
         assertTrue(hardClear > hold)
         assertTrue(live.contains("learnedNoCandidateHold0707"))
-        assertTrue(live.contains(LearnedCardRuntimeContinuity0707.HOLD_MARKER))
+        assertTrue(live.contains("LearnedCardRuntimeContinuity0707.HOLD_MARKER"))
     }
 }
