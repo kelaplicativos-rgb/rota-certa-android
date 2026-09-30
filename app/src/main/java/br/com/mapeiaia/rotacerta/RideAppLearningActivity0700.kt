@@ -234,6 +234,102 @@ class RideAppLearningActivity0700 : ComponentActivity() {
         }
     }
 
+    private suspend fun requestProfileWithRecovery0702(
+        api: TripRemoteApi,
+        dossier: RideApkDossier0700,
+    ): RideAppLearningResponse0700 {
+        val request = RideAppLearningRequest0700(
+            packageName = dossier.packageName,
+            versionName = dossier.versionName,
+            versionCode = dossier.versionCode,
+            apkSha256 = dossier.apkSha256,
+            dossier = dossier.toModelDossier(),
+        )
+        val statusRequest = RideAppLearningStatusRequest0702(
+            packageName = dossier.packageName,
+            apkSha256 = dossier.apkSha256,
+        )
+        UnifiedDebugEventStore.record(
+            RideAppLearningContract0702.REQUEST_SENT,
+            dossier.packageName,
+            "attempt=1; sha=${dossier.apkSha256.take(16)}; readTimeoutMs=${RideAppLearningContract0702.READ_TIMEOUT_MS}",
+        )
+        state = state.copy(
+            busy = true,
+            title = "Consultando IA",
+            message = "O APK já foi destrinchado localmente. Aguarde a resposta do aprendizado; esta etapa pode levar mais de um minuto em rede móvel.",
+        )
+
+        try {
+            val first = withContext(Dispatchers.IO) { api.learnRideApp0700(request) }
+            return if (first.processing) {
+                awaitProcessingResult0702(api, statusRequest, dossier, first)
+            } else {
+                first
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            if (!isRideAppLearningTransportFailure0702(error)) throw error
+            UnifiedDebugEventStore.record(
+                RideAppLearningContract0702.TRANSPORT_FAILED,
+                dossier.packageName,
+                "attempt=1; type=${error.javaClass.simpleName}; sha=${dossier.apkSha256.take(16)}",
+            )
+        }
+
+        val recovered = withContext(Dispatchers.IO) { api.rideAppLearningStatus0702(statusRequest) }
+        if (recovered.learned) return recovered
+        if (recovered.processing) {
+            return awaitProcessingResult0702(api, statusRequest, dossier, recovered)
+        }
+
+        UnifiedDebugEventStore.record(
+            RideAppLearningContract0702.RETRY,
+            dossier.packageName,
+            "attempt=2; reason=status_${recovered.status.ifBlank { "unknown" }}; sha=${dossier.apkSha256.take(16)}",
+        )
+        state = state.copy(
+            busy = true,
+            title = "Recuperando aprendizado",
+            message = "A primeira conexão caiu antes da resposta. O Rota Certa confirmou o SHA no servidor e fará uma única retomada segura, sem duplicar análise paga.",
+        )
+        val second = withContext(Dispatchers.IO) { api.learnRideApp0700(request) }
+        return if (second.processing) {
+            awaitProcessingResult0702(api, statusRequest, dossier, second)
+        } else {
+            second
+        }
+    }
+
+    private suspend fun awaitProcessingResult0702(
+        api: TripRemoteApi,
+        statusRequest: RideAppLearningStatusRequest0702,
+        dossier: RideApkDossier0700,
+        initial: RideAppLearningResponse0700,
+    ): RideAppLearningResponse0700 {
+        var latest = initial
+        repeat(RideAppLearningContract0702.STATUS_POLL_ATTEMPTS) { index ->
+            if (!latest.processing) return latest
+            state = state.copy(
+                busy = true,
+                title = "Aprendizado em andamento",
+                message = "O servidor já está estudando este mesmo APK. Aguardando o Reader persistido, sem iniciar outra chamada OpenAI…",
+            )
+            delay(
+                latest.retryAfterMillis
+                    .takeIf { it in 500L..5_000L }
+                    ?: RideAppLearningContract0702.STATUS_POLL_DELAY_MS,
+            )
+            latest = withContext(Dispatchers.IO) { api.rideAppLearningStatus0702(statusRequest) }
+            UnifiedDebugEventStore.record(
+                RideAppLearningContract0702.BACKEND_STATUS,
+                dossier.packageName,
+                "poll=${index + 1}; status=${latest.status}; cached=${latest.cached}; sha=${dossier.apkSha256.take(16)}",
+            )
+        }
+        return latest
+    }
     private suspend fun activateProfile(profile: RideReaderProfile0700) {
         SelectedRideAppStore.add(applicationContext, profile.packageName)
         val selected = SelectedRideAppStore.read(applicationContext)
