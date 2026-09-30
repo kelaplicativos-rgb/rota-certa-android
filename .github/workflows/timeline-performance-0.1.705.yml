@@ -84,10 +84,10 @@ jobs:
           ./gradlew :app:verifyReleaseHistory --no-daemon --stacktrace | tee /tmp/release-history.log
           ./gradlew :app:testDebugUnitTest \
             --tests 'br.com.mapeiaia.rotacerta.trips.TimelinePerformance0705ContractTest' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaGlobalNotificationBubble0416Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaNavigationNotificationsProfiles0416Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripCardFooter0654Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test.genericUiChangesNoLongerTriggerFullAgendaSync' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaGlobalNotificationBubble0416Test.pushInvalidatesProjectionImmediatelyWithoutPolling' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaNavigationNotificationsProfiles0416Test.notificationBellUsesAuthoritativeUnreadProjectionAndReactiveInvalidation' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripCardFooter0654Test.tripsActivityRefreshesAfterShortcutMutationAndKeepsIntegrityAccess' \
             --no-daemon --max-workers=2 --stacktrace \
             | tee /tmp/focused-android-0705.log
 
