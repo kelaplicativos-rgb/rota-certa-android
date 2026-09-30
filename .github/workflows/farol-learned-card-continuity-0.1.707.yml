@@ -3,7 +3,7 @@ name: Rota Certa 0.1.707 Learned Card Runtime exact SHA
 on:
   push:
     branches:
-      - 'agent/farol-learned-card-runtime-0.1.707'
+      - 'agent/farol-learned-card-continuity-0.1.707'
   workflow_dispatch:
 
 permissions:
@@ -20,7 +20,7 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
       ROTA_CERTA_GIT_SHA: ${{ github.sha }}
-      ROTA_CERTA_GIT_BRANCH: 'agent/farol-learned-card-runtime-0.1.707'
+      ROTA_CERTA_GIT_BRANCH: 'agent/farol-learned-card-continuity-0.1.707'
       BASE_SHA: 'acc9ed186e9abeeace45457cd49e44ac5cebb4e7'
       EXPECTED_VERSION_NAME: '0.1.707'
       EXPECTED_VERSION_CODE: '5998'
@@ -156,8 +156,8 @@ jobs:
             echo "sourceSha=$GITHUB_SHA"
             echo "sourceBranch=$ROTA_CERTA_GIT_BRANCH"
             echo "deviceTarget=Samsung SM-S911B / Android 16"
-            echo "learnedCardRuntimeIdentity=PASS
-            echo "learnedCardRuntimeContinuity=PASS""
+            echo "learnedCardRuntimeIdentity=PASS"
+            echo "learnedCardRuntimeContinuity=PASS"
             echo "routeAuthoritySeparated=PASS"
             echo "partialOcrHardClearBlocked=PASS"
             echo "paidAiCriticalPathBypass=PASS"
