@@ -719,6 +719,13 @@ class GoogleMapsService(context: Context? = null) {
     ): Coordinate? {
         val query = geocodeQueries(originAddress, DeviceRegion()).firstOrNull() ?: return null
         val boundsBias0703 = if (containsExplicitLocality(query)) null else targetBiasBounds0703(targetHints)
+        if (boundsBias0703 != null) {
+            FarolFlightRecorder0163.record(
+                stage = TARGET_BIAS_MARKER_0703,
+                packageName = null,
+                details = "provider=google_geocode; bounds=$boundsBias0703; source=configured_work_targets",
+            )
+        }
         val started0699 = SystemClock.elapsedRealtime()
         FarolFlightRecorder0163.record(
             stage = FarolNetworkFailureIsolation0699.GOOGLE_GEOCODE_STARTED_MARKER,
@@ -1388,6 +1395,7 @@ class GoogleMapsService(context: Context? = null) {
     }
 
     private companion object {
+        const val TARGET_BIAS_MARKER_0703 = "GOOGLE_TARGET_BIAS_0703"
         const val ROUTES_COMPUTE_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
         const val ROUTE_MATRIX_URL = "https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix"
         const val OSM_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
