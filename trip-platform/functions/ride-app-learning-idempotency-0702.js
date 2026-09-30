@@ -12,8 +12,12 @@ function learningKey0702(sha256Hex, packageName, apkSha256) {
 
 function cacheDecision0702(data, nowMillis) {
   const value = data && typeof data === "object" ? data : {};
-  if (value.status === "LEARNED" && value.profile && typeof value.profile === "object") {
-    return { action: "RETURN_LEARNED", profile: value.profile };
+  if (
+    (value.status === "LEARNED" || value.status === "UNRESOLVED") &&
+    value.profile &&
+    typeof value.profile === "object"
+  ) {
+    return { action: "RETURN_PROFILE", profile: value.profile };
   }
   if (
     value.status === "PROCESSING" &&
