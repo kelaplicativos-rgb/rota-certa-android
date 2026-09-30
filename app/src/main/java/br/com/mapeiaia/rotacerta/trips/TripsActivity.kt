@@ -514,7 +514,16 @@ private fun TripApp(
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 shareScope.launch {
-                    refresh0705("resume")
+                    if (OperationalTimelineExternalResume0707.consumeGlobalResumeSuppression()) {
+                        UnifiedDebugEventStore.recordAlways(
+                            "TIMELINE_CARD_GLOBAL_RESUME_SKIPPED_0707",
+                            activity.packageName,
+                            "reason=targeted_blablacar_round_trip exactCardRefreshOwnsReturn=true " +
+                                "fullSnapshotReload=false noPolling=true",
+                        )
+                    } else {
+                        refresh0705("resume")
+                    }
                     refreshDriverNotifications()
                 }
             }
