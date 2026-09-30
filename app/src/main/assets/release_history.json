@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.702",
+      "build": 5993,
+      "commit": null,
+      "branch": "agent/ride-app-learning-resilience-0.1.702",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Aprendizado de APK ganha transporte dedicado com janela longa somente para a chamada OpenAI, sem alterar os timeouts rápidos da Agenda e demais APIs.",
+        "Backend persiste Reader Profile por packageName + SHA-256 + versão do contrato e aplica lease idempotente para impedir chamadas OpenAI duplicadas do mesmo APK.",
+        "Cliente consulta o status persistido após falha de transporte e faz no máximo uma retomada segura quando ainda não existe resultado recuperável.",
+        "Módulo Leitura passa a ser a casa oficial do recurso Aprender aplicativo e a grade flutuante recebe o atalho direto 🧠 Aprender App."
+      ],
+      "fixed": [
+        "Corrige Falha de transporte remoto phase=response_status: timeout observada ao estudar APK real no Samsung SM-S911B.",
+        "Evita perder um Reader já concluído no servidor quando a conexão móvel cai antes da resposta chegar ao aparelho.",
+        "Evita cobrança repetida de OpenAI para o mesmo SHA enquanto uma análise equivalente já está em processamento ou concluída."
+      ],
+      "improved": [
+        "Telemetria dedicada registra seleção do APK, dossiê, cache local, envio, status de backend, recuperação, retry e persistência do Reader.",
+        "Cloud Function do Assistente passa a ter timeout compatível com a operação de aprendizado sem afetar APIs operacionais rápidas.",
+        "Atalho Aprender App é migrado para grades existentes quando houver espaço, mantendo limite de 32 ações."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Timeout de 12 segundos herdado do TripRemoteApi encerrando aprendizado de APK antes da resposta da OpenAI."
+      ],
+      "modulesAffected": [
+        "Leitura",
+        "APK Learning",
+        "OpenAI",
+        "Backend",
+        "Grade flutuante",
+        "Diagnóstico",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.701",
       "build": 5992,
       "commit": null,
