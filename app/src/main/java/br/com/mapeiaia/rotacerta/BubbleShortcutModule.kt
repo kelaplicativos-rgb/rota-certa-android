@@ -27,6 +27,7 @@ enum class BubbleShortcutAction {
     OpenSettings,
     CaptureCurrentAppAndScreen,
     OpenAuthorizedAppsAndCards,
+    OpenRideAppLearning,
     OpenTextCorrection,
     SaveScreenPrint,
 }
