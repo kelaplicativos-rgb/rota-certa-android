@@ -35,7 +35,8 @@ class OperationalTripCardFooter0654Test {
     fun tripsActivityRefreshesAfterShortcutMutationAndKeepsIntegrityAccess() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt").readText()
 
-        assertTrue(source.contains("onRefreshLocal = { refresh() }"))
+        assertTrue(source.contains("onRefreshLocal = { refreshUi0705() }"))
+        assertTrue(source.contains("val refreshUi0705: () -> Unit = {"))
         assertTrue(source.contains("onOpenTripIntegrity = { tripId ->"))
         assertTrue(source.contains("screen = TripScreen.CENTRAL_DAY"))
     }
