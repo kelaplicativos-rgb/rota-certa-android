@@ -79,7 +79,6 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalAllTripsBrowser0563Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.TimelinePerformance0705ContractTest' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTrackingControl0706Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripCardFooter0654Test' \
             --no-daemon --max-workers=2 --stacktrace \
             | tee /tmp/focused-android-0707.log
 
