@@ -2,6 +2,45 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.706",
+      "build": 5997,
+      "commit": null,
+      "branch": "agent/farol-learned-card-runtime-0.1.706",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Reader V2 ganha identidade runtime de card separada da autorização de rota, permitindo reconhecer o card aprendido antes de extrair o destino.",
+        "Cards aprendidos confirmados atravessam o gate de layout somente para manter o pipeline local vivo; cor, raio e quilometragem continuam dependendo de destino válido.",
+        "Telemetria CARD_PROFILE_MATCHED_0706 registra score, endereços, sinais aprendidos, ação, valor e métrica para cada admissão runtime."
+      ],
+      "fixed": [
+        "Corrige cards UberX/Priority que permaneciam amarelos porque o Reader precisava descobrir o destino antes de conseguir provar que o card aprendido estava presente.",
+        "OCR parcial de card aprendido deixa de executar hardClear no Stage23 quando a identidade do card continua confirmada.",
+        "Leitura OCR de card aprendido sem destino deixa de chamar fallback de IA paga no caminho crítico e preserva o processamento local."
+      ],
+      "improved": [
+        "Mantém isolamento por package e exige perfil V2 utilizável; outro aplicativo não pode reutilizar a identidade aprendida.",
+        "Superfícies de mapa/navegação continuam fail-closed mesmo quando pertencem ao mesmo package aprendido.",
+        "Mantém intactos cálculo de distância, decisão verde/vermelha e autorização final de rota."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Aplicativo marcado como aprendido, mas card real não mantém o pipeline ativo antes da extração de endereço.",
+        "Hard clear transitório durante OCR sem candidato do mesmo card aprendido.",
+        "Fallback remoto pago acionado após OCR parcial de card já reconhecido localmente."
+      ],
+      "modulesAffected": [
+        "Farol",
+        "APK Learning",
+        "Accessibility",
+        "OCR",
+        "Bolinha",
+        "Saúde/Diagnóstico",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.705",
       "build": 5996,
       "commit": null,
