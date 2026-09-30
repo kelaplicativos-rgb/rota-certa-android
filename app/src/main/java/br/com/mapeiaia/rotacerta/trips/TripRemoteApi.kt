@@ -718,6 +718,9 @@ internal class PassengerDirectoryBatchException0629(
     cause,
 )
 
+internal fun isRideAppLearningTransportFailure0702(error: Throwable): Boolean =
+    error is TripRemoteApiException && error.httpStatus <= 0
+
 internal class TripRemoteApiException(
     val httpMethod: String,
     val endpoint: String,
@@ -1688,6 +1691,19 @@ class TripRemoteApi(
         path = "/v1/assistant/learn-ride-app",
         body = json.encodeToString(payload),
         requireDriverToken = true,
+        connectTimeoutMs = br.com.mapeiaia.rotacerta.RideAppLearningContract0702.CONNECT_TIMEOUT_MS,
+        readTimeoutMs = br.com.mapeiaia.rotacerta.RideAppLearningContract0702.READ_TIMEOUT_MS,
+        successNextStage0421 = "RIDE_APP_PROFILE_RESPONSE_0702",
+    )
+
+    suspend fun rideAppLearningStatus0702(
+        payload: RideAppLearningStatusRequest0702,
+    ): RideAppLearningResponse0700 = request(
+        method = "POST",
+        path = "/v1/assistant/learn-ride-app/status",
+        body = json.encodeToString(payload),
+        requireDriverToken = true,
+        successNextStage0421 = "RIDE_APP_STATUS_RESPONSE_0702",
     )
 
     suspend fun createPublicBooking(
@@ -1764,6 +1780,8 @@ class TripRemoteApi(
         requireDriverToken: Boolean,
         evidence0421: RemotePublicationEvidenceContext0421? = null,
         successNextStage0421: String = "PUBLIC_READBACK_REQUEST",
+        connectTimeoutMs: Int = 12_000,
+        readTimeoutMs: Int = 12_000,
     ): T = withContext(Dispatchers.IO) {
         val requestPayload = body.orEmpty()
         val requestPayloadBytes = if (body == null) ByteArray(0) else requestPayload.toByteArray(Charsets.UTF_8)
@@ -1812,8 +1830,8 @@ class TripRemoteApi(
             val opened = URL(base + path).openConnection() as HttpURLConnection
             connection = opened
             opened.requestMethod = method
-            opened.connectTimeout = 12_000
-            opened.readTimeout = 12_000
+            opened.connectTimeout = connectTimeoutMs.coerceIn(1_000, 30_000)
+            opened.readTimeout = readTimeoutMs.coerceIn(1_000, 120_000)
             opened.setRequestProperty("Accept", "application/json")
             opened.setRequestProperty("Content-Type", "application/json; charset=utf-8")
             if (settings.publicBaseUrl.startsWith("https://")) {
