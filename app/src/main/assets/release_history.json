@@ -2,6 +2,40 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.708",
+      "build": 5999,
+      "commit": null,
+      "branch": "agent/offline-navigation-foundation-0.1.708",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Adiciona a base do navegador offline do Rota Certa com armazenamento privado próprio para mapas regionais .mwm.",
+        "Inclui uma tela Navegação offline com seletor de múltiplos arquivos, catálogo local, tamanho total e remoção individual dos mapas importados.",
+        "Adiciona acesso direto em Controles gerais por meio do botão Navegação offline e mapas, sem exigir acesso manual a Android/data."
+      ],
+      "fixed": [
+        "Evita depender do diretório privado do Organic Maps para receber mapas regionais: o usuário pode selecionar os arquivos pelo seletor de documentos do Android e o Rota Certa faz uma cópia local.",
+        "Importação rejeita arquivos que não terminem em .mwm e usa arquivo temporário antes da substituição para não publicar mapa parcial."
+      ],
+      "improved": [
+        "A cópia dos mapas ocorre em Dispatchers.IO e usa buffer de 1 MB para não bloquear a interface durante arquivos grandes.",
+        "Esta fundação é fail-closed: importar mapas não altera a autoridade atual do FAROL nem pinta verde/vermelho até o motor offline ser integrado e validado.",
+        "Estrutura preparada para receber depois busca offline, geocodificação, roteamento e navegação curva a curva sobre os arquivos regionais."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Ausência de um caminho dentro do próprio Rota Certa para receber e manter os mapas regionais necessários ao futuro motor offline."
+      ],
+      "modulesAffected": [
+        "Navegação Offline",
+        "Mapas",
+        "Configurações",
+        "FAROL",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.707",
       "build": 5998,
       "commit": null,
