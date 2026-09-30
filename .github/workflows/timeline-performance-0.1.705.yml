@@ -56,9 +56,11 @@ jobs:
 
           grep -Fq 'processIntegrityCheckedTenants0705' "$IDENTITY"
           grep -Fq 'invalidateCanonicalIntegrity0705' "$IDENTITY"
-          grep -Fq 'val historicalContacts = decode<List<PassengerIdentityObservation>>' "$IDENTITY"
+          grep -Fq 'historicalContacts0705 = decode<List<PassengerIdentityObservation>>' "$IDENTITY"
+          grep -Fq 'resolveCanonicalPassengersBatch0705' "$IDENTITY"
           ! grep -Fq 'profile.id to observations(profile.id).map' "$IDENTITY"
 
+          grep -Fq 'resolveCanonicalPassengersBatch0705' "$PASSENGERS"
           grep -Fq 'hasLegacyPassengers0705' "$PASSENGERS"
           grep -Fq 'PassengerCompletionService(context, passengerStore)' "$PASSENGERS"
           grep -Fq 'private val store: PassengerIdentityStore = PassengerIdentityStore(context.applicationContext)' "$COMPLETION"
@@ -81,12 +83,13 @@ jobs:
           chmod +x ./gradlew
           ./gradlew :app:verifyReleaseHistory --no-daemon --stacktrace | tee /tmp/release-history.log
           ./gradlew :app:testDebugUnitTest \
-            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerIdentityStoreTest' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.TripStoreTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TimelinePerformance0705ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaGlobalNotificationBubble0416Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaNavigationNotificationsProfiles0416Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripCardFooter0654Test' \
             --no-daemon --max-workers=2 --stacktrace \
-            | tee /tmp/focused-android-0705.log || {
-              echo "Focused class names may differ; full differential suite below remains authoritative." | tee -a /tmp/focused-android-0705.log
-            }
+            | tee /tmp/focused-android-0705.log
 
       - name: Compare complete Android failures with exact 0.1.704
         shell: bash
