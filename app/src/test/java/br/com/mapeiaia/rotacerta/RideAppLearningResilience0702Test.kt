@@ -47,6 +47,7 @@ class RideAppLearningResilience0702Test {
         val main = File(root, "app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt").readText()
         val service = File(root, "app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").readText()
         val backend = File(root, "trip-platform/functions/index.js").readText()
+        val idempotency = File(root, "trip-platform/functions/ride-app-learning-idempotency-0702.js").readText()
 
         assertTrue(remote.contains("readTimeoutMs = br.com.mapeiaia.rotacerta.RideAppLearningContract0702.READ_TIMEOUT_MS"))
         assertTrue(remote.contains("/v1/assistant/learn-ride-app/status"))
@@ -55,8 +56,9 @@ class RideAppLearningResilience0702Test {
         assertTrue(activity.contains(RideAppLearningContract0702.PROFILE_SAVED))
         assertTrue(main.contains("🧠 Aprender aplicativo de corrida"))
         assertTrue(service.contains("openRideAppLearning0702"))
-        assertTrue(backend.contains("rideAppLearningProfiles"))
+        assertTrue(backend.contains("COLLECTION_0702"))
         assertTrue(backend.contains("leaseUntilMillis"))
+        assertTrue(idempotency.contains("rideAppLearningProfiles"))
         assertTrue(backend.contains("timeoutSeconds: 90"))
     }
 }
