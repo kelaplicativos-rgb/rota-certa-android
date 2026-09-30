@@ -10,6 +10,7 @@ const { defineSecret } = require("firebase-functions/params");
 const { interpretAssistantCommand0410, AssistantInterpreterError0410, normalizeAllowedActions0410 } = require("./assistant-command-interpreter-0410");
 const { resolveFarolAddress0695, FarolPaidAddressError0695 } = require("./farol-paid-address-0695");
 const { learnRideApp0700, RideAppLearningError0700 } = require("./ride-app-learning-0700");
+const { CONTRACT_VERSION_0702, LEASE_MILLIS_0702, COLLECTION_0702, learningKey0702, cacheDecision0702, publicProfileResponse0702, publicProcessingResponse0702 } = require("./ride-app-learning-idempotency-0702");
 const { createLiveAgendaFeed0701 } = require("./live-agenda-feed-0701");
 const { buildProfileUpdate } = require("./public-profile-policy");
 const { cleanIdentifier, deriveRotationToken, tokenMatches } = require("./public-agenda-link-policy");
@@ -11047,6 +11048,75 @@ async function resolveFarolPaidAddressApi0695(req, res) {
   }
 }
 
+async function rideAppLearningStatusApi0702(req, res) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const packageName = cleanText(body.packageName, 160).toLowerCase();
+  const apkSha256 = cleanText(body.apkSha256, 80).toLowerCase();
+  if (!packageName || !apkSha256) {
+    return fail(res, 400, "ride_app_status_required", "Package e SHA-256 são obrigatórios.");
+  }
+  const key = learningKey0702(sha256Hex, packageName, apkSha256);
+  const snap = await db.collection(COLLECTION_0702).doc(key).get();
+  if (!snap.exists) {
+    return json(res, 200, {
+      status: "NOT_FOUND",
+      packageName,
+      profileVersion: 1,
+      confidence: 0,
+      cached: false,
+      retryAfterMillis: 0,
+      contractVersion: CONTRACT_VERSION_0702,
+      pickupLabels: [],
+      destinationLabels: [],
+      fareLabels: [],
+      distanceLabels: [],
+      rideAnchors: [],
+      actionLabels: [],
+      resourceHints: [],
+      ignoreLabels: [],
+      reason: "Nenhum aprendizado persistido para este APK.",
+      provider: "openai",
+      model: "",
+      contract: "RIDE_APP_OPENAI_LEARNING_0700",
+    });
+  }
+  const data = snap.data() || {};
+  const decision = cacheDecision0702(data, Date.now());
+  if (decision.action === "RETURN_LEARNED") {
+    return json(res, 200, publicProfileResponse0702(decision.profile, true));
+  }
+  if (decision.action === "RETURN_PROCESSING") {
+    return json(res, 200, publicProcessingResponse0702(packageName, decision.retryAfterMillis));
+  }
+  const stored = data.profile && typeof data.profile === "object" ? data.profile : null;
+  if (stored) {
+    return json(res, 200, publicProfileResponse0702(stored, true));
+  }
+  return json(res, 200, {
+    status: cleanText(data.status || "FAILED", 32).toUpperCase(),
+    packageName,
+    profileVersion: 1,
+    confidence: 0,
+    cached: false,
+    retryAfterMillis: 0,
+    contractVersion: CONTRACT_VERSION_0702,
+    pickupLabels: [],
+    destinationLabels: [],
+    fareLabels: [],
+    distanceLabels: [],
+    rideAnchors: [],
+    actionLabels: [],
+    resourceHints: [],
+    ignoreLabels: [],
+    reason: cleanText(data.reason || "Aprendizado ainda não disponível.", 360),
+    provider: "openai",
+    model: "",
+    contract: "RIDE_APP_OPENAI_LEARNING_0700",
+  });
+}
+
 async function learnRideAppApi0700(req, res) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
@@ -11059,6 +11129,41 @@ async function learnRideAppApi0700(req, res) {
   if (!packageName || !apkSha256 || dossier.length < 80) {
     return fail(res, 400, "ride_app_dossier_required", "Dossiê do APK ausente ou incompleto.");
   }
+
+  const now = Date.now();
+  const key = learningKey0702(sha256Hex, packageName, apkSha256);
+  const ref = db.collection(COLLECTION_0702).doc(key);
+  const leaseOwner = crypto.randomUUID();
+  const acquisition = await db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(ref);
+    const data = snap.exists ? (snap.data() || {}) : {};
+    const decision = cacheDecision0702(data, now);
+    if (decision.action !== "ACQUIRE") return decision;
+    transaction.set(ref, {
+      status: "PROCESSING",
+      packageName,
+      versionName,
+      versionCode,
+      apkSha256,
+      contractVersion: CONTRACT_VERSION_0702,
+      leaseOwner,
+      leaseUntilMillis: now + LEASE_MILLIS_0702,
+      updatedAtMillis: now,
+      createdAtMillis: Number(data.createdAtMillis || now),
+      dossierSha256: sha256Hex(dossier),
+      driverScopeHash: sha256Hex(driver.username || "legacy").slice(0, 16),
+    }, { merge: true });
+    return { action: "ACQUIRED" };
+  });
+
+  if (acquisition.action === "RETURN_LEARNED") {
+    console.log("ride_app_learning_0702_cache_hit", JSON.stringify({ packageHash: sha256Hex(packageName).slice(0, 16), apkSha256: apkSha256.slice(0, 16) }));
+    return json(res, 200, publicProfileResponse0702(acquisition.profile, true));
+  }
+  if (acquisition.action === "RETURN_PROCESSING") {
+    return json(res, 200, publicProcessingResponse0702(packageName, acquisition.retryAfterMillis));
+  }
+
   try {
     const result = await learnRideApp0700({
       packageName,
@@ -11068,10 +11173,36 @@ async function learnRideAppApi0700(req, res) {
       dossier,
       apiKey: openaiApiKeySecret.value() || "",
     });
-    return json(res, 200, result);
+    const persisted = publicProfileResponse0702(result, false);
+    await ref.set({
+      status: result.status,
+      profile: persisted,
+      reason: cleanText(result.reason, 360),
+      leaseOwner: "",
+      leaseUntilMillis: 0,
+      updatedAtMillis: Date.now(),
+      completedAtMillis: Date.now(),
+    }, { merge: true });
+    console.log("ride_app_learning_0702_completed", JSON.stringify({
+      packageHash: sha256Hex(packageName).slice(0, 16),
+      apkSha256: apkSha256.slice(0, 16),
+      status: result.status,
+      confidence: result.confidence,
+      cached: false,
+    }));
+    return json(res, 200, persisted);
   } catch (error) {
     const status = error instanceof RideAppLearningError0700 ? error.httpStatus : 502;
     const code = error instanceof RideAppLearningError0700 ? error.code : "ride_app_learning_failed";
+    await ref.set({
+      status: "FAILED",
+      reason: cleanText(error && error.message || code, 360),
+      errorCode: cleanText(code, 80),
+      leaseOwner: "",
+      leaseUntilMillis: 0,
+      updatedAtMillis: Date.now(),
+      failedAtMillis: Date.now(),
+    }, { merge: true });
     return fail(res, status, code, error.message || "Falha ao aprender o aplicativo.");
   }
 }
@@ -11105,7 +11236,7 @@ const agendaAdmin0417 = createAgendaAdmin0417({
 });
 
 exports.assistantApi = onRequest(
-  { secrets: [driverTokenSecret, openaiApiKeySecret], region: "southamerica-east1" },
+  { secrets: [driverTokenSecret, openaiApiKeySecret], region: "southamerica-east1", timeoutSeconds: 90 },
   async (req, res) => {
     if (req.method === "OPTIONS") return res.status(204).send("");
     const path = (req.path || req.url || "/").split("?")[0].replace(/\/+$/, "") || "/";
@@ -11118,6 +11249,9 @@ exports.assistantApi = onRequest(
       }
       if (req.method === "POST" && path === "/v1/assistant/learn-ride-app") {
         return await learnRideAppApi0700(req, res);
+      }
+      if (req.method === "POST" && path === "/v1/assistant/learn-ride-app/status") {
+        return await rideAppLearningStatusApi0702(req, res);
       }
       return fail(res, 404, "assistant_route_not_found", "Rota do Assistente não encontrada.");
     } catch (error) {
