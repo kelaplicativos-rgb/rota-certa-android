@@ -168,6 +168,14 @@ internal data class PassengerPickerSnapshot(
     val resolvedDuplicateCount: Int,
 )
 
+internal data class PassengerIdentityLookup0705(
+    val key: String,
+    val passengerId: String? = null,
+    val externalPassengerId: String? = null,
+    val onlineIdentityId: String? = null,
+    val whatsapp: String? = null,
+)
+
 internal data class PassengerIdentityRepair0627Result(
     val rawProfiles: Int,
     val canonicalProfiles: Int,
@@ -216,11 +224,14 @@ class PassengerIdentityStore(context: Context) {
 
     @Synchronized
     internal fun ensureCanonicalIntegrity0627(): PassengerIdentityRepair0627Result {
-        if (integrityChecked0627 || processIntegrityCheckedTenants0705.contains(profilesKey)) {
+        if (processIntegrityCheckedTenants0705.contains(profilesKey)) {
             integrityChecked0627 = true
             val count = rawProfiles0627().size
             return PassengerIdentityRepair0627Result(count, count, 0, 0, 0, 0, 0)
         }
+        // The process-scoped marker is authoritative. Another store instance may have
+        // invalidated the tenant after this instance last checked it.
+        integrityChecked0627 = false
         if (integrityRepairing0627) {
             val count = rawProfiles0627().size
             return PassengerIdentityRepair0627Result(count, count, 0, 0, 0, 0, 0)
@@ -362,12 +373,10 @@ class PassengerIdentityStore(context: Context) {
     }
 
     fun profiles(): List<PassengerProfile> {
-        if (!integrityChecked0627 && !integrityRepairing0627) {
-            if (processIntegrityCheckedTenants0705.contains(profilesKey)) {
-                integrityChecked0627 = true
-            } else {
-                ensureCanonicalIntegrity0627()
-            }
+        if (!processIntegrityCheckedTenants0705.contains(profilesKey) && !integrityRepairing0627) {
+            ensureCanonicalIntegrity0627()
+        } else if (processIntegrityCheckedTenants0705.contains(profilesKey)) {
+            integrityChecked0627 = true
         }
         return rawProfiles0627().sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.displayName })
     }
@@ -396,12 +405,13 @@ class PassengerIdentityStore(context: Context) {
     /**
      * Canonical linking priority. Names are deliberately absent: similarity alone must never merge people.
      */
-    fun resolveCanonicalPassenger(
-        passengerId: String? = null,
-        externalPassengerId: String? = null,
-        onlineIdentityId: String? = null,
-        whatsapp: String? = null,
-    ): PassengerProfile? {
+    private data class PassengerResolutionSnapshot0705(
+        val profiles: List<PassengerProfile>,
+        val aliases: Map<String, String>,
+        val historicalContactsByProfile: Map<String, Set<String>>,
+    )
+
+    private fun passengerResolutionSnapshot0705(): PassengerResolutionSnapshot0705 {
         val allProfiles = profiles()
         val aliases0705 = identityAliases0627()
 
@@ -416,9 +426,8 @@ class PassengerIdentityStore(context: Context) {
             return current
         }
 
-        // Decode the complete observation collection exactly once for this resolution.
-        // Previously it was decoded once per profile (357x in the captured data set).
-        val historicalContacts = decode<List<PassengerIdentityObservation>>(prefs.getString(observationsKey, null))
+        // One complete observation decode prepares all lookups in the render batch.
+        val historicalContacts0705 = decode<List<PassengerIdentityObservation>>(prefs.getString(observationsKey, null))
             .orEmpty()
             .asSequence()
             .mapNotNull { observation ->
@@ -429,14 +438,59 @@ class PassengerIdentityStore(context: Context) {
             .groupBy({ it.first }, { it.second })
             .mapValues { (_, contacts) -> contacts.toSet() }
 
-        return selectCanonicalPassenger(
+        return PassengerResolutionSnapshot0705(
             profiles = allProfiles,
-            historicalContactsByProfile = historicalContacts,
-            passengerId = canonicalId0705(passengerId),
+            aliases = aliases0705,
+            historicalContactsByProfile = historicalContacts0705,
+        )
+    }
+
+    private fun canonicalPassengerIdFromSnapshot0705(
+        raw: String?,
+        aliases0705: Map<String, String>,
+    ): String? {
+        var current = raw?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        val seen = mutableSetOf<String>()
+        repeat(32) {
+            if (!seen.add(current)) return current
+            val next = aliases0705[current]?.trim()?.takeIf(String::isNotEmpty) ?: return current
+            current = next
+        }
+        return current
+    }
+
+    fun resolveCanonicalPassenger(
+        passengerId: String? = null,
+        externalPassengerId: String? = null,
+        onlineIdentityId: String? = null,
+        whatsapp: String? = null,
+    ): PassengerProfile? {
+        val snapshot0705 = passengerResolutionSnapshot0705()
+        return selectCanonicalPassenger(
+            profiles = snapshot0705.profiles,
+            historicalContactsByProfile = snapshot0705.historicalContactsByProfile,
+            passengerId = canonicalPassengerIdFromSnapshot0705(passengerId, snapshot0705.aliases),
             externalPassengerId = externalPassengerId,
             onlineIdentityId = onlineIdentityId,
             whatsapp = whatsapp,
         )
+    }
+
+    internal fun resolveCanonicalPassengersBatch0705(
+        lookups: List<PassengerIdentityLookup0705>,
+    ): Map<String, PassengerProfile> {
+        if (lookups.isEmpty()) return emptyMap()
+        val snapshot0705 = passengerResolutionSnapshot0705()
+        return lookups.mapNotNull { lookup ->
+            selectCanonicalPassenger(
+                profiles = snapshot0705.profiles,
+                historicalContactsByProfile = snapshot0705.historicalContactsByProfile,
+                passengerId = canonicalPassengerIdFromSnapshot0705(lookup.passengerId, snapshot0705.aliases),
+                externalPassengerId = lookup.externalPassengerId,
+                onlineIdentityId = lookup.onlineIdentityId,
+                whatsapp = lookup.whatsapp,
+            )?.let { profile -> lookup.key to profile }
+        }.toMap()
     }
 
     fun saveProfile(profile: PassengerProfile): PassengerProfile {
