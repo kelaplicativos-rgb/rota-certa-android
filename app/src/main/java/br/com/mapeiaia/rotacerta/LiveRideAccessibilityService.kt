@@ -3526,6 +3526,12 @@ class LiveRideAccessibilityService : AccessibilityService() {
                                     FarolForensicCardBlackBoxStage32.markOcrNoCandidate(SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis())
                                     FarolForensicCaseStoreStage32.persistIfIntensive(applicationContext)
                                     FarolForensicTraceStage20.ocrStage(SystemClock.elapsedRealtimeNanos(), serialStage19, "NO_CANDIDATE", cycleIdStage20)
+                                    val learnedNoCandidateText0706 = blocksStage19.joinToString("\n") { it.text }
+                                    val learnedNoCandidate0706 = LearnedCardRuntimeIdentity0706.evaluate(
+                                        profile = RideAppLearningStore0700.read(applicationContext, eventPackageStage19),
+                                        packageName = eventPackageStage19,
+                                        rawText = learnedNoCandidateText0706,
+                                    )
                                     val transientLeaseStage44 = FarolSemanticFinalLeaseStage44.capture(
                                         currentRadarColor.name,
                                         currentDistanceKm,
@@ -3541,6 +3547,16 @@ class LiveRideAccessibilityService : AccessibilityService() {
                                             eventPackageStage19,
                                             cycleId = cycleIdStage20, operationId = "ocr-$serialStage19",
                                             details = "color=${transientLeaseStage44.color}; distance=${transientLeaseStage44.distanceKm ?: -1.0}; signature=${universalActiveAddressSignature.orEmpty()}; surface=${surfaceTokenStage46.packageName.orEmpty()}; active=${transientPresenceStage44.active}; hardClear=false",
+                                        )
+                                    } else if (learnedNoCandidate0706.matched) {
+                                        UnifiedDebugEventStore.record(
+                                            LearnedCardRuntimeIdentity0706.PARTIAL_NO_CLEAR_MARKER,
+                                            eventPackageStage19,
+                                            "source=OCR; score=${learnedNoCandidate0706.score}; addresses=${learnedNoCandidate0706.addressCount}; hardClear=false; remoteAi=false",
+                                        )
+                                        rememberBubbleReason(
+                                            "learned_card_ocr_pending_0706",
+                                            "Card aprendido confirmado; aguardando leitura local completa do destino.",
                                         )
                                     } else {
                                         hardClearUniversalTwoAddress(
