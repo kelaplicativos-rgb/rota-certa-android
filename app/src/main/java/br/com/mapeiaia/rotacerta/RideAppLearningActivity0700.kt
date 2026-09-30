@@ -62,6 +62,11 @@ class RideAppLearningActivity0700 : ComponentActivity() {
 
     private val apkPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) lifecycleScope.launch {
+            UnifiedDebugEventStore.record(
+                RideAppLearningContract0702.APK_SELECTED,
+                packageName,
+                "source=file_picker",
+            )
             analyzeAndLearn { RideApkAnalyzer0700.analyzeUri(applicationContext, uri) }
         }
     }
@@ -84,6 +89,11 @@ class RideAppLearningActivity0700 : ComponentActivity() {
                     onDismissInstalled = { showInstalledPicker = false },
                     onInstalledSelected = { pkg ->
                         showInstalledPicker = false
+                        UnifiedDebugEventStore.record(
+                            RideAppLearningContract0702.APK_SELECTED,
+                            pkg,
+                            "source=installed_app",
+                        )
                         lifecycleScope.launch {
                             analyzeAndLearn { RideApkAnalyzer0700.analyzeInstalled(applicationContext, pkg) }
                         }
