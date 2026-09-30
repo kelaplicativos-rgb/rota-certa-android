@@ -1,9 +1,6 @@
 name: Rota Certa 0.1.707 Learned Card Runtime exact SHA
 
 on:
-  push:
-    branches:
-      - 'agent/farol-learned-card-continuity-0.1.707'
   pull_request:
     branches:
       - 'agent/farol-learned-card-runtime-0.1.706'
