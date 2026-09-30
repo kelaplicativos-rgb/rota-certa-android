@@ -8122,6 +8122,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             "action_create_quick_reply" -> { openQuickRepliesFromBubble(createNew = true); return }
             "action_open_primary_link" -> { openPrimaryQuickLink0172(); return }
             "action_open_whatsapp_app" -> { openWhatsAppAppFromBubble0184(); return }
+            RideAppLearningContract0702.SHORTCUT_ID -> { openRideAppLearning0702(); return }
             "work_tracking", "action_open_work_tracking" -> { openWorkTracking0184(); return }
             "action_start_work_tracking" -> { setWorkTracking0184(start = true); return }
             "action_stop_work_tracking" -> { setWorkTracking0184(start = false); return }
@@ -8156,6 +8157,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             BubbleShortcutAction.CaptureCurrentAppAndScreen -> captureCurrentAppAndScreen138()
             BubbleShortcutAction.SaveScreenPrint -> saveScreenPrintStage32()
             BubbleShortcutAction.OpenAuthorizedAppsAndCards -> openAuthorizedAppsAndCards146()
+            BubbleShortcutAction.OpenRideAppLearning -> openRideAppLearning0702()
             BubbleShortcutAction.CreateAlert -> saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert, requireNotNull(spec.defaultName))
             BubbleShortcutAction.CreateSavedPlace -> saveCurrentPlaceFromBubble(SavedPlaceType.Place, requireNotNull(spec.defaultName))
             BubbleShortcutAction.ToggleReading -> toggleLiveReadingFromBubble()
@@ -8177,6 +8179,15 @@ class LiveRideAccessibilityService : AccessibilityService() {
             intent = Intent(this, InstalledRideAppPickerActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP),
             failureMessage = "Não consegui abrir os aplicativos autorizados.",
+        )
+    }
+
+    private fun openRideAppLearning0702() {
+        launchShortcutActivity0176(
+            shortcutId = RideAppLearningContract0702.SHORTCUT_ID,
+            intent = Intent(this, RideAppLearningActivity0700::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            failureMessage = "Não consegui abrir o aprendizado de aplicativos.",
         )
     }
 
