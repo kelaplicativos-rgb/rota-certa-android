@@ -41,9 +41,9 @@ jobs:
           grep -Fq 'val releaseVersionCode = 5_997' app/build.gradle.kts
           grep -Fq '"version": "0.1.706"' app/src/main/assets/release_history.json
           grep -Fq 'LEARNED_CARD_RUNTIME_IDENTITY_0706' app/src/main/java/br/com/mapeiaia/rotacerta/LearnedCardRuntimeIdentity0706.kt
-          grep -Fq 'CARD_PROFILE_MATCHED_0706' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-          grep -Fq 'LEARNED_CARD_PARTIAL_NO_CLEAR_0706' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-          grep -Fq 'LEARNED_CARD_PAID_AI_BYPASS_0706' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'LearnedCardRuntimeIdentity0706.MATCHED_MARKER' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'LearnedCardRuntimeIdentity0706.PARTIAL_NO_CLEAR_MARKER' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'LearnedCardRuntimeIdentity0706.PAID_AI_BYPASS_MARKER' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           git diff --check "$BASE_SHA"...HEAD
           printf '%s\n' "$GITHUB_SHA" | tee /tmp/source-sha.txt
           printf '%s\n' "$ROTA_CERTA_GIT_BRANCH" | tee /tmp/source-branch.txt
