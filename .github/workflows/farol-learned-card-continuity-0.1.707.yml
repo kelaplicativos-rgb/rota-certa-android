@@ -140,6 +140,8 @@ jobs:
           grep -Fq 'CARD_PROFILE_MATCHED_0706' /tmp/dex-strings.txt
           grep -Fq 'LEARNED_CARD_PARTIAL_NO_CLEAR_0706' /tmp/dex-strings.txt
           grep -Fq 'LEARNED_CARD_PAID_AI_BYPASS_0706' /tmp/dex-strings.txt
+          grep -Fq 'LEARNED_CARD_RUNTIME_CONTINUITY_0707' /tmp/dex-strings.txt
+          grep -Fq 'LEARNED_CARD_RUNTIME_HOLD_0707' /tmp/dex-strings.txt
           SHORT_SHA="$(git rev-parse --short=12 HEAD)"
           FINAL="rota-certa-0.1.707-5998-$SHORT_SHA.apk"
           cp "$APK" "$FINAL"
