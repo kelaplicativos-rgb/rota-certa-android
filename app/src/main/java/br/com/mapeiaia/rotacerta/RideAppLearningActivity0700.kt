@@ -126,14 +126,24 @@ class RideAppLearningActivity0700 : ComponentActivity() {
         )
         try {
             val dossier = withContext(Dispatchers.IO) { loader() }
+            UnifiedDebugEventStore.record(
+                RideAppLearningContract0702.DOSSIER_READY,
+                dossier.packageName,
+                "sha=${dossier.apkSha256.take(16)}; entries=${dossier.relevantEntries.size}; strings=${dossier.relevantStrings.size}; bytes=${dossier.fileSizeBytes}",
+            )
             state = RideAppLearningUiState0700(
                 busy = true,
                 title = "Dossiê criado",
-                message = "${dossier.appLabel}\\n${dossier.packageName}\\n${dossier.relevantEntries.size} recursos • ${dossier.relevantStrings.size} evidências. Consultando OpenAI pelo backend seguro…",
+                message = "${dossier.appLabel}\\n${dossier.packageName}\\n${dossier.relevantEntries.size} recursos • ${dossier.relevantStrings.size} evidências. Consultando o aprendizado persistente e, somente se necessário, a OpenAI…",
                 dossier = dossier,
             )
 
             RideAppLearningStore0700.findByApkSha(applicationContext, dossier.apkSha256)?.let { cached ->
+                UnifiedDebugEventStore.record(
+                    RideAppLearningContract0702.LOCAL_CACHE_HIT,
+                    dossier.packageName,
+                    "sha=${dossier.apkSha256.take(16)}; profileVersion=${cached.profileVersion}",
+                )
                 activateProfile(cached)
                 state = RideAppLearningUiState0700(
                     busy = false,
