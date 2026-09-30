@@ -6,6 +6,7 @@ import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.security.MessageDigest
 import java.text.Normalizer
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -190,6 +191,11 @@ class PassengerIdentityStore(context: Context) {
     @Volatile private var integrityChecked0627 = false
     @Volatile private var integrityRepairing0627 = false
 
+    private fun invalidateCanonicalIntegrity0705() {
+        integrityChecked0627 = false
+        processIntegrityCheckedTenants0705.remove(profilesKey)
+    }
+
     private fun rawProfiles0627(): List<PassengerProfile> =
         decode<List<PassengerProfile>>(prefs.getString(profilesKey, null)).orEmpty()
 
@@ -210,6 +216,11 @@ class PassengerIdentityStore(context: Context) {
 
     @Synchronized
     internal fun ensureCanonicalIntegrity0627(): PassengerIdentityRepair0627Result {
+        if (integrityChecked0627 || processIntegrityCheckedTenants0705.contains(profilesKey)) {
+            integrityChecked0627 = true
+            val count = rawProfiles0627().size
+            return PassengerIdentityRepair0627Result(count, count, 0, 0, 0, 0, 0)
+        }
         if (integrityRepairing0627) {
             val count = rawProfiles0627().size
             return PassengerIdentityRepair0627Result(count, count, 0, 0, 0, 0, 0)
@@ -343,6 +354,7 @@ class PassengerIdentityStore(context: Context) {
                     " unresolvedContactConflicts=" + repair.unresolvedContactConflicts,
             )
             integrityChecked0627 = true
+            processIntegrityCheckedTenants0705.add(profilesKey)
             return repair
         } finally {
             integrityRepairing0627 = false
@@ -350,7 +362,13 @@ class PassengerIdentityStore(context: Context) {
     }
 
     fun profiles(): List<PassengerProfile> {
-        if (!integrityChecked0627 && !integrityRepairing0627) ensureCanonicalIntegrity0627()
+        if (!integrityChecked0627 && !integrityRepairing0627) {
+            if (processIntegrityCheckedTenants0705.contains(profilesKey)) {
+                integrityChecked0627 = true
+            } else {
+                ensureCanonicalIntegrity0627()
+            }
+        }
         return rawProfiles0627().sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.displayName })
     }
 
@@ -385,13 +403,36 @@ class PassengerIdentityStore(context: Context) {
         whatsapp: String? = null,
     ): PassengerProfile? {
         val allProfiles = profiles()
-        val historicalContacts = allProfiles.associate { profile ->
-            profile.id to observations(profile.id).map(PassengerIdentityObservation::whatsapp).toSet()
+        val aliases0705 = identityAliases0627()
+
+        fun canonicalId0705(raw: String?): String? {
+            var current = raw?.trim()?.takeIf(String::isNotEmpty) ?: return null
+            val seen = mutableSetOf<String>()
+            repeat(32) {
+                if (!seen.add(current)) return current
+                val next = aliases0705[current]?.trim()?.takeIf(String::isNotEmpty) ?: return current
+                current = next
+            }
+            return current
         }
+
+        // Decode the complete observation collection exactly once for this resolution.
+        // Previously it was decoded once per profile (357x in the captured data set).
+        val historicalContacts = decode<List<PassengerIdentityObservation>>(prefs.getString(observationsKey, null))
+            .orEmpty()
+            .asSequence()
+            .mapNotNull { observation ->
+                canonicalId0705(observation.passengerId)?.let { canonicalId ->
+                    canonicalId to observation.whatsapp
+                }
+            }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, contacts) -> contacts.toSet() }
+
         return selectCanonicalPassenger(
             profiles = allProfiles,
             historicalContactsByProfile = historicalContacts,
-            passengerId = canonicalPassengerId0627(passengerId),
+            passengerId = canonicalId0705(passengerId),
             externalPassengerId = externalPassengerId,
             onlineIdentityId = onlineIdentityId,
             whatsapp = whatsapp,
@@ -420,7 +461,7 @@ class PassengerIdentityStore(context: Context) {
         val current = rawProfiles0627().filterNot { it.id == normalized.id }
         val committed = prefs.edit().putString(profilesKey, json.encodeToString(listOf(normalized) + current)).commit()
         check(committed) { "Falha ao salvar identidade de passageiro." }
-        integrityChecked0627 = false
+        invalidateCanonicalIntegrity0705()
         ensureCanonicalIntegrity0627()
         val resolvedId = canonicalPassengerId0627(normalized.id) ?: normalized.id
         return rawProfiles0627().firstOrNull { it.id == resolvedId } ?: normalized
@@ -702,7 +743,7 @@ class PassengerIdentityStore(context: Context) {
             .putString(observationsKey, json.encodeToString(observationList))
             .putString(rideRecordsKey, json.encodeToString(rideByKey.values.toList()))
             .commit()
-        integrityChecked0627 = false
+        invalidateCanonicalIntegrity0705()
         ensureCanonicalIntegrity0627()
         return resolved.mapValues { (_, passengerId) -> canonicalPassengerId0627(passengerId) ?: passengerId }
     }
@@ -793,18 +834,40 @@ class PassengerIdentityStore(context: Context) {
     }
 
     fun observations(profileId: String): List<PassengerIdentityObservation> {
-        val canonicalId = canonicalPassengerId0627(profileId) ?: return emptyList()
+        val aliases0705 = identityAliases0627()
+        fun canonicalId0705(raw: String?): String? {
+            var current = raw?.trim()?.takeIf(String::isNotEmpty) ?: return null
+            val seen = mutableSetOf<String>()
+            repeat(32) {
+                if (!seen.add(current)) return current
+                val next = aliases0705[current]?.trim()?.takeIf(String::isNotEmpty) ?: return current
+                current = next
+            }
+            return current
+        }
+        val canonicalId = canonicalId0705(profileId) ?: return emptyList()
         return decode<List<PassengerIdentityObservation>>(prefs.getString(observationsKey, null))
             .orEmpty()
-            .filter { canonicalPassengerId0627(it.passengerId) == canonicalId }
+            .filter { canonicalId0705(it.passengerId) == canonicalId }
             .sortedByDescending(PassengerIdentityObservation::observedAtMillis)
     }
 
     fun rideRecords(profileId: String): List<PassengerRideRecord> {
-        val canonicalId = canonicalPassengerId0627(profileId) ?: return emptyList()
+        val aliases0705 = identityAliases0627()
+        fun canonicalId0705(raw: String?): String? {
+            var current = raw?.trim()?.takeIf(String::isNotEmpty) ?: return null
+            val seen = mutableSetOf<String>()
+            repeat(32) {
+                if (!seen.add(current)) return current
+                val next = aliases0705[current]?.trim()?.takeIf(String::isNotEmpty) ?: return current
+                current = next
+            }
+            return current
+        }
+        val canonicalId = canonicalId0705(profileId) ?: return emptyList()
         return decode<List<PassengerRideRecord>>(prefs.getString(rideRecordsKey, null))
             .orEmpty()
-            .filter { canonicalPassengerId0627(it.passengerId) == canonicalId }
+            .filter { canonicalId0705(it.passengerId) == canonicalId }
             .distinctBy(PassengerRideRecord::rideKey)
             .sortedByDescending(PassengerRideRecord::observedAtMillis)
     }
@@ -1071,6 +1134,12 @@ class PassengerIdentityStore(context: Context) {
         ?.let { runCatching { json.decodeFromString<T>(it) }.getOrNull() }
 
     companion object {
+        /**
+         * Canonical integrity is a tenant/process invariant, not a card invariant.
+         * New stores created by different Timeline cards reuse the completed check.
+         */
+        private val processIntegrityCheckedTenants0705 = ConcurrentHashMap.newKeySet<String>()
+
         private const val PREFS = "rota_certa_passenger_identity_v1"
         private const val KEY_PROFILES = "passenger_profiles"
         private const val KEY_EXTERNAL_METADATA = "external_passenger_metadata"
