@@ -293,6 +293,7 @@ object LearnedRideReader0700 {
     }
 
     internal fun inferTwoAddressDestination0704(profile: RideReaderProfile0700, rawText: String): String? {
+        if (profile.profileVersion < 2) return null
         if (profile.confidence < 0.80) return null
         val addresses = parsedAddresses0704(rawText)
         if (addresses.size != 2) return null
