@@ -495,6 +495,11 @@ private fun TripApp(
         refresh0705("initial")
     }
 
+    // UI callbacks are intentionally non-suspending; they schedule the same off-main snapshot pipeline.
+    val refreshUi0705: () -> Unit = {
+        shareScope.launch { refresh0705("ui_callback") }
+    }
+
     // Records durable per-trip mutations only; delivery belongs to AgendaBackgroundSync0392.
     val tripMutationCoordinator = remember(activity, store) { TripMutationCoordinator0387(activity, store) }
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -878,7 +883,7 @@ private fun TripApp(
                     trips = trips,
                     bookings = bookings,
                     localProfileLabel = drawerOnlineSettings0397.driverDisplayName.ifBlank { "Agenda" },
-                    onRefreshLocal = { refresh() },
+                    onRefreshLocal = { refreshUi0705() },
                     onOpenTimeline = { tripId, bookingId ->
                         focusedTripId = tripId
                         focusedBookingId = bookingId
@@ -991,7 +996,7 @@ private fun TripApp(
                                     }
                                 }.onSuccess { (canonicalCache0494, published0494) ->
                                     store.saveTrip(canonicalCache0494)
-                                    refresh()
+                                    refreshUi0705()
                                     selectedId = canonicalCache0494.id
                                     val wasEdit0633 = editingExisting0633 != null
                                     editingTripId0633 = null
@@ -1036,7 +1041,7 @@ private fun TripApp(
                         parentRootScreen0396 = TripScreen.TIMELINE
                         screen = TripScreen.LIST
                     },
-                    onRefreshLocal = { refresh() },
+                    onRefreshLocal = { refreshUi0705() },
                     onOpenTripIntegrity = { tripId ->
                         focusedTripId = tripId
                         parentRootScreen0396 = TripScreen.TIMELINE
@@ -1068,7 +1073,7 @@ private fun TripApp(
                     initialPendingOnly = reservationPendingOnly,
                     onChanged = { text ->
                         recordModuleObservation0507(activity, DiagnosticModule0507.PASSENGERS, "RESERVATION_MANAGEMENT_UPDATE_0631")
-                        refresh()
+                        refreshUi0705()
                         message = text
                     },
                     onOpenTimeline = { tripId, bookingId ->
@@ -1083,7 +1088,7 @@ private fun TripApp(
                     trips = trips,
                     bookings = bookings,
                     store = store,
-                    onChanged = { text -> refresh(); message = text },
+                    onChanged = { text -> refreshUi0705(); message = text },
                 )
                 TripScreen.NOTIFICATIONS -> {
                     Row(
@@ -1196,7 +1201,7 @@ private fun TripApp(
                     settingsRepository = settingsRepository,
                     appSettings = appSettings,
                     onChanged = { text ->
-                        refresh()
+                        refreshUi0705()
                         message = text
                     },
                 )
@@ -1303,7 +1308,7 @@ private fun TripApp(
                                         }
                                         selectedId = if (opening) trip.id else null
                                     },
-                                    onChanged = { text -> refresh(); message = text },
+                                    onChanged = { text -> refreshUi0705(); message = text },
                                     onEditNativeTrip = {
                                         editingTripId0633 = trip.id
                                         parentRootScreen0396 = TripScreen.TIMELINE
