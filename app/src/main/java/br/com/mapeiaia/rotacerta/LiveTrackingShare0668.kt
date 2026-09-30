@@ -53,6 +53,7 @@ internal data class PassengerTrackingLinkRequest0668(
     val tripId: String,
     val passengerKey: String,
     val passengerName: String,
+    val passengerPhone: String = "",
     val destinationLatitude: Double,
     val destinationLongitude: Double,
     val destinationLabel: String,
@@ -207,6 +208,9 @@ internal class LiveTrackingShareManager0668(
     private val familyPointBuffer0681 = LiveFamilyPointBuffer0681(appContext)
 
     fun hasActiveShares(): Boolean = repository.hasActiveShares()
+
+    fun isPassengerShareActive(passengerKey: String): Boolean =
+        passengerKey.isNotBlank() && repository.passengerShare(passengerKey) != null
 
     fun recordLivePoint0681(point: WorkTrackPoint) {
         if (repository.hasActiveShares()) familyPointBuffer0681.append(point)
@@ -417,7 +421,10 @@ internal class LiveTrackingShareManager0668(
         val session = repository.session() ?: return@withContext false
         val share = repository.familyShare() ?: return@withContext false
         val settings = validatedSettings()
-        TrackingRemoteClient0668(settings).closeShare(TrackingCloseRequest0668(session.sessionId, share.token))
+        val response = TrackingRemoteClient0668(settings).closeShare(
+            TrackingCloseRequest0668(session.sessionId, share.token),
+        )
+        check(response.ok) { "Servidor não confirmou o encerramento do acompanhamento." }
         repository.save(
             session.copy(
                 shares = session.shares.map { if (it.token == share.token) it.copy(active = false) else it },
