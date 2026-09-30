@@ -23,18 +23,22 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.time.Instant
@@ -42,6 +46,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -86,6 +91,36 @@ internal enum class OperationalTripCardRefreshMode0663 {
     UNAVAILABLE,
 }
 
+internal enum class OperationalTripCardRefreshReason0707 {
+    MANUAL,
+    CARD_OPEN,
+    RETURN_FROM_BLABLACAR,
+}
+
+internal fun operationalTripCardRefreshQueuesFollowUp0707(
+    reason: OperationalTripCardRefreshReason0707,
+): Boolean = reason == OperationalTripCardRefreshReason0707.RETURN_FROM_BLABLACAR
+
+/**
+ * One-shot bridge between the exact-card external round-trip and TripsActivity.
+ * It suppresses only the generic full local snapshot reload caused by the matching
+ * ON_RESUME. The exact-card refresh remains authoritative and event-driven.
+ */
+internal object OperationalTimelineExternalResume0707 {
+    private val suppressNextGenericResume = AtomicBoolean(false)
+
+    fun markExternalNavigationStarted() {
+        suppressNextGenericResume.set(true)
+    }
+
+    fun cancelExternalNavigation() {
+        suppressNextGenericResume.set(false)
+    }
+
+    fun consumeGlobalResumeSuppression(): Boolean =
+        suppressNextGenericResume.getAndSet(false)
+}
+
 internal fun operationalTripCardRefreshMode0663(
     nativeRotaCerta: Boolean,
     canonicalTripPresent: Boolean,
@@ -110,10 +145,14 @@ internal fun OperationalAllTripsBrowserScreen0563(
 ) {
     val context = LocalContext.current
     val fallbackRefreshScope0663 = rememberCoroutineScope()
-    val cardRefreshScope0663 = remember(context, fallbackRefreshScope0663) {
-        context.findComponentActivity0663()?.lifecycleScope ?: fallbackRefreshScope0663
+    val activity0707 = remember(context) { context.findComponentActivity0663() }
+    val cardRefreshScope0663 = remember(activity0707, fallbackRefreshScope0663) {
+        activity0707?.lifecycleScope ?: fallbackRefreshScope0663
     }
     val refreshingTripIds0663 = remember { mutableStateMapOf<String, Boolean>() }
+    val pendingFollowUpTripIds0707 = remember { mutableStateMapOf<String, Boolean>() }
+    var pendingExternalCanonicalTripId0707 by remember { mutableStateOf<String?>(null) }
+    var externalRoundTripObservedAway0707 by remember { mutableStateOf(false) }
     val store0654 = remember(context) { TripStore(context) }
     val accounts = remember(trips, bookings) {
         BlaBlaDynamicAccountRegistry(context.applicationContext).list()
@@ -297,14 +336,28 @@ internal fun OperationalAllTripsBrowserScreen0563(
         Instant.ofEpochMilli(nowMillis).atZone(zoneId).toLocalDate()
     }
 
-    val refreshRow0663: (OperationalTripBrowserRow0563) -> Unit = refreshRow0663@{ row ->
+    fun refreshRow0663(
+        row: OperationalTripBrowserRow0563,
+        reason0707: OperationalTripCardRefreshReason0707 = OperationalTripCardRefreshReason0707.MANUAL,
+    ) {
         val canonicalTripId0663 = operationalCanonicalTripId0654(row)
         val canonicalTrip0663 = row.canonicalTrip0633
         val mode0663 = operationalTripCardRefreshMode0663(
             nativeRotaCerta = row.nativeRotaCerta0633,
             canonicalTripPresent = canonicalTrip0663 != null && canonicalTripId0663.isNotBlank(),
         )
-        if (refreshingTripIds0663[canonicalTripId0663] == true) return@refreshRow0663
+        if (refreshingTripIds0663[canonicalTripId0663] == true) {
+            if (operationalTripCardRefreshQueuesFollowUp0707(reason0707)) {
+                pendingFollowUpTripIds0707[canonicalTripId0663] = true
+                UnifiedDebugEventStore.recordAlways(
+                    "TIMELINE_CARD_RETURN_REFRESH_COALESCED_0707",
+                    context.packageName,
+                    "tripKey=${sha256TripPublication0387(canonicalTripId0663).take(16)} " +
+                        "scope=TRIP_ONLY reason=${reason0707.name} followUpCount=1 latestWins=true noPolling=true",
+                )
+            }
+            return
+        }
 
         when (mode0663) {
             OperationalTripCardRefreshMode0663.UNAVAILABLE -> {
@@ -333,9 +386,25 @@ internal fun OperationalAllTripsBrowserScreen0563(
             }
 
             OperationalTripCardRefreshMode0663.BLABLACAR_DIRECT_HTML -> {
-                val trip0663 = canonicalTrip0663 ?: return@refreshRow0663
+                val trip0663 = canonicalTrip0663 ?: return
                 refreshingTripIds0663[canonicalTripId0663] = true
-                onMessage("📥 Atualizando somente este card pelo HTML…")
+                UnifiedDebugEventStore.recordAlways(
+                    if (reason0707 == OperationalTripCardRefreshReason0707.RETURN_FROM_BLABLACAR) {
+                        "TIMELINE_CARD_RETURN_REFRESH_0707"
+                    } else {
+                        "TIMELINE_CARD_OPEN_REFRESH_0707"
+                    },
+                    context.packageName,
+                    "tripKey=${sha256TripPublication0387(canonicalTripId0663).take(16)} " +
+                        "scope=TRIP_ONLY reason=${reason0707.name} exactTargetOnly=true noPolling=true fullTraversal=false",
+                )
+                onMessage(
+                    if (reason0707 == OperationalTripCardRefreshReason0707.RETURN_FROM_BLABLACAR) {
+                        "📥 Confirmando somente este card após voltar da BlaBlaCar…"
+                    } else {
+                        "📥 Atualizando somente este card pelo HTML…"
+                    },
+                )
                 cardRefreshScope0663.launch {
                     try {
                         val result0663 = CentralDayCommandBridge0552.refreshTripDirect0662(
@@ -365,9 +434,73 @@ internal fun OperationalAllTripsBrowserScreen0563(
                         )
                     } finally {
                         refreshingTripIds0663.remove(canonicalTripId0663)
+                        if (pendingFollowUpTripIds0707.remove(canonicalTripId0663) == true) {
+                            UnifiedDebugEventStore.recordAlways(
+                                "TIMELINE_CARD_RETURN_REFRESH_FOLLOW_UP_0707",
+                                context.packageName,
+                                "tripKey=${sha256TripPublication0387(canonicalTripId0663).take(16)} " +
+                                    "scope=TRIP_ONLY latestWins=true noPolling=true",
+                            )
+                            refreshRow0663(
+                                row = row,
+                                reason0707 = OperationalTripCardRefreshReason0707.RETURN_FROM_BLABLACAR,
+                            )
+                        }
                     }
                 }
             }
+        }
+    }
+
+    val currentRows0707 by rememberUpdatedState(rows)
+    val currentRefresh0707 by rememberUpdatedState<(OperationalTripBrowserRow0563, OperationalTripCardRefreshReason0707) -> Unit>(
+        newValue = { row0707, reason0707 -> refreshRow0663(row0707, reason0707) },
+    )
+    DisposableEffect(activity0707) {
+        val host0707 = activity0707
+        if (host0707 == null) {
+            onDispose { }
+        } else {
+            val observer0707 = LifecycleEventObserver { _, event0707 ->
+                when (event0707) {
+                    Lifecycle.Event.ON_PAUSE,
+                    Lifecycle.Event.ON_STOP,
+                    -> {
+                        if (pendingExternalCanonicalTripId0707 != null) {
+                            externalRoundTripObservedAway0707 = true
+                        }
+                    }
+
+                    Lifecycle.Event.ON_RESUME -> {
+                        val pendingId0707 = pendingExternalCanonicalTripId0707
+                        if (externalRoundTripObservedAway0707 && pendingId0707 != null) {
+                            pendingExternalCanonicalTripId0707 = null
+                            externalRoundTripObservedAway0707 = false
+                            val row0707 = currentRows0707.singleOrNull { candidate0707 ->
+                                !candidate0707.nativeRotaCerta0633 &&
+                                    operationalCanonicalTripId0654(candidate0707) == pendingId0707
+                            }
+                            if (row0707 != null) {
+                                currentRefresh0707(
+                                    row0707,
+                                    OperationalTripCardRefreshReason0707.RETURN_FROM_BLABLACAR,
+                                )
+                            } else {
+                                UnifiedDebugEventStore.recordAlways(
+                                    "TIMELINE_CARD_RETURN_REFRESH_TARGET_MISSING_0707",
+                                    context.packageName,
+                                    "tripKey=${sha256TripPublication0387(pendingId0707).take(16)} " +
+                                        "scope=TRIP_ONLY failClosed=true noFallbackTraversal=true noPolling=true",
+                                )
+                            }
+                        }
+                    }
+
+                    else -> Unit
+                }
+            }
+            host0707.lifecycle.addObserver(observer0707)
+            onDispose { host0707.lifecycle.removeObserver(observer0707) }
         }
     }
 
@@ -412,6 +545,19 @@ internal fun OperationalAllTripsBrowserScreen0563(
             return@openRow
         }
 
+        val canonicalTripId0707 = operationalCanonicalTripId0654(row)
+        if (canonicalTripId0707.isBlank()) {
+            onMessage("Não foi possível identificar de forma única a viagem para atualizar.")
+            return@openRow
+        }
+        pendingExternalCanonicalTripId0707 = canonicalTripId0707
+        externalRoundTripObservedAway0707 = false
+        OperationalTimelineExternalResume0707.markExternalNavigationStarted()
+        refreshRow0663(
+            row = row,
+            reason0707 = OperationalTripCardRefreshReason0707.CARD_OPEN,
+        )
+
         val operationId = UUID.randomUUID().toString()
         runCatching {
             context.startActivity(
@@ -433,6 +579,11 @@ internal fun OperationalAllTripsBrowserScreen0563(
                     "confirmed=false piiLogged=false cookiesLogged=false",
             )
         }.onFailure { error ->
+            if (pendingExternalCanonicalTripId0707 == canonicalTripId0707) {
+                pendingExternalCanonicalTripId0707 = null
+            }
+            externalRoundTripObservedAway0707 = false
+            OperationalTimelineExternalResume0707.cancelExternalNavigation()
             UnifiedDebugEventStore.record(
                 "OPERATIONAL_BROWSER_TARGET_NAVIGATION_DISPATCH_FAILED_0564",
                 context.packageName,
@@ -509,7 +660,9 @@ internal fun OperationalAllTripsBrowserScreen0563(
                         onRefreshLocal()
                     },
                     refreshRunning0663 = refreshingTripIds0663[canonicalTripId0654] == true,
-                    onRefreshCard0663 = { refreshRow0663(row) },
+                    onRefreshCard0663 = {
+                        refreshRow0663(row, OperationalTripCardRefreshReason0707.MANUAL)
+                    },
                     onOpenIntegrity0654 = { onOpenTripIntegrity(canonicalTripId0654) },
                     onOpen = { openRow(row) },
                 )
@@ -551,7 +704,9 @@ internal fun OperationalAllTripsBrowserScreen0563(
                             onRefreshLocal()
                         },
                         refreshRunning0663 = refreshingTripIds0663[canonicalTripId0654] == true,
-                        onRefreshCard0663 = { refreshRow0663(row) },
+                        onRefreshCard0663 = {
+                            refreshRow0663(row, OperationalTripCardRefreshReason0707.MANUAL)
+                        },
                         onOpenIntegrity0654 = { onOpenTripIntegrity(canonicalTripId0654) },
                         onOpen = { openRow(row) },
                     )
