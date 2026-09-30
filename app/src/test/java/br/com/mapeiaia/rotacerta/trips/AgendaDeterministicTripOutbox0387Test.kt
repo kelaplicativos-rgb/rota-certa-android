@@ -296,7 +296,9 @@ class AgendaDeterministicTripOutbox0387Test {
         assertFalse(activity.contains("createPublicAgendaSyncCoordinator0373"))
         assertFalse(activity.contains("PublicBookingRemoteSync0296.pullAndReconcile"))
         assertTrue(activity.contains("AgendaBackgroundSync0392.enqueueImmediate"))
-        assertTrue(activity.contains("onChanged = { text -> refresh(); message = text }"))
+        assertTrue(activity.contains("onChanged = { text -> refreshUi0705(); message = text }"))
+        assertTrue(activity.contains("val refreshUi0705: () -> Unit = {"))
+        assertTrue(activity.contains("shareScope.launch { refresh0705(\"ui_callback\") }"))
         assertTrue(activity.contains("TripMutationCoordinator0387(activity, store)"))
     }
 
