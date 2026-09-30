@@ -403,7 +403,7 @@ object RideApkAnalyzer0700 {
 
     private fun sha256Files0704(files: List<File>): String {
         val digest = MessageDigest.getInstance("SHA-256")
-        files.sortedBy(File::name).forEach { file ->
+        files.sortedBy { it.name }.forEach { file ->
             digest.update(file.name.toByteArray(Charsets.UTF_8))
             digest.update(file.length().toString().toByteArray(Charsets.UTF_8))
             file.inputStream().use { input ->
