@@ -146,11 +146,22 @@ internal fun buildPassengerTimelineRenderSnapshot0394(
     completionService: PassengerCompletionService,
     canonicalBookings0494: List<Booking>? = null,
 ): PassengerTimelineRenderSnapshot0394 {
-    val externalMetadata = passengerStore.externalMetadataSnapshot0394()
     val localBookings = trip?.let { selectedTrip ->
         canonicalBookings0494?.filter { it.tripId == selectedTrip.id }
             ?: store.bookingsFor(selectedTrip.id)
     }.orEmpty()
+    val hasLegacyPassengers0705 =
+        !entry.canonicalBackendAuthoritative0494 && entry.blablaPassengers.isNotEmpty()
+    if (localBookings.isEmpty() && !hasLegacyPassengers0705) {
+        return PassengerTimelineRenderSnapshot0394(
+            rows = emptyList(),
+            profilesByRowKey = emptyMap(),
+            bookingsById = emptyMap(),
+            historiesByProfileId = emptyMap(),
+            completedRowKeys = emptySet(),
+        )
+    }
+    val externalMetadata = passengerStore.externalMetadataSnapshot0394()
     val rows = enhancedPassengerRows(
         entry = entry,
         trip = trip,
@@ -193,6 +204,17 @@ internal fun buildImmediateCanonicalPassengerTimelineRenderSnapshot0517(
 ): PassengerTimelineRenderSnapshot0394? {
     if (trip == null || canonicalBookings0494 == null) return null
     val localBookings = canonicalBookings0494.filter { it.tripId == trip.id }
+    val hasLegacyPassengers0705 =
+        !entry.canonicalBackendAuthoritative0494 && entry.blablaPassengers.isNotEmpty()
+    if (localBookings.isEmpty() && !hasLegacyPassengers0705) {
+        return PassengerTimelineRenderSnapshot0394(
+            rows = emptyList(),
+            profilesByRowKey = emptyMap(),
+            bookingsById = emptyMap(),
+            historiesByProfileId = emptyMap(),
+            completedRowKeys = emptySet(),
+        )
+    }
     val rows = enhancedPassengerRows(
         entry = entry,
         trip = trip,
@@ -548,7 +570,9 @@ internal fun EnhancedPassengerTimelineSection(
 ) {
     val context = LocalContext.current
     val passengerStore = remember(context) { PassengerIdentityStore(context) }
-    val completionService = remember(context) { PassengerCompletionService(context) }
+    val completionService = remember(context, passengerStore) {
+        PassengerCompletionService(context, passengerStore)
+    }
     val mutationCoordinator = remember(context, store) { TripMutationCoordinator0387(context, store) }
     val scope = rememberCoroutineScope()
     val liveTrackingManager0668 = remember(context) { LiveTrackingShareManager0668(context) }
