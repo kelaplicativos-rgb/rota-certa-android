@@ -96,7 +96,7 @@ object RideAppLearningStore0700 {
  */
 internal object RuntimeRideCardEvidence0704 {
     const val CONTRACT_MARKER = "RUNTIME_CARD_TEACHER_0704"
-    private const val SYNTHETIC_SHA = "0704".repeat(16)
+    private val SYNTHETIC_SHA = "0704".repeat(16)
 
     private val destinationLabelRegex = Regex(
         "(?iu)^(?:destino|destination|drop.?off|desembarque|chegada|para onde|onde vai|endere[cç]o destino)\\b.*",
