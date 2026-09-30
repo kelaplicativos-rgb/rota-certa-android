@@ -183,7 +183,7 @@ class RideAppLearningActivity0700 : ComponentActivity() {
                 versionName = dossier.versionName,
                 versionCode = dossier.versionCode,
                 apkSha256 = dossier.apkSha256.lowercase(),
-                profileVersion = response.profileVersion.coerceAtLeast(1),
+                profileVersion = maxOf(response.profileVersion.coerceAtLeast(1), dossier.extractionVersion),
                 confidence = response.confidence.coerceIn(0.0, 1.0),
                 pickupLabels = response.pickupLabels,
                 destinationLabels = response.destinationLabels,
