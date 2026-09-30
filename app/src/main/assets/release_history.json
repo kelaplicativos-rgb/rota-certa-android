@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.703",
+      "build": 5994,
+      "commit": null,
+      "branch": "agent/farol-learned-instant-0.1.703",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Reader aprendido passa a reconhecer e autorizar destino único de card do mesmo package sem exigir origem para iniciar o cálculo local.",
+        "Triagem imediata da Accessibility consulta o Reader antes de reprovar layouts de um endereço, permitindo reação assim que o card aparece.",
+        "Google Geocoding recebe bias geográfico opcional derivado somente dos alvos de trabalho configurados quando o endereço não traz localidade explícita."
+      ],
+      "fixed": [
+        "Corrige cenário em que o APK era marcado como aprendido, mas o card real não acionava cálculo nem pintura da bolinha por falta simultânea de origem + destino.",
+        "Impede leitura parcial do mesmo card aprendido de apagar verde/vermelho + km já confirmados enquanto a sessão visual atual permanece válida.",
+        "Melhora resolução de endereço incompleto como Rua Jacinto Valedor, 41 sem inventar cidade fixa e sem permitir que rede decida a cor."
+      ],
+      "improved": [
+        "Inferência de destino único exige profile de confiança, evidência estática aprendida e sinais visíveis de corrida, permanecendo fail-closed em telas ambíguas com múltiplos endereços.",
+        "Destino aprendido continua entrando no mesmo pipeline local de Haversine, raio, freshness e autoridade visual; OpenAI não participa da decisão por corrida.",
+        "Telemetria dedicada distingue bypass do layout aprendido, autorização destination-only e preservação de final durante leitura parcial."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Reader Profile 0.1.700/0.1.702 exigindo origem + destino para autorizar rota.",
+        "Card 99 reconhecido por OCR chegando a FAROL_VALID_ADDRESS_WITHOUT_FINAL_PAINT_0696 sem km final."
+      ],
+      "modulesAffected": [
+        "Farol",
+        "APK Learning",
+        "Accessibility",
+        "Geocoding",
+        "Bolinha",
+        "Saúde/Diagnóstico",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.702",
       "build": 5993,
       "commit": null,

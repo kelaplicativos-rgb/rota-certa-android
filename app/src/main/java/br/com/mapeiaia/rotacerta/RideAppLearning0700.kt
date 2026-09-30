@@ -89,6 +89,8 @@ object LearnedRideReader0700 {
     const val CONTRACT_MARKER = "LEARNED_RIDE_READER_0700"
     const val APPLIED_MARKER = "LEARNED_RIDE_PROFILE_APPLIED_0700"
     const val LOCAL_ONLY_MARKER = "LEARNED_PROFILE_EXECUTES_LOCALLY_0700"
+    const val DESTINATION_ONLY_MARKER = "LEARNED_DESTINATION_ONLY_0703"
+    const val UNIQUE_ADDRESS_MARKER = "LEARNED_UNIQUE_ADDRESS_CARD_0703"
 
     data class Result(
         val text: String,
@@ -112,13 +114,19 @@ object LearnedRideReader0700 {
             .take(220)
         if (lines.isEmpty()) return Result(rawText, false)
 
-        val destination = extractValue(lines, profile.destinationLabels)
+        val labeledDestination = extractValue(lines, profile.destinationLabels)
         val pickup = extractValue(lines, profile.pickupLabels)
+        val inferredDestination = if (labeledDestination == null) {
+            inferUniqueDestination0703(profile, rawText)
+        } else null
+        val destination = labeledDestination ?: inferredDestination
         if (destination == null && pickup == null) return Result(rawText, false)
 
-        val additions = ArrayList<String>(3)
+        val additions = ArrayList<String>(5)
         pickup?.let { additions += "Origem: $it" }
         destination?.let { additions += "Destino: $it" }
+        if (destination != null && pickup == null) additions += DESTINATION_ONLY_MARKER
+        if (inferredDestination != null) additions += UNIQUE_ADDRESS_MARKER
         additions += APPLIED_MARKER
         return Result(
             text = buildString {
@@ -128,11 +136,40 @@ object LearnedRideReader0700 {
             applied = true,
             pickup = pickup,
             destination = destination,
-            evidence = "profileVersion=${profile.profileVersion}; confidence=${profile.confidence}",
+            evidence = "profileVersion=" + profile.profileVersion +
+                "; confidence=" + profile.confidence +
+                "; destinationOnly=" + (destination != null && pickup == null) +
+                "; uniqueAddress=" + (inferredDestination != null),
         )
     }
 
-    internal fun extractValue(lines: List<String>, labels: List<String>): String? {
+    internal fun inferUniqueDestination0703(profile: RideReaderProfile0700, rawText: String): String? {
+        if (profile.confidence < 0.75) return null
+        val addresses = UniversalScreenAddressParser.findAddresses(
+            WrappedAddressTextNormalizer.normalize(rawText),
+        ).map(DestinationAddressIdentityPolicy::cleanDisplayAddress)
+            .filter(String::isNotBlank)
+            .distinctBy(::canonical)
+        if (addresses.size != 1) return null
+
+        val canonicalText = canonical(rawText)
+        val learnedCues = (
+            profile.rideAnchors + profile.actionLabels + profile.fareLabels +
+                profile.distanceLabels + profile.destinationLabels + profile.pickupLabels
+            ).map(::canonical).filter { it.length >= 3 }.distinct().take(80)
+        val learnedCueVisible = learnedCues.any { cue -> canonicalText.contains(cue) }
+        val genericSignals = listOf(
+            Regex("(?iu)R\\$\\s*\\d").containsMatchIn(rawText),
+            Regex("(?iu)\\b(?:corrida|viagem|aceitar|recusar|oferta|solicita[cç][aã]o|pedido)\\b").containsMatchIn(rawText),
+            Regex("(?iu)\\b\\d+(?:[.,]\\d+)?\\s*(?:km|min|minutos?)\\b").containsMatchIn(rawText),
+        ).count { it }
+        val profileHasStaticCardEvidence = profile.rideAnchors.isNotEmpty() ||
+            profile.actionLabels.isNotEmpty() || profile.resourceHints.isNotEmpty()
+        if (!profileHasStaticCardEvidence || (!learnedCueVisible && genericSignals < 2)) return null
+        return addresses.single()
+    }
+
+    internal fun extractValue(lines: List<String>, labels: List<String>): String? {    internal fun extractValue(lines: List<String>, labels: List<String>): String? {
         val safeLabels = labels.map(::canonical).filter(String::isNotBlank).distinct().take(40)
         if (safeLabels.isEmpty()) return null
         for (index in lines.indices) {

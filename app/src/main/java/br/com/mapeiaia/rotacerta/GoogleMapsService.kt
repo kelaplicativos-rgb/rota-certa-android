@@ -201,7 +201,7 @@ class GoogleMapsService(context: Context? = null) {
                     packageName = null,
                     details = "from=osm; to=google",
                 )
-                resolveGoogleOrigin0697(originAddress, apiKey, requestContext0699)?.let { coordinate ->
+                resolveGoogleOrigin0697(originAddress, targetHints, apiKey, requestContext0699)?.let { coordinate ->
                     learnOfflineAtlas642(originAddress, coordinate)
                     FarolFlightRecorder0163.record(
                         stage = FarolCoordinateResolution0697.RESOLVED_MARKER,
@@ -713,10 +713,12 @@ class GoogleMapsService(context: Context? = null) {
 
     private suspend fun resolveGoogleOrigin0697(
         originAddress: String,
+        targetHints: List<Coordinate>,
         apiKey: String,
         requestContext0699: FarolNetworkFailureIsolation0699.RequestContext? = null,
     ): Coordinate? {
         val query = geocodeQueries(originAddress, DeviceRegion()).firstOrNull() ?: return null
+        val boundsBias0703 = if (containsExplicitLocality(query)) null else targetBiasBounds0703(targetHints)
         val started0699 = SystemClock.elapsedRealtime()
         FarolFlightRecorder0163.record(
             stage = FarolNetworkFailureIsolation0699.GOOGLE_GEOCODE_STARTED_MARKER,
@@ -727,7 +729,7 @@ class GoogleMapsService(context: Context? = null) {
             ) ?: "provider=google_geocode; deadlineMs=${FarolCoordinateResolution0697.GOOGLE_DEADLINE_MS}; query=${query.take(180)}",
         )
         val selected = withTimeoutOrNull(FarolCoordinateResolution0697.GOOGLE_DEADLINE_MS) {
-            withContext(Dispatchers.IO) { requestGeocode(query, apiKey, requestContext0699) }
+            withContext(Dispatchers.IO) { requestGeocode(query, apiKey, requestContext0699, boundsBias0703) }
         }
         if (selected != null) {
             cacheCoordinateAliases0697(originAddress, selected)
@@ -1116,6 +1118,20 @@ class GoogleMapsService(context: Context? = null) {
             .distinctBy { it.lowercase(Locale.ROOT) }
     }
 
+    internal fun targetBiasBounds0703(targetHints: List<Coordinate>): String? {
+        val valid = targetHints.filter {
+            it.latitude.isFinite() && it.longitude.isFinite() &&
+                it.latitude in -90.0..90.0 && it.longitude in -180.0..180.0
+        }.take(12)
+        if (valid.isEmpty()) return null
+        val paddingDegrees = 0.35
+        val minLat = (valid.minOf { it.latitude } - paddingDegrees).coerceAtLeast(-90.0)
+        val maxLat = (valid.maxOf { it.latitude } + paddingDegrees).coerceAtMost(90.0)
+        val minLon = (valid.minOf { it.longitude } - paddingDegrees).coerceAtLeast(-180.0)
+        val maxLon = (valid.maxOf { it.longitude } + paddingDegrees).coerceAtMost(180.0)
+        return String.format(Locale.US, "%.6f,%.6f|%.6f,%.6f", minLat, minLon, maxLat, maxLon)
+    } // GOOGLE_TARGET_BIAS_0703
+
     private fun containsExplicitLocality(query: String): Boolean {
         val normalized = query.lowercase(Locale.ROOT)
         val statePattern = Regex("""(?:^|[,\s-])(?:ac|al|ap|am|ba|ce|df|es|go|ma|mt|ms|mg|pa|pb|pr|pe|pi|rj|rn|rs|ro|rr|sc|sp|se|to)(?:$|[,\s-])""", RegexOption.IGNORE_CASE)
@@ -1128,14 +1144,18 @@ class GoogleMapsService(context: Context? = null) {
         scopedQuery: String,
         apiKey: String,
         requestContext0699: FarolNetworkFailureIsolation0699.RequestContext? = null,
+        boundsBias0703: String? = null,
     ): Coordinate? {
         val encodedAddress = URLEncoder.encode(scopedQuery, "UTF-8")
         val encodedKey = URLEncoder.encode(apiKey.trim(), "UTF-8")
+        val encodedBounds0703 = boundsBias0703?.trim()?.takeIf(String::isNotBlank)
+            ?.let { URLEncoder.encode(it, "UTF-8") }
         val url = URL(
             "https://maps.googleapis.com/maps/api/geocode/json" +
                 "?address=$encodedAddress" +
                 "&region=br" +
                 "&language=pt-BR" +
+                (encodedBounds0703?.let { "&bounds=$it" } ?: "") +
                 "&key=$encodedKey",
         )
 

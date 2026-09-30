@@ -791,16 +791,24 @@ class LiveRideAccessibilityService : AccessibilityService() {
         ) {
             collectImmediateVisibleTextChecklist13(rootHandle0187.node)
         }
-        val cardEvidence0185 = RideCardConfirmationPolicy0185.prepare(
+        val learnedImmediateProfile0703 = RideAppLearningStore0700.read(applicationContext, resolvedPackage)
+        val learnedImmediateRead0703 = LearnedRideReader0700.apply(
+            profile = learnedImmediateProfile0703,
             packageName = resolvedPackage,
             rawText = immediateTextChecklist13,
+        )
+        val immediateLearnedText0703 = learnedImmediateRead0703.text
+        val learnedImmediateBypass0703 = LearnedRideInstantPolicy0703.canAuthorizeDestination(learnedImmediateRead0703)
+        val cardEvidence0185 = RideCardConfirmationPolicy0185.prepare(
+            packageName = resolvedPackage,
+            rawText = immediateLearnedText0703,
         )
         val addressFirst0695 = FarolAddressFirst0695.evaluate(
             packageName = resolvedPackage,
-            rawText = immediateTextChecklist13,
+            rawText = immediateLearnedText0703,
             rejectedByLayoutGate = cardEvidence0185.rejectedFeed,
         )
-        if (cardEvidence0185.rejectedFeed && !addressFirst0695.allowPipeline) {
+        if (cardEvidence0185.rejectedFeed && !addressFirst0695.allowPipeline && !learnedImmediateBypass0703) {
             UnifiedDebugEventStore.record(
                 "BUBBLE_UNCONFIRMED_CARD_REJECTED_0185",
                 resolvedPackage,
@@ -817,7 +825,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
         if (cardEvidence0185.rejectedFeed) {
             UnifiedDebugEventStore.record(
-                "BUBBLE_ADDRESS_FIRST_SECOND_CHANCE_0695",
+                if (learnedImmediateBypass0703) LearnedRideInstantPolicy0703.LAYOUT_BYPASS_MARKER else "BUBBLE_ADDRESS_FIRST_SECOND_CHANCE_0695",
                 resolvedPackage,
                 "reason=${addressFirst0695.reason}; addresses=${addressFirst0695.uniqueAddressCount}; downstreamGatesRetained=true",
             )
@@ -5615,37 +5623,52 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
         if (decision0188.authorization != null) return decision0188.authorization
 
-        // 0.1.700: Reader Profile recupera somente snapshot do mesmo package com origem+destino.
-        // Não mistura janelas, não decide cor/km e mantém o restante do pipeline local.
+        // 0.1.703: Reader Profile aprendido pode autorizar destino único do mesmo package/sessão.
+        // Origem continua útil quando existir, mas não é pré-requisito para calcular o km do destino.
+        // O Reader nunca decide cor/km; ele apenas fornece o destino ao mesmo pipeline local existente.
         val learned0700 = learnedRead0700
-        if (learned0700?.applied == true && !learned0700.pickup.isNullOrBlank() && !learned0700.destination.isNullOrBlank()) {
-            val pickup0700 = DestinationAddressIdentityPolicy.cleanDisplayAddress(learned0700.pickup)
-            val destination0700 = DestinationAddressIdentityPolicy.cleanDisplayAddress(learned0700.destination)
-            val pickupSignature0700 = DestinationAddressIdentityPolicy.signature(packageName0188, pickup0700)
+        if (LearnedRideInstantPolicy0703.canAuthorizeDestination(learned0700)) {
+            val destination0700 = DestinationAddressIdentityPolicy.cleanDisplayAddress(learned0700?.destination.orEmpty())
+            val pickup0700 = DestinationAddressIdentityPolicy.cleanDisplayAddress(learned0700?.pickup.orEmpty())
             val destinationSignature0700 = DestinationAddressIdentityPolicy.signature(packageName0188, destination0700)
-            if (pickup0700.isNotBlank() && destination0700.isNotBlank() && pickupSignature0700 != destinationSignature0700) {
+            val pickupSignature0700 = pickup0700.takeIf(String::isNotBlank)
+                ?.let { DestinationAddressIdentityPolicy.signature(packageName0188, it) }
+            val distinctPickup0703 = pickup0700.takeIf {
+                it.isNotBlank() && pickupSignature0700 != null && pickupSignature0700 != destinationSignature0700
+            }
+            if (destination0700.isNotBlank() && destinationSignature0700.isNotBlank()) {
+                val learnedAddresses0703 = if (distinctPickup0703 != null) {
+                    listOf(distinctPickup0703, destination0700)
+                } else {
+                    listOf(destination0700)
+                }
                 val learnedAuthorization0700 = FarolRouteAuthorization0188(
                     packageName = packageName0188,
                     windowId = expectedWindow0188,
-                    blockId = "learned-profile-0700",
+                    blockId = "learned-profile-0703",
                     source = source0188.toFarolEvidenceSource0700(),
-                    analysisText = learned0700.text,
-                    addresses = listOf(pickup0700, destination0700),
-                    pickup = pickup0700,
+                    analysisText = learned0700?.text.orEmpty(),
+                    addresses = learnedAddresses0703,
+                    pickup = distinctPickup0703.orEmpty(),
                     destination = destination0700,
                     addressSignature = destinationSignature0700,
-                    screenHash = "$packageName0188|$expectedWindow0188|learned0700|$destinationSignature0700".hashCode(),
+                    screenHash = (packageName0188 + "|" + expectedWindow0188 + "|learned0703|" + destinationSignature0700).hashCode(),
                 )
                 stage16AcceptedGateSnapshot = gateSnapshotStage16
                 stage16AcceptedGateAuthorization = learnedAuthorization0700
                 FarolFlightRecorder0163.record(
-                    stage = LearnedRideReader0700.APPLIED_MARKER,
+                    stage = LearnedRideInstantPolicy0703.DESTINATION_AUTH_MARKER,
                     packageName = packageName0188,
-                    details = "phase=route_authorization; pickup=${pickup0700.take(160)}; destination=${destination0700.take(180)}; remoteCall=false; ${learned0700.evidence}",
+                    details = "phase=route_authorization; destinationOnly=" + (distinctPickup0703 == null) +
+                        "; pickup=" + distinctPickup0703.orEmpty().take(160) +
+                        "; destination=" + destination0700.take(180) +
+                        "; remoteCall=false; " + learned0700?.evidence.orEmpty(),
                 )
                 return learnedAuthorization0700
             }
         }
+        return null
+    }
         return null
     }
 
@@ -5840,8 +5863,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
 
         val rawSnapshotOriginal0700 = text.trim()
+        val learnedProfile0700 = RideAppLearningStore0700.read(applicationContext, selectedPackageChecklist13)
         val learnedRead0700 = LearnedRideReader0700.apply(
-            profile = RideAppLearningStore0700.read(applicationContext, selectedPackageChecklist13),
+            profile = learnedProfile0700,
             packageName = selectedPackageChecklist13,
             rawText = rawSnapshotOriginal0700,
         )
@@ -5862,7 +5886,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
             rawText = rawSnapshotText0185,
             rejectedByLayoutGate = cardEvidence0185.rejectedFeed,
         )
-        if (cardEvidence0185.rejectedFeed && !addressFirst0695.allowPipeline) {
+        val learnedDestinationBypass0703 = LearnedRideInstantPolicy0703.canAuthorizeDestination(learnedRead0700)
+        if (cardEvidence0185.rejectedFeed && !addressFirst0695.allowPipeline && !learnedDestinationBypass0703) {
             UnifiedDebugEventStore.record(
                 "BUBBLE_UNCONFIRMED_CARD_REJECTED_0185",
                 selectedPackageChecklist13,
@@ -5888,7 +5913,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
         if (cardEvidence0185.rejectedFeed) {
             UnifiedDebugEventStore.record(
-                "BUBBLE_ADDRESS_FIRST_SECOND_CHANCE_0695",
+                if (learnedDestinationBypass0703) LearnedRideInstantPolicy0703.LAYOUT_BYPASS_MARKER else "BUBBLE_ADDRESS_FIRST_SECOND_CHANCE_0695",
                 selectedPackageChecklist13,
                 "source=${source.name}; reason=${addressFirst0695.reason}; addresses=${addressFirst0695.uniqueAddressCount}; downstreamGatesRetained=true",
             )
@@ -5902,6 +5927,26 @@ class LiveRideAccessibilityService : AccessibilityService() {
             learnedRead0700 = learnedRead0700,
         )
         if (routeAuthorization0188 == null) {
+            val preserveLearnedFinal0703 = LearnedRideInstantPolicy0703.shouldPreserveFinalOnPartialRead(
+                selectedPackage = selectedPackageChecklist13,
+                activePackage = universalActiveRidePackageName,
+                hasActiveAddress = !universalActiveAddressSignature.isNullOrBlank(),
+                finalPaintVisible = currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red,
+                sessionCurrent = driverCardSessionGate0162.isCurrent(sessionToken0162),
+                learnedProfileUsable = learnedProfile0700?.usable == true,
+            )
+            if (preserveLearnedFinal0703) {
+                UnifiedDebugEventStore.record(
+                    LearnedRideInstantPolicy0703.PARTIAL_PRESERVE_MARKER,
+                    selectedPackageChecklist13,
+                    "source=" + source.name +
+                        "; signature=" + universalActiveAddressSignature.orEmpty() +
+                        "; color=" + currentRadarColor +
+                        "; distance=" + (currentDistanceKm ?: -1.0),
+                )
+                if (source == TextSource.Accessibility) scheduleScreenshotFallback127(selectedPackageChecklist13)
+                return
+            }
             UnifiedDebugEventStore.record(
                 "BUBBLE_ROUTE_GATE_REJECTED_0188",
                 selectedPackageChecklist13,
