@@ -47,6 +47,10 @@
             android:exported="false"
             android:label="Aprender aplicativo de corrida" />
         <activity
+            android:name=".OfflineNavigationActivity0708"
+            android:exported="false"
+            android:label="Navegação offline" />
+        <activity
             android:name=".QuickRepliesActivity"
             android:exported="false"
             android:excludeFromRecents="true"
