@@ -2,6 +2,48 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.704",
+      "build": 5995,
+      "commit": null,
+      "branch": "agent/ride-app-learning-v2-0.1.704",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "APK Learning V2 passa a analisar APKs grandes por streaming sem o bloqueio de 250 MB e sem teto agregado de 120 MB de DEX.",
+        "Aplicativos instalados são estudados como instalação completa, incluindo APK base e splitSourceDirs.",
+        "Evidências de todos os DEX e assets textuais são ranqueadas globalmente por relevância para corrida, destino, origem, valor e ações.",
+        "Capturas reais de card podem enriquecer o Reader local com rótulos e âncoras sem assumir autoridade sobre cor, raio ou quilometragem."
+      ],
+      "fixed": [
+        "Uber Driver com aproximadamente 255 MB deixa de ser rejeitado antes da criação do dossiê.",
+        "inDrive deixa de perder evidências específicas porque os primeiros 1.600 itens eram preenchidos por bibliotecas genéricas.",
+        "99 Motorista passa a aproveitar traduções e assets textuais como pt_BR.json, além das strings DEX.",
+        "Card aprendido com exatamente origem + destino pode fornecer o destino final quando há forte evidência de corrida e ação, mantendo fail-closed em telas ambíguas."
+      ],
+      "improved": [
+        "Layouts, resources e strings são priorizados por relevância em vez de ordem física ou alfabética no APK.",
+        "O Reader mantém isolamento por package e continua dependendo da sessão/janela atual do FAROL para qualquer decisão operacional.",
+        "Perfis antigos 0.1.700-0.1.703 permanecem compatíveis; a evidência real capturada apenas os enriquece."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "APK excede o limite de 250 MB.",
+        "DEX posteriores ignorados após teto agregado de 120 MB.",
+        "Layouts relevantes do inDrive descartados por cortes posicionais.",
+        "Strings Flutter/localizadas do 99 não aproveitadas pelo analisador."
+      ],
+      "modulesAffected": [
+        "Farol",
+        "APK Learning",
+        "Accessibility",
+        "Apps autorizados",
+        "Bolinha",
+        "Saúde/Diagnóstico",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.703",
       "build": 5994,
       "commit": null,
