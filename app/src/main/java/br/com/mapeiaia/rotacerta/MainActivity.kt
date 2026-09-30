@@ -2550,6 +2550,16 @@ private fun SystemControlCard(settings: AppSettings, onChange: (AppSettings) -> 
             },
             style = MaterialTheme.typography.bodySmall,
         ) // maps_key_single_build_source_0_1_138
+        OutlinedButton(
+            onClick = { context.startActivity(Intent(context, OfflineNavigationActivity0708::class.java)) },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("🗺️ Navegação offline e mapas")
+        }
+        Text(
+            "Importe arquivos regionais .mwm agora ou depois. Eles ficam armazenados dentro do Rota Certa e não alteram o FAROL até o motor offline ser validado.",
+            style = MaterialTheme.typography.bodySmall,
+        ) // offline_navigation_entry_0_1_708
         SettingsSwitchRow(
             label = "Leitura do Farol",
             checked = WorkModePolicy0162.isEnabled(settings),
