@@ -169,7 +169,7 @@ object LearnedRideReader0700 {
         return addresses.single()
     }
 
-    internal fun extractValue(lines: List<String>, labels: List<String>): String? {    internal fun extractValue(lines: List<String>, labels: List<String>): String? {
+    internal fun extractValue(lines: List<String>, labels: List<String>): String? {
         val safeLabels = labels.map(::canonical).filter(String::isNotBlank).distinct().take(40)
         if (safeLabels.isEmpty()) return null
         for (index in lines.indices) {
