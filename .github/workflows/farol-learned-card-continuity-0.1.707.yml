@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: farol-learned-card-continuity-0707-${{ github.sha }}
+  group: farol-learned-card-continuity-0707-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 120
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-      ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       ROTA_CERTA_GIT_BRANCH: 'agent/farol-learned-card-continuity-0.1.707'
       BASE_SHA: 'acc9ed186e9abeeace45457cd49e44ac5cebb4e7'
       EXPECTED_VERSION_NAME: '0.1.707'
@@ -32,25 +32,24 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Prove exact source and learned-card scope
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$ROTA_CERTA_GIT_SHA" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
           grep -Fq 'val releaseVersionName = "0.1.707"' app/build.gradle.kts
           grep -Fq 'val releaseVersionCode = 5_998' app/build.gradle.kts
           grep -Fq '"version": "0.1.707"' app/src/main/assets/release_history.json
           grep -Fq 'LEARNED_CARD_RUNTIME_IDENTITY_0706' app/src/main/java/br/com/mapeiaia/rotacerta/LearnedCardRuntimeIdentity0706.kt
           grep -Fq 'LEARNED_CARD_RUNTIME_CONTINUITY_0707' app/src/main/java/br/com/mapeiaia/rotacerta/LearnedCardRuntimeContinuity0707.kt
-          grep -Fq 'LEARNED_CARD_RUNTIME_HOLD_0707' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'LearnedCardRuntimeContinuity0707.HOLD_MARKER' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -Fq 'LearnedCardRuntimeIdentity0706.MATCHED_MARKER' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -Fq 'LearnedCardRuntimeIdentity0706.PARTIAL_NO_CLEAR_MARKER' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -Fq 'LearnedCardRuntimeIdentity0706.PAID_AI_BYPASS_MARKER' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           git diff --check "$BASE_SHA"...HEAD
-          printf '%s\n' "$GITHUB_SHA" | tee /tmp/source-sha.txt
+          printf '%s\n' "$ROTA_CERTA_GIT_SHA" | tee /tmp/source-sha.txt
           printf '%s\n' "$ROTA_CERTA_GIT_BRANCH" | tee /tmp/source-branch.txt
 
       - uses: actions/setup-java@v4
@@ -118,9 +117,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
           ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/assemble.log
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
 
       - name: Prove APK identity, signature and embedded runtime markers
         id: proof
@@ -139,7 +138,7 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/apksigner.txt
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
-          grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
+          grep -Fq "$ROTA_CERTA_GIT_SHA" /tmp/dex-strings.txt
           grep -Fq 'LEARNED_CARD_RUNTIME_IDENTITY_0706' /tmp/dex-strings.txt
           grep -Fq 'CARD_PROFILE_MATCHED_0706' /tmp/dex-strings.txt
           grep -Fq 'LEARNED_CARD_PARTIAL_NO_CLEAR_0706' /tmp/dex-strings.txt
@@ -156,7 +155,7 @@ jobs:
             echo "package=br.com.mapeiaia.rotacerta"
             echo "versionName=$EXPECTED_VERSION_NAME"
             echo "versionCode=$EXPECTED_VERSION_CODE"
-            echo "sourceSha=$GITHUB_SHA"
+            echo "sourceSha=$ROTA_CERTA_GIT_SHA"
             echo "sourceBranch=$ROTA_CERTA_GIT_BRANCH"
             echo "deviceTarget=Samsung SM-S911B / Android 16"
             echo "learnedCardRuntimeIdentity=PASS"
@@ -170,7 +169,7 @@ jobs:
       - name: Upload exact-SHA APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-farol-learned-card-runtime-0.1.707-${{ github.sha }}
+          name: rota-certa-farol-learned-card-continuity-0.1.707-${{ github.event.pull_request.head.sha || github.sha }}
           retention-days: 30
           if-no-files-found: error
           path: |
