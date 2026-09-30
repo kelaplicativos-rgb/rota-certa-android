@@ -11,10 +11,15 @@ import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -46,10 +51,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import br.com.mapeiaia.rotacerta.Coordinate
@@ -68,7 +76,9 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 
 internal data class EnhancedPassengerCardRow(
@@ -373,6 +383,8 @@ private fun PassengerQuickActionLine0673(
     onNameClick0673: (EnhancedPassengerCardRow) -> Unit,
     onWhatsApp0673: (EnhancedPassengerCardRow) -> Unit,
     onTracking0674: (EnhancedPassengerCardRow) -> Unit,
+    trackingActive0676: Boolean,
+    onTrackingStop0676: (EnhancedPassengerCardRow) -> Unit,
     onQuickMessage0673: (EnhancedPassengerCardRow) -> Unit,
     onPickup0673: (EnhancedPassengerCardRow) -> Unit,
     onDropoff0673: (EnhancedPassengerCardRow) -> Unit,
@@ -407,11 +419,11 @@ private fun PassengerQuickActionLine0673(
                 modifier = Modifier.size(21.dp),
             )
         }
-        TextButton(
-            onClick = { onTracking0674(passenger0673) },
-            modifier = Modifier.size(36.dp),
-            contentPadding = ADDRESS_ICON_PADDING,
-        ) { Text("🛰️", maxLines = 1) }
+        PassengerTrackingShortcut0676(
+            active0676 = trackingActive0676,
+            onTap0676 = { onTracking0674(passenger0673) },
+            onLongPress0676 = { onTrackingStop0676(passenger0673) },
+        )
         TextButton(
             onClick = { onQuickMessage0673(passenger0673) },
             modifier = Modifier.size(36.dp),
@@ -436,6 +448,42 @@ private fun PassengerQuickActionLine0673(
 }
 
 @Composable
+private fun PassengerTrackingShortcut0676(
+    active0676: Boolean,
+    onTap0676: () -> Unit,
+    onLongPress0676: () -> Unit,
+) {
+    val container0676 = if (active0676) {
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
+    } else {
+        Color.Transparent
+    }
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(container0676)
+            .pointerInput(active0676) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    try {
+                        val released0676 = withTimeout(TRACKING_LONG_PRESS_MILLIS_0676) {
+                            waitForUpOrCancellation()
+                        }
+                        if (released0676 != null) onTap0676()
+                    } catch (_: TimeoutCancellationException) {
+                        if (active0676) onLongPress0676()
+                        waitForUpOrCancellation()
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text("🛰️", maxLines = 1)
+    }
+}
+
+@Composable
 private fun SegmentVacancyLine0671(
     entry: TripTimelineEntry,
     trip: Trip,
@@ -445,6 +493,8 @@ private fun SegmentVacancyLine0671(
     onPassengerClick0672: (EnhancedPassengerCardRow) -> Unit,
     onWhatsApp0673: (EnhancedPassengerCardRow) -> Unit = onPassengerClick0672,
     onTracking0674: (EnhancedPassengerCardRow) -> Unit = onPassengerClick0672,
+    isTrackingActive0676: (EnhancedPassengerCardRow) -> Boolean = { false },
+    onTrackingStop0676: (EnhancedPassengerCardRow) -> Unit = {},
     onQuickMessage0673: (EnhancedPassengerCardRow) -> Unit = onPassengerClick0672,
     onPickup0673: (EnhancedPassengerCardRow) -> Unit = onPassengerClick0672,
     onDropoff0673: (EnhancedPassengerCardRow) -> Unit = onPassengerClick0672,
@@ -499,6 +549,8 @@ private fun SegmentVacancyLine0671(
                 onNameClick0673 = onPassengerClick0672,
                 onWhatsApp0673 = onWhatsApp0673,
                 onTracking0674 = onTracking0674,
+                trackingActive0676 = isTrackingActive0676(passenger0673),
+                onTrackingStop0676 = onTrackingStop0676,
                 onQuickMessage0673 = onQuickMessage0673,
                 onPickup0673 = onPickup0673,
                 onDropoff0673 = onDropoff0673,
@@ -584,6 +636,29 @@ internal fun EnhancedPassengerTimelineSection(
     val scope = rememberCoroutineScope()
     val liveTrackingManager0668 = remember(context) { LiveTrackingShareManager0668(context) }
     var pendingTrackingRequest0668 by remember { mutableStateOf<PassengerTrackingLinkRequest0668?>(null) }
+    var trackingRevision0676 by remember { mutableIntStateOf(0) }
+
+    fun passengerTrackingActive0676(row0676: EnhancedPassengerCardRow): Boolean {
+        trackingRevision0676
+        return liveTrackingManager0668.isPassengerShareActive(passengerTimelineRowKey0394(row0676))
+    }
+
+    fun stopPassengerTracking0676(row0676: EnhancedPassengerCardRow) {
+        val passengerKey0676 = passengerTimelineRowKey0394(row0676)
+        if (!liveTrackingManager0668.isPassengerShareActive(passengerKey0676)) return
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { liveTrackingManager0668.closePassengerShare(passengerKey0676) }
+            }.onSuccess { closed0676 ->
+                if (closed0676) {
+                    trackingRevision0676++
+                    onChanged("Acompanhamento de " + row0676.name.ifBlank { "Passageiro" } + " encerrado imediatamente.")
+                }
+            }.onFailure { error0676 ->
+                onChanged("Não foi possível encerrar o acompanhamento: " + (error0676.message ?: "falha no servidor"))
+            }
+        }
+    }
 
     fun publishPassengerTracking0668(request0668: PassengerTrackingLinkRequest0668) {
         ContextCompat.startForegroundService(
@@ -596,12 +671,23 @@ internal fun EnhancedPassengerTimelineSection(
                 withContext(Dispatchers.IO) { liveTrackingManager0668.createPassengerLink(request0668) }
             }.onSuccess { outcome0668 ->
                 pendingTrackingRequest0668 = null
-                shareTrackingLink0668(
+                trackingRevision0676++
+                val trackingMessage0676 =
+                    "🚗 " + request0668.passengerName + ", acompanhe esta viagem em tempo real. Este link não mostra rastro, pode ser encaminhado a um familiar de confiança e expira automaticamente no desembarque:"
+                val openedDirectly0676 = openPassengerTrackingWhatsApp0676(
                     context = context,
-                    title = "Compartilhar acompanhamento",
-                    message = "🚗 " + request0668.passengerName + ", acompanhe esta viagem em tempo real. Este link não mostra rastro, pode ser encaminhado a um familiar de confiança e expira automaticamente no desembarque:",
-                    url = outcome0668.url,
+                    rawPhone0676 = request0668.passengerPhone,
+                    message0676 = trackingMessage0676,
+                    url0676 = outcome0668.url,
                 )
+                if (!openedDirectly0676) {
+                    shareTrackingLink0668(
+                        context = context,
+                        title = "Compartilhar acompanhamento",
+                        message = trackingMessage0676,
+                        url = outcome0668.url,
+                    )
+                }
                 onChanged(
                     if (outcome0668.reused) {
                         "Link temporário de " + request0668.passengerName + " aberto para compartilhar novamente."
@@ -671,6 +757,7 @@ internal fun EnhancedPassengerTimelineSection(
                         tripId = selectedTrip0674.id,
                         passengerKey = passengerTimelineRowKey0394(row0674),
                         passengerName = row0674.name.ifBlank { "Passageiro" },
+                        passengerPhone = row0674.phone.orEmpty(),
                         destinationLatitude = latitude0674,
                         destinationLongitude = longitude0674,
                         destinationLabel = row0674.dropoffAddress.ifBlank { row0674.dropoff.orEmpty() },
@@ -1017,6 +1104,8 @@ internal fun EnhancedPassengerTimelineSection(
                 rows0671 = rows,
                 onPassengerClick0672 = { communicationShortcutRow0672 = it },
                 onTracking0674 = { sharePassengerTrackingShortcut0674(it) },
+                isTrackingActive0676 = { passengerTrackingActive0676(it) },
+                onTrackingStop0676 = { stopPassengerTracking0676(it) },
                 onWhatsApp0673 = { row0673 ->
                     val phone0673 = row0673.phone
                     if (phone0673.isNullOrBlank()) phoneEditRow0671 = row0673
@@ -1051,6 +1140,8 @@ internal fun EnhancedPassengerTimelineSection(
                         else openPassengerWhatsApp(context, phone0673)
                     },
                     onTracking0674 = { sharePassengerTrackingShortcut0674(it) },
+                    trackingActive0676 = passengerTrackingActive0676(row0673),
+                    onTrackingStop0676 = { stopPassengerTracking0676(it) },
                     onQuickMessage0673 = { quickMessageRow0656 = it },
                     onPickup0673 = { selected0673 ->
                         passengerPickupMapTarget(selected0673)?.let { openPassengerPickupMap(context, it) }
@@ -1085,6 +1176,8 @@ internal fun EnhancedPassengerTimelineSection(
                             rows0671 = rows,
                             onPassengerClick0672 = { communicationShortcutRow0672 = it },
                             onTracking0674 = { sharePassengerTrackingShortcut0674(it) },
+                            isTrackingActive0676 = { passengerTrackingActive0676(it) },
+                            onTrackingStop0676 = { stopPassengerTracking0676(it) },
                         )
                     }
                     lastRenderedSegmentIndex0671 = safeTarget0671
@@ -1099,6 +1192,8 @@ internal fun EnhancedPassengerTimelineSection(
                             rows0671 = rows,
                             onPassengerClick0672 = { communicationShortcutRow0672 = it },
                             onTracking0674 = { sharePassengerTrackingShortcut0674(it) },
+                            isTrackingActive0676 = { passengerTrackingActive0676(it) },
+                            onTrackingStop0676 = { stopPassengerTracking0676(it) },
                         )
                 }
                 lastRenderedSegmentIndex0671 = segmentLoads0671.lastIndex
@@ -1472,8 +1567,9 @@ internal fun EnhancedPassengerTimelineSection(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.End,
                 ) {
-                    TextButton(
-                        onClick = {
+                    PassengerTrackingShortcut0676(
+                        active0676 = passengerTrackingActive0676(passenger),
+                        onTap0676 = {
                             val selectedTrip0668 = trip
                             val destinationLatitude0668 = passenger.dropoffLatitude
                             val destinationLongitude0668 = passenger.dropoffLongitude
@@ -1506,6 +1602,7 @@ internal fun EnhancedPassengerTimelineSection(
                                             tripId = selectedTrip0668.id,
                                             passengerKey = rowKey0394,
                                             passengerName = passenger.name.ifBlank { "Passageiro" },
+                                            passengerPhone = passenger.phone.orEmpty(),
                                             destinationLatitude = destinationLatitude0668,
                                             destinationLongitude = destinationLongitude0668,
                                             destinationLabel = passenger.dropoffAddress.ifBlank { passenger.dropoff.orEmpty() },
@@ -1515,9 +1612,8 @@ internal fun EnhancedPassengerTimelineSection(
                                 }
                             }
                         },
-                        modifier = Modifier.size(36.dp),
-                        contentPadding = ADDRESS_ICON_PADDING,
-                    ) { Text("🛰️", maxLines = 1) }
+                        onLongPress0676 = { stopPassengerTracking0676(passenger) },
+                    )
 
                     IconButton(
                         onClick = {
@@ -2098,6 +2194,8 @@ internal fun EnhancedPassengerTimelineSection(
                             rows0671 = rows,
                             onPassengerClick0672 = { communicationShortcutRow0672 = it },
                             onTracking0674 = { sharePassengerTrackingShortcut0674(it) },
+                            isTrackingActive0676 = { passengerTrackingActive0676(it) },
+                            onTrackingStop0676 = { stopPassengerTracking0676(it) },
                         )
         }
     } else if (embedChronologicalStops0667 && chronologicalStops0667.isNotEmpty() &&
@@ -2562,6 +2660,7 @@ internal fun EnhancedPassengerTimelineSection(
                                     tripId = selectedTrip0673.id,
                                     passengerKey = passengerTimelineRowKey0394(row0672),
                                     passengerName = row0672.name.ifBlank { "Passageiro" },
+                                    passengerPhone = row0672.phone.orEmpty(),
                                     destinationLatitude = lat0673,
                                     destinationLongitude = lon0673,
                                     destinationLabel = row0672.dropoffAddress.ifBlank { row0672.dropoff.orEmpty() },
@@ -4009,6 +4108,8 @@ private fun openExternalPassengerBlaBla(context: Context, row: EnhancedPassenger
     return true
 }
 
+private const val TRACKING_LONG_PRESS_MILLIS_0676 = 2_000L
+
 internal fun passengerPhoneForStorage0671(raw: String): String? =
     passengerWhatsAppDigits0515(raw)?.let { "+$it" }
 
@@ -4043,6 +4144,28 @@ private fun PassengerPhoneEditorDialog0671(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
     )
+}
+
+internal fun openPassengerTrackingWhatsApp0676(
+    context: Context,
+    rawPhone0676: String,
+    message0676: String,
+    url0676: String,
+): Boolean {
+    val digits0676 = passengerWhatsAppDigits0515(rawPhone0676) ?: return false
+    val payload0676 = buildString {
+        append(message0676.trim())
+        if (url0676.isNotBlank()) append("\n").append(url0676.trim())
+    }
+    return runCatching {
+        context.startActivity(
+            Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://wa.me/$digits0676?text=" + Uri.encode(payload0676)),
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+        true
+    }.getOrDefault(false)
 }
 
 internal fun passengerWhatsAppDigits0515(raw: String): String? {
