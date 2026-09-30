@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.707",
+      "build": 5998,
+      "commit": null,
+      "branch": "agent/farol-learned-card-continuity-0.1.707",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Continuidade curta de identidade para cards V2 já confirmados, limitada ao mesmo package e somente enquanto a superfície atual permanece ativa.",
+        "O caminho routeAuthorization nulo consulta a continuidade aprendida antes de qualquer hardClear e solicita OCR local sem apagar o estado transitório.",
+        "OCR sem candidato pode reutilizar por até 1,8 s a identidade runtime recém-confirmada, evitando corrida entre gerações consecutivas."
+      ],
+      "fixed": [
+        "Corrige a regressão da 0.1.706 em que CARD_PROFILE_MATCHED podia ser seguido imediatamente por hardClearUniversalTwoAddress antes da leitura complementar do destino.",
+        "Evita que uma leitura OCR parcial apague um card aprendido confirmado pela Accessibility poucos milissegundos antes.",
+        "Mantém o fallback de IA paga fora do caminho crítico enquanto a identidade aprendida válida estiver em continuidade."
+      ],
+      "improved": [
+        "A lease não autoriza rota, destino, cor, raio ou quilometragem; apenas preserva o pipeline até a leitura local concluir.",
+        "Troca de package, desaparecimento da superfície ou expiração da janela encerram a continuidade e preservam o fail-closed.",
+        "Telemetria LEARNED_CARD_RUNTIME_HOLD_0707 diferencia continuidade legítima de card não reconhecido."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Hard clear executado antes do OCR mesmo após card aprendido já ter sido confirmado.",
+        "Corrida entre Accessibility e OCR causando retorno indevido ao amarelo."
+      ],
+      "modulesAffected": [
+        "Farol",
+        "APK Learning",
+        "Accessibility",
+        "OCR",
+        "Bolinha",
+        "Saúde/Diagnóstico",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.706",
       "build": 5997,
       "commit": null,
