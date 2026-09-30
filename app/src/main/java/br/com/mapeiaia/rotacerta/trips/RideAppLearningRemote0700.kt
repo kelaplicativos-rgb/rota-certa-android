@@ -17,6 +17,9 @@ data class RideAppLearningResponse0700(
     val packageName: String = "",
     val profileVersion: Int = 1,
     val confidence: Double = 0.0,
+    val cached: Boolean = false,
+    val retryAfterMillis: Long = 0L,
+    val contractVersion: Int = 2,
     val pickupLabels: List<String> = emptyList(),
     val destinationLabels: List<String> = emptyList(),
     val fareLabels: List<String> = emptyList(),
@@ -34,4 +37,13 @@ data class RideAppLearningResponse0700(
         get() = status.equals("LEARNED", ignoreCase = true) &&
             confidence >= 0.60 &&
             (destinationLabels.isNotEmpty() || resourceHints.isNotEmpty())
+
+    val processing: Boolean
+        get() = status.equals("PROCESSING", ignoreCase = true)
 }
+
+@Serializable
+data class RideAppLearningStatusRequest0702(
+    val packageName: String,
+    val apkSha256: String,
+)
