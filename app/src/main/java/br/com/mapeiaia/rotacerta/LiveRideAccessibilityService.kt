@@ -5669,8 +5669,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
         return null
     }
-        return null
-    }
 
     private fun TextSource.toFarolEvidenceSource0700(): FarolEvidenceSource0188 = when (this) {
         TextSource.Accessibility -> FarolEvidenceSource0188.Accessibility
