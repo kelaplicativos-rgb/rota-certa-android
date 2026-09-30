@@ -83,8 +83,10 @@ class LearnedCardRuntimeIdentity0706Test {
         val source = File(root, "app/src/main/java/br/com/mapeiaia/rotacerta/LearnedCardRuntimeIdentity0706.kt").readText()
         val live = File(root, "app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").readText()
         assertTrue(source.contains("NÃO autoriza rota, cor, raio ou quilometragem"))
-        assertTrue(live.contains(LearnedCardRuntimeIdentity0706.MATCHED_MARKER))
-        assertTrue(live.contains(LearnedCardRuntimeIdentity0706.PAID_AI_BYPASS_MARKER))
+        assertTrue(source.contains("CARD_PROFILE_MATCHED_0706"))
+        assertTrue(source.contains("LEARNED_CARD_PAID_AI_BYPASS_0706"))
+        assertTrue(live.contains("LearnedCardRuntimeIdentity0706.MATCHED_MARKER"))
+        assertTrue(live.contains("LearnedCardRuntimeIdentity0706.PAID_AI_BYPASS_MARKER"))
         assertTrue(live.contains("authorizeRoute0188("))
     }
 }
