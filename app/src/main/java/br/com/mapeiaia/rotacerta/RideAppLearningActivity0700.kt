@@ -160,19 +160,22 @@ class RideAppLearningActivity0700 : ComponentActivity() {
                 "Backend do motorista não configurado. Configure a Agenda/Viagem Certa antes de usar o aprendizado por IA."
             }
 
-            val response = withContext(Dispatchers.IO) {
-                TripRemoteApi(online).learnRideApp0700(
-                    RideAppLearningRequest0700(
-                        packageName = dossier.packageName,
-                        versionName = dossier.versionName,
-                        versionCode = dossier.versionCode,
-                        apkSha256 = dossier.apkSha256,
-                        dossier = dossier.toModelDossier(),
-                    ),
-                )
-            }
+            val api = TripRemoteApi(online)
+            val response = requestProfileWithRecovery0702(api, dossier)
+            UnifiedDebugEventStore.record(
+                RideAppLearningContract0702.BACKEND_STATUS,
+                dossier.packageName,
+                "status=${response.status}; cached=${response.cached}; confidence=${response.confidence}; contractVersion=${response.contractVersion}",
+            )
             check(response.learned) {
                 response.reason.ifBlank { "A IA não encontrou evidência suficiente para gerar um leitor seguro." }
+            }
+            if (response.cached) {
+                UnifiedDebugEventStore.record(
+                    RideAppLearningContract0702.BACKEND_CACHE_HIT,
+                    dossier.packageName,
+                    "sha=${dossier.apkSha256.take(16)}; profileVersion=${response.profileVersion}",
+                )
             }
 
             val profile = RideReaderProfile0700(
@@ -197,16 +200,32 @@ class RideAppLearningActivity0700 : ComponentActivity() {
             )
             RideAppLearningStore0700.save(applicationContext, profile)
             activateProfile(profile)
+            UnifiedDebugEventStore.record(
+                RideAppLearningContract0702.PROFILE_SAVED,
+                dossier.packageName,
+                "sha=${dossier.apkSha256.take(16)}; profileVersion=${profile.profileVersion}; backendCached=${response.cached}",
+            )
             state = RideAppLearningUiState0700(
                 busy = false,
-                title = "Aplicativo aprendido",
-                message = "${dossier.appLabel} agora possui um Reader Profile local. Próximos cards são interpretados localmente; OpenAI não é chamada por corrida.",
+                title = if (response.cached) "Aprendizado recuperado" else "Aplicativo aprendido",
+                message = if (response.cached) {
+                    "${dossier.appLabel} já havia sido aprendido no servidor. O Reader foi recuperado sem nova chamada paga e salvo neste aparelho."
+                } else {
+                    "${dossier.appLabel} agora possui um Reader Profile local. Próximos cards são interpretados localmente; OpenAI não é chamada por corrida."
+                },
                 dossier = dossier,
                 profile = profile,
             )
             refreshProfiles()
             Toast.makeText(applicationContext, "Aplicativo aprendido e autorizado no FAROL.", Toast.LENGTH_LONG).show()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Throwable) {
+            UnifiedDebugEventStore.record(
+                RideAppLearningContract0702.FAILED,
+                state.dossier?.packageName ?: packageName,
+                "type=${error.javaClass.simpleName}; message=${UnifiedDebugEventStore.sanitizeForExport(error.message.orEmpty()).take(240)}",
+            )
             state = state.copy(
                 busy = false,
                 title = "Aprendizado não concluído",
