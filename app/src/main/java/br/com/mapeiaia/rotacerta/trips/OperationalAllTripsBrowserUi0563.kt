@@ -702,9 +702,7 @@ internal fun OperationalAllTripsBrowserScreen0563(
                             onRefreshLocal()
                         },
                         refreshRunning0663 = refreshingTripIds0663[canonicalTripId0654] == true,
-                        onRefreshCard0663 = {
-                            refreshRow0663(row, OperationalTripCardRefreshReason0707.MANUAL)
-                        },
+                        onRefreshCard0663 = { refreshRow0663(row) },
                         onOpenIntegrity0654 = { onOpenTripIntegrity(canonicalTripId0654) },
                         onOpen = { openRow(row) },
                     )
