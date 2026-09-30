@@ -65,7 +65,8 @@ class FarolNetworkFailureIsolation0699Test {
         val resolverEnd = google.indexOf("private fun cacheCoordinateAliases0697(", resolverStart)
         assertTrue(resolverStart >= 0 && resolverEnd > resolverStart)
         val resolver = google.substring(resolverStart, resolverEnd)
-        assertTrue(resolver.contains("requestGeocode(query, apiKey, requestContext0699)"))
+        assertTrue(resolver.contains("requestGeocode(query, apiKey, requestContext0699, boundsBias0703)"))
+        assertTrue(resolver.contains("targetBiasBounds0703(targetHints)"))
         assertTrue(resolver.contains("GOOGLE_GEOCODE_UNAVAILABLE_MARKER"))
 
         val requestStart = google.indexOf("private fun requestGeocode(")
