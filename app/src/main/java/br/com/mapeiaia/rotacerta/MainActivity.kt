@@ -254,6 +254,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
             BubbleShortcutAction.CopyPassengerValue,
             -> context.startActivity(Intent(context, MessageTemplatesActivity::class.java))
             BubbleShortcutAction.OpenScreenWhatsApp -> openWhatsAppApp(context)
+            BubbleShortcutAction.OpenRideAppLearning -> context.startActivity(Intent(context, RideAppLearningActivity0700::class.java))
             BubbleShortcutAction.ClearClipboard -> clearClipboard(context)
             else -> Unit
         }
@@ -2638,6 +2639,7 @@ private fun ManualReadingHomeModuleStage42(
     onChange: (AppSettings) -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
 ) {
+    val context = LocalContext.current
     val enabledStage42 = FarolManualReadingAuthorityStage42.isEnabled(settings)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SettingsSwitchRow(
@@ -2658,6 +2660,16 @@ private fun ManualReadingHomeModuleStage42(
         )
         Text(
             "O atalho Leitura deste módulo pode ser adicionado à grade flutuante e executa o mesmo liga/desliga com um toque.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        OutlinedButton(
+            onClick = { context.startActivity(Intent(context, RideAppLearningActivity0700::class.java)) },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("🧠 Aprender aplicativo de corrida")
+        }
+        Text(
+            "Use este recurso para anexar um APK ou analisar um app instalado. O atalho Aprender App também pode ficar na grade flutuante.",
             style = MaterialTheme.typography.bodySmall,
         )
         if (!accessibilityGranted) {
@@ -2845,16 +2857,6 @@ private fun InstalledRideAppsCard() {
         ) {
             Text("Buscar aplicativos instalados")
         }
-        OutlinedButton(
-            onClick = { context.startActivity(Intent(context, RideAppLearningActivity0700::class.java)) },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Aprender aplicativo por APK / IA")
-        }
-        Text(
-            "Para aplicativos regionais: anexe o APK ou analise o aplicativo instalado. O APK é inspecionado localmente sem execução; a OpenAI recebe somente um dossiê reduzido e gera um Reader Profile local.",
-            style = MaterialTheme.typography.bodySmall,
-        )
         Text(
             if (usageAccessGrantedStage26) "Acesso ao uso: concedido." else "Acesso ao uso: necessário. Sem essa autorização o FAROL falha fechado e não faz leitura global.",
             style = MaterialTheme.typography.bodySmall,
