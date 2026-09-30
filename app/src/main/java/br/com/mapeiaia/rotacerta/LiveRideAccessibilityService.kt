@@ -799,6 +799,18 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
         val immediateLearnedText0703 = learnedImmediateRead0703.text
         val learnedImmediateBypass0703 = LearnedRideInstantPolicy0703.canAuthorizeDestination(learnedImmediateRead0703)
+        val learnedImmediateCard0706 = LearnedCardRuntimeIdentity0706.evaluate(
+            profile = learnedImmediateProfile0703,
+            packageName = resolvedPackage,
+            rawText = immediateTextChecklist13,
+        )
+        if (learnedImmediateCard0706.matched) {
+            UnifiedDebugEventStore.record(
+                LearnedCardRuntimeIdentity0706.MATCHED_MARKER,
+                resolvedPackage,
+                "phase=immediate; score=${learnedImmediateCard0706.score}; addresses=${learnedImmediateCard0706.addressCount}; learnedCues=${learnedImmediateCard0706.learnedCueMatches}; action=${learnedImmediateCard0706.actionVisible}; fare=${learnedImmediateCard0706.fareVisible}; metric=${learnedImmediateCard0706.metricVisible}; rideCue=${learnedImmediateCard0706.rideCueVisible}",
+            )
+        }
         val cardEvidence0185 = RideCardConfirmationPolicy0185.prepare(
             packageName = resolvedPackage,
             rawText = immediateLearnedText0703,
@@ -808,7 +820,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             rawText = immediateLearnedText0703,
             rejectedByLayoutGate = cardEvidence0185.rejectedFeed,
         )
-        if (cardEvidence0185.rejectedFeed && !addressFirst0695.allowPipeline && !learnedImmediateBypass0703) {
+        if (cardEvidence0185.rejectedFeed && !addressFirst0695.allowPipeline && !learnedImmediateBypass0703 && !learnedImmediateCard0706.matched) {
             UnifiedDebugEventStore.record(
                 "BUBBLE_UNCONFIRMED_CARD_REJECTED_0185",
                 resolvedPackage,
@@ -825,7 +837,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
         if (cardEvidence0185.rejectedFeed) {
             UnifiedDebugEventStore.record(
-                if (learnedImmediateBypass0703) LearnedRideInstantPolicy0703.LAYOUT_BYPASS_MARKER else "BUBBLE_ADDRESS_FIRST_SECOND_CHANCE_0695",
+                when {
+                    learnedImmediateBypass0703 -> LearnedRideInstantPolicy0703.LAYOUT_BYPASS_MARKER
+                    learnedImmediateCard0706.matched -> LearnedCardRuntimeIdentity0706.MATCHED_MARKER
+                    else -> "BUBBLE_ADDRESS_FIRST_SECOND_CHANCE_0695"
+                },
                 resolvedPackage,
                 "reason=${addressFirst0695.reason}; addresses=${addressFirst0695.uniqueAddressCount}; downstreamGatesRetained=true",
             )
@@ -5875,6 +5891,18 @@ class LiveRideAccessibilityService : AccessibilityService() {
             )
         }
         val rawSnapshotText0185 = learnedRead0700.text
+        val learnedCardRuntime0706 = LearnedCardRuntimeIdentity0706.evaluate(
+            profile = learnedProfile0700,
+            packageName = selectedPackageChecklist13,
+            rawText = rawSnapshotOriginal0700,
+        )
+        if (learnedCardRuntime0706.matched) {
+            UnifiedDebugEventStore.record(
+                LearnedCardRuntimeIdentity0706.MATCHED_MARKER,
+                selectedPackageChecklist13,
+                "phase=${source.name}; score=${learnedCardRuntime0706.score}; addresses=${learnedCardRuntime0706.addressCount}; learnedCues=${learnedCardRuntime0706.learnedCueMatches}; action=${learnedCardRuntime0706.actionVisible}; fare=${learnedCardRuntime0706.fareVisible}; metric=${learnedCardRuntime0706.metricVisible}; rideCue=${learnedCardRuntime0706.rideCueVisible}",
+            )
+        }
         val cardEvidence0185 = RideCardConfirmationPolicy0185.prepare(
             packageName = selectedPackageChecklist13,
             rawText = rawSnapshotText0185,
@@ -5885,7 +5913,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             rejectedByLayoutGate = cardEvidence0185.rejectedFeed,
         )
         val learnedDestinationBypass0703 = LearnedRideInstantPolicy0703.canAuthorizeDestination(learnedRead0700)
-        if (cardEvidence0185.rejectedFeed && !addressFirst0695.allowPipeline && !learnedDestinationBypass0703) {
+        if (cardEvidence0185.rejectedFeed && !addressFirst0695.allowPipeline && !learnedDestinationBypass0703 && !learnedCardRuntime0706.matched) {
             UnifiedDebugEventStore.record(
                 "BUBBLE_UNCONFIRMED_CARD_REJECTED_0185",
                 selectedPackageChecklist13,
@@ -5911,7 +5939,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
         if (cardEvidence0185.rejectedFeed) {
             UnifiedDebugEventStore.record(
-                if (learnedDestinationBypass0703) LearnedRideInstantPolicy0703.LAYOUT_BYPASS_MARKER else "BUBBLE_ADDRESS_FIRST_SECOND_CHANCE_0695",
+                when {
+                    learnedDestinationBypass0703 -> LearnedRideInstantPolicy0703.LAYOUT_BYPASS_MARKER
+                    learnedCardRuntime0706.matched -> LearnedCardRuntimeIdentity0706.MATCHED_MARKER
+                    else -> "BUBBLE_ADDRESS_FIRST_SECOND_CHANCE_0695"
+                },
                 selectedPackageChecklist13,
                 "source=${source.name}; reason=${addressFirst0695.reason}; addresses=${addressFirst0695.uniqueAddressCount}; downstreamGatesRetained=true",
             )
@@ -5956,6 +5988,12 @@ class LiveRideAccessibilityService : AccessibilityService() {
             )
             if (source == TextSource.Accessibility) {
                 scheduleScreenshotFallback127(selectedPackageChecklist13)
+            } else if (learnedCardRuntime0706.matched) {
+                UnifiedDebugEventStore.record(
+                    LearnedCardRuntimeIdentity0706.PAID_AI_BYPASS_MARKER,
+                    selectedPackageChecklist13,
+                    "source=OCR; cardMatched=true; destinationMissing=true; remoteAi=false; action=keep_local_waiting",
+                )
             } else if (!rawSnapshotText0185.contains(FarolPaidAiGate0695.RESULT_MARKER)) {
                 schedulePaidAiAddressFallback0695(
                     packageName0695 = selectedPackageChecklist13,
