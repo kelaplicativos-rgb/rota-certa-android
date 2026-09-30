@@ -2,6 +2,43 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.705",
+      "build": 5996,
+      "commit": null,
+      "branch": "agent/timeline-performance-0.1.705",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Pipeline de snapshot da Agenda carrega viagens e reservas fora da Main Thread antes de publicar estado para o Compose.",
+        "Eventos realtime da Agenda passam a usar conflate + collectLatest para comportamento latest-wins sem fila de refreshes obsoletos.",
+        "Integridade de identidade de passageiros passa a ser uma invariante por tenant/processo em vez de ser repetida por cada card."
+      ],
+      "fixed": [
+        "Remove leitura e desserialização síncrona de TripStore do caminho de composição, realtime e ON_RESUME da Timeline.",
+        "Elimina a desserialização completa das observações uma vez por perfil durante resolveCanonicalPassenger.",
+        "Evita projeções pesadas de passageiros quando a viagem não possui reservas canônicas nem passageiros legados.",
+        "PassengerCompletionService reutiliza o PassengerIdentityStore já associado ao card, evitando uma segunda autoridade local desnecessária."
+      ],
+      "improved": [
+        "Atualizações idênticas de viagens e reservas deixam de provocar troca de estado global e recomposição sem necessidade.",
+        "Cálculo incremental de capacidade reutiliza bookingsByTripId em vez de filtrar a coleção completa para cada viagem.",
+        "Atualização de widget é executada fora do caminho visual crítico da Agenda."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Congelamentos de rolagem associados a fan-out de identidade e refresh síncrono da Agenda."
+      ],
+      "modulesAffected": [
+        "Agenda",
+        "Timeline",
+        "Passageiros",
+        "Identidade canônica",
+        "Performance",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.704",
       "build": 5995,
       "commit": null,
