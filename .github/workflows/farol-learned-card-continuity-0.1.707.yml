@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - 'agent/farol-learned-card-continuity-0.1.707'
+  pull_request:
+    branches:
+      - 'agent/farol-learned-card-runtime-0.1.706'
   workflow_dispatch:
 
 permissions:
