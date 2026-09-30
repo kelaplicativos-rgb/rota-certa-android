@@ -248,8 +248,10 @@ class ShortcutGridPreferenceStore0179(context: Context) {
             val initial = ShortcutGridCustomizationPolicy0179.initialEntries(isUpgrade)
             persist(initial)
             return if (isUpgrade) {
-                applyKeepScreenAwake0688Migration(
-                    applySafetyRecorder0666Migration(applyStage47TripShortcutMigration(initial)),
+                applyRideAppLearning0702Migration(
+                    applyKeepScreenAwake0688Migration(
+                        applySafetyRecorder0666Migration(applyStage47TripShortcutMigration(initial)),
+                    ),
                 )
             } else {
                 initial
@@ -288,6 +290,7 @@ class ShortcutGridPreferenceStore0179(context: Context) {
             .let(::applyStage47TripShortcutMigration)
             .let(::applySafetyRecorder0666Migration)
             .let(::applyKeepScreenAwake0688Migration)
+            .let(::applyRideAppLearning0702Migration)
     }
 
     private fun applyStage47TripShortcutMigration(entries: List<ShortcutGridEntry0179>): List<ShortcutGridEntry0179> {
@@ -349,6 +352,25 @@ class ShortcutGridPreferenceStore0179(context: Context) {
         return migrated
     }
 
+    private fun applyRideAppLearning0702Migration(entries: List<ShortcutGridEntry0179>): List<ShortcutGridEntry0179> {
+        if (prefs.getBoolean(KEY_RIDE_APP_LEARNING_0702_MIGRATED, false)) return entries
+        val migrated = if (
+            !ShortcutGridCustomizationPolicy0179.contains(entries, RideAppLearningContract0702.SHORTCUT_ID) &&
+            entries.size < ShortcutGesturePolicy0179.MAX_GRID_ITEMS
+        ) {
+            ShortcutGridCustomizationPolicy0179.add(
+                entries = entries,
+                shortcutId = RideAppLearningContract0702.SHORTCUT_ID,
+                nowMillis = System.currentTimeMillis(),
+            )
+        } else {
+            entries
+        }
+        if (migrated != entries) persist(migrated)
+        prefs.edit().putBoolean(KEY_RIDE_APP_LEARNING_0702_MIGRATED, true).apply()
+        return migrated
+    }
+
     fun readResolved(): List<ResolvedShortcutGridEntry0179> =
         ShortcutGridCustomizationPolicy0179.resolve(read())
 
@@ -401,6 +423,7 @@ class ShortcutGridPreferenceStore0179(context: Context) {
         const val KEY_STAGE47_TRIP_SHORTCUT_MIGRATED = "stage47_trip_agenda_shortcut_migrated"
         const val KEY_SAFETY_RECORDER_0666_MIGRATED = "safety_recorder_shortcuts_migrated_0666"
         const val KEY_KEEP_SCREEN_AWAKE_0688_MIGRATED = "keep_screen_awake_shortcut_migrated_0688"
+        const val KEY_RIDE_APP_LEARNING_0702_MIGRATED = "ride_app_learning_shortcut_migrated_0702"
     }
 }
 
