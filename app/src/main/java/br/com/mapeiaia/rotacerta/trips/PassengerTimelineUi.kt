@@ -170,9 +170,16 @@ internal fun buildPassengerTimelineRenderSnapshot0394(
         externalMetadataSnapshot0394 = externalMetadata,
         localBookingsSnapshot0394 = localBookings,
     )
-    val profilesByRowKey = rows.mapNotNull { row ->
-        completionService.resolvedProfile(row)?.let { profile -> passengerTimelineRowKey0394(row) to profile }
-    }.toMap()
+    val profilesByRowKey = passengerStore.resolveCanonicalPassengersBatch0705(
+        rows.map { row ->
+            PassengerIdentityLookup0705(
+                key = passengerTimelineRowKey0394(row),
+                passengerId = row.passengerId,
+                externalPassengerId = row.externalPassengerId,
+                whatsapp = row.phone,
+            )
+        },
+    )
     val historiesByProfileId = passengerStore.persistentHistorySnapshot(
         profilesByRowKey.values.map(PassengerProfile::id).toSet(),
     )
