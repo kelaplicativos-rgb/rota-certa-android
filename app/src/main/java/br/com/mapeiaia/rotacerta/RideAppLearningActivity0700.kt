@@ -33,9 +33,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import br.com.mapeiaia.rotacerta.trips.RideAppLearningRequest0700
+import br.com.mapeiaia.rotacerta.trips.RideAppLearningResponse0700
+import br.com.mapeiaia.rotacerta.trips.RideAppLearningStatusRequest0702
 import br.com.mapeiaia.rotacerta.trips.TripRemoteApi
 import br.com.mapeiaia.rotacerta.trips.TripStore
+import br.com.mapeiaia.rotacerta.trips.isRideAppLearningTransportFailure0702
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
