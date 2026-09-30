@@ -12,8 +12,10 @@ internal data class PassengerCompletionResult(
  * Single authority for the per-passenger ✅ VIAJOU action.
  * Completion is persistent and idempotent by canonical passenger + physical trip/segment identity.
  */
-internal class PassengerCompletionService(context: Context) {
-    private val store = PassengerIdentityStore(context.applicationContext)
+internal class PassengerCompletionService(
+    context: Context,
+    private val store: PassengerIdentityStore = PassengerIdentityStore(context.applicationContext),
+) {
 
     fun occurrenceKey(entry: TripTimelineEntry, row: EnhancedPassengerCardRow): String {
         row.localBookingId?.trim()?.takeIf(String::isNotEmpty)?.let { return "local:$it" }
