@@ -64,6 +64,8 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.UUID
 import kotlin.math.roundToLong
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
 
 class TripsActivity : ComponentActivity() {
@@ -279,28 +281,11 @@ private fun TripApp(
             traceId,
         )
     }
-    var trips by remember {
-        val operation = AgendaTrace.operationStart(activity, "TIMELINE_LOCAL_TRIPS_LOAD", "TripApp", traceId)
-        try {
-            val loaded = store.trips().filter(Trip::htmlAuthorityVisible0607)
-            AgendaTrace.operationEnd(activity, operation, processedCount = loaded.size)
-            mutableStateOf(loaded)
-        } catch (error: Throwable) {
-            AgendaTrace.operationError(activity, operation, error)
-            throw error
-        }
-    }
-    var bookings by remember {
-        val operation = AgendaTrace.operationStart(activity, "TIMELINE_LOCAL_BOOKINGS_LOAD", "TripApp", traceId)
-        try {
-            val loaded = store.bookings()
-            AgendaTrace.operationEnd(activity, operation, processedCount = loaded.size)
-            mutableStateOf(loaded)
-        } catch (error: Throwable) {
-            AgendaTrace.operationError(activity, operation, error)
-            throw error
-        }
-    }
+    // 0.1.705: persistence/JSON must never be decoded from the Compose main-thread path.
+    // The screen mounts from an empty immutable state and swaps in one prepared snapshot.
+    var trips by remember { mutableStateOf<List<Trip>>(emptyList()) }
+    var bookings by remember { mutableStateOf<List<Booking>>(emptyList()) }
+    var localTimelineLoaded0705 by remember { mutableStateOf(false) }
     val sortedManageTrips0648 = remember(trips) { trips.sortedBy { it.departureAtMillis } }
     val bookingsByTripId0648 = remember(bookings) { bookings.groupBy { it.tripId } }
     var localCapacityIncrementalBaseline by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
@@ -384,7 +369,7 @@ private fun TripApp(
     }
 
     androidx.compose.runtime.SideEffect {
-        AgendaTrace.markContentMounted(activity, loading = false)
+        AgendaTrace.markContentMounted(activity, loading = !localTimelineLoaded0705)
         if (firstCompositionEnded.compareAndSet(false, true)) {
             AgendaTrace.operationEnd(activity, firstCompositionOperation, result = "content_mounted")
         }
@@ -453,28 +438,80 @@ private fun TripApp(
         AgendaTrace.event(
             activity,
             "AGENDA_RENDER_STATE",
-            "loading=false empty=${trips.isEmpty() && bookings.isEmpty()} items=${trips.size} capacityPresent=${settingsLoaded && appSettings.rotaCertaSeatAllocation in 0..999} settingsLoaded=$settingsLoaded syncRunning=false screen=${screen.name.lowercase()}",
+            "loading=${!localTimelineLoaded0705} empty=${trips.isEmpty() && bookings.isEmpty()} items=${trips.size} capacityPresent=${settingsLoaded && appSettings.rotaCertaSeatAllocation in 0..999} settingsLoaded=$settingsLoaded syncRunning=false screen=${screen.name.lowercase()}",
             traceId,
         )
     }
-    val refresh = {
-        trips = store.trips().filter(Trip::htmlAuthorityVisible0607)
-        bookings = store.bookings()
-        TripWidgetProvider.updateAll(activity)
+    val refresh0705: suspend (String) -> Unit = { reason0705 ->
+        val snapshot0705 = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val tripsOperation0705 = AgendaTrace.operationStart(
+                activity,
+                "TIMELINE_LOCAL_TRIPS_LOAD",
+                "TripApp.refresh0705",
+                traceId,
+            )
+            val loadedTrips0705 = try {
+                store.trips().filter(Trip::htmlAuthorityVisible0607).also {
+                    AgendaTrace.operationEnd(activity, tripsOperation0705, processedCount = it.size)
+                }
+            } catch (error: Throwable) {
+                AgendaTrace.operationError(activity, tripsOperation0705, error)
+                throw error
+            }
+
+            val bookingsOperation0705 = AgendaTrace.operationStart(
+                activity,
+                "TIMELINE_LOCAL_BOOKINGS_LOAD",
+                "TripApp.refresh0705",
+                traceId,
+            )
+            val loadedBookings0705 = try {
+                store.bookings().also {
+                    AgendaTrace.operationEnd(activity, bookingsOperation0705, processedCount = it.size)
+                }
+            } catch (error: Throwable) {
+                AgendaTrace.operationError(activity, bookingsOperation0705, error)
+                throw error
+            }
+            loadedTrips0705 to loadedBookings0705
+        }
+
+        // Compose only receives already-decoded immutable collections. Avoid no-op global invalidations.
+        if (trips != snapshot0705.first) trips = snapshot0705.first
+        if (bookings != snapshot0705.second) bookings = snapshot0705.second
+        localTimelineLoaded0705 = true
+
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            TripWidgetProvider.updateAll(activity)
+        }
+        UnifiedDebugEventStore.record(
+            "AGENDA_UI_SNAPSHOT_0705",
+            activity.packageName,
+            "reason=$reason0705 trips=${snapshot0705.first.size} bookings=${snapshot0705.second.size} persistenceOnMain=false",
+        )
     }
+
+    androidx.compose.runtime.LaunchedEffect(store) {
+        refresh0705("initial")
+    }
+
     // Records durable per-trip mutations only; delivery belongs to AgendaBackgroundSync0392.
     val tripMutationCoordinator = remember(activity, store) { TripMutationCoordinator0387(activity, store) }
     androidx.compose.runtime.LaunchedEffect(Unit) {
-        BookingRealtimeEvents0356.changes.collect {
-            refresh()
-            refreshDriverNotifications()
-        }
+        BookingRealtimeEvents0356.changes
+            .conflate()
+            .collectLatest {
+                refresh0705("booking_realtime")
+                refreshDriverNotifications()
+            }
     }
     androidx.compose.runtime.DisposableEffect(activity) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                refresh()
-                shareScope.launch { refreshDriverNotifications() }
+                shareScope.launch {
+                    refresh0705("resume")
+                    refreshDriverNotifications()
+                }
             }
         }
         activity.lifecycle.addObserver(observer)
@@ -510,7 +547,7 @@ private fun TripApp(
             .associate { trip ->
                 trip.id to PublicAgendaAutoSync0300.localCapacitySnapshotRevision(
                     trip = trip,
-                    bookings = bookings.filter { it.tripId == trip.id },
+                    bookings = bookingsByTripId0648[trip.id].orEmpty(),
                     rotaCertaSeatAllocation = trip.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0,
                 )
             }
@@ -522,7 +559,7 @@ private fun TripApp(
                 .map { it.key }
             changedIds.forEach { tripId ->
                 val failureTrip = trips.firstOrNull { it.id == tripId }
-                val failureBookings = bookings.filter { it.tripId == tripId }
+                val failureBookings = bookingsByTripId0648[tripId].orEmpty()
                 val failureContext = failureTrip?.let { trip ->
                     val withAllocation = trip.copy(
                         rotaCertaSeatAllocation = trip.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0,
