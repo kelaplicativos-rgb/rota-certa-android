@@ -2,6 +2,40 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.707",
+      "build": 5998,
+      "commit": null,
+      "branch": "agent/timeline-card-open-refresh-0.1.707",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Ao tocar em um card BlaBlaCar da Timeline, o Rota Certa dispara imediatamente a atualização HTML somente daquela viagem e abre a viagem administrativa exata no perfil isolado confirmado.",
+        "Ao retornar da BlaBlaCar, o ciclo de vida solicita uma segunda confirmação somente do mesmo card, sem timer e sem polling periódico.",
+        "Se a atualização iniciada no toque ainda estiver em andamento no retorno, exatamente um follow-up é coalescido para o mesmo tripId, preservando comportamento latest-wins sem duplicação."
+      ],
+      "fixed": [
+        "O retorno da BlaBlaCar deixa de disparar o refresh genérico de toda a Timeline para esse round-trip; a atualização direcionada passa a possuir o ON_RESUME correspondente.",
+        "Falha ao abrir a viagem externa cancela o estado pendente e a supressão de resume, evitando refresh posterior associado ao card errado."
+      ],
+      "improved": [
+        "Identidade forte profileUuid + tripId continua obrigatória e fail-closed antes de abrir ou atualizar uma viagem BlaBlaCar.",
+        "A seta manual do card continua reutilizando o refresh HTML direcionado existente e o refresh global permanece independente.",
+        "Telemetria diferencia CARD_OPEN, RETURN_FROM_BLABLACAR, follow-up coalescido e supressão do reload genérico."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Abrir uma viagem na BlaBlaCar exigia atualização manual posterior e o ON_RESUME podia recarregar a Timeline inteira sem necessidade."
+      ],
+      "modulesAffected": [
+        "Timeline",
+        "BlaBlaCar",
+        "Agenda",
+        "Performance",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.706",
       "build": 5997,
       "commit": null,
