@@ -11084,7 +11084,7 @@ async function rideAppLearningStatusApi0702(req, res) {
   }
   const data = snap.data() || {};
   const decision = cacheDecision0702(data, Date.now());
-  if (decision.action === "RETURN_LEARNED") {
+  if (decision.action === "RETURN_PROFILE") {
     return json(res, 200, publicProfileResponse0702(decision.profile, true));
   }
   if (decision.action === "RETURN_PROCESSING") {
@@ -11156,7 +11156,7 @@ async function learnRideAppApi0700(req, res) {
     return { action: "ACQUIRED" };
   });
 
-  if (acquisition.action === "RETURN_LEARNED") {
+  if (acquisition.action === "RETURN_PROFILE") {
     console.log("ride_app_learning_0702_cache_hit", JSON.stringify({ packageHash: sha256Hex(packageName).slice(0, 16), apkSha256: apkSha256.slice(0, 16) }));
     return json(res, 200, publicProfileResponse0702(acquisition.profile, true));
   }
