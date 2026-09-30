@@ -273,6 +273,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var universalActiveRidePackageName: String? = null // universal_route_inflight_runtime_0_1_120
     private var universalActiveAddressSignature: String? = null // universal_two_address_fields_0_1_98
     @Volatile private var universalActiveCardIdentity0683: String? = null
+    @Volatile private var learnedCardRuntimeLease0707: LearnedCardRuntimeContinuity0707.Lease? = null
     @Volatile private var stage684AccessibilityRouteAddress: String? = null
     @Volatile private var stage684AccessibilityRouteCardIdentity: String? = null
     private var lastImmediateScreenFingerprintChecklist13: Int? = null
@@ -805,10 +806,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
             rawText = immediateTextChecklist13,
         )
         if (learnedImmediateCard0706.matched) {
+            learnedCardRuntimeLease0707 = LearnedCardRuntimeContinuity0707.renew(
+                resolvedPackage,
+                SystemClock.elapsedRealtime(),
+            )
             UnifiedDebugEventStore.record(
                 LearnedCardRuntimeIdentity0706.MATCHED_MARKER,
                 resolvedPackage,
-                "phase=immediate; score=${learnedImmediateCard0706.score}; addresses=${learnedImmediateCard0706.addressCount}; learnedCues=${learnedImmediateCard0706.learnedCueMatches}; action=${learnedImmediateCard0706.actionVisible}; fare=${learnedImmediateCard0706.fareVisible}; metric=${learnedImmediateCard0706.metricVisible}; rideCue=${learnedImmediateCard0706.rideCueVisible}",
+                "phase=immediate; score=${learnedImmediateCard0706.score}; addresses=${learnedImmediateCard0706.addressCount}; learnedCues=${learnedImmediateCard0706.learnedCueMatches}; action=${learnedImmediateCard0706.actionVisible}; fare=${learnedImmediateCard0706.fareVisible}; metric=${learnedImmediateCard0706.metricVisible}; rideCue=${learnedImmediateCard0706.rideCueVisible}; continuityLeaseMs=${LearnedCardRuntimeContinuity0707.LEASE_MS}",
             )
         }
         val cardEvidence0185 = RideCardConfirmationPolicy0185.prepare(
@@ -3540,6 +3545,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
                                     val transientPresenceStage44 = observeTargetSurfaceStage46R3(surfaceTokenStage46.packageName)
                                     val transientSemanticLeaseStage635 =
                                         !universalActiveAddressSignature.isNullOrBlank() && transientPresenceStage44.active
+                                    val learnedNoCandidateHold0707 =
+                                        learnedNoCandidate0706.matched ||
+                                            LearnedCardRuntimeContinuity0707.shouldHold(
+                                                lease = learnedCardRuntimeLease0707,
+                                                packageName = eventPackageStage19,
+                                                nowElapsedMillis = SystemClock.elapsedRealtime(),
+                                                surfaceActive = transientPresenceStage44.active,
+                                            )
                                     if ((transientLeaseStage44.activeFinal && transientPresenceStage44.active) || transientSemanticLeaseStage635) {
                                         FarolMaximumForensicsStage38.record(
                                             SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(),
@@ -3548,14 +3561,18 @@ class LiveRideAccessibilityService : AccessibilityService() {
                                             cycleId = cycleIdStage20, operationId = "ocr-$serialStage19",
                                             details = "color=${transientLeaseStage44.color}; distance=${transientLeaseStage44.distanceKm ?: -1.0}; signature=${universalActiveAddressSignature.orEmpty()}; surface=${surfaceTokenStage46.packageName.orEmpty()}; active=${transientPresenceStage44.active}; hardClear=false",
                                         )
-                                    } else if (learnedNoCandidate0706.matched) {
+                                    } else if (learnedNoCandidateHold0707) {
                                         UnifiedDebugEventStore.record(
-                                            LearnedCardRuntimeIdentity0706.PARTIAL_NO_CLEAR_MARKER,
+                                            if (learnedNoCandidate0706.matched) {
+                                                LearnedCardRuntimeIdentity0706.PARTIAL_NO_CLEAR_MARKER
+                                            } else {
+                                                LearnedCardRuntimeContinuity0707.HOLD_MARKER
+                                            },
                                             eventPackageStage19,
-                                            "source=OCR; score=${learnedNoCandidate0706.score}; addresses=${learnedNoCandidate0706.addressCount}; hardClear=false; remoteAi=false",
+                                            "source=OCR; score=${learnedNoCandidate0706.score}; addresses=${learnedNoCandidate0706.addressCount}; hardClear=false; remoteAi=false; leaseActive=${!learnedNoCandidate0706.matched}",
                                         )
                                         rememberBubbleReason(
-                                            "learned_card_ocr_pending_0706",
+                                            "learned_card_ocr_pending_0707",
                                             "Card aprendido confirmado; aguardando leitura local completa do destino.",
                                         )
                                     } else {
@@ -5913,10 +5930,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
             rawText = rawSnapshotOriginal0700,
         )
         if (learnedCardRuntime0706.matched) {
+            learnedCardRuntimeLease0707 = LearnedCardRuntimeContinuity0707.renew(
+                selectedPackageChecklist13,
+                SystemClock.elapsedRealtime(),
+            )
             UnifiedDebugEventStore.record(
                 LearnedCardRuntimeIdentity0706.MATCHED_MARKER,
                 selectedPackageChecklist13,
-                "phase=${source.name}; score=${learnedCardRuntime0706.score}; addresses=${learnedCardRuntime0706.addressCount}; learnedCues=${learnedCardRuntime0706.learnedCueMatches}; action=${learnedCardRuntime0706.actionVisible}; fare=${learnedCardRuntime0706.fareVisible}; metric=${learnedCardRuntime0706.metricVisible}; rideCue=${learnedCardRuntime0706.rideCueVisible}",
+                "phase=${source.name}; score=${learnedCardRuntime0706.score}; addresses=${learnedCardRuntime0706.addressCount}; learnedCues=${learnedCardRuntime0706.learnedCueMatches}; action=${learnedCardRuntime0706.actionVisible}; fare=${learnedCardRuntime0706.fareVisible}; metric=${learnedCardRuntime0706.metricVisible}; rideCue=${learnedCardRuntime0706.rideCueVisible}; continuityLeaseMs=${LearnedCardRuntimeContinuity0707.LEASE_MS}",
             )
         }
         val cardEvidence0185 = RideCardConfirmationPolicy0185.prepare(
@@ -5993,6 +6014,41 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 if (source == TextSource.Accessibility) scheduleScreenshotFallback127(selectedPackageChecklist13)
                 return
             }
+            val learnedCardRuntimeSurface0707 = observeTargetSurfaceStage46R3(selectedPackageChecklist13).active
+            val learnedCardRuntimeHold0707 =
+                learnedCardRuntime0706.matched ||
+                    LearnedCardRuntimeContinuity0707.shouldHold(
+                        lease = learnedCardRuntimeLease0707,
+                        packageName = selectedPackageChecklist13,
+                        nowElapsedMillis = SystemClock.elapsedRealtime(),
+                        surfaceActive = learnedCardRuntimeSurface0707,
+                    )
+            if (learnedCardRuntimeHold0707) {
+                UnifiedDebugEventStore.record(
+                    LearnedCardRuntimeContinuity0707.HOLD_MARKER,
+                    selectedPackageChecklist13,
+                    "source=${source.name}; cardMatchedNow=${learnedCardRuntime0706.matched}; destinationMissing=true; surfaceActive=$learnedCardRuntimeSurface0707; hardClear=false; remoteAi=false",
+                )
+                rememberBubbleReason(
+                    "learned_card_destination_pending_0707",
+                    "Card aprendido confirmado; aguardando leitura local do destino.",
+                )
+                if (source == TextSource.Accessibility) {
+                    UnifiedDebugEventStore.record(
+                        LearnedCardRuntimeIdentity0706.OCR_PENDING_MARKER,
+                        selectedPackageChecklist13,
+                        "source=Accessibility; cardMatched=${learnedCardRuntime0706.matched}; localOcr=true; hardClear=false",
+                    )
+                    scheduleScreenshotFallback127(selectedPackageChecklist13)
+                } else {
+                    UnifiedDebugEventStore.record(
+                        LearnedCardRuntimeIdentity0706.PAID_AI_BYPASS_MARKER,
+                        selectedPackageChecklist13,
+                        "source=OCR; cardMatched=${learnedCardRuntime0706.matched}; destinationMissing=true; remoteAi=false; action=keep_local_waiting",
+                    )
+                }
+                return
+            }
             UnifiedDebugEventStore.record(
                 "BUBBLE_ROUTE_GATE_REJECTED_0188",
                 selectedPackageChecklist13,
@@ -6004,12 +6060,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
             )
             if (source == TextSource.Accessibility) {
                 scheduleScreenshotFallback127(selectedPackageChecklist13)
-            } else if (learnedCardRuntime0706.matched) {
-                UnifiedDebugEventStore.record(
-                    LearnedCardRuntimeIdentity0706.PAID_AI_BYPASS_MARKER,
-                    selectedPackageChecklist13,
-                    "source=OCR; cardMatched=true; destinationMissing=true; remoteAi=false; action=keep_local_waiting",
-                )
             } else if (!rawSnapshotText0185.contains(FarolPaidAiGate0695.RESULT_MARKER)) {
                 schedulePaidAiAddressFallback0695(
                     packageName0695 = selectedPackageChecklist13,
