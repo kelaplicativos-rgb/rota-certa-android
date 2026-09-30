@@ -2,6 +2,41 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.706",
+      "build": 5997,
+      "commit": null,
+      "branch": "agent/passenger-tracking-control-0.1.706",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Atalho de acompanhamento do passageiro abre diretamente o WhatsApp do telefone já associado ao card, com mensagem e link temporário preenchidos.",
+        "O próprio atalho de rastreamento passa a refletir sessão ativa por passageiro usando realce visual sem aumentar a altura ou adicionar texto ao card.",
+        "Pressão contínua de 2 segundos no atalho ativo revoga imediatamente somente o link daquele passageiro."
+      ],
+      "fixed": [
+        "Remove o seletor genérico de destinatário quando o card possui WhatsApp válido, preservando fallback seguro apenas quando o telefone não está disponível.",
+        "Encerramento manual só remove o estado ativo local depois de confirmação positiva do servidor."
+      ],
+      "improved": [
+        "Reutiliza a autoridade existente de chegada ao destino para expiração automática do acompanhamento do passageiro.",
+        "Mantém isolamento por passageiro: encerrar um link não interfere nos demais acompanhamentos ativos."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Compartilhamento de acompanhamento exigindo escolher manualmente o destinatário no WhatsApp."
+      ],
+      "modulesAffected": [
+        "Timeline",
+        "Central do Dia",
+        "Passageiros",
+        "Rastreamento",
+        "WhatsApp",
+        "Privacidade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.705",
       "build": 5996,
       "commit": null,
