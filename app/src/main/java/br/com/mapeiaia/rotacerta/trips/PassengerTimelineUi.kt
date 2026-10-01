@@ -4061,7 +4061,7 @@ internal fun passengerQuickMessageText0656(
             append("Oi, ").append(name).append("! Confirmando nossa viagem de ")
                 .append(origin).append(" para ").append(destination)
             if (dateTime0672 != null) {
-                append(", ").append(dateTime0672.replaceFirstChar { it.lowercase(locale) })
+                append(", ").append(dateTime0672.replaceFirstChar { ch -> ch.toString().lowercase(locale) })
             }
             append(". Está tudo certo para você?")
             append(vehicleBlock)
