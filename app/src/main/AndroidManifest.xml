@@ -57,7 +57,7 @@
         <activity
             android:name=".OfflineNavigationActivity0708"
             android:exported="false"
-            android:label="Navegação offline" />
+            android:label="GPS Offline" />
         <activity
             android:name=".QuickRepliesActivity"
             android:exported="false"
