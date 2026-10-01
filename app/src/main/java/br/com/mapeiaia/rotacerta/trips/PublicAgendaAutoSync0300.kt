@@ -1206,10 +1206,10 @@ internal object PublicAgendaAutoSync0300 {
                 )
             } ?: run {
                 val rotaCertaQuota = configuredRotaCertaSeatAllocation.takeIf { it in 0..999 } ?: 0
-                val blablaQuota = source.published_seats?.takeIf { it in 0..999 } ?: 0
+                val blablaRemaining = source.published_seats?.takeIf { it in 0..999 } ?: 0
                 toPublicTrip(
                     source = source,
-                    capacity = (blablaQuota + rotaCertaQuota).coerceIn(0, 999),
+                    capacity = (blablaRemaining + rotaCertaQuota).coerceIn(0, 999),
                     rotaCertaSeatAllocation = rotaCertaQuota,
                     nowMillis = nowMillis,
                 )
@@ -2145,8 +2145,19 @@ internal object PublicAgendaAutoSync0300 {
             sourceReference = sourceReference,
         )
         val allocation = canonical.rotaCertaSeatAllocation?.coerceIn(0, 999) ?: 0
+        val inventoryTrip0714 = projectedTrip.copy(
+            publishedSeats = verifiedPublishedSeats,
+            rotaCertaSeatAllocation = allocation,
+        )
+        val resolvedTrip0714 = inventoryTrip0714.copy(
+            capacity = operationalInventoryCapacity(inventoryTrip0714, claims),
+            capacityReliable = verifiedPublishedSeats != null && source.passenger_roster_complete,
+        )
+        val realAvailable0714 = SeatAvailabilityEngine.segmentLoads(resolvedTrip0714, claims)
+            .minOfOrNull(SegmentLoad::availableSeats)
+            ?: resolvedTrip0714.capacity
         return PublicAgendaExternalTrip(
-            trip = projectedTrip,
+            trip = resolvedTrip0714,
             bookedSeats = bookedSeats,
             sourceReference = sourceReference,
             capacityClaims = claims,
@@ -2161,7 +2172,7 @@ internal object PublicAgendaAutoSync0300 {
             snapshotRevision = canonical.externalSnapshotFingerprint.ifBlank {
                 externalCapacitySnapshotRevision(source, allocation)
             },
-            realAvailableSeats = (canonical.capacity - bookedSeats).coerceAtLeast(0),
+            realAvailableSeats = realAvailable0714.coerceAtLeast(0),
         )
     }
 
@@ -2259,8 +2270,18 @@ internal object PublicAgendaAutoSync0300 {
             .ifBlank { source.trip_href.orEmpty() }
             .ifBlank { "BLABLACAR:$token" }
         val claims = externalCapacityClaims(source, trip, booked, sourceReference)
+        val resolvedTrip0714 = trip.copy(
+            capacity = operationalInventoryCapacity(trip, claims),
+            capacityReliable = verifiedPublishedSeats != null &&
+                source.passenger_roster_complete &&
+                source.itinerary_authoritative &&
+                externalPassengerSegmentsResolved(source, trip),
+        )
+        val realAvailable0714 = SeatAvailabilityEngine.segmentLoads(resolvedTrip0714, claims)
+            .minOfOrNull(SegmentLoad::availableSeats)
+            ?: resolvedTrip0714.capacity
         return PublicAgendaExternalTrip(
-            trip = trip,
+            trip = resolvedTrip0714,
             bookedSeats = booked,
             sourceReference = sourceReference,
             capacityClaims = claims,
@@ -2274,7 +2295,7 @@ internal object PublicAgendaAutoSync0300 {
                 source.itinerary_authoritative &&
                 externalPassengerSegmentsResolved(source, trip),
             snapshotRevision = externalCapacitySnapshotRevision(source, rotaCertaSeatAllocation),
-            realAvailableSeats = (safeCapacity - booked).coerceAtLeast(0),
+            realAvailableSeats = realAvailable0714.coerceAtLeast(0),
         )
     }
 
