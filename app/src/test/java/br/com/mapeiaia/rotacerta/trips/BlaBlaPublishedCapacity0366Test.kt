@@ -67,10 +67,10 @@ class BlaBlaPublishedCapacity0366Test {
         val summary = operationalSeatSummary(trip, claims)
         assertEquals(2, summary.blablaQuotaSeats)
         assertEquals(4, summary.rotaCertaQuotaSeats)
-        assertEquals(6, summary.operationalInventorySeats)
-        assertEquals(3, summary.totalAvailableSeats)
+        assertEquals(9, summary.operationalInventorySeats)
+        assertEquals(6, summary.totalAvailableSeats)
         assertEquals(3, summary.confirmedPassengerSeats)
-        assertEquals(3, summary.availableSeats)
+        assertEquals(7, summary.availableSeats)
         assertEquals(0, summary.overbookingSeats)
     }
 
@@ -124,10 +124,10 @@ class BlaBlaPublishedCapacity0366Test {
         assertFalse(source.contains("combinedAgendaAvailableSeats"))
         assertFalse(source.contains("rotaCertaSeatPool"))
         assertTrue(source.contains("operationalInventory"))
-        assertTrue(source.contains("blablaQuota"))
+        assertTrue(source.contains("blablaRemaining"))
         assertTrue(source.contains("rotaCertaQuota"))
-        assertTrue(source.contains("capacitySource=blablacar_quota_plus_rota_certa_quota"))
-        assertFalse(source.contains("blablacar_remaining_plus_external_peak_plus_rota_certa"))
+        assertTrue(source.contains("capacitySource=blablacar_remaining_plus_confirmed_peak_plus_rota_certa"))
+        assertFalse(source.contains("capacitySource=blablacar_quota_plus_rota_certa_quota"))
     }
 
     private fun entry(
