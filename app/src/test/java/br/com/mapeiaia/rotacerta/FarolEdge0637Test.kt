@@ -87,13 +87,13 @@ class FarolEdge0637Test {
     }
 
     @Test
-    fun local_color_and_km_publish_before_optional_road_refinement() {
+    fun local_haversine_km_is_private_until_road_refinement() {
         val live = src("LiveRideAccessibilityService.kt")
         assertTrue(live.contains("applyUniversalPreliminaryColorStage637"))
-        assertTrue(live.contains("FarolLocalDecisionAuthority0696.LOCAL_COMMIT_MARKER"))
-        assertTrue(live.contains("applyUniversalTwoAddressResultStage19("))
-        assertFalse(live.contains("S682_PROVISIONAL_COLOR_SUPPRESSED"))
-        assertFalse(live.contains("stage682_local_preview_suppressed"))
+        assertTrue(live.contains("FarolRoadKmFinality0713.LOCAL_KM_SUPPRESSED_MARKER"))
+        assertTrue(live.contains("DistanceAuthority.LOCAL_HAVERSINE"))
+        assertTrue(live.contains("DistanceAuthority.ROAD_CONFIRMED"))
+        assertFalse(live.contains("Lease visual de 1 segundo expirou sem nova confirmação do endereço atual."))
         assertTrue(live.contains("cachedTrafficAwareDrivingDistancesFromAddressKm"))
         assertTrue(live.contains("trafficAwareDrivingDistancesFromAddressKm"))
         val maps = src("GoogleMapsService.kt")

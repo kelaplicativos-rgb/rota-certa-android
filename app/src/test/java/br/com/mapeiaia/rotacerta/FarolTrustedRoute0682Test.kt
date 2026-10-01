@@ -44,16 +44,16 @@ class FarolTrustedRoute0682Test {
     }
 
     @Test
-    fun localResultPublishesGreenRedAndKmBeforeRoadRefinement() {
+    fun localResultKeepsHaversineKmPrivateBeforeRoadRefinement() {
         val live = source("LiveRideAccessibilityService.kt")
         val start = live.indexOf("private suspend fun applyUniversalPreliminaryColorStage637(")
         val end = live.indexOf("private suspend fun applyUniversalTwoAddressResultStage19(", start)
         assertTrue(start >= 0 && end > start)
         val block = live.substring(start, end)
-        assertTrue(block.contains("FarolLocalDecisionAuthority0696.LOCAL_COMMIT_MARKER"))
+        assertTrue(block.contains("FarolRoadKmFinality0713.LOCAL_KM_SUPPRESSED_MARKER"))
+        assertTrue(block.contains("DistanceAuthority.LOCAL_HAVERSINE"))
         assertTrue(block.contains("applyUniversalTwoAddressResultStage19("))
-        assertFalse(block.contains("S682_PROVISIONAL_COLOR_SUPPRESSED"))
-        assertFalse(block.contains("showOverlay(RadarColor.Default, distanceKm = null)"))
+        assertFalse(block.contains("FarolLocalDecisionAuthority0696.LOCAL_COMMIT_MARKER"))
     }
 
     @Test

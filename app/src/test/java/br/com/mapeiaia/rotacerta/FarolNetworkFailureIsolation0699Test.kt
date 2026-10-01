@@ -96,7 +96,7 @@ class FarolNetworkFailureIsolation0699Test {
     }
 
     @Test
-    fun remoteRefinementFailureIsSoftAndPreservesCommittedLocalDecision() {
+    fun remoteRefinementFailureIsSoftAndKeepsLocalKmPrivate() {
         val live = src("LiveRideAccessibilityService.kt")
         val analyzeStart = live.indexOf("private suspend fun analyzeUniversalTwoAddressStage19(")
         val remoteStart = live.indexOf("val remoteToken0699 =", analyzeStart)
@@ -107,7 +107,8 @@ class FarolNetworkFailureIsolation0699Test {
         assertTrue(remote.contains("catch (cancelled0699: kotlinx.coroutines.CancellationException)"))
         assertTrue(remote.contains("throw cancelled0699"))
         assertTrue(remote.contains("exactRoadDistancesCandidate0699 ?: run"))
-        assertTrue(remote.contains("Decisão local preservada"))
+        assertTrue(remote.contains("KM permanece oculto"))
+        assertTrue(remote.contains("REMOTE_REFINEMENT_FAILED_SOFT_MARKER"))
         assertFalse(remote.contains("hardClearUniversalTwoAddress"))
     }
 
