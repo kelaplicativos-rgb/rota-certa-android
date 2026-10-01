@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.BatteryManager
 import br.com.mapeiaia.rotacerta.trips.TripOnlineSettings
 import br.com.mapeiaia.rotacerta.trips.TripStore
+import br.com.mapeiaia.rotacerta.trips.passengerTrackingPayload0714
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
@@ -661,10 +662,7 @@ internal fun shareTrackingLink0668(
     message: String,
     url: String,
 ) {
-    val text = buildString {
-        append(message.trim())
-        if (url.isNotBlank()) append("\n").append(url.trim())
-    }
+    val text = passengerTrackingPayload0714(message, url)
     val share = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, text)
