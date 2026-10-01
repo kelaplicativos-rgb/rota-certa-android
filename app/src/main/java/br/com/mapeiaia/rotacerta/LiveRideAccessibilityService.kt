@@ -254,6 +254,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private lateinit var decisionEngine: DecisionEngine
     private lateinit var bubblePrefs: SharedPreferences
     private lateinit var farolPaidAiGate0695: FarolPaidAiGate0695
+    private lateinit var farolPaidRoadGate0715: FarolPaidRoadGate0715
     private lateinit var speechEngine: LiveSpeechEngine
     private lateinit var speechOutputStore0186: SpeechOutputPreferenceStore0186
     private lateinit var proximityAlertEngine: ProximityAlertEngine
@@ -352,6 +353,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         bubblePrefs = getSharedPreferences(BUBBLE_PREFS, Context.MODE_PRIVATE)
         farolPaidAiGate0695 = FarolPaidAiGate0695.create(applicationContext)
+        farolPaidRoadGate0715 = FarolPaidRoadGate0715.create(applicationContext)
         ShortcutGridPolicy0173.clearLegacyPreferences(applicationContext)
         shortcutGridStore0179 = ShortcutGridPreferenceStore0179(applicationContext)
         keepScreenAwakeStore0688 = KeepScreenAwakePreferenceStore0688(applicationContext)
@@ -4195,6 +4197,16 @@ class LiveRideAccessibilityService : AccessibilityService() {
                     ),
                 )
             }
+            resolvePaidRoadFallback0715(
+                snapshotTextStage19 = snapshotTextStage19,
+                fieldsStage19 = fieldsStage19,
+                bindingStage19 = bindingStage19,
+                targetsStage19 = targetsStage19,
+                localResult0696 = localResult0696,
+                traceIdStage20 = traceIdStage20,
+                routeJobIdStage20 = routeJobIdStage20,
+                trigger0715 = "remote_refinement_null",
+            )
             return
         }
 
@@ -4211,6 +4223,16 @@ class LiveRideAccessibilityService : AccessibilityService() {
             rememberBubbleReason(
                 "stage696_remote_refinement_unavailable",
                 "Cor local mantida internamente; rota rodoviária não respondeu. KM permanece oculto.",
+            )
+            resolvePaidRoadFallback0715(
+                snapshotTextStage19 = snapshotTextStage19,
+                fieldsStage19 = fieldsStage19,
+                bindingStage19 = bindingStage19,
+                targetsStage19 = targetsStage19,
+                localResult0696 = localResult0696,
+                traceIdStage20 = traceIdStage20,
+                routeJobIdStage20 = routeJobIdStage20,
+                trigger0715 = "remote_refinement_all_null",
             )
             return
         }
@@ -4243,6 +4265,194 @@ class LiveRideAccessibilityService : AccessibilityService() {
             "ROAD_REFINEMENT_0696",
             distanceAuthority0713 = FarolRoadKmFinality0713.DistanceAuthority.ROAD_CONFIRMED,
         )
+    }
+
+    private suspend fun resolvePaidRoadFallback0715(
+        snapshotTextStage19: String,
+        fieldsStage19: RideFields,
+        bindingStage19: FarolUniversalVisualPipelineStage19.Binding,
+        targetsStage19: FastWorkRegionTargetsChecklist13,
+        localResult0696: AnalysisResult,
+        traceIdStage20: String,
+        routeJobIdStage20: String,
+        trigger0715: String,
+    ): Boolean {
+        if (!::farolPaidRoadGate0715.isInitialized) return false
+        if (!isStage19BindingFresh(bindingStage19)) return false
+        val destination0715 = fieldsStage19.destination.orEmpty().trim()
+        if (destination0715.isBlank() || targetsStage19.destinations.isEmpty()) return false
+        val package0715 = normalizePackageName(universalResolvedForegroundPackage()) ?: return false
+        if (package0715 !in SelectedRideAppStore.read(applicationContext)) return false
+
+        val remoteTargets0715 = targetsStage19.destinations.map { coordinate0715 ->
+            br.com.mapeiaia.rotacerta.trips.FarolPaidRoadTarget0715(
+                latitude = coordinate0715.latitude,
+                longitude = coordinate0715.longitude,
+            )
+        }
+
+        suspend fun publish0715(
+            normalizedAddress0715: String,
+            confidence0715: Double,
+            roadKm0715: Double,
+            targetIndex0715: Int,
+            routeProvider0715: String,
+            source0715: String,
+        ): Boolean {
+            if (!roadKm0715.isFinite() || roadKm0715 < 0.0) return false
+            if (targetIndex0715 !in targetsStage19.destinations.indices) return false
+            if (!isStage19BindingFresh(bindingStage19)) {
+                UnifiedDebugEventStore.record(
+                    FarolPaidRoadGate0715.STALE_DROPPED_MARKER,
+                    package0715,
+                    "binding=${bindingStage19.addressSignature}; trigger=$trigger0715; source=$source0715",
+                )
+                return false
+            }
+
+            val exact0715 = MutableList<Double?>(targetsStage19.destinations.size) { null }
+            exact0715[targetIndex0715] = roadKm0715
+            val refined0715 = attachExactRoadDistanceStage637(
+                localResult0696,
+                targetsStage19,
+                exact0715,
+            ).copy(
+                recommendation = FarolLocalDecisionAuthority0696.preserveLocalRecommendation(
+                    localResult0696.recommendation,
+                    localResult0696.recommendation,
+                ),
+                reason = "Cor local preservada; KM rodoviário confirmado pelo fallback terminal 0715.",
+            )
+            UnifiedDebugEventStore.record(
+                FarolPaidRoadGate0715.RESOLVED_MARKER,
+                package0715,
+                "binding=${bindingStage19.addressSignature}; trigger=$trigger0715; source=$source0715; normalized=${normalizedAddress0715.take(180)}; confidence=$confidence0715; roadKm=$roadKm0715; targetIndex=$targetIndex0715; routeProvider=$routeProvider0715",
+            )
+            FarolFlightRecorder0163.record(
+                stage = FarolPaidRoadGate0715.RESOLVED_MARKER,
+                packageName = package0715,
+                details = "binding=${bindingStage19.addressSignature}; trigger=$trigger0715; source=$source0715; roadKm=$roadKm0715; targetIndex=$targetIndex0715; routeProvider=$routeProvider0715",
+            )
+            bubblePrefs.edit().putString("fast_farol_last_path", "stage715_paid_terminal_road").apply()
+            applyUniversalTwoAddressResultStage19(
+                refined0715,
+                bindingStage19,
+                traceIdStage20,
+                "PAID_ROAD_FALLBACK_0715",
+                distanceAuthority0713 = FarolRoadKmFinality0713.DistanceAuthority.ROAD_CONFIRMED,
+            )
+            return true
+        }
+
+        when (
+            val start0715 = farolPaidRoadGate0715.start(
+                packageName = package0715,
+                destination = destination0715,
+                cardContext = snapshotTextStage19,
+                targets = remoteTargets0715,
+            )
+        ) {
+            is FarolPaidRoadGate0715.Start.Suppressed -> {
+                FarolFlightRecorder0163.record(
+                    stage = "FAROL_PAID_ROAD_SUPPRESSED_0715",
+                    packageName = package0715,
+                    details = "binding=${bindingStage19.addressSignature}; trigger=$trigger0715; reason=${start0715.reason}; key=${start0715.key.take(16)}",
+                )
+                return false
+            }
+
+            is FarolPaidRoadGate0715.Start.Cached -> {
+                UnifiedDebugEventStore.record(
+                    FarolPaidRoadGate0715.CACHE_HIT_MARKER,
+                    package0715,
+                    "binding=${bindingStage19.addressSignature}; trigger=$trigger0715; key=${start0715.key.take(16)}; roadKm=${start0715.roadKm}",
+                )
+                return publish0715(
+                    normalizedAddress0715 = start0715.normalizedAddress,
+                    confidence0715 = start0715.confidence,
+                    roadKm0715 = start0715.roadKm,
+                    targetIndex0715 = start0715.targetIndex,
+                    routeProvider0715 = start0715.routeProvider,
+                    source0715 = "persistent_cache",
+                )
+            }
+
+            is FarolPaidRoadGate0715.Start.Network -> {
+                UnifiedDebugEventStore.record(
+                    FarolPaidRoadGate0715.STARTED_MARKER,
+                    package0715,
+                    "binding=${bindingStage19.addressSignature}; trigger=$trigger0715; key=${start0715.ticket.key.take(16)}; normalProvidersExhausted=true",
+                )
+                val online0715 = runCatching {
+                    br.com.mapeiaia.rotacerta.trips.TripStore(applicationContext).onlineSettings()
+                }.getOrNull()
+                if (online0715 == null || !online0715.configured) {
+                    farolPaidRoadGate0715.releaseWithoutCharge(start0715.ticket)
+                    FarolFlightRecorder0163.record(
+                        stage = FarolPaidRoadGate0715.FAILED_MARKER,
+                        packageName = package0715,
+                        details = "reason=driver_backend_not_configured; key=${start0715.ticket.key.take(16)}",
+                    )
+                    return false
+                }
+
+                val response0715 = try {
+                    withContext(Dispatchers.IO) {
+                        br.com.mapeiaia.rotacerta.trips.TripRemoteApi(online0715).resolveFarolPaidRoad0715(
+                            br.com.mapeiaia.rotacerta.trips.FarolPaidRoadRequest0715(
+                                destination = start0715.ticket.destination,
+                                context = start0715.ticket.sanitizedContext,
+                                packageName = package0715,
+                                fingerprint = start0715.ticket.key,
+                                targets = start0715.ticket.targets,
+                            ),
+                        )
+                    }
+                } catch (cancelled0715: kotlinx.coroutines.CancellationException) {
+                    farolPaidRoadGate0715.failure(start0715.ticket)
+                    throw cancelled0715
+                } catch (error0715: Throwable) {
+                    farolPaidRoadGate0715.failure(start0715.ticket)
+                    FarolFlightRecorder0163.record(
+                        stage = FarolPaidRoadGate0715.FAILED_MARKER,
+                        packageName = package0715,
+                        details = "type=${error0715::class.java.simpleName}; trigger=$trigger0715; key=${start0715.ticket.key.take(16)}",
+                    )
+                    return false
+                }
+
+                if (!response0715.resolved) {
+                    farolPaidRoadGate0715.failure(start0715.ticket)
+                    UnifiedDebugEventStore.record(
+                        FarolPaidRoadGate0715.UNRESOLVED_MARKER,
+                        package0715,
+                        "binding=${bindingStage19.addressSignature}; trigger=$trigger0715; confidence=${response0715.confidence}; reason=${response0715.reason.take(180)}",
+                    )
+                    return false
+                }
+
+                val roadKm0715 = response0715.roadKm ?: run {
+                    farolPaidRoadGate0715.failure(start0715.ticket)
+                    return false
+                }
+                farolPaidRoadGate0715.success(
+                    ticket = start0715.ticket,
+                    normalizedAddress = response0715.normalizedAddress,
+                    confidence = response0715.confidence,
+                    roadKm = roadKm0715,
+                    targetIndex = response0715.targetIndex,
+                    routeProvider = response0715.routeProvider,
+                )
+                return publish0715(
+                    normalizedAddress0715 = response0715.normalizedAddress,
+                    confidence0715 = response0715.confidence,
+                    roadKm0715 = roadKm0715,
+                    targetIndex0715 = response0715.targetIndex,
+                    routeProvider0715 = response0715.routeProvider,
+                    source0715 = response0715.provider.ifBlank { "openai+nominatim+osrm" },
+                )
+            }
+        }
     }
 
     private fun attachExactRoadDistanceStage637(
