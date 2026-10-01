@@ -2,6 +2,45 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.716",
+      "build": 6007,
+      "commit": null,
+      "branch": "agent/farol-address-recovery-0.1.716",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Aciona a recuperação paga de endereço 0695 também quando o destino visual é válido, porém a resolução local de coordenada permanece inconclusiva após a janela de retries locais.",
+        "Preserva o mesmo card, mesma janela e mesmo destino durante o lease curto de recuperação para impedir que um heartbeat inconclusivo invalide o trabalho assíncrono.",
+        "Reutiliza o interpretador OpenAI já existente para endereço, estabelecimento ou ponto de interesse sem criar nova autoridade de quilometragem."
+      ],
+      "fixed": [
+        "Fecha a lacuna do 0.1.715 em que FAROL_VALID_ADDRESS_WITHOUT_FINAL_PAINT_0696 retornava antes de qualquer fallback pago.",
+        "Evita limpeza indevida por ownership visual inconclusivo quando o mesmo endereço permanece no mesmo card durante retry ou recuperação.",
+        "Mantém a proteção contra stale real: mudança de endereço, janela ou aplicação continua revogando o resultado anterior."
+      ],
+      "improved": [
+        "Falhas transitórias recebem prioridade: a chamada paga só é liberada após tentativas locais repetidas e grace period mínimo.",
+        "A resolução local bem-sucedida encerra imediatamente o lease de recuperação.",
+        "Telemetria 0716 diferencia espera por retry local, escalada paga e preservação de heartbeat."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.715: endereço/POI visível podia terminar em NO_FINAL_PAINT antes do fallback OpenAI.",
+        "0.1.715: heartbeat de ownership inconclusivo podia cancelar uma análise ainda válida do mesmo card."
+      ],
+      "modulesAffected": [
+        "FAROL",
+        "Bolinha",
+        "OpenAI",
+        "Acessibilidade",
+        "Heartbeat",
+        "Geocodificação",
+        "Rotas",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.715",
       "build": 6006,
       "commit": null,
