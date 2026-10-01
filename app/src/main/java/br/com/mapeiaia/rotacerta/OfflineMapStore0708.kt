@@ -13,6 +13,7 @@ object OfflineMapFilePolicy0708 {
     const val CONTRACT_MARKER = "OFFLINE_MAP_IMPORT_0708"
     const val STORAGE_MARKER = "OFFLINE_MAP_APP_PRIVATE_STORAGE_0708"
     const val NO_FAROL_AUTHORITY_MARKER = "OFFLINE_MAPS_DO_NOT_CHANGE_FAROL_AUTHORITY_0708"
+    const val ORGANIC_MAPS_STORAGE_COMPAT_MARKER_0711 = "OFFLINE_MAPS_ORGANIC_STORAGE_COMPAT_0711"
 
     fun isSupportedName(name: String): Boolean =
         name.trim().lowercase(Locale.ROOT).endsWith(".mwm")
@@ -47,7 +48,16 @@ data class OfflineMapImportResult0708(
 
 class OfflineMapStore0708(context: Context) {
     private val appContext = context.applicationContext
-    private val directory = File(appContext.filesDir, "offline_maps")
+    private val legacyDirectory = File(appContext.filesDir, "offline_maps")
+    private val storageRoot = appContext.getExternalFilesDir(null) ?: appContext.filesDir
+    private val directory = File(
+        storageRoot,
+        OrganicMapsEmbeddedRuntime0711.COMPATIBLE_DATA_VERSION_FOLDER,
+    )
+
+    init {
+        migrateLegacyMaps0711()
+    }
 
     fun listMaps(): List<OfflineMapFile0708> {
         if (!directory.isDirectory) return emptyList()
@@ -103,6 +113,22 @@ class OfflineMapStore0708(context: Context) {
         if (safe != name || !OfflineMapFilePolicy0708.isSupportedName(safe)) return false
         val file = File(directory, safe)
         return !file.exists() || file.delete()
+    }
+
+    private fun migrateLegacyMaps0711() {
+        if (!legacyDirectory.isDirectory) return
+        directory.mkdirs()
+        legacyDirectory.listFiles()
+            .orEmpty()
+            .filter { it.isFile && OfflineMapFilePolicy0708.isSupportedName(it.name) }
+            .forEach { legacy ->
+                val target = File(directory, OfflineMapFilePolicy0708.sanitizeFileName(legacy.name))
+                if (target.exists()) return@forEach
+                runCatching { moveReplacing(legacy, target) }
+            }
+        runCatching {
+            if (legacyDirectory.listFiles().orEmpty().isEmpty()) legacyDirectory.delete()
+        }
     }
 
     private fun moveReplacing(source: File, target: File) {
