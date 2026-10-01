@@ -89,7 +89,7 @@ tasks.register("printFarolRegressionCompatibilityBaselines") {
 
 android {
     namespace = "br.com.mapeiaia.rotacerta"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "br.com.mapeiaia.rotacerta"
@@ -176,6 +176,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("app.organicmaps.sdk:sdk:2026.09.29-32")
+    implementation("app.organicmaps.sdk:maps-world:2026.09.29-32")
     testImplementation(kotlin("test"))
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
