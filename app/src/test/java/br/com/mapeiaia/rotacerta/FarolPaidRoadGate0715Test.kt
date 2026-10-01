@@ -25,11 +25,12 @@ class FarolPaidRoadGate0715Test {
         )
         assertEquals("already_in_flight", duplicate.reason)
 
-        gate.success(first.ticket, "Shopping X, Moema, São Paulo - SP", 0.96, 5.569, "osrm")
+        gate.success(first.ticket, "Shopping X, Moema, São Paulo - SP", 0.96, 5.569, 1, "osrm")
         val cached = assertIs<FarolPaidRoadGate0715.Start.Cached>(
             gate.start("com.test.driver", "Shopping X", "Destino\nShopping X\nMoema", targets),
         )
         assertEquals(5.569, cached.roadKm)
+        assertEquals(1, cached.targetIndex)
         assertEquals("osrm", cached.routeProvider)
         assertTrue(cached.normalizedAddress.contains("Shopping X"))
     }
