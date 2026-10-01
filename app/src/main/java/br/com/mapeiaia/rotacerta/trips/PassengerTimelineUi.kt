@@ -2468,14 +2468,13 @@ internal fun EnhancedPassengerTimelineSection(
             },
             confirmButton = {
                 TextButton(
-                    enabled = currentTrip?.remoteId?.isNotBlank() == true && booking != null,
+                    enabled =
+                        (currentTrip?.remoteId?.isNotBlank() == true && booking != null) ||
+                            (BookingSource.BLABLACAR in row.sources && !row.externalReservationKey.isNullOrBlank()),
                     onClick = {
                         val selectedTrip = currentTrip
                         val selectedBooking = booking
-                        if (selectedTrip == null || selectedBooking == null) {
-                            cancelManualRow = null
-                            onChanged("Reserva canônica não localizada. Nada foi alterado.")
-                        } else {
+                        if (selectedTrip != null && selectedBooking != null) {
                             scope.launch {
                                 runCatching {
                                     persistCanonicalPassengerMutation0582(
@@ -2505,6 +2504,31 @@ internal fun EnhancedPassengerTimelineSection(
                                     onChanged("Nada foi alterado: ${error.message ?: error.javaClass.simpleName}")
                                 }
                             }
+                        } else if (
+                            BookingSource.BLABLACAR in row.sources &&
+                            !row.externalReservationKey.isNullOrBlank()
+                        ) {
+                            val saved0714 = saveExternalPassengerOperationalStatus0714(
+                                row = row,
+                                selectionRaw = "CANCELLED",
+                                passengerStore = passengerStore,
+                            )
+                            if (saved0714 != null) {
+                                cancelManualRow = null
+                                identityRevision++
+                                UnifiedDebugEventStore.recordAlways(
+                                    "PASSENGER_EXTERNAL_STATUS_READBACK_OK_0714",
+                                    context.packageName,
+                                    "rowKey=" + passengerCancellationHash(passengerTimelineRowKey0394(row)) +
+                                        " selection=CANCELLED authority=EXTERNAL_PASSENGER_METADATA",
+                                )
+                                onChanged("Ocorrência cancelada no Rota Certa. A BlaBlaCar não foi alterada.")
+                            } else {
+                                onChanged("Nada foi alterado: não foi possível confirmar o cancelamento.")
+                            }
+                        } else {
+                            cancelManualRow = null
+                            onChanged("Reserva canônica não localizada. Nada foi alterado.")
                         }
                     },
                 ) { Text("Cancelar reserva") }
@@ -3712,7 +3736,7 @@ private fun saveExternalPassengerOperationalStatus0714(
     passengerStore: PassengerIdentityStore,
 ): ExternalPassengerMetadata? {
     val selection = selectionRaw.trim().uppercase()
-    if (selection !in setOf("PENDING", "CONFIRMED", "AT_LOCATION", "IN_CAR", "PAID", "COMPLETED")) return null
+    if (selection !in setOf("PENDING", "CONFIRMED", "AT_LOCATION", "IN_CAR", "PAID", "COMPLETED", "CANCELLED")) return null
     val key = row.externalReservationKey?.trim()?.takeIf(String::isNotEmpty) ?: return null
     val current = passengerStore.externalMetadata(key) ?: ExternalPassengerMetadata(
         reservationKey = key,
@@ -3724,12 +3748,14 @@ private fun saveExternalPassengerOperationalStatus0714(
         current.operationalStatus == PassengerOperationalStatus.COMPLETED &&
         selection !in setOf("COMPLETED", "PAID")
     ) return null
+    if (current.operationalStatus == PassengerOperationalStatus.IN_CAR && selection == "CANCELLED") return null
     val operational = when (selection) {
         "PENDING" -> PassengerOperationalStatus.PENDING
         "CONFIRMED" -> PassengerOperationalStatus.CONFIRMED
         "AT_LOCATION" -> PassengerOperationalStatus.AT_LOCATION
         "IN_CAR" -> PassengerOperationalStatus.IN_CAR
         "COMPLETED" -> PassengerOperationalStatus.COMPLETED
+        "CANCELLED" -> PassengerOperationalStatus.CANCELLED
         "PAID" -> current.operationalStatus
         else -> current.operationalStatus
     }
