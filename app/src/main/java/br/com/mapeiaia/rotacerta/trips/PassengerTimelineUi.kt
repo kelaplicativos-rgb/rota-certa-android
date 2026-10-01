@@ -2935,7 +2935,8 @@ internal fun EnhancedPassengerTimelineSection(
                                 saved0513.boardingAddress.trim() == address.trim() &&
                                     saved0513.boardingLatitude == null &&
                                     saved0513.boardingLongitude == null &&
-                                    readback0513?.boardingAddress?.trim() == address.trim() &&
+                                    readback0513 != null &&
+                                    readback0513.boardingAddress.trim() == address.trim() &&
                                     readback0513.boardingLatitude == null &&
                                     readback0513.boardingLongitude == null
                             if (verified0714) {
@@ -3014,7 +3015,8 @@ internal fun EnhancedPassengerTimelineSection(
                                 saved0513.dropoffAddress.trim() == address.trim() &&
                                     saved0513.dropoffLatitude == null &&
                                     saved0513.dropoffLongitude == null &&
-                                    readback0513?.dropoffAddress?.trim() == address.trim() &&
+                                    readback0513 != null &&
+                                    readback0513.dropoffAddress.trim() == address.trim() &&
                                     readback0513.dropoffLatitude == null &&
                                     readback0513.dropoffLongitude == null
                             if (verified0714) {
