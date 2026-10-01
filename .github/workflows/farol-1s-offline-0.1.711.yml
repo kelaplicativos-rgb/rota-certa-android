@@ -1,0 +1,33 @@
+name: Probe Organic Maps SDK 0.1.711
+
+on:
+  push:
+    branches:
+      - 'agent/farol-1s-visual-authority-0.1.711'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: 'agent/farol-1s-visual-authority-0.1.711'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Compile
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:compileDebugKotlin --no-daemon --max-workers=2 --stacktrace
