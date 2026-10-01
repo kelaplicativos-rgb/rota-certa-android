@@ -107,8 +107,8 @@ class PassengerOperationalShortcuts0656Test {
             vehicleColor = "cinza",
         )
         assertContains(confirm, "Isabela")
-        assertContains(confirm, "São Paulo → Santo André")
-        assertContains(confirm, "Está tudo certo?")
+        assertContains(confirm, "de São Paulo para Santo André")
+        assertContains(confirm, "Está tudo certo para você?")
 
         val tomorrow = passengerQuickMessageText0656(
             entry(),
@@ -119,7 +119,7 @@ class PassengerOperationalShortcuts0656Test {
         )
         assertContains(tomorrow, "amanhã")
         assertContains(tomorrow, "Hyundai HB20 TBJ4F74")
-        assertContains(tomorrow, "CINZA")
+        assertContains(tomorrow, "cinza")
 
         val fare = passengerQuickMessageText0656(
             entry(),
