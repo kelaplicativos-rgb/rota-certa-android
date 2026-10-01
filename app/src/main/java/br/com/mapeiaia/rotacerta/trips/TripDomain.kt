@@ -330,19 +330,60 @@ internal fun bookingOccupancyIdentityKey(booking: Booking): String =
         ?: "booking:${booking.id}"
 
 /**
- * Canonical operational inventory for a trip.
+ * Peak confirmed passenger occupancy observed on any single segment.
  *
- * Quota is capacity. Confirmed passengers/reservations are occupancy and must
- * never be added to this ceiling. The segment engine subtracts each unique
- * occupancy exactly once on the segments it actually travels.
+ * BlaBlaCar's seat editor exposes the number still offered externally, not the
+ * original physical ceiling. Reconstructing the ceiling therefore needs the
+ * confirmed occupancy already travelling on each segment. Identity grouping is
+ * the same one used by the segment engine so mirrored claims are counted once.
+ */
+internal fun peakConfirmedPassengerSeats0714(
+    trip: Trip,
+    bookings: List<Booking>,
+): Int {
+    val orderedStops = trip.stops.sortedBy(TripStop::order)
+    if (orderedStops.size < 2) return 0
+    val claims = Array(orderedStops.lastIndex) { mutableMapOf<String, Int>() }
+    bookings.asSequence()
+        .filter { it.tripId == trip.id }
+        .filter { it.seats > 0 && it.status == BookingStatus.CONFIRMED }
+        .filter {
+            it.capacityClaimType == CapacityClaimType.PASSENGER ||
+                it.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY
+        }
+        .forEach { booking ->
+            val fromIndex = orderedStops.indexOfFirst { it.id == booking.boardingStopId }
+            val toIndex = orderedStops.indexOfFirst { it.id == booking.dropoffStopId }
+            if (fromIndex >= 0 && toIndex > fromIndex) {
+                val key = bookingOccupancyIdentityKey(booking)
+                for (segment in fromIndex until toIndex) {
+                    val current = claims[segment][key] ?: 0
+                    claims[segment][key] = maxOf(current, booking.seats)
+                }
+            }
+        }
+    return claims.maxOfOrNull { segment -> segment.values.sum() }?.coerceAtLeast(0) ?: 0
+}
+
+/**
+ * Canonical simultaneous operational ceiling.
+ *
+ * publishedSeats is the current BlaBlaCar availability (seats still offered).
+ * Confirmed passengers are added back exactly once at their peak simultaneous
+ * occupancy; Rota Certa's explicit extra allocation is then added separately.
  */
 fun operationalInventoryCapacity(
     trip: Trip,
-    @Suppress("UNUSED_PARAMETER") bookings: List<Booking>,
+    bookings: List<Booking>,
 ): Int {
-    val blablaQuota = trip.publishedSeats?.takeIf { it in 0..999 } ?: 0
+    val blablaAvailable = trip.publishedSeats?.takeIf { it in 0..999 }
     val rotaCertaQuota = trip.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0
-    return (blablaQuota + rotaCertaQuota).coerceIn(0, 999)
+    val confirmedPeak = if (blablaAvailable != null) {
+        peakConfirmedPassengerSeats0714(trip, bookings)
+    } else {
+        0
+    }
+    return ((blablaAvailable ?: 0) + confirmedPeak + rotaCertaQuota).coerceIn(0, 999)
 }
 
 data class SegmentLoad(
