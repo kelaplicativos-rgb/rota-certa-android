@@ -12,15 +12,23 @@ object TenantMessageTemplateStore {
     private const val KEY_TRIP = "trip"
     private const val KEY_VALUE = "value"
 
-    fun readTrip(context: Context): String = prefs(context)
-        .getString(key(context, KEY_TRIP), MessageTemplateStore0172.DEFAULT_TRIP)
-        ?.takeIf { it.isNotBlank() }
-        ?: MessageTemplateStore0172.DEFAULT_TRIP
+    fun readTrip(context: Context): String {
+        val scopedKey = key(context, KEY_TRIP)
+        val stored = prefs(context).getString(scopedKey, null)?.takeIf(String::isNotBlank)
+        return when (stored) {
+            null, MessageTemplateStore0172.LEGACY_DEFAULT_TRIP_0714 -> MessageTemplateStore0172.DEFAULT_TRIP
+            else -> stored
+        }
+    }
 
-    fun readValue(context: Context): String = prefs(context)
-        .getString(key(context, KEY_VALUE), MessageTemplateStore0172.DEFAULT_VALUE)
-        ?.takeIf { it.isNotBlank() }
-        ?: MessageTemplateStore0172.DEFAULT_VALUE
+    fun readValue(context: Context): String {
+        val scopedKey = key(context, KEY_VALUE)
+        val stored = prefs(context).getString(scopedKey, null)?.takeIf(String::isNotBlank)
+        return when (stored) {
+            null, MessageTemplateStore0172.LEGACY_DEFAULT_VALUE_0714 -> MessageTemplateStore0172.DEFAULT_VALUE
+            else -> stored
+        }
+    }
 
     fun saveTrip(context: Context, value: String) {
         prefs(context).edit()
