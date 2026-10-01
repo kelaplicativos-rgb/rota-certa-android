@@ -55,6 +55,7 @@ test("terminal Farol fallback normalizes POI then returns real OSRM road km", as
   assert.equal(result.status, "RESOLVED");
   assert.equal(result.normalizedAddress, "Shopping Ibirapuera, Moema, São Paulo - SP");
   assert.equal(result.roadKm, 5.569);
+  assert.equal(result.targetIndex, 1);
   assert.equal(result.routeProvider, "osrm");
   assert.equal(result.addressProvider, "openai+nominatim");
   assert.equal(calls.length, 3);
