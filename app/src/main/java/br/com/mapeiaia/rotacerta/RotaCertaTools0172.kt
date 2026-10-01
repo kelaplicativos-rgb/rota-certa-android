@@ -125,14 +125,29 @@ object MessageTemplateStore0172 {
     private const val KEY_TRIP = "trip"
     private const val KEY_VALUE = "value"
 
-    const val DEFAULT_TRIP = "{saudacao} Confirmando sua viagem:\n\n{origem} → {destino}\n{dia_semana}, {dia} de {mes}, às {horario}.\n\nEstá tudo certo?"
-    const val DEFAULT_VALUE = "Olá, {nome}! O valor exibido para sua reserva de {lugares}, de {origem} para {destino}, é {valor}."
+    internal const val LEGACY_DEFAULT_TRIP_0714 = "{saudacao} Confirmando sua viagem:\n\n{origem} → {destino}\n{dia_semana}, {dia} de {mes}, às {horario}.\n\nEstá tudo certo?"
+    internal const val LEGACY_DEFAULT_VALUE_0714 = "Olá, {nome}! O valor exibido para sua reserva de {lugares}, de {origem} para {destino}, é {valor}."
+    const val DEFAULT_TRIP = "Oi, {nome}! Confirmando nossa viagem de {origem} para {destino}, {dia_semana}, {dia} de {mes}, às {horario}. Está tudo certo para você?"
+    const val DEFAULT_VALUE = "Oi, {nome}! O valor da sua reserva para {lugares} é {valor}."
 
-    fun readTrip(context: Context): String = prefs(context).getString(KEY_TRIP, DEFAULT_TRIP)
-        ?.takeIf { it.isNotBlank() } ?: DEFAULT_TRIP
+    private fun firstName0714(raw: String?): String =
+        raw.orEmpty().trim().split(Regex("\\s+")).firstOrNull()?.takeIf(String::isNotBlank) ?: "Passageiro"
 
-    fun readValue(context: Context): String = prefs(context).getString(KEY_VALUE, DEFAULT_VALUE)
-        ?.takeIf { it.isNotBlank() } ?: DEFAULT_VALUE
+    fun readTrip(context: Context): String {
+        val stored = prefs(context).getString(KEY_TRIP, null)?.takeIf(String::isNotBlank)
+        return when (stored) {
+            null, LEGACY_DEFAULT_TRIP_0714 -> DEFAULT_TRIP
+            else -> stored
+        }
+    }
+
+    fun readValue(context: Context): String {
+        val stored = prefs(context).getString(KEY_VALUE, null)?.takeIf(String::isNotBlank)
+        return when (stored) {
+            null, LEGACY_DEFAULT_VALUE_0714 -> DEFAULT_VALUE
+            else -> stored
+        }
+    }
 
     fun saveTrip(context: Context, value: String) {
         prefs(context).edit().putString(KEY_TRIP, value.trim().take(4_000).ifBlank { DEFAULT_TRIP }).apply()
@@ -148,12 +163,13 @@ object MessageTemplateStore0172 {
 
     fun formatTrip(context: Context, data: TripConfirmationData): String {
         val time = if (data.minute == 0) "${data.hour}h" else String.format(Locale("pt", "BR"), "%dh%02d", data.hour, data.minute)
-        val greeting = data.passengerName?.takeIf { it.isNotBlank() }?.let { "Olá, $it!" } ?: "Olá!"
+        val firstName0714 = firstName0714(data.passengerName)
+        val greeting = "Oi, $firstName0714!"
         return MessageTemplateRenderer0172.apply(
             readTrip(context),
             mapOf(
                 "saudacao" to greeting,
-                "nome" to data.passengerName.orEmpty(),
+                "nome" to firstName0714,
                 "origem" to data.origin,
                 "destino" to data.destination,
                 "dia_semana" to data.weekday,
@@ -167,7 +183,7 @@ object MessageTemplateStore0172 {
     fun formatValue(context: Context, data: PassengerValueData): String = MessageTemplateRenderer0172.apply(
         readValue(context),
         mapOf(
-            "nome" to data.passengerName,
+            "nome" to firstName0714(data.passengerName),
             "lugares" to if (data.seats == 1) "1 lugar" else "${data.seats} lugares",
             "origem" to data.origin,
             "destino" to data.destination,
