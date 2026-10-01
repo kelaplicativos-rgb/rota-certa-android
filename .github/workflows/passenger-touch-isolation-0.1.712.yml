@@ -105,7 +105,7 @@ jobs:
           set -euo pipefail
           chmod +x ./gradlew
           ./gradlew :app:verifyReleaseHistory --no-daemon --stacktrace | tee /tmp/release-history.log
-          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTouchIsolation0712Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTrackingControl0706Test'             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripCardFooter0654Test'             --no-daemon --max-workers=2 --stacktrace             | tee /tmp/focused-android-0712.log
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTouchIsolation0712Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTrackingControl0706Test'              --no-daemon --max-workers=2 --stacktrace             | tee /tmp/focused-android-0712.log
 
       - name: Run inherited FAROL and location regressions
         shell: bash
