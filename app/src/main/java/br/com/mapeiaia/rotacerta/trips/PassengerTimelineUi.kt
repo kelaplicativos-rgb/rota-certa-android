@@ -638,6 +638,11 @@ internal fun EnhancedPassengerTimelineSection(
         if (passengerKey0676.isBlank() || passengerKey0676 in trackingStopInFlight0676) return
         if (!liveTrackingManager0668.isPassengerShareActive(passengerKey0676)) return
         trackingStopInFlight0676 = trackingStopInFlight0676 + passengerKey0676
+        UnifiedDebugEventStore.recordAlways(
+            "PASSENGER_TRACKING_STOP_REQUEST_0712",
+            context.packageName,
+            "active=true inFlight=true",
+        )
         scope.launch {
             runCatching {
                 withContext(Dispatchers.IO) { liveTrackingManager0668.closePassengerShare(passengerKey0676) }
