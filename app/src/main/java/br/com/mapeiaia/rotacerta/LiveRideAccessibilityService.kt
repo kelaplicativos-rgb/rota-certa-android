@@ -211,6 +211,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var lastScreenshotMillis: Long = 0L
     private var continuousScanStarted = false
     private var farolVisualHeartbeatJob0711: Job? = null
+    private val farolAddressRecovery0716 = FarolAddressRecovery0716()
     @Volatile private var farolLastConfirmedAddressAtElapsed0711: Long = 0L
     @Volatile private var farolLastConfirmedAddressSignature0711: String? = null
     @Volatile private var farolRoadConfirmedBinding0713: String? = null
@@ -4093,8 +4094,43 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 operationId = routeJobIdStage20,
                 details = "destination=${fieldsStage19.destination.orEmpty().take(300)}; localDistances=$localDistances0696; remoteColorAuthority=false",
             )
+            when (
+                farolAddressRecovery0716.onCoordinateFailure(
+                    bindingStage19.addressSignature,
+                    SystemClock.elapsedRealtime(),
+                )
+            ) {
+                FarolAddressRecovery0716.CoordinateDecision.WAIT_LOCAL_RETRY -> {
+                    UnifiedDebugEventStore.record(
+                        FarolAddressRecovery0716.WAITING_MARKER,
+                        universalResolvedForegroundPackage(),
+                        "binding=${bindingStage19.addressSignature}; destination=${fieldsStage19.destination.orEmpty().take(180)}; paidCall=false",
+                    )
+                }
+
+                FarolAddressRecovery0716.CoordinateDecision.ESCALATE_PAID_ADDRESS -> {
+                    val package0716 = normalizePackageName(universalResolvedForegroundPackage())
+                    UnifiedDebugEventStore.record(
+                        FarolAddressRecovery0716.STARTED_MARKER,
+                        package0716,
+                        "binding=${bindingStage19.addressSignature}; destination=${fieldsStage19.destination.orEmpty().take(180)}; localCoordinateExhausted=true",
+                    )
+                    if (package0716 != null) {
+                        schedulePaidAiAddressFallback0695(
+                            packageName0695 = package0716,
+                            rawText0695 = snapshotTextStage19,
+                            windowId0695 = stage19ActiveWindowId ?: 0,
+                            reason0695 = "coordinate_unresolved_after_grace_0716",
+                        )
+                    }
+                }
+
+                FarolAddressRecovery0716.CoordinateDecision.ALREADY_ESCALATED -> Unit
+            }
             return
         }
+
+        farolAddressRecovery0716.onCoordinateResolved(bindingStage19.addressSignature)
 
         applyUniversalPreliminaryColorStage637(
             localResult0696,
@@ -4733,6 +4769,33 @@ class LiveRideAccessibilityService : AccessibilityService() {
             locationCount = evaluation0711.addresses.size,
         )
         if (!ownership0711.owned) {
+            val recoverySanitized0716 = FarolRouteAddressSanitizer0684.sanitize(evaluation0711.destination)
+            val observedRecoverySignature0716 = recoverySanitized0716.sanitized
+                ?.takeIf { recoverySanitized0716.accepted && it.isNotBlank() }
+                ?.let { DestinationAddressIdentityPolicy.signature(package0711, it) }
+            val preserveSameCard0716 = FarolAddressRecovery0716.shouldPreserveHeartbeat(
+                activeAddressSignature = universalActiveAddressSignature,
+                observedAddressSignature = observedRecoverySignature0716,
+                activeWindowId = stage19ActiveWindowId,
+                observedWindowId = evaluation0711.windowId,
+                samePackage = package0711 == normalizePackageName(universalResolvedForegroundPackage()),
+                routeInFlight = universalRouteJob?.isActive == true,
+                recoveryLeaseActive = farolAddressRecovery0716.hasRecoveryLease(
+                    universalActiveAddressSignature,
+                    now0711,
+                ),
+            )
+            if (preserveSameCard0716) {
+                farolLastConfirmedAddressAtElapsed0711 = now0711
+                farolLastConfirmedAddressSignature0711 = universalActiveAddressSignature
+                universalLastActiveReadAtElapsedMillis0187 = now0711
+                UnifiedDebugEventStore.record(
+                    FarolAddressRecovery0716.HEARTBEAT_PRESERVED_MARKER,
+                    package0711,
+                    "binding=${universalActiveAddressSignature.orEmpty()}; window=${evaluation0711.windowId}; routeInFlight=${universalRouteJob?.isActive == true}; recoveryLease=true",
+                )
+                return
+            }
             hardClearUniversalTwoAddress(
                 reason = "Heartbeat visual: endereço visível não pertence a um card de corrida atual.",
                 keepWaitingYellow = false,
@@ -5550,7 +5613,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                     FarolFlightRecorder0163.record(
                         stage = "S695_PAID_AI_RESOLVED",
                         packageName = normalizedPackage0695,
-                        details = "confidence=${response0695.confidence}; provider=${response0695.provider}; model=${response0695.model}; key=${start0695.ticket.key.take(16)}; colorDecisionRemote=false",
+                        details = "confidence=${response0695.confidence}; provider=${response0695.provider}; model=${response0695.model}; key=${start0695.ticket.key.take(16)}; trigger=$reason0695; colorDecisionRemote=false",
                     )
                     injectPaidAiAddress0695(
                         packageName0695 = normalizedPackage0695,
