@@ -194,11 +194,22 @@ object OrganicMapsAddressValidation0711 {
         val localityStrength: Int,
     )
 
-    internal fun score(query: String, result: SearchResult): Score {
+    internal fun score(query: String, result: SearchResult): Score =
+        scoreFields(
+            query = query,
+            name = result.name,
+            region = result.description?.region.orEmpty(),
+            description = result.description?.description.orEmpty(),
+        )
+
+    internal fun scoreFields(
+        query: String,
+        name: String,
+        region: String,
+        description: String = "",
+    ): Score {
         val normalizedQuery = canonical(query)
-        val region = result.description?.region.orEmpty()
-        val description = result.description?.description.orEmpty()
-        val haystack = canonical(listOf(result.name, region, description).joinToString(" "))
+        val haystack = canonical(listOf(name, region, description).joinToString(" "))
 
         val state = explicitState(query)
         if (state != null) {
