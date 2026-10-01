@@ -30,6 +30,7 @@ class FarolPaidRoadGate0715 private constructor(
             val normalizedAddress: String,
             val confidence: Double,
             val roadKm: Double,
+            val targetIndex: Int,
             val routeProvider: String,
         ) : Start()
 
@@ -59,12 +60,14 @@ class FarolPaidRoadGate0715 private constructor(
         val key = fingerprint(normalizedPackage, normalizedDestination, sanitizedContext, normalizedTargets)
         val cachedRoad = store.getString(roadKey(key))?.toDoubleOrNull()
         val cachedAddress = store.getString(addressKey(key)).orEmpty()
-        if (cachedRoad != null && cachedRoad.isFinite() && cachedRoad >= 0.0 && cachedAddress.isNotBlank()) {
+        val cachedTargetIndex = store.getString(targetIndexKey(key))?.toIntOrNull() ?: -1
+        if (cachedRoad != null && cachedRoad.isFinite() && cachedRoad >= 0.0 && cachedAddress.isNotBlank() && cachedTargetIndex >= 0) {
             return Start.Cached(
                 key = key,
                 normalizedAddress = cachedAddress,
                 confidence = store.getString(confidenceKey(key))?.toDoubleOrNull()?.coerceIn(0.0, 1.0) ?: 1.0,
                 roadKm = cachedRoad,
+                targetIndex = cachedTargetIndex,
                 routeProvider = store.getString(routeProviderKey(key)).orEmpty(),
             )
         }
@@ -93,16 +96,18 @@ class FarolPaidRoadGate0715 private constructor(
         normalizedAddress: String,
         confidence: Double,
         roadKm: Double,
+        targetIndex: Int,
         routeProvider: String,
     ) {
         inFlight.remove(ticket.key)
-        if (normalizedAddress.isBlank() || !roadKm.isFinite() || roadKm < 0.0) {
+        if (normalizedAddress.isBlank() || !roadKm.isFinite() || roadKm < 0.0 || targetIndex < 0) {
             failure(ticket)
             return
         }
         store.putString(addressKey(ticket.key), normalizedAddress.trim().take(MAX_DESTINATION_CHARS))
         store.putString(confidenceKey(ticket.key), confidence.coerceIn(0.0, 1.0).toString())
         store.putString(roadKey(ticket.key), roadKm.toString())
+        store.putString(targetIndexKey(ticket.key), targetIndex.toString())
         store.putString(routeProviderKey(ticket.key), routeProvider.trim().take(80))
         store.putLong(failureKey(ticket.key), 0L)
     }
@@ -185,6 +190,7 @@ class FarolPaidRoadGate0715 private constructor(
         private fun addressKey(key: String) = "address:$key"
         private fun confidenceKey(key: String) = "confidence:$key"
         private fun roadKey(key: String) = "road:$key"
+        private fun targetIndexKey(key: String) = "targetIndex:$key"
         private fun routeProviderKey(key: String) = "routeProvider:$key"
         private fun failureKey(key: String) = "failure:$key"
     }
