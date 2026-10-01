@@ -34,10 +34,10 @@ object OrganicMapsEmbeddedRuntime0711 {
     @Volatile private var lastFailure: String? = null
 
     suspend fun ensureInitialized(context: Context): Boolean = initMutex.withLock {
-        runtime?.takeIf { it.arePlatformAndCoreInitialized() }?.let { return true }
-        if (failed) return false
+        runtime?.takeIf { it.arePlatformAndCoreInitialized() }?.let { return@withLock true }
+        if (failed) return@withLock false
 
-        return withContext(Dispatchers.Main.immediate) {
+        withContext(Dispatchers.Main.immediate) {
             runCatching {
                 val appContext = context.applicationContext
                 val created = runtime ?: OrganicMaps(
