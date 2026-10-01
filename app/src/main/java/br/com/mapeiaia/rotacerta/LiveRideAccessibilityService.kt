@@ -315,7 +315,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         FarolMaximumForensicsStage38.record(
             atNs = SystemClock.elapsedRealtimeNanos(), wallMs = System.currentTimeMillis(),
             stage = "S38_SERVICE_INITIALIZE", packageName = packageName,
-            details = "version=${BuildConfig.VERSION_NAME}; code=${BuildConfig.VERSION_CODE}; diagnostic_only=true; no_timer=true",
+            details = "version=${BuildConfig.VERSION_NAME}; code=${BuildConfig.VERSION_CODE}; diagnostic_only=true; visualHeartbeatMs=${FarolOneSecondVisualAuthority0711.HEARTBEAT_MILLIS}",
         )
         if (!quickReplyReceiverRegisteredChecklist3) {
             ContextCompat.registerReceiver(
@@ -401,6 +401,17 @@ class LiveRideAccessibilityService : AccessibilityService() {
         persistBubbleState()
         startIntensiveDiagnosticLoop0172()
         Unit
+        scope.launch {
+            val started0711 = SystemClock.elapsedRealtime()
+            val ready0711 = runCatching {
+                OrganicMapsEmbeddedRuntime0711.ensureInitialized(applicationContext)
+            }.getOrDefault(false)
+            UnifiedDebugEventStore.record(
+                if (ready0711) "FAROL_ORGANIC_OFFLINE_WARM_0711" else "FAROL_ORGANIC_OFFLINE_WARM_FAILED_0711",
+                packageName,
+                "elapsedMs=${SystemClock.elapsedRealtime() - started0711}; downloadedMaps=${OrganicMapsEmbeddedRuntime0711.downloadedRegionalMapCount() ?: -1}; failure=${OrganicMapsEmbeddedRuntime0711.failureReason().orEmpty()}",
+            )
+        }
         scope.launch {
             repository.settings.collect { updatedStage43 ->
                 if (!workModeSettingsReady0162) return@collect
