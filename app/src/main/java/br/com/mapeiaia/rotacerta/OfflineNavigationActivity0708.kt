@@ -26,12 +26,15 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -44,14 +47,23 @@ class OfflineNavigationActivity0708 : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
-                OfflineNavigationScreen0709()
+                OfflineNavigationScreen0709(
+                    focusDestination0710 = intent.getBooleanExtra(EXTRA_FOCUS_DESTINATION_0710, false),
+                )
             }
         }
+    }
+
+    companion object {
+        const val EXTRA_FOCUS_DESTINATION_0710 = "gps_offline_focus_destination_0710"
+        const val GRID_LAUNCH_MARKER_0710 = "GPS_OFFLINE_GRID_LAUNCH_0710"
     }
 }
 
 @Composable
-private fun OfflineNavigationScreen0709() {
+private fun OfflineNavigationScreen0709(
+    focusDestination0710: Boolean = false,
+) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val store = remember { OfflineMapStore0708(context) }
     val scope = rememberCoroutineScope()
@@ -66,6 +78,11 @@ private fun OfflineNavigationScreen0709() {
     var destinationText by remember { mutableStateOf("") }
     var destinationName by remember { mutableStateOf("") }
     var organicMapsAvailable by remember { mutableStateOf(OrganicMapsOfflineBridge0709.isAvailable(context)) }
+    val destinationFocus0710 = remember { FocusRequester() }
+
+    LaunchedEffect(focusDestination0710) {
+        if (focusDestination0710) destinationFocus0710.requestFocus()
+    }
 
     fun refresh() {
         maps = store.listMaps()
@@ -130,9 +147,9 @@ private fun OfflineNavigationScreen0709() {
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Navegação offline", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text("GPS Offline", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Text(
-            "O Rota Certa já mantém um espaço próprio para mapas .mwm e agora também possui uma ponte oficial para pesquisa, escolha de coordenada e navegação offline pelo Organic Maps instalado.",
+            "Digite o endereço do destino. Com os mapas da região já baixados no Organic Maps, a busca e a orientação podem funcionar sem internet. Coordenadas podem iniciar a navegação diretamente.",
             style = MaterialTheme.typography.bodyMedium,
         )
 
@@ -154,8 +171,10 @@ private fun OfflineNavigationScreen0709() {
                 OutlinedTextField(
                     value = destinationText,
                     onValueChange = { destinationText = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Destino: endereço ou latitude,longitude") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(destinationFocus0710),
+                    label = { Text("Para onde você vai?") },
                     supportingText = {
                         Text("Ex.: Rua Vicente Lopes, 8, São Paulo - SP ou -23.550520,-46.633308")
                     },
@@ -184,7 +203,7 @@ private fun OfflineNavigationScreen0709() {
                     modifier = Modifier.fillMaxWidth(),
                     enabled = organicMapsAvailable,
                 ) {
-                    Text("Pesquisar endereço offline")
+                    Text("Buscar endereço no GPS offline")
                 }
 
                 OutlinedButton(
@@ -210,7 +229,7 @@ private fun OfflineNavigationScreen0709() {
                     onClick = {
                         val coordinate = OrganicMapsOfflineBridge0709.parseCoordinate(destinationText)
                         if (coordinate == null) {
-                            navigationStatus = "Para iniciar a navegação, use uma coordenada válida. Você pode obtê-la em Escolher coordenada no mapa."
+                            navigationStatus = "Para endereço escrito, toque em Buscar endereço no GPS offline e escolha o resultado. Para navegação direta, use uma coordenada ou Escolher coordenada no mapa."
                         } else {
                             val result = OrganicMapsOfflineBridge0709.launch(
                                 context,
