@@ -2,6 +2,50 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.711",
+      "build": 6002,
+      "commit": null,
+      "branch": "agent/farol-1s-visual-authority-0.1.711",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Incorpora o SDK nativo do Organic Maps 2026.08.27-18 dentro do Rota Certa, incluindo o motor arm64-v8a e os mapas-base World/WorldCoasts.",
+        "O FAROL passa a tentar geocodificação offline pelo SearchEngine do Organic Maps antes dos resolvedores legados, reutilizando o mesmo mapa regional .mwm importado pelo módulo GPS Offline.",
+        "Adiciona autoridade visual de 1 segundo: verde/vermelho + km só permanecem enquanto a tela atual renova continuamente o mesmo endereço.",
+        "Executa heartbeat visual a cada 700 ms; ausência de card/endereço válido limpa imediatamente cor, distância e binding sem destruir fisicamente a View da bolinha.",
+        "Mudança de endereço revoga primeiro o resultado anterior e só então processa a nova geração visual."
+      ],
+      "fixed": [
+        "Impede que resultado de um card permaneça na bolinha ao trocar para outro aplicativo ou para uma tela sem endereço.",
+        "Preserva bairro, cidade e UF até a geocodificação offline, evitando reduzir destinos visíveis completos a apenas rua e número.",
+        "Resultados Organic Maps incompatíveis com cidade/UF visíveis são rejeitados; ambiguidade permanece sem decisão em vez de publicar distância absurda.",
+        "Mapas .mwm importados são armazenados na pasta de versão de dados compatível com o motor Organic Maps incorporado."
+      ],
+      "improved": [
+        "Endereços já resolvidos continuam usando o cache/atlas local para retorno em poucos milissegundos; endereços frios tentam primeiro o motor offline.",
+        "A cor inicial continua sendo decidida pelo motor local de raio usando a coordenada validada, sem aguardar rede ou rota remota.",
+        "O mecanismo fail-closed mantém a bolinha limpa/amarela quando a tela não comprova destino inequívoco ou quando o mapa regional necessário não está disponível.",
+        "Build atualizado para AGP 8.9.1, Gradle 8.11.1, Kotlin 2.2.21 e core-library desugaring compatíveis com o SDK incorporado."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.710: Organic Maps estava acessível apenas como aplicativo externo e não participava do caminho crítico do FAROL.",
+        "Resultado antigo podia permanecer visível quando não havia novo evento de acessibilidade suficiente para invalidá-lo."
+      ],
+      "modulesAffected": [
+        "FAROL",
+        "Organic Maps SDK",
+        "GPS Offline",
+        "Leitura de cards",
+        "Geocodificação",
+        "Mapas .mwm",
+        "Bolinha",
+        "Acessibilidade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.710",
       "build": 6001,
       "commit": null,
