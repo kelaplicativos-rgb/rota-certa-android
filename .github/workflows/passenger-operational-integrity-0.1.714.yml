@@ -89,7 +89,7 @@ jobs:
           printf '%s\n' "$GITHUB_SHA" | tee /tmp/source-sha.txt
           printf '%s\n' "$ROTA_CERTA_GIT_BRANCH" | tee /tmp/source-branch.txt
 
-      - name: Validate backend syntax and contracts
+      - name: Validate backend syntax and 0.1.714 contracts
         shell: bash
         run: |
           set -euo pipefail
@@ -97,7 +97,28 @@ jobs:
           npm install --package-lock=false --ignore-scripts --no-audit --no-fund
           npm run check
           node --check index.js
-          node --test             test/backend-canonical-authority-0468.test.js             test/timeline-canonical-backend-0494.test.js             | tee /tmp/backend-tests-0714.log
+          node --test test/passenger-operational-integrity-0714.test.js | tee /tmp/backend-tests-0714.log
+
+      - name: Compare backend failures with exact 0.1.713 base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add --detach /tmp/rc-base "$BASE_SHA"
+          ln -s "$GITHUB_WORKSPACE/trip-platform/functions/node_modules" /tmp/rc-base/trip-platform/functions/node_modules
+          set +e
+          (cd /tmp/rc-base/trip-platform/functions && node --test             test/backend-canonical-authority-0468.test.js             test/timeline-canonical-backend-0494.test.js) > /tmp/backend-base-full.log 2>&1
+          BASE_BACKEND_EXIT=$?
+          (cd trip-platform/functions && node --test             test/backend-canonical-authority-0468.test.js             test/timeline-canonical-backend-0494.test.js) > /tmp/backend-head-full.log 2>&1
+          HEAD_BACKEND_EXIT=$?
+          set -e
+          grep '^not ok ' /tmp/backend-base-full.log | sed -E 's/^not ok [0-9]+ - //' | sort -u > /tmp/backend-base-failures.txt || true
+          grep '^not ok ' /tmp/backend-head-full.log | sed -E 's/^not ok [0-9]+ - //' | sort -u > /tmp/backend-head-failures.txt || true
+          comm -13 /tmp/backend-base-failures.txt /tmp/backend-head-failures.txt > /tmp/backend-new-failures.txt
+          printf 'base_exit=%s\nhead_exit=%s\n' "$BASE_BACKEND_EXIT" "$HEAD_BACKEND_EXIT" | tee /tmp/backend-regression-summary.txt
+          echo "base_failures=$(wc -l < /tmp/backend-base-failures.txt)"
+          echo "head_failures=$(wc -l < /tmp/backend-head-failures.txt)"
+          echo "new_failures=$(wc -l < /tmp/backend-new-failures.txt)"
+          test ! -s /tmp/backend-new-failures.txt
 
       - name: Verify release and focused Android contracts
         shell: bash
@@ -105,13 +126,13 @@ jobs:
           set -euo pipefail
           chmod +x ./gradlew
           ./gradlew :app:verifyReleaseHistory --no-daemon --stacktrace | tee /tmp/release-history.log
-          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalIntegrity0714Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalShortcuts0656Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerQuickOps0673Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTouchIsolation0712Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTrackingControl0706Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublishedCapacity0366Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineCardOpenRefresh0707Test'             --tests 'br.com.mapeiaia.rotacerta.FarolRoadKmFinality0713Test'             --tests 'br.com.mapeiaia.rotacerta.FarolOneSecondVisualAuthority0711Test'             --no-daemon --max-workers=2 --stacktrace             | tee /tmp/focused-android-0714.log
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalIntegrity0714Test'             --tests 'br.com.mapeiaia.rotacerta.MessageTemplateRenderer0172Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalShortcuts0656Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerQuickOps0673Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTouchIsolation0712Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTrackingControl0706Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublishedCapacity0366Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineCardOpenRefresh0707Test'             --tests 'br.com.mapeiaia.rotacerta.FarolRoadKmFinality0713Test'             --tests 'br.com.mapeiaia.rotacerta.FarolOneSecondVisualAuthority0711Test'             --no-daemon --max-workers=2 --stacktrace             | tee /tmp/focused-android-0714.log
 
       - name: Compare complete Android failures with exact 0.1.713 base
         shell: bash
         run: |
           set -euo pipefail
-          git worktree add --detach /tmp/rc-base "$BASE_SHA"
+          test -e /tmp/rc-base/.git || git worktree add --detach /tmp/rc-base "$BASE_SHA"
           chmod +x /tmp/rc-base/gradlew
           set +e
           (cd /tmp/rc-base && ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace) > /tmp/android-base-full.log 2>&1
@@ -258,6 +279,12 @@ jobs:
             /tmp/android-fixed-failures.txt
             /tmp/android-regression-summary.txt
             /tmp/backend-tests-0714.log
+            /tmp/backend-base-full.log
+            /tmp/backend-head-full.log
+            /tmp/backend-base-failures.txt
+            /tmp/backend-head-failures.txt
+            /tmp/backend-new-failures.txt
+            /tmp/backend-regression-summary.txt
             /tmp/backend-deploy-0714.log
             /tmp/live-health-0714.json
             /tmp/release-history.log
