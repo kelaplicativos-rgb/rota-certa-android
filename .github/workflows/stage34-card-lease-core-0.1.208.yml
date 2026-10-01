@@ -1,0 +1,169 @@
+name: Validate Stage 34 single CardLease core 0.1.208
+on:
+  pull_request:
+    branches: [agent/stage32-semantic-ocr-blackbox-print-0.1.207]
+    paths:
+      - '.github/workflows/stage34-card-lease-core-0.1.208.yml'
+      - 'scripts/apply_stage34_*.py'
+      - 'stage34/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  validate-stage34:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    env:
+      GOOGLE_MAPS_API_KEY: '${{ secrets.GOOGLE_MAPS_API_KEY }}'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          path: source
+          fetch-depth: 1
+      - uses: actions/checkout@v4
+        with:
+          ref: '${{ github.event.pull_request.head.sha || github.sha }}'
+          path: patches
+          fetch-depth: 1
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Restore exact materialized Stage32 runtime
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: |
+          set -euo pipefail
+          mkdir -p bootstrap evidence
+          gh run download 31703841694 --repo kelaplicativos-rgb/rota-certa-android --name rota-certa-stage34-bootstrap-materialized-stage32-source --dir bootstrap
+          TGZ=$(find bootstrap -name stage32-materialized-source.tgz -print -quit)
+          test -f "$TGZ"
+          test "$(sha256sum "$TGZ" | awk '{print $1}')" = aa251a173e425b075f5f0508d6f042b4881949ed76e3f638f10ccab63417c5e3
+          rm -rf source/app/src/main/java source/app/src/test/java
+          tar -xzf "$TGZ" -C source
+          grep -q 'versionCode = 5491' source/app/build.gradle.kts
+          grep -q 'versionName = "0.1.207"' source/app/build.gradle.kts
+          grep -q 'FAROL_SEMANTIC_CARD_GENERATION_STAGE32' source/app/src/main/java/br/com/mapeiaia/rotacerta/FarolSemanticCardStage32.kt
+      - name: Apply Stage34 core
+        run: |
+          set -euo pipefail
+          python patches/scripts/apply_stage34_semantic.py source
+          python patches/scripts/apply_stage34_precollect.py source
+          python patches/scripts/apply_stage34_binding.py source
+          python patches/scripts/apply_stage34_test_semantic_contract.py source
+          python patches/scripts/apply_stage34_test_candidate_contract.py source
+          python patches/scripts/apply_stage34_test_frame_contract.py source
+          cp patches/stage34/FarolStage34Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage34Test.kt
+          python patches/scripts/apply_stage34_test_root_fix.py source
+          grep -q 'versionCode = 5492' source/app/build.gradle.kts
+          grep -q 'versionName = "0.1.208"' source/app/build.gradle.kts
+          grep -q 'FAROL_SINGLE_CARD_LEASE_STAGE34' source/app/src/main/java/br/com/mapeiaia/rotacerta/FarolCardLeaseStage34.kt
+          grep -q 'FarolCardLeaseStage34.Metrics.exportReport()' source/app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportBuilder.kt
+      - name: Static causal audit
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee evidence/stage34-static.txt
+          from pathlib import Path
+          root=Path('source/app/src/main/java/br/com/mapeiaia/rotacerta')
+          sem=(root/'FarolSemanticCardStage32.kt').read_text()
+          lease=(root/'FarolCardLeaseStage34.kt').read_text()
+          pre=(root/'FarolReadingActivationStage26.kt').read_text()
+          bind=(root/'FarolUniversalVisualPipelineStage19.kt').read_text()
+          svc=(root/'LiveRideAccessibilityService.kt').read_text()
+          assert 'stage34_raw_event_provenance_only' in sem
+          assert 'different_destination_opens_new_lease' in lease
+          assert 'stage34_blank_or_window_provenance_only' in pre
+          assert 'binding.addressSignature == currentAddressSignature' in bind
+          assert 'takeScreenshot(' in svc
+          assert 'ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT' in svc
+          assert 'drivingDistancesFromAddressKm(' in svc
+          for bad in ('Thread.sleep(', 'SystemClock.sleep(', 'scheduleAtFixedRate('):
+              assert bad not in lease, bad
+          print('stage34_static=PASS')
+          PY
+      - name: Verify exact 866 tests
+        run: |
+          python - <<'PY' | tee evidence/test-inventory.txt
+          from pathlib import Path
+          n=sum(p.read_text(encoding='utf-8').count('@Test') for p in Path('source/app/src/test/java').rglob('*.kt'))
+          print('total_at_test='+str(n))
+          assert n==866,n
+          PY
+      - name: Stage34 deterministic 42
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon testDebugUnitTest --tests br.com.mapeiaia.rotacerta.FarolStage34Test | tee ../evidence/stage34-tests.log
+          python - <<'PY' | tee ../evidence/stage34-count.txt
+          import xml.etree.ElementTree as E
+          r=E.parse('app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.FarolStage34Test.xml').getroot()
+          v={k:int(r.attrib.get(k,0)) for k in ('tests','failures','errors','skipped')}
+          print(v)
+          assert v=={'tests':42,'failures':0,'errors':0,'skipped':0},v
+          PY
+      - name: Regression Stage32 to Stage19
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon testDebugUnitTest \
+            --tests br.com.mapeiaia.rotacerta.FarolStage32Test \
+            --tests br.com.mapeiaia.rotacerta.FarolPresenceAuthorityStage30Test \
+            --tests br.com.mapeiaia.rotacerta.FarolCausalLatencyStage28Test \
+            --tests br.com.mapeiaia.rotacerta.FarolReadingActivationStage26Test \
+            --tests br.com.mapeiaia.rotacerta.FarolVisualIdentityStage23Test \
+            --tests br.com.mapeiaia.rotacerta.FarolCausalCorrectionStage21Test \
+            --tests br.com.mapeiaia.rotacerta.FarolForensicTraceStage20Test \
+            --tests br.com.mapeiaia.rotacerta.FarolUniversalVisualPipelineStage19Test | tee ../evidence/regression.log
+      - name: Complete suite exact 866
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --rerun-tasks testDebugUnitTest | tee ../evidence/full-tests.log
+          python - <<'PY' | tee ../evidence/full-count.txt
+          from pathlib import Path
+          import xml.etree.ElementTree as E
+          t=f=e=s=0
+          for p in Path('app/build/test-results/testDebugUnitTest').glob('TEST-*.xml'):
+              r=E.parse(p).getroot(); t+=int(r.attrib.get('tests',0)); f+=int(r.attrib.get('failures',0)); e+=int(r.attrib.get('errors',0)); s+=int(r.attrib.get('skipped',0))
+          print(t,f,e,s)
+          assert (t,f,e,s)==(866,0,0,0),(t,f,e,s)
+          PY
+      - name: Lint and clean assemble
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon lintDebug | tee ../evidence/lint.log
+          ./gradlew --no-daemon clean assembleDebug | tee ../evidence/assemble.log
+      - name: Validate APK
+        run: |
+          set -euo pipefail
+          A=source/app/build/outputs/apk/debug/app-debug.apk
+          O=evidence/rota-certa-0.1.208-stage34-card-lease-core-ci.apk
+          cp "$A" "$O"
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
+          SIGN=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          "$AAPT" dump badging "$O" | tee evidence/badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta' versionCode='5492' versionName='0.1.208'" evidence/badging.txt
+          "$SIGN" verify --verbose --print-certs "$O" | tee evidence/signature.txt
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' evidence/signature.txt
+          unzip -t "$O" | tee evidence/zip.txt
+          mkdir -p evidence/dex
+          unzip -Z1 "$O" | grep -E '^classes([0-9]+)?\.dex$' | tee evidence/dex-inventory.txt
+          while IFS= read -r dex; do unzip -p "$O" "$dex" > "evidence/dex/$dex"; done < evidence/dex-inventory.txt
+          cat evidence/dex/classes*.dex > evidence/all-classes.dex
+          for m in FAROL_SINGLE_CARD_LEASE_STAGE34 FAROL_SINGLE_FRESHNESS_AUTHORITY_STAGE34 PACKAGE_WINDOW_PROVENANCE_ONLY_STAGE34 LATEST_FRAME_SAME_CARD_LEASE_STAGE34 FAROL_SEMANTIC_CARD_GENERATION_STAGE32 FAROL_FORENSIC_CARD_BLACK_BOX_STAGE32 FAROL_REAL_PRINT_MEDIASTORE_STAGE32; do
+            grep -a -q "$m" evidence/all-classes.dex
+          done
+          sha256sum "$O" | tee evidence/apk-sha256.txt
+          echo 'apk_validation=PASS' | tee evidence/apk-validation.txt
+      - name: Upload final artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.208-stage34-card-lease-core-final
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30

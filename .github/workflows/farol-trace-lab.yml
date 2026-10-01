@@ -1,0 +1,49 @@
+name: Farol deterministic trace lab
+
+on:
+  pull_request:
+    branches: [agent/shortcut-audio-links-text-correction-0.1.186]
+    paths:
+      - .github/workflows/farol-trace-lab.yml
+      - tools/farol_trace_lab.py
+      - tests/test_farol_trace_lab.py
+      - tests/test_farol_trace_phase3.py
+      - tests/test_farol_trace_phase4.py
+      - tests/test_farol_trace_phase4_compilefix.py
+      - tests/fixtures/farol_trace_20260806_sanitized.json
+      - scripts/fix_farol_phase4_address_signature.py
+      - scripts/register_farol_trace_lab_phase1.py
+      - docs/FAROL_TRACE_REPLAY_LAB.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: farol-trace-lab-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deterministic-replay:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact pull request head without marketplace actions
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "$EXPECTED_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Verify Python runtime
+        run: python3 --version
+      - name: Run replay unit tests
+        run: python3 -m unittest discover -s tests -p 'test_farol_trace*.py' -v
+      - name: Run strict report replay
+        run: >-
+          python3 tools/farol_trace_lab.py
+          --fixture tests/fixtures/farol_trace_20260806_sanitized.json
+          --strict

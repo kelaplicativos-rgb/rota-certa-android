@@ -1,0 +1,28 @@
+name: Export generated contract sources 0.1.184
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [agent/contextual-shortcut-menu-0.1.183]
+    paths:
+      - .github/workflows/export-generated-contract-sources-0184.yml
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/home-catalog-directional-shortcuts-0.1.184
+          persist-credentials: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-generated-contract-source-scripts-0184
+          path: |
+            scripts/
+            patches/
+          retention-days: 2
+          if-no-files-found: error

@@ -1,0 +1,352 @@
++        entries0179.forEachIndexed { index0179, entry0179 ->
++            ShortcutGridEditorCard0179(
++                entry = entry0179,
++                index = index0179,
++                total = entries0179.size,
++                onUpdate = { updated0179 ->
++                    val target0179 = entries0179.indexOfFirst { it.entryId == entry0179.entryId }
++                    if (target0179 >= 0) entries0179[target0179] = updated0179
++                },
++                onMove = { from0179, to0179 ->
++                    replaceEntries0179(
++                        ShortcutGridCustomizationPolicy0179.move(entries0179.toList(), from0179, to0179),
++                    )
++                },
++                onDelete = { pendingDeleteEntryId0179 = entry0179.entryId },
++            )
++        }
++
++        Button(
++            onClick = { save0179() },
++            enabled = entries0179.toList() != savedEntries0179,
++            modifier = Modifier.fillMaxWidth(),
++        ) {
++            Text("Salvar alterações")
++        }
++        OutlinedButton(
++            onClick = {
++                save0179(showToast = false)
++                onClose()
++            },
++            modifier = Modifier.fillMaxWidth(),
++        ) {
++            Text("Salvar e voltar")
++        }
++        TextButton(onClick = { confirmReset0179 = true }, modifier = Modifier.fillMaxWidth()) {
++            Text("Restaurar grade original")
++        }
++    }
++}
++
++@Composable
++private fun ShortcutGridEditorCard0179(
++    entry: ShortcutGridEntry0179,
++    index: Int,
++    total: Int,
++    onUpdate: (ShortcutGridEntry0179) -> Unit,
++    onMove: (Int, Int) -> Unit,
++    onDelete: () -> Unit,
++) {
++    var dragAccumulator0179 by remember(entry.entryId) { mutableStateOf(0f) }
++    val actionSpec0179 = BubbleShortcutCatalog.findSpec(entry.shortcutId)
++    Card(modifier = Modifier.fillMaxWidth()) {
++        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++            Text(
++                "↕  Segure e arraste para reordenar",
++                modifier = Modifier
++                    .fillMaxWidth()
++                    .pointerInput(entry.entryId, index, total) {
++                        detectDragGesturesAfterLongPress(
++                            onDragStart = { dragAccumulator0179 = 0f },
++                            onDragCancel = { dragAccumulator0179 = 0f },
++                            onDragEnd = { dragAccumulator0179 = 0f },
++                            onDrag = { change0179, amount0179 ->
++                                change0179.consume()
++                                dragAccumulator0179 += amount0179.y
++                                val threshold0179 = 48.dp.toPx()
++                                if (dragAccumulator0179 >= threshold0179 && index < total - 1) {
++                                    onMove(index, index + 1)
++                                    dragAccumulator0179 = 0f
++                                } else if (dragAccumulator0179 <= -threshold0179 && index > 0) {
++                                    onMove(index, index - 1)
++                                    dragAccumulator0179 = 0f
++                                }
++                            },
++                        )
++                    },
++                fontWeight = FontWeight.Bold,
++                textAlign = TextAlign.Center,
++            )
++            Row(
++                modifier = Modifier.fillMaxWidth(),
++                horizontalArrangement = Arrangement.SpaceBetween,
++            ) {
++                Text("Atalho ${index + 1}", fontWeight = FontWeight.Bold)
++                Switch(
++                    checked = entry.enabled,
++                    onCheckedChange = { onUpdate(entry.copy(enabled = it)) },
++                )
++            }
++            OutlinedTextField(
++                value = entry.label,
++                onValueChange = { onUpdate(entry.copy(label = it.take(24))) },
++                modifier = Modifier.fillMaxWidth(),
++                label = { Text("Nome") },
++                singleLine = true,
++            )
++            OutlinedButton(
++                onClick = {
++                    val next0179 = ShortcutGridCustomizationPolicy0179.nextShortcutId(entry.shortcutId)
++                    onUpdate(entry.copy(shortcutId = next0179))
++                },
++                modifier = Modifier.fillMaxWidth(),
++            ) {
++                Text("Ação: ${actionSpec0179?.displayLabel ?: entry.shortcutId}")
++            }
++            OutlinedButton(
++                onClick = {
++                    onUpdate(entry.copy(emoji = ShortcutGridCustomizationPolicy0179.nextEmoji(entry.emoji)))
++                },
++                modifier = Modifier.fillMaxWidth(),
++            ) {
++                Text("Ícone: ${entry.emoji}")
++            }
++            TextButton(onClick = onDelete, modifier = Modifier.fillMaxWidth()) {
++                Text("Excluir da grade")
++            }
++        }
++    }
++}
++
+ @Composable
+ private fun HomeModuleBubble0175(
+     spec: BubbleShortcutSpec,
+diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt
+new file mode 100644
+index 0000000..ccdc109
+--- /dev/null
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt
+@@ -0,0 +1,199 @@
++package br.com.mapeiaia.rotacerta
++
++import android.content.Context
++import org.json.JSONArray
++import org.json.JSONObject
++
++/** Entrada persistida da grade flutuante. A ação sempre referencia o catálogo seguro. */
++data class ShortcutGridEntry0179(
++    val entryId: String,
++    val shortcutId: String,
++    val label: String,
++    val emoji: String,
++    val enabled: Boolean = true,
++)
++
++data class ResolvedShortcutGridEntry0179(
++    val entryId: String,
++    val spec: BubbleShortcutSpec,
++)
++
++object ShortcutGesturePolicy0179 {
++    const val SHORTCUT_LONG_PRESS_MILLIS: Long = 2_000L
++    const val MAIN_CUSTOMIZATION_HOLD_MILLIS: Long = 5_000L
++    const val MAX_GRID_ITEMS: Int = 32
++    const val CONTRACT_MARKER: String = "shortcut_grid_customization_0_1_179"
++}
++
++object ShortcutGridCustomizationPolicy0179 {
++    val iconChoices: List<String>
++        get() = (BubbleShortcutCatalog.modules.map { it.spec.emoji } + listOf(
++            "⭐", "🚗", "🧭", "🏠", "✅", "🔔", "📌", "📝", "⚙️", "➕",
++        )).distinct()
++
++    fun defaults(): List<ShortcutGridEntry0179> = BubbleShortcutCatalog.modules.map { module ->
++        val spec = module.spec
++        ShortcutGridEntry0179(
++            entryId = "default:${spec.id}",
++            shortcutId = spec.id,
++            label = spec.displayLabel,
++            emoji = spec.emoji,
++            enabled = true,
++        )
++    }
++
++    fun normalize(entries: List<ShortcutGridEntry0179>): List<ShortcutGridEntry0179> {
++        val validIds = BubbleShortcutCatalog.modules.map { it.spec.id }.toSet()
++        val usedEntryIds = mutableSetOf<String>()
++        return entries.asSequence()
++            .filter { it.shortcutId in validIds }
++            .take(ShortcutGesturePolicy0179.MAX_GRID_ITEMS)
++            .mapIndexed { index, item ->
++                val spec = requireNotNull(BubbleShortcutCatalog.findSpec(item.shortcutId))
++                val rawEntryId = item.entryId.trim().take(80).ifBlank { "entry:${item.shortcutId}:$index" }
++                var entryId = rawEntryId
++                var suffix = 1
++                while (!usedEntryIds.add(entryId)) {
++                    entryId = "$rawEntryId:$suffix"
++                    suffix += 1
++                }
++                item.copy(
++                    entryId = entryId,
++                    label = sanitizeLabel(item.label, spec.displayLabel),
++                    emoji = sanitizeEmoji(item.emoji, spec.emoji),
++                )
++            }
++            .toList()
++    }
++
++    fun resolve(entries: List<ShortcutGridEntry0179>): List<ResolvedShortcutGridEntry0179> =
++        normalize(entries)
++            .asSequence()
++            .filter { it.enabled }
++            .mapNotNull { entry ->
++                val original = BubbleShortcutCatalog.findSpec(entry.shortcutId) ?: return@mapNotNull null
++                ResolvedShortcutGridEntry0179(
++                    entryId = entry.entryId,
++                    spec = original.copy(
++                        emoji = entry.emoji,
++                        label = entry.label,
++                        displayLabel = entry.label,
++                    ),
++                )
++            }
++            .toList()
++
++    fun add(
++        entries: List<ShortcutGridEntry0179>,
++        shortcutId: String,
++        nowMillis: Long,
++    ): List<ShortcutGridEntry0179> {
++        if (entries.size >= ShortcutGesturePolicy0179.MAX_GRID_ITEMS) return normalize(entries)
++        val spec = BubbleShortcutCatalog.findSpec(shortcutId) ?: return normalize(entries)
++        return normalize(
++            entries + ShortcutGridEntry0179(
++                entryId = "custom:${spec.id}:$nowMillis:${entries.size}",
++                shortcutId = spec.id,
++                label = spec.displayLabel,
++                emoji = spec.emoji,
++                enabled = true,
++            ),
++        )
++    }
++
++    fun move(
++        entries: List<ShortcutGridEntry0179>,
++        fromIndex: Int,
++        toIndex: Int,
++    ): List<ShortcutGridEntry0179> {
++        if (fromIndex !in entries.indices || toIndex !in entries.indices || fromIndex == toIndex) {
++            return entries
++        }
++        return entries.toMutableList().apply {
++            add(toIndex, removeAt(fromIndex))
++        }
++    }
++
++    fun nextShortcutId(currentId: String): String {
++        val ids = BubbleShortcutCatalog.modules.map { it.spec.id }
++        if (ids.isEmpty()) return currentId
++        val index = ids.indexOf(currentId).coerceAtLeast(0)
++        return ids[(index + 1) % ids.size]
++    }
++
++    fun nextEmoji(current: String): String {
++        val choices = iconChoices
++        if (choices.isEmpty()) return current
++        val index = choices.indexOf(current).coerceAtLeast(0)
++        return choices[(index + 1) % choices.size]
++    }
++
++    private fun sanitizeLabel(value: String, fallback: String): String = value
++        .replace('\n', ' ')
++        .replace('\r', ' ')
++        .trim()
++        .take(24)
++        .ifBlank { fallback.take(24) }
++
++    private fun sanitizeEmoji(value: String, fallback: String): String = value
++        .trim()
++        .take(4)
++        .ifBlank { fallback }
++}
++
++class ShortcutGridPreferenceStore0179(context: Context) {
++    private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
++
++    fun read(): List<ShortcutGridEntry0179> {
++        if (!prefs.contains(KEY_GRID)) return ShortcutGridCustomizationPolicy0179.defaults()
++        val raw = prefs.getString(KEY_GRID, null) ?: return ShortcutGridCustomizationPolicy0179.defaults()
++        return runCatching {
++            val array = JSONArray(raw)
++            val entries = buildList {
++                for (index in 0 until array.length()) {
++                    val item = array.optJSONObject(index) ?: continue
++                    add(
++                        ShortcutGridEntry0179(
++                            entryId = item.optString("entryId"),
++                            shortcutId = item.optString("shortcutId"),
++                            label = item.optString("label"),
++                            emoji = item.optString("emoji"),
++                            enabled = item.optBoolean("enabled", true),
++                        ),
++                    )
++                }
++            }
++            ShortcutGridCustomizationPolicy0179.normalize(entries)
++        }.getOrElse { ShortcutGridCustomizationPolicy0179.defaults() }
++    }
++
++    fun readResolved(): List<ResolvedShortcutGridEntry0179> =
++        ShortcutGridCustomizationPolicy0179.resolve(read())
++
++    fun write(entries: List<ShortcutGridEntry0179>) {
++        val normalized = ShortcutGridCustomizationPolicy0179.normalize(entries)
++        val array = JSONArray()
++        normalized.forEach { entry ->
++            array.put(
++                JSONObject()
++                    .put("entryId", entry.entryId)
++                    .put("shortcutId", entry.shortcutId)
++                    .put("label", entry.label)
++                    .put("emoji", entry.emoji)
++                    .put("enabled", entry.enabled),
++            )
++        }
++        prefs.edit().putString(KEY_GRID, array.toString()).apply()
++    }
++
++    fun reset() {
++        prefs.edit().remove(KEY_GRID).apply()
++    }
++
++    private companion object {
++        const val PREFS_NAME = "rota_certa_shortcut_grid_0179"
++        const val KEY_GRID = "grid_json_v1"
++    }
++}
++
++// shortcut_grid_customization_0_1_179
+diff --git a/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179Test.kt b/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179Test.kt
+new file mode 100644
+index 0000000..6340fbc
+--- /dev/null
++++ b/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179Test.kt
+@@ -0,0 +1,57 @@
++package br.com.mapeiaia.rotacerta
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class ShortcutGridCustomization0179Test {
++    @Test
++    fun defaultsPreserveCurrentCatalogOrderAndActions() {
++        val defaults = ShortcutGridCustomizationPolicy0179.defaults()
++        assertEquals(BubbleShortcutCatalog.modules.size, defaults.size)
++        assertEquals(BubbleShortcutCatalog.modules.map { it.spec.id }, defaults.map { it.shortcutId })
++        assertTrue(defaults.all { it.enabled })
++    }
++
++    @Test
++    fun disabledEntriesAreNotRenderedButRemainEditable() {

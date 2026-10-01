@@ -1,0 +1,1 @@
+Execução após tornar a formatação em reais determinística para todos os aparelhos e versões do Android.

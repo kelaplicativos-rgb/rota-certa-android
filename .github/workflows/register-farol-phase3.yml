@@ -1,0 +1,29 @@
+name: Verify registered farol phase 3
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact requested head
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "$EXPECTED_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Verify project records
+        run: |
+          set -euo pipefail
+          grep -Fq '<!-- FAROL_PHASE3_VALIDATED_STATUS_START -->' docs/PROJECT_STATUS.md
+          grep -Fq '<!-- FAROL_PHASE3_VALIDATED_DECISION_START -->' docs/DECISIONS.md
+          grep -Fq '0f7b9f8f8e8b592a7165746a9c8c2132c002ddd25cea88acc44cc0a536ff0332' docs/PROJECT_STATUS.md

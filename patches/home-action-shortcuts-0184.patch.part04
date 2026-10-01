@@ -1,0 +1,158 @@
+-                                    entries = entries0179.toList(),
+-                                    shortcutId = addShortcutId0179,
+-                                    nowMillis = System.currentTimeMillis(),
+-                                ),
+-                            )
+-                        },
+-                        enabled = addShortcutId0179.isNotBlank() && entries0179.size < ShortcutGesturePolicy0179.MAX_GRID_ITEMS,
+-                        modifier = Modifier.fillMaxWidth(),
+-                    ) {
+-                        Text("Adicionar à grade")
+-                    }
+-                }
+-            }
+-
++        if (entries0179.isEmpty()) {
++            Text(
++                "A grade está vazia. Volte à Home, abra um módulo e toque em Adicionar à grade.",
++                style = MaterialTheme.typography.bodySmall,
++            )
+         }
+ 
+         val editorEntries0180 = selectedEntryId0180
+@@ -1061,7 +1072,7 @@ private fun ShortcutGridCustomizationScreen0179(
+         }
+         if (selectedEntryId0180 == null) {
+             TextButton(onClick = { confirmReset0179 = true }, modifier = Modifier.fillMaxWidth()) {
+-                Text("Restaurar grade original")
++                Text("Esvaziar grade")
+             }
+         }
+     }
+@@ -1218,6 +1229,8 @@ private fun HomeModuleBubble0175(
+ @Composable
+ private fun HomeModuleInlinePanel0175(
+     spec: BubbleShortcutSpec,
++    shortcutEntries: List<ShortcutGridEntry0179>,
++    onShortcutEntriesChange: (List<ShortcutGridEntry0179>) -> Unit,
+     content: @Composable () -> Unit,
+ ) {
+     Card(modifier = Modifier.fillMaxWidth()) {
+@@ -1228,12 +1241,58 @@ private fun HomeModuleInlinePanel0175(
+                 style = MaterialTheme.typography.titleMedium,
+             )
+             Text(ShortcutGridPolicy0173.description(spec), style = MaterialTheme.typography.bodySmall)
+-            content()
+-            Text(
+-                "Na grade flutuante: ${ShortcutGridPolicy0173.fixedBehaviorLabel(spec)}.",
+-                style = MaterialTheme.typography.bodySmall,
++            HomeShortcutActions0184(
++                moduleId = spec.id,
++                entries = shortcutEntries,
++                onEntriesChange = onShortcutEntriesChange,
+             )
++            content()
++        }
++    }
++}
++
++@Composable
++private fun HomeShortcutActions0184(
++    moduleId: String,
++    entries: List<ShortcutGridEntry0179>,
++    onEntriesChange: (List<ShortcutGridEntry0179>) -> Unit,
++) {
++    val actions0184 = remember(moduleId) { ShortcutActionCatalog0184.actionsForModule(moduleId) }
++    if (actions0184.isEmpty()) return
++    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
++        Text("Atalhos deste módulo", fontWeight = FontWeight.Bold)
++        actions0184.forEach { action0184 ->
++            val added0184 = ShortcutGridCustomizationPolicy0179.contains(entries, action0184.id)
++            val full0184 = entries.size >= ShortcutGesturePolicy0179.MAX_GRID_ITEMS
++            OutlinedButton(
++                onClick = {
++                    val updated0184 = if (added0184) {
++                        ShortcutGridCustomizationPolicy0179.remove(entries, action0184.id)
++                    } else {
++                        ShortcutGridCustomizationPolicy0179.add(
++                            entries = entries,
++                            shortcutId = action0184.id,
++                            nowMillis = System.currentTimeMillis(),
++                        )
++                    }
++                    onEntriesChange(updated0184)
++                },
++                enabled = added0184 || !full0184,
++                modifier = Modifier.fillMaxWidth(),
++            ) {
++                Text(
++                    if (added0184) {
++                        "${action0184.emoji}  Remover da grade: ${action0184.displayLabel}"
++                    } else {
++                        "${action0184.emoji}  Adicionar à grade: ${action0184.displayLabel}"
++                    },
++                )
++            }
+         }
++        Text(
++            "${entries.size} de ${ShortcutGesturePolicy0179.MAX_GRID_ITEMS} ações selecionadas.",
++            style = MaterialTheme.typography.bodySmall,
++        )
+     }
+ }
+ 
+diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutActionCatalog0184.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutActionCatalog0184.kt
+new file mode 100644
+index 0000000..5b19c53
+--- /dev/null
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutActionCatalog0184.kt
+@@ -0,0 +1,168 @@
++package br.com.mapeiaia.rotacerta
++
++/**
++ * Catálogo fechado de ações que podem virar bolinhas na grade flutuante.
++ * A grade nunca persiste Intent, pacote, comando ou código arbitrário: somente IDs daqui.
++ */
++object ShortcutActionCatalog0184 {
++    const val CONTRACT_MARKER = "SHORTCUT_ACTION_CATALOG_0184"
++    const val MAX_ACTIVE_ACTIONS = 32
++
++    private val extraSpecs: List<BubbleShortcutSpec> = listOf(
++        BubbleShortcutSpec(
++            id = "action_copy_visible_text",
++            emoji = "📋",
++            label = "Copiar texto visível",
++            displayLabel = "Copiar texto",
++            action = BubbleShortcutAction.CopyTripConfirmation,
++        ),
++        BubbleShortcutSpec(
++            id = "action_clear_cache",
++            emoji = "🗑️",
++            label = "Limpar cache do Rota Certa",
++            displayLabel = "Limpar cache",
++            action = BubbleShortcutAction.ClearClipboard,
++        ),
++        BubbleShortcutSpec(
++            id = "action_create_alert_here",
++            emoji = "⚠️",
++            label = "Criar alerta neste local",
++            displayLabel = "Criar alerta",
++            action = BubbleShortcutAction.CreateAlert,
++        ),
++        BubbleShortcutSpec(
++            id = "action_save_place_here",
++            emoji = "📌",
++            label = "Salvar este local",
++            displayLabel = "Salvar local",
++            action = BubbleShortcutAction.CreateSavedPlace,
++        ),
++        BubbleShortcutSpec(
++            id = "action_create_radar_here",
++            emoji = "📡",
++            label = "Criar radar neste local",
++            displayLabel = "Criar radar",
++            action = BubbleShortcutAction.OpenRadars,
++        ),
++        BubbleShortcutSpec(
++            id = "action_define_destination_here",
++            emoji = "🎯",

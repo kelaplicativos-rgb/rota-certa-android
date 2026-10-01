@@ -1,0 +1,252 @@
+{
+  "metadata": {
+    "source_report": "rota-certa-relatorio-depuracao (29).txt",
+    "source_version": "0.1.187",
+    "source_version_code": 5471,
+    "exported_at": "2026-08-06T10:08:00-03:00",
+    "sanitization": "addresses replaced by deterministic aliases; no personal text retained",
+    "observed_report_counts": {
+      "external_package_rejections": 1440,
+      "bubble_clear_requests": 562,
+      "repeated_unconfirmed_rejections": 455,
+      "unexpected_failures": 6,
+      "current_recorder_events": 2500,
+      "current_recorder_dropped": 2294,
+      "recovered_recorder_events": 1200,
+      "recovered_recorder_dropped": 37848
+    }
+  },
+  "selected_package": "sinet.startup.indriver",
+  "coalesce_window_ms": 250,
+  "events": [
+    {
+      "id": "confirmed-card-a",
+      "at_ms": 1000,
+      "kind": "card_confirmed",
+      "event_package": "sinet.startup.indriver",
+      "root_package": "sinet.startup.indriver",
+      "window_id": 810,
+      "generation": 40,
+      "card_signature": "card-a",
+      "destination": "DESTINO_MASCARADO_A"
+    },
+    {
+      "id": "route-card-a",
+      "at_ms": 1010,
+      "kind": "route_result",
+      "event_package": "sinet.startup.indriver",
+      "root_package": null,
+      "window_id": 810,
+      "generation": 40,
+      "card_signature": "card-a",
+      "destination": "DESTINO_MASCARADO_A",
+      "distance_km": 4.8,
+      "within_radius": true
+    },
+    {
+      "id": "external-storm-systemui",
+      "at_ms": 1100,
+      "kind": "accessibility",
+      "event_package": "com.android.systemui",
+      "root_package": "sinet.startup.indriver",
+      "window_id": 999,
+      "generation": 40,
+      "fingerprint": "external-systemui",
+      "repeat": 1440,
+      "repeat_interval_ms": 0
+    },
+    {
+      "id": "new-inDrive-feed",
+      "at_ms": 2000,
+      "kind": "accessibility",
+      "event_package": "sinet.startup.indriver",
+      "root_package": "sinet.startup.indriver",
+      "window_id": 811,
+      "generation": 41,
+      "fingerprint": "feed-card-b",
+      "repeat": 455,
+      "repeat_interval_ms": 0
+    },
+    {
+      "id": "confirmed-card-b",
+      "at_ms": 2100,
+      "kind": "card_confirmed",
+      "event_package": "sinet.startup.indriver",
+      "root_package": "sinet.startup.indriver",
+      "window_id": 811,
+      "generation": 41,
+      "card_signature": "card-b",
+      "destination": "DESTINO_MASCARADO_B"
+    },
+    {
+      "id": "delayed-route-card-a",
+      "at_ms": 2110,
+      "kind": "route_result",
+      "event_package": "sinet.startup.indriver",
+      "root_package": null,
+      "window_id": 810,
+      "generation": 40,
+      "card_signature": "card-a",
+      "destination": "DESTINO_MASCARADO_A",
+      "distance_km": 4.8,
+      "within_radius": true
+    },
+    {
+      "id": "route-card-b",
+      "at_ms": 2120,
+      "kind": "route_result",
+      "event_package": "sinet.startup.indriver",
+      "root_package": null,
+      "window_id": 811,
+      "generation": 41,
+      "card_signature": "card-b",
+      "destination": "DESTINO_MASCARADO_B",
+      "distance_km": 7.3,
+      "within_radius": false
+    },
+    {
+      "id": "clear-request-storm",
+      "at_ms": 2200,
+      "kind": "clear_request",
+      "event_package": "sinet.startup.indriver",
+      "root_package": null,
+      "window_id": 811,
+      "generation": 41,
+      "repeat": 562,
+      "repeat_interval_ms": 0
+    },
+    {
+      "id": "selected-failure-1",
+      "at_ms": 3000,
+      "kind": "failure_probe",
+      "event_package": "sinet.startup.indriver",
+      "root_package": "sinet.startup.indriver",
+      "window_id": 812,
+      "generation": 42
+    },
+    {
+      "id": "selected-failure-2",
+      "at_ms": 3010,
+      "kind": "failure_probe",
+      "event_package": "sinet.startup.indriver",
+      "root_package": "sinet.startup.indriver",
+      "window_id": 812,
+      "generation": 42
+    },
+    {
+      "id": "selected-failure-3",
+      "at_ms": 3020,
+      "kind": "failure_probe",
+      "event_package": "sinet.startup.indriver",
+      "root_package": "sinet.startup.indriver",
+      "window_id": 812,
+      "generation": 42
+    },
+    {
+      "id": "external-failure-gearhead",
+      "at_ms": 3030,
+      "kind": "failure_probe",
+      "event_package": "com.google.android.projection.gearhead",
+      "root_package": "sinet.startup.indriver",
+      "window_id": 1001,
+      "generation": 42
+    },
+    {
+      "id": "external-failure-systemui-1",
+      "at_ms": 3040,
+      "kind": "failure_probe",
+      "event_package": "com.android.systemui",
+      "root_package": "sinet.startup.indriver",
+      "window_id": 1002,
+      "generation": 42
+    },
+    {
+      "id": "external-failure-systemui-2",
+      "at_ms": 3050,
+      "kind": "failure_probe",
+      "event_package": "com.android.systemui",
+      "root_package": "sinet.startup.indriver",
+      "window_id": 1002,
+      "generation": 42
+    },
+    {
+      "id": "null-root",
+      "at_ms": 4000,
+      "kind": "accessibility",
+      "event_package": "sinet.startup.indriver",
+      "root_package": null,
+      "window_id": 813,
+      "generation": 43,
+      "fingerprint": "null-root"
+    },
+    {
+      "id": "stale-root",
+      "at_ms": 5000,
+      "kind": "accessibility",
+      "event_package": "sinet.startup.indriver",
+      "root_package": "com.android.systemui",
+      "window_id": 814,
+      "generation": 44,
+      "fingerprint": "stale-root"
+    },
+    {
+      "id": "confirmed-card-c",
+      "at_ms": 6000,
+      "kind": "card_confirmed",
+      "event_package": "sinet.startup.indriver",
+      "root_package": "sinet.startup.indriver",
+      "window_id": 815,
+      "generation": 45,
+      "card_signature": "card-c",
+      "destination": "DESTINO_MASCARADO_C"
+    },
+    {
+      "id": "route-card-c",
+      "at_ms": 6010,
+      "kind": "route_result",
+      "event_package": "sinet.startup.indriver",
+      "root_package": null,
+      "window_id": 815,
+      "generation": 45,
+      "card_signature": "card-c",
+      "destination": "DESTINO_MASCARADO_C",
+      "distance_km": 3.1,
+      "within_radius": true
+    },
+    {
+      "id": "card-c-disappeared",
+      "at_ms": 6020,
+      "kind": "card_disappeared",
+      "event_package": "sinet.startup.indriver",
+      "root_package": "sinet.startup.indriver",
+      "window_id": 815,
+      "generation": 45
+    }
+  ],
+  "expected": {
+    "expanded_events": 2473,
+    "root_reads": 464,
+    "renders": 10,
+    "clear_requests": 562,
+    "effective_clears": 1,
+    "contained_failures": 3,
+    "final_visual": {
+      "color": "yellow",
+      "destination": null,
+      "distance_km": null
+    },
+    "outcomes": {
+      "external_package_rejected": 1443,
+      "event_coalesced": 454,
+      "stale_generation_rejected": 1,
+      "clear_applied": 1,
+      "clear_idempotent": 561,
+      "failure_contained": 3,
+      "root_unavailable": 1,
+      "stale_root_rejected": 1,
+      "route_result_applied": 3,
+      "card_confirmed": 3,
+      "card_disappeared": 1
+    }
+  }
+}

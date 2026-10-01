@@ -1,0 +1,257 @@
+name: Validate Stage 26 reading activation 0.1.204
+
+on:
+  pull_request:
+    branches:
+      - agent/stage23-visual-identity-coalescing-0.1.203
+    paths:
+      - '.github/workflows/stage26-reading-activation-0.1.204.yml'
+      - 'scripts/apply_farol_reading_activation_stage26.py'
+      - 'scripts/apply_farol_reading_activation_stage26_materialized.py'
+      - 'stage26/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate-stage26:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout protected canonical source
+        uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          path: source
+          fetch-depth: 1
+
+      - name: Checkout Stage26 patch branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: patches
+          fetch-depth: 1
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore exact Stage18 materialized source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p bootstrap evidence
+          gh run download 31612053591 \
+            --repo kelaplicativos-rgb/rota-certa-android \
+            --name rota-certa-stage19-materialized-stage18-source \
+            --dir bootstrap
+          TGZ="$(find bootstrap -name stage18-materialized-source.tgz -print -quit)"
+          SHA_FILE="$(find bootstrap -name stage18-materialized-source.sha256 -print -quit)"
+          test -n "$TGZ" -a -f "$TGZ"
+          test -n "$SHA_FILE" -a -f "$SHA_FILE"
+          EXPECTED="$(awk '{print $1}' "$SHA_FILE")"
+          ACTUAL="$(sha256sum "$TGZ" | awk '{print $1}')"
+          test "$ACTUAL" = "$EXPECTED"
+          printf 'expected=%s\nactual=%s\n' "$EXPECTED" "$ACTUAL" | tee evidence/stage18-bootstrap-sha256-check.txt
+          rm -rf source/app/src/main/java source/app/src/test/java
+          tar -xzf "$TGZ" -C source
+          grep -q 'versionName = "0.1.198"' source/app/build.gradle.kts
+
+      - name: Preserve Stage23 accessibility event contract
+        run: |
+          set -euo pipefail
+          cat > source/app/src/main/res/xml/rota_certa_accessibility.xml <<'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+              android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewTextChanged|typeWindowsChanged"
+              android:accessibilityFeedbackType="feedbackGeneric"
+              android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
+              android:canRetrieveWindowContent="true"
+              android:canTakeScreenshot="true"
+              android:description="@string/accessibility_service_description"
+              android:notificationTimeout="100" />
+          XML
+
+      - name: Apply Stage19 then Stage20 then Stage21 then Stage23
+        run: |
+          set -euo pipefail
+          python patches/scripts/apply_universal_visual_pipeline_stage19.py --self-test | tee evidence/stage19-self-test.txt
+          python patches/scripts/apply_universal_visual_pipeline_stage19.py source | tee evidence/stage19-apply.txt
+          python patches/scripts/apply_farol_forensic_causality_stage20.py --self-test | tee evidence/stage20-self-test.txt
+          python patches/scripts/apply_farol_forensic_causality_stage20.py source | tee evidence/stage20-apply.txt
+          python patches/scripts/apply_farol_causal_corrections_stage21.py --self-test | tee evidence/stage21-self-test.txt
+          python patches/scripts/apply_farol_causal_corrections_stage21.py source | tee evidence/stage21-apply.txt
+          python patches/scripts/apply_farol_visual_identity_stage23.py --self-test | tee evidence/stage23-self-test.txt
+          python patches/scripts/apply_farol_visual_identity_stage23.py source | tee evidence/stage23-apply.txt
+          grep -q 'versionCode = 5487' source/app/build.gradle.kts
+          grep -q 'versionName = "0.1.203"' source/app/build.gradle.kts
+
+      - name: Stage26 self-test and apply to the compiled materialization
+        run: |
+          set -euo pipefail
+          python patches/scripts/apply_farol_reading_activation_stage26_materialized.py --self-test | tee evidence/stage26-self-test.txt
+          python patches/scripts/apply_farol_reading_activation_stage26_materialized.py source | tee evidence/stage26-apply.txt
+          grep -q 'versionCode = 5488' source/app/build.gradle.kts
+          grep -q 'versionName = "0.1.204"' source/app/build.gradle.kts
+          grep -q 'android.permission.PACKAGE_USAGE_STATS' source/app/src/main/AndroidManifest.xml
+          grep -q 'FAROL_READING_ACTIVATION_STAGE26' source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'S21_SEMANTIC_REJECT_BEFORE_CACHE_ROUTE' source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'FarolForensicTraceStage20.preparePaint' source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'drivingDistancesFromAddressKm' source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'PACKAGE_IDENTITY_IS_NOT_VISUAL_AUTHORITY_STAGE19' source/app/src/main/java/br/com/mapeiaia/rotacerta/FarolUniversalVisualPipelineStage19.kt
+          grep -q 'action = BubbleShortcutAction.CaptureCurrentAppAndScreen' source/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
+          grep -q 'SelectedRideAppStore.add(applicationContext, externalPackage)' source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          {
+            echo 'stage26_materialized_checks=passed'
+            echo 'activation_gate_before_collect=true'
+            echo 'usage_access_fail_closed=true'
+            echo 'semantic_barrier_preserved=true'
+            echo 'paint_token_preserved=true'
+            echo 'google_real_preserved=true'
+            echo 'capture_restored=true'
+          } | tee evidence/stage26-materialized-check.txt
+
+      - name: Verify complete test-source inventory (682)
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee evidence/test-source-inventory.txt
+          from pathlib import Path
+          root = Path('source/app/src/test/java')
+          counts = []
+          total = 0
+          for p in sorted(root.rglob('*.kt')):
+              count = p.read_text(encoding='utf-8').count('@Test')
+              if count:
+                  counts.append((str(p.relative_to(root)), count))
+                  total += count
+          for name, count in counts:
+              print(f'{count:3d} {name}')
+          print(f'total_at_test={total}')
+          assert total == 682, total
+          PY
+
+      - name: Stage26 deterministic tests (45)
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon testDebugUnitTest --tests br.com.mapeiaia.rotacerta.FarolReadingActivationStage26Test | tee ../evidence/stage26-specific-tests.log
+          XML="app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.FarolReadingActivationStage26Test.xml"
+          test -f "$XML"
+          python - "$XML" <<'PY' | tee ../evidence/stage26-specific-test-count.txt
+          import sys, xml.etree.ElementTree as ET
+          root=ET.parse(sys.argv[1]).getroot()
+          vals={k:int(root.attrib.get(k,0)) for k in ('tests','failures','errors','skipped')}
+          print(' '.join(f'{k}={v}' for k,v in vals.items()))
+          assert vals == {'tests':45,'failures':0,'errors':0,'skipped':0}, vals
+          PY
+
+      - name: Stage23 regression tests (40)
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon testDebugUnitTest --tests br.com.mapeiaia.rotacerta.FarolVisualIdentityStage23Test | tee ../evidence/stage23-regression-tests.log
+          grep -q 'tests="40"' app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.FarolVisualIdentityStage23Test.xml
+
+      - name: Stage21 regression tests (40)
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon testDebugUnitTest --tests br.com.mapeiaia.rotacerta.FarolCausalCorrectionStage21Test | tee ../evidence/stage21-regression-tests.log
+          grep -q 'tests="40"' app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.FarolCausalCorrectionStage21Test.xml
+
+      - name: Stage20 regression tests (34)
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon testDebugUnitTest --tests br.com.mapeiaia.rotacerta.FarolForensicTraceStage20Test | tee ../evidence/stage20-regression-tests.log
+          grep -q 'tests="34"' app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.FarolForensicTraceStage20Test.xml
+
+      - name: Stage19 regression tests (29)
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon testDebugUnitTest --tests br.com.mapeiaia.rotacerta.FarolUniversalVisualPipelineStage19Test | tee ../evidence/stage19-regression-tests.log
+          grep -q 'tests="29"' app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.FarolUniversalVisualPipelineStage19Test.xml
+
+      - name: Complete unit suite (exact 682)
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --rerun-tasks testDebugUnitTest | tee ../evidence/full-unit-suite.log
+          python - <<'PY' | tee ../evidence/full-test-count.txt
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          tests=failures=errors=skipped=0
+          files=[]
+          for p in Path('app/build/test-results/testDebugUnitTest').glob('TEST-*.xml'):
+              r=ET.parse(p).getroot()
+              count=int(r.attrib.get('tests',0))
+              files.append((p.name,count))
+              tests += count; failures += int(r.attrib.get('failures',0)); errors += int(r.attrib.get('errors',0)); skipped += int(r.attrib.get('skipped',0))
+          for name,count in sorted(files):
+              print(f'{count:3d} {name}')
+          print(f'tests={tests}')
+          print(f'failures={failures}')
+          print(f'errors={errors}')
+          print(f'skipped={skipped}')
+          assert tests == 682, tests
+          assert failures == errors == skipped == 0
+          PY
+
+      - name: Android Lint
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon lintDebug | tee ../evidence/lint-debug.log
+          cp app/build/reports/lint-results-debug.html ../evidence/lint-results-debug.html
+
+      - name: Clean assembleDebug
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon clean assembleDebug | tee ../evidence/clean-assemble-debug.log
+
+      - name: Validate APK package version signature certificate ZIP DEX markers and hash
+        run: |
+          set -euo pipefail
+          APK="source/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK"
+          OUT="evidence/rota-certa-0.1.204-stage26-reading-activation-ci.apk"
+          cp "$APK" "$OUT"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          "$AAPT" dump badging "$OUT" | tee evidence/badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta' versionCode='5488' versionName='0.1.204'" evidence/badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$OUT" | tee evidence/signature.txt
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' evidence/signature.txt
+          unzip -t "$OUT" > evidence/zip-validation.txt
+          unzip -l "$OUT" | grep -E 'classes([0-9]*)?\.dex' | tee evidence/dex-files.txt
+          test -s evidence/dex-files.txt
+          unzip -p "$OUT" 'classes*.dex' | strings > evidence/dex-strings.txt
+          for marker in FAROL_READING_ACTIVATION_STAGE26 SELECTED_PACKAGES_ACTIVATE_INFRASTRUCTURE_ONLY_STAGE26 PRECOLLECT_VISUAL_ADMISSION_BEFORE_HEAVY_TRAVERSAL_STAGE26 OLD_PAINT_INVALIDATED_BEFORE_COLLECT_STAGE26 COMPACT_NON_OVERLAPPING_COLLECTOR_STAGE26 SEMANTIC_ADDRESS_GATE_BEFORE_CACHE_AND_GOOGLE_STAGE21 PACKAGE_IDENTITY_IS_NOT_VISUAL_AUTHORITY_STAGE19; do
+            grep -q "$marker" evidence/dex-strings.txt
+          done
+          sha256sum "$OUT" | tee evidence/apk.sha256
+          stat -c '%s' "$OUT" | tee evidence/apk-size-bytes.txt
+          rm evidence/dex-strings.txt
+
+      - name: Upload Stage26 final evidence and APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.204-stage26-reading-activation-final
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30

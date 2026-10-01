@@ -1,0 +1,111 @@
+-        assertTrue(defaults.all { it.quickAction0180 == ShortcutGestureAction0180.PRIMARY_ACTION })
+-        assertTrue(defaults.all { it.holdAction0180 == ShortcutGestureAction0180.OPEN_MODULE })
++    fun newInstallStartsEmptyAndUpgradeKeepsExactlySeventeenLegacyActions() {
++        assertTrue(ShortcutGridCustomizationPolicy0179.initialEntries(isUpgrade = false).isEmpty())
++        val legacy = ShortcutGridCustomizationPolicy0179.initialEntries(isUpgrade = true)
++        assertEquals(17, legacy.size)
++        assertEquals(ShortcutActionCatalog0184.legacyModuleIds, legacy.map { it.shortcutId })
+     }
+ 
+     @Test
+     fun disabledEntriesAreNotRenderedButRemainEditable() {
+-        val defaults = ShortcutGridCustomizationPolicy0179.defaults()
+-        val disabled = defaults.first().copy(enabled = false)
+-        val resolved = ShortcutGridCustomizationPolicy0179.resolve(listOf(disabled) + defaults.drop(1))
++        val legacy = ShortcutGridCustomizationPolicy0179.legacyDefaults()
++        val disabled = legacy.first().copy(enabled = false)
++        val resolved = ShortcutGridCustomizationPolicy0179.resolve(listOf(disabled) + legacy.drop(1))
+         assertFalse(resolved.any { it.entryId == disabled.entryId })
+-        assertEquals(defaults.size - 1, resolved.size)
++        assertEquals(legacy.size - 1, resolved.size)
+     }
+ 
+     @Test
+-    fun customNameAndIconDoNotChangeTheSafeCatalogAction() {
+-        val original = ShortcutGridCustomizationPolicy0179.defaults().first()
++    fun customNameAndIconDoNotChangeTheRegisteredAction() {
++        val original = ShortcutGridCustomizationPolicy0179.legacyDefaults().first()
+         val resolved = ShortcutGridCustomizationPolicy0179.resolve(
+             listOf(original.copy(label = "Minha rota", emoji = "⭐")),
+         ).single().spec
+@@ -38,21 +36,24 @@ class ShortcutGridCustomization0179Test {
+     }
+ 
+     @Test
+-    fun addMoveAndMaximumAreDeterministic() {
+-        val start = ShortcutGridCustomizationPolicy0179.defaults().take(2)
+-        val added = ShortcutGridCustomizationPolicy0179.add(start, "radars", 123L)
++    fun addRemoveDuplicateAndMaximumAreDeterministic() {
++        val start = ShortcutGridCustomizationPolicy0179.legacyDefaults().take(2)
++        val added = ShortcutGridCustomizationPolicy0179.add(start, "action_clear_cache", 123L)
+         assertEquals(3, added.size)
+-        assertEquals("radars", added.last().shortcutId)
+-        val moved = ShortcutGridCustomizationPolicy0179.move(added, 2, 0)
+-        assertEquals("radars", moved.first().shortcutId)
+-        val oversized = (0 until 40).map { index ->
+-            start.first().copy(entryId = "entry-$index")
++        assertEquals("action_clear_cache", added.last().shortcutId)
++        assertEquals(added, ShortcutGridCustomizationPolicy0179.add(added, "action_clear_cache", 124L))
++        val removed = ShortcutGridCustomizationPolicy0179.remove(added, "action_clear_cache")
++        assertFalse(ShortcutGridCustomizationPolicy0179.contains(removed, "action_clear_cache"))
++
++        var bounded = emptyList<ShortcutGridEntry0179>()
++        ShortcutActionCatalog0184.allSpecs().forEachIndexed { index, spec ->
++            bounded = ShortcutGridCustomizationPolicy0179.add(bounded, spec.id, index.toLong())
+         }
+-        assertEquals(ShortcutGesturePolicy0179.MAX_GRID_ITEMS, ShortcutGridCustomizationPolicy0179.normalize(oversized).size)
++        assertTrue(bounded.size <= ShortcutGesturePolicy0179.MAX_GRID_ITEMS)
+     }
+ 
+     @Test
+-    fun gestureDurationsMatchTheUserContract() {
++    fun directTapContractRemainsTwoTotalTaps() {
+         assertEquals(1_500L, ShortcutGesturePolicy0179.SHORTCUT_LONG_PRESS_MILLIS)
+         assertEquals(5_000L, ShortcutGesturePolicy0179.MAIN_CUSTOMIZATION_HOLD_MILLIS)
+     }
+diff --git a/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomizationContract0179Test.kt b/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomizationContract0179Test.kt
+index 020e7e2..63196d3 100644
+--- a/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomizationContract0179Test.kt
++++ b/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomizationContract0179Test.kt
+@@ -12,38 +12,28 @@ class ShortcutGridCustomizationContract0179Test {
+     private val store = File("src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt").readText()
+ 
+     @Test
+-    fun plusAndCentralAreConnectedWithoutNewActivity() {
+-        assertTrue(overlay.contains("shortcut_add_0179"))
+-        assertTrue(overlay.contains("onCustomize"))
+-        assertTrue(service.contains("EXTRA_OPEN_SHORTCUT_CUSTOMIZATION_0179"))
+-        assertTrue(main.contains("ShortcutGridCustomizationScreen0179"))
+-        assertTrue(main.contains("Central de atalhos da grade flutuante"))
++    fun homeIsTheOnlyActionSelectionSurface() {
++        assertFalse(overlay.contains("shortcut_add_0179"))
++        assertTrue(main.contains("HomeShortcutActions0184"))
++        assertTrue(main.contains("Adicionar à grade"))
++        assertTrue(main.contains("Remover da grade"))
++        assertTrue(main.contains("Esvaziar grade"))
+     }
+ 
+     @Test
+-    fun mainFiveSecondHoldCancelsWhenDraggingAndDoesNotReplaceNormalTap() {
+-        assertTrue(service.contains("mainHoldHandler0179.postDelayed"))
+-        assertTrue(service.contains("MAIN_CUSTOMIZATION_HOLD_MILLIS"))
+-        assertTrue(service.contains("mainHoldHandler0179.removeCallbacks"))
+-        assertTrue(service.contains("newView.setOnClickListener { toggleResourceShortcuts() }"))
++    fun emptyGridRoutesToHomeAndTapExecutesDirectly() {
++        assertTrue(service.contains("shortcuts0184.isEmpty()"))
++        assertTrue(service.contains("empty_action_grid_0184"))
++        assertTrue(service.contains("executeShortcutModule(entry0180.spec)"))
++        assertFalse(service.contains("showShortcutActionMenu0183(entry0180.spec)"))
+     }
+ 
+     @Test
+-    fun singleTapOpensTheSelectedShortcutContextMenuWithoutGestureDelay() {
+-        assertTrue(overlay.contains("SHORTCUT_DIRECT_TAP_0182"))
+-        assertTrue(overlay.contains("singleAction()"))
+-        assertFalse(overlay.contains("tapCount0180"))
+-        assertFalse(overlay.contains("SHORTCUT_TRIPLE_TAP_WINDOW_MILLIS"))
+-        assertTrue(service.contains("onShortcut = ::executeShortcutQuickTap0180"))
+-        assertTrue(service.contains("showShortcutActionMenu0183(entry0180.spec)"))
+-    }
+-
+-    @Test

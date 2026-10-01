@@ -1,0 +1,13 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Stage47 deliberately exposes no Firestore document directly to browsers
+    // or the Android APK. All trip/booking access crosses the HTTPS function,
+    // where public fields are whitelisted and driver mutations require the
+    // Secret Manager credential. This prevents passenger identities and
+    // contacts from becoming enumerable client-side data.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

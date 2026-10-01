@@ -1,0 +1,170 @@
+        onShortcutLongPress: (BubbleShortcutSpec) -> Unit,""",
+    """        onShortcut: (ResolvedShortcutGridEntry0179) -> Unit,
+        onShortcutLongPress: (ResolvedShortcutGridEntry0179) -> Unit,
+        onShortcutCustomize: (ResolvedShortcutGridEntry0179) -> Unit,""",
+    expected=2,
+)
+replace_once(
+    overlay,
+    """            showShortcuts(anchor, shortcuts, onShortcut, onShortcutLongPress, onCustomize)""",
+    """            showShortcuts(
+                anchor,
+                shortcuts,
+                onShortcut,
+                onShortcutLongPress,
+                onShortcutCustomize,
+                onCustomize,
+            )""",
+)
+replace_once(
+    overlay,
+    """                            onShortcut(entry0179.spec)
+                        },
+                        longAction = {
+                            hideShortcuts()
+                            trace("bubble.shortcut.long_press entry=${entry0179.entryId} id=${entry0179.spec.id}")
+                            onShortcutLongPress(entry0179.spec)
+                        },""",
+    """                            onShortcut(entry0179)
+                        },
+                        longAction = {
+                            hideShortcuts()
+                            trace("bubble.shortcut.long_press entry=${entry0179.entryId} id=${entry0179.spec.id}")
+                            onShortcutLongPress(entry0179)
+                        },
+                        customizeAction = {
+                            hideShortcuts()
+                            trace("bubble.shortcut.customize entry=${entry0179.entryId} id=${entry0179.spec.id}")
+                            onShortcutCustomize(entry0179)
+                        },""",
+)
+replace_once(
+    overlay,
+    """                    longAction = {
+                        hideShortcuts()
+                        trace("bubble.shortcut.customize.long_press")
+                        onCustomize()
+                    },""",
+    """                    longAction = {
+                        hideShortcuts()
+                        trace("bubble.shortcut.customize.long_press")
+                        onCustomize()
+                    },
+                    customizeAction = {
+                        hideShortcuts()
+                        trace("bubble.shortcut.customize.five_seconds")
+                        onCustomize()
+                    },""",
+)
+replace_once(
+    overlay,
+    """        singleAction: () -> Unit,
+        longAction: () -> Unit,
+    ): TextView = TextView(context).apply {""",
+    """        singleAction: () -> Unit,
+        longAction: () -> Unit,
+        customizeAction: () -> Unit,
+    ): TextView = TextView(context).apply {""",
+)
+replace_once(
+    overlay,
+    """        contentDescription = "${spec.label}. Toque para executar; mantenha pressionado por dois segundos para abrir o módulo.""",
+    """        contentDescription = "${spec.label}. Toque rápido e toque de um segundo e meio são configuráveis; mantenha por cinco segundos para configurar esta bolinha.""",
+)
+replace_once(
+    overlay,
+    """        var downX = 0f
+        var downY = 0f
+        var longPressTriggered = false
+        val longPressAction = Runnable {
+            longPressTriggered = true
+            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            longAction()
+        }
+        setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.x
+                    downY = event.y
+                    longPressTriggered = false
+                    view.isPressed = true
+                    handler.postDelayed(longPressAction, ShortcutGesturePolicy0179.SHORTCUT_LONG_PRESS_MILLIS)
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val moved = kotlin.math.abs(event.x - downX) > touchSlop || kotlin.math.abs(event.y - downY) > touchSlop
+                    if (moved) {
+                        handler.removeCallbacks(longPressAction)
+                        view.isPressed = false
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    handler.removeCallbacks(longPressAction)
+                    view.isPressed = false
+                    if (!longPressTriggered) singleAction()
+                    true
+                }
+                MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_OUTSIDE -> {
+                    handler.removeCallbacks(longPressAction)
+                    view.isPressed = false
+                    true
+                }
+                else -> true
+            }
+        }""",
+    """        var downX = 0f
+        var downY = 0f
+        var downEventTime = 0L
+        var movedOutsideGesture = false
+        var customizationTriggered = false
+        val customizeRunnable = Runnable {
+            if (!movedOutsideGesture) {
+                customizationTriggered = true
+                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                customizeAction()
+            }
+        }
+        setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.x
+                    downY = event.y
+                    downEventTime = event.eventTime
+                    movedOutsideGesture = false
+                    customizationTriggered = false
+                    view.isPressed = true
+                    handler.postDelayed(
+                        customizeRunnable,
+                        ShortcutGesturePolicy0179.SHORTCUT_CUSTOMIZATION_HOLD_MILLIS,
+                    )
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val moved = kotlin.math.abs(event.x - downX) > touchSlop || kotlin.math.abs(event.y - downY) > touchSlop
+                    if (moved) {
+                        movedOutsideGesture = true
+                        handler.removeCallbacks(customizeRunnable)
+                        view.isPressed = false
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    handler.removeCallbacks(customizeRunnable)
+                    view.isPressed = false
+                    if (!movedOutsideGesture && !customizationTriggered) {
+                        val heldMillis = (event.eventTime - downEventTime).coerceAtLeast(0L)
+                        if (heldMillis >= ShortcutGesturePolicy0179.SHORTCUT_LONG_PRESS_MILLIS) {
+                            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                            longAction()
+                        } else {
+                            singleAction()
+                        }
+                    }
+                    true
+                }
+                MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_OUTSIDE -> {
+                    handler.removeCallbacks(customizeRunnable)
+                    movedOutsideGesture = true
+                    view.isPressed = false
+                    true

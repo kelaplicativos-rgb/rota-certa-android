@@ -1,0 +1,111 @@
+-    fun persistenceIsBoundedAndReferencesOnlyCatalogActions() {
++    fun persistenceIsBoundedTypedAndMigrated() {
+         assertTrue(store.contains("MAX_GRID_ITEMS"))
+-        assertTrue(store.contains("BubbleShortcutCatalog.findSpec"))
+-        assertTrue(store.contains("JSONArray"))
++        assertTrue(store.contains("ShortcutActionCatalog0184.allSpecs"))
++        assertTrue(store.contains("lastUpdateTime > info.firstInstallTime"))
++        assertTrue(store.contains("initialEntries(isUpgradeInstallation())"))
+         assertFalse(store.contains("Intent.parseUri"))
+-        assertFalse(store.contains("PackageManager"))
+     }
+ }
+diff --git a/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutInPlaceContract0181Test.kt b/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutInPlaceContract0181Test.kt
+index cbca8f8..257dd0d 100644
+--- a/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutInPlaceContract0181Test.kt
++++ b/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutInPlaceContract0181Test.kt
+@@ -8,17 +8,19 @@ class ShortcutInPlaceContract0181Test {
+     private val service = File("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").readText()
+ 
+     @Test
+-    fun alertAndSavedPlaceQuickActionsKeepTheirRealOverlayEditors() {
+-        assertTrue(service.contains("executeShortcutContextAction0183"))
++    fun namedPlaceAndAlertActionsOpenTheRealNamePopup() {
++        assertTrue(service.contains("action_create_alert_here"))
+         assertTrue(service.contains("saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert)"))
++        assertTrue(service.contains("action_save_place_here"))
+         assertTrue(service.contains("saveCurrentPlaceFromBubble(SavedPlaceType.Place)"))
++        assertTrue(service.contains("showSavePlacePopup"))
+     }
+ 
+     @Test
+-    fun contextualMenuOffersQuickActionAndPrimaryModuleAction() {
+-        assertTrue(service.contains("ShortcutContextMenuPolicy0183.quickActionLabel"))
+-        assertTrue(service.contains("ShortcutContextMenuPolicy0183.primaryActionLabel"))
+-        assertTrue(service.contains("executeShortcutContextAction0183(spec)"))
+-        assertTrue(service.contains("executeShortcutModule(spec)"))
++    fun backupAndCleaningActionsAreIndependent() {
++        assertTrue(service.contains("action_create_backup"))
++        assertTrue(service.contains("action_restore_backup"))
++        assertTrue(service.contains("action_clear_cache"))
++        assertTrue(service.contains("clearOwnCache0183"))
+     }
+ }
+diff --git a/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutLongPressContract0171Test.kt b/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutLongPressContract0171Test.kt
+index 8519d0e..66d581d 100644
+--- a/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutLongPressContract0171Test.kt
++++ b/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutLongPressContract0171Test.kt
+@@ -35,9 +35,9 @@ class ShortcutLongPressContract0171Test {
+     }
+ 
+     @Test
+-    fun floatingOverlayKeepsEntryIdentityAndThreeIndependentGestures() {
++    fun floatingOverlayKeepsEntryIdentityWithoutThePlusShortcut() {
+         assertTrue(overlay.contains("ResolvedShortcutGridEntry0179"))
+-        assertTrue(overlay.contains("shortcut_add_0179"))
++        assertFalse(overlay.contains("shortcut_add_0179"))
+         assertFalse(overlay.contains("(doubleAction ?: singleAction).invoke()"))
+         assertTrue(service.contains("executeShortcutQuickTap0180"))
+         assertTrue(service.contains("executeShortcutHold0180"))
+diff --git a/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutPerEntryMenu0180Test.kt b/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutPerEntryMenu0180Test.kt
+index fb37ae7..a31e204 100644
+--- a/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutPerEntryMenu0180Test.kt
++++ b/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutPerEntryMenu0180Test.kt
+@@ -6,39 +6,20 @@ import org.junit.Test
+ 
+ class ShortcutPerEntryMenu0180Test {
+     @Test
+-    fun defaultsMatchAlertExampleAndCanBeInverted() {
+-        val original = ShortcutGridCustomizationPolicy0179.defaults().first()
+-        assertEquals(ShortcutGestureAction0180.PRIMARY_ACTION, original.quickAction0180)
+-        assertEquals(ShortcutGestureAction0180.OPEN_MODULE, original.holdAction0180)
+-
+-        val inverted = original.copy(
+-            quickAction0180 = ShortcutGestureAction0180.OPEN_MODULE,
+-            holdAction0180 = ShortcutGestureAction0180.PRIMARY_ACTION,
+-        )
+-        val resolved = ShortcutGridCustomizationPolicy0179.resolve(listOf(inverted)).single()
+-        assertEquals(ShortcutGestureAction0180.OPEN_MODULE, resolved.quickAction0180)
+-        assertEquals(ShortcutGestureAction0180.PRIMARY_ACTION, resolved.holdAction0180)
+-    }
+-
+-    @Test
+-    fun eitherGestureCanBeConfiguredToDoNothing() {
+-        val original = ShortcutGridCustomizationPolicy0179.defaults().first()
+-        val disabledGestures = original.copy(
++    fun legacyGestureValuesAreNormalizedToDirectTap() {
++        val original = ShortcutGridCustomizationPolicy0179.legacyDefaults().first()
++        val persisted = original.copy(
+             quickAction0180 = ShortcutGestureAction0180.NONE,
+             holdAction0180 = ShortcutGestureAction0180.NONE,
+         )
+-        val resolved = ShortcutGridCustomizationPolicy0179.resolve(listOf(disabledGestures)).single()
+-        assertEquals(ShortcutGestureAction0180.NONE, resolved.quickAction0180)
+-        assertEquals(ShortcutGestureAction0180.NONE, resolved.holdAction0180)
++        val resolved = ShortcutGridCustomizationPolicy0179.resolve(listOf(persisted)).single()
++        assertEquals(ShortcutGestureAction0180.PRIMARY_ACTION, resolved.quickAction0180)
++        assertEquals(ShortcutGestureAction0180.OPEN_MODULE, resolved.holdAction0180)
+     }
+ 
+     @Test
+-    fun thresholdsMatchUserContract() {
++    fun thresholdsRemainCompatibleButDoNotDelaySingleTap() {
+         assertEquals(1_500L, ShortcutGesturePolicy0179.SHORTCUT_LONG_PRESS_MILLIS)
+-        assertEquals(900L, ShortcutGesturePolicy0179.SHORTCUT_TRIPLE_TAP_WINDOW_MILLIS)
+-        assertTrue(
+-            ShortcutGesturePolicy0179.SHORTCUT_TRIPLE_TAP_WINDOW_MILLIS <
+-                ShortcutGesturePolicy0179.SHORTCUT_LONG_PRESS_MILLIS,
+-        )
++        assertTrue(ShortcutGesturePolicy0179.MAX_GRID_ITEMS == 32)
+     }
+ }

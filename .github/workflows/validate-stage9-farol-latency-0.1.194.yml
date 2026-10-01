@@ -1,0 +1,388 @@
+name: Validate Stage 9 FAROL latency instrumentation 0.1.194
+
+on:
+  pull_request:
+    branches:
+      - agent/fix-universal-card-confirmation-0.1.194
+    paths:
+      - .github/workflows/validate-stage9-farol-latency-0.1.194.yml
+      - scripts/apply_farol_latency_instrumentation_stage9.py
+  workflow_dispatch:
+
+concurrency:
+  group: stage9-farol-latency-0194-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout protected source
+        uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+
+      - name: Verify protected source commit
+        working-directory: source
+        run: test "$(git rev-parse HEAD)" = "32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42"
+
+      - name: Checkout exact Stage 9 head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: patches
+
+      - name: Verify Stage 9 transformer identity
+        working-directory: patches
+        env:
+          EXPECTED_PATCH_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_PATCH_SHA"
+          test "$(git hash-object scripts/apply_farol_latency_instrumentation_stage9.py)" = "5c0c701b46ff4af32283bf017ca9dcb474513c19"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Materialize validated 0.1.194 cumulatively
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage9-base
+        run: |
+          set -euo pipefail
+          mkdir -p stage11-evidence
+          bash ../patches/scripts/build_rota_certa_0194.sh ../patches 2>&1 | tee stage9-materialize-0.1.194.log
+
+      - name: Verify official 0.1.194 hashes before instrumentation
+        working-directory: source
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionCode = 5478' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.194"' app/build.gradle.kts
+          cat > stage11-evidence/official-0.1.194.sha256 <<'HASHES'
+          ed8d4d8a9c93f74036b6786a09a82e2499f956cc79cfcf21d2bd00703b22a672  app/src/main/AndroidManifest.xml
+          a4691bdc61409a31e46526b3588aaf28c2ff676234d8bd3ab40f936b4dbce6e9  app/src/main/java/br/com/mapeiaia/rotacerta/DecisionEngine.kt
+          8e4d2a792ae03d0d1e14c7c656c50a909e14fa86bc25162ec9e9b8858c132421  app/src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt
+          2aaa6263c450d6218aba722915a2ceeec900728c90001625ff1513f65a39236e  app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt
+          c84d1e8bfa5f22ccbeb2f0e38615c9702bb763054c8c6a00c6021bd9320b29bf  app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
+          dfe203ebab54cd7dbce088de4109a54b0ce9a49077c152869a61aa09693efc6e  app/src/main/java/br/com/mapeiaia/rotacerta/GpsAddressResolver.kt
+          e95c2215ee06696157968e827c53d0631f37a35ee2feb4f0ee1acaa2a259c33a  app/src/main/java/br/com/mapeiaia/rotacerta/RadarImport.kt
+          da359a184e492a51bbe327f0acae6fbdd13f58d8c5500b8a8569ae42ce067f92  app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertPolicy.kt
+          8415489210ee6122fcb063799336246cab1f03b0995953b1719cacbbf79c8169  app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngine.kt
+          4eaf62ca1369acd8489262a4be222c22937576ae2343e8f4570a4a36365d3f64  app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertOverlayController.kt
+          d42ee18e69cc4bc98b0ac2d5a4faa1384ce1da3fcdf24632255c361e02a73749  app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          78e46dee8bf1e55ea452356c598e580f040177eb65cb639a93ece796e6b61f21  app/src/main/java/br/com/mapeiaia/rotacerta/FarolVisualPriority0189.kt
+          8ea68b1fcd7880a50d4c996e231e2f00e16870d3e522f011da474fe83ddb5f1f  app/src/main/java/br/com/mapeiaia/rotacerta/ForensicIncidentMonitor0193.kt
+          32d445432079c540b07b859b71337d9e010006b286275f2a7fdf814c435e3b04  app/src/main/java/br/com/mapeiaia/rotacerta/FailedCardRecovery0161.kt
+          19088d8b110a36b8ab75b7a46b5eab6b0fc79fd17d5f2dad6608e59b7a967d4d  app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
+          HASHES
+          sed -i 's/^          //' stage11-evidence/official-0.1.194.sha256
+          sha256sum -c stage11-evidence/official-0.1.194.sha256 | tee stage11-evidence/official-0.1.194-hash-check.txt
+          sha256sum \
+            app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt \
+            > stage11-evidence/key-source-pre.sha256
+
+      - name: Run Stage 9 fail-closed pre-write controls
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 -m py_compile ../patches/scripts/apply_farol_latency_instrumentation_stage9.py
+          echo 'py_compile=passed' | tee stage11-evidence/stage9-py-compile.txt
+          python3 ../patches/scripts/apply_farol_latency_instrumentation_stage9.py --self-test | tee stage11-evidence/stage9-self-test.txt
+          python3 ../patches/scripts/apply_farol_latency_instrumentation_stage9.py "$PWD" --check | tee stage11-evidence/stage9-check.txt
+          grep -Fxq 'farol_latency_stage9_check=passed' stage11-evidence/stage9-check.txt
+          grep -Fxq 'sink=bounded_memory_only' stage11-evidence/stage9-check.txt
+
+      - name: Snapshot structural neutrality guards
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import re
+
+          root = Path('.')
+          service_path = root / 'app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          gate_path = root / 'app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt'
+          service = service_path.read_text(encoding='utf-8')
+          gate = gate_path.read_text(encoding='utf-8')
+          checks = {
+              'return_tokens': len(re.findall(r'\breturn\b', service)),
+              'immediate_text_collect': service.count('collectImmediateVisibleTextChecklist13(rootHandle0187.node)'),
+              'ocr_extract_structured': service.count('ocrService.extractStructuredText(bitmap0161)'),
+              'accessibility_card_blocks': service.count('collectAccessibilityCardBlocks0188('),
+              'ocr_card_blocks': service.count('collectOcrCardBlocks0188('),
+              'real_device_gate': service.count('FarolRealDeviceGate0188.evaluate('),
+              'authorize_route': service.count('authorizeRoute0188('),
+              'bubble_duplicate_skipped': service.count('"BUBBLE_DUPLICATE_SKIPPED"'),
+          }
+          expected = {
+              'return_tokens': 283,
+              'immediate_text_collect': 5,
+              'ocr_extract_structured': 1,
+              'accessibility_card_blocks': 2,
+              'ocr_card_blocks': 2,
+              'real_device_gate': 1,
+              'authorize_route': 2,
+              'bubble_duplicate_skipped': 1,
+          }
+          if checks != expected:
+              raise SystemExit(f'neutrality pre-count mismatch: {checks!r}')
+          authority = 'val authorityIdentity = "$selected|${winner.block.windowId}|${winner.block.id}|$signature"'
+          screen_hash = 'screenHash = authorityIdentity.hashCode()'
+          if gate.count(authority) != 1 or gate.count(screen_hash) != 1:
+              raise SystemExit('FAROL authority identity mismatch before instrumentation')
+          out = root / 'stage11-evidence/neutrality-pre.txt'
+          out.write_text('\n'.join(f'{k}={v}' for k, v in checks.items()) + '\nauthority_identity=preserved\nscreen_hash=preserved\n', encoding='utf-8')
+
+          protected = [
+              'app/src/main/AndroidManifest.xml',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/DecisionEngine.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/FarolVisualPriority0189.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/FailedCardRecovery0161.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/GpsAddressResolver.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/RadarImport.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/ForensicIncidentMonitor0193.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt',
+          ]
+          lines=[]
+          for rel in protected:
+              p=root/rel
+              if not p.is_file(): raise SystemExit(f'protected Stage9 file missing: {rel}')
+              lines.append(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {rel}')
+          (root/'stage11-evidence/protected-stage9-pre.sha256').write_text('\n'.join(lines)+'\n', encoding='utf-8')
+          print('stage9_neutrality_pre=passed')
+          PY
+
+      - name: Apply bounded-memory Stage 9 instrumentation
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 ../patches/scripts/apply_farol_latency_instrumentation_stage9.py "$PWD" | tee stage11-evidence/stage9-apply.txt
+          grep -Fxq 'farol_latency_stage9_apply=passed' stage11-evidence/stage9-apply.txt
+          grep -Fxq 'sink=bounded_memory_only' stage11-evidence/stage9-apply.txt
+
+      - name: Verify post-instrumentation neutrality and sink
+        working-directory: source
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionCode = 5478' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.194"' app/build.gradle.kts
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "b4fd2ff429fd72125a5ae724129c625974be313bec700b5f09d2310795ccbab6"
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/FarolLatencyProbeStage9.kt | awk '{print $1}')" = "a22cc939e147acbe019d2ead4616050419430ad7afd0e5c02aeb26e917b6c8cc"
+          HELPER=app/src/main/java/br/com/mapeiaia/rotacerta/FarolLatencyProbeStage9.kt
+          grep -Fq 'private const val MAX_EVENTS = 512' "$HELPER"
+          grep -Fq 'ArrayDeque<String>(MAX_EVENTS)' "$HELPER"
+          grep -Fq 'SystemClock.elapsedRealtimeNanos()' "$HELPER"
+          ! grep -E -q 'UnifiedDebugEventStore|FarolFlightRecorder0163|SharedPreferences|DataStore|java\.io\.|File\(|writeText\(|appendText\(|android\.util\.Log|Timer\(|delay\(|scheduleAtFixedRate|while \(true\)' "$HELPER"
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import re
+
+          root = Path('.')
+          service = (root/'app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt').read_text(encoding='utf-8')
+          gate = (root/'app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt').read_text(encoding='utf-8')
+          checks = {
+              'return_tokens': len(re.findall(r'\breturn\b', service)),
+              'immediate_text_collect': service.count('collectImmediateVisibleTextChecklist13(rootHandle0187.node)'),
+              'ocr_extract_structured': service.count('ocrService.extractStructuredText(bitmap0161)'),
+              'accessibility_card_blocks': service.count('collectAccessibilityCardBlocks0188('),
+              'ocr_card_blocks': service.count('collectOcrCardBlocks0188('),
+              'real_device_gate': service.count('FarolRealDeviceGate0188.evaluate('),
+              'authorize_route': service.count('authorizeRoute0188('),
+              'bubble_duplicate_skipped': service.count('"BUBBLE_DUPLICATE_SKIPPED"'),
+          }
+          expected = {
+              'return_tokens': 283,
+              'immediate_text_collect': 5,
+              'ocr_extract_structured': 1,
+              'accessibility_card_blocks': 2,
+              'ocr_card_blocks': 2,
+              'real_device_gate': 1,
+              'authorize_route': 2,
+              'bubble_duplicate_skipped': 1,
+          }
+          if checks != expected:
+              raise SystemExit(f'neutrality post-count mismatch: {checks!r}')
+          authority = 'val authorityIdentity = "$selected|${winner.block.windowId}|${winner.block.id}|$signature"'
+          screen_hash = 'screenHash = authorityIdentity.hashCode()'
+          if gate.count(authority) != 1 or gate.count(screen_hash) != 1:
+              raise SystemExit('FAROL authority identity mismatch after instrumentation')
+          (root/'stage11-evidence/neutrality-post.txt').write_text('\n'.join(f'{k}={v}' for k,v in checks.items()) + '\nauthority_identity=preserved\nscreen_hash=preserved\n', encoding='utf-8')
+          pre=(root/'stage11-evidence/neutrality-pre.txt').read_text(encoding='utf-8')
+          post=(root/'stage11-evidence/neutrality-post.txt').read_text(encoding='utf-8')
+          if pre != post: raise SystemExit('neutrality structure changed')
+
+          protected = [
+              'app/src/main/AndroidManifest.xml',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/DecisionEngine.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/FarolVisualPriority0189.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/FailedCardRecovery0161.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/GpsAddressResolver.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/RadarImport.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/ForensicIncidentMonitor0193.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt',
+          ]
+          lines=[]
+          for rel in protected:
+              p=root/rel
+              lines.append(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {rel}')
+          post_hash='\n'.join(lines)+'\n'
+          (root/'stage11-evidence/protected-stage9-post.sha256').write_text(post_hash, encoding='utf-8')
+          pre_hash=(root/'stage11-evidence/protected-stage9-pre.sha256').read_text(encoding='utf-8')
+          if pre_hash != post_hash: raise SystemExit('Stage9 protected file changed')
+          print('stage9_neutrality_post=passed')
+          PY
+          sha256sum \
+            app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/FarolLatencyProbeStage9.kt \
+            > stage11-evidence/instrumented-source.sha256
+
+      - name: Run full unit test suite
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage9-instrumented
+        run: |
+          set -euo pipefail
+          ./gradlew testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage11-tests.log
+          python3 - <<'PY' | tee stage11-evidence/test-count.txt
+          import glob
+          import xml.etree.ElementTree as ET
+          count=0
+          failures=0
+          for report in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              root=ET.parse(report).getroot()
+              count += int(root.attrib.get('tests',0))
+              failures += int(root.attrib.get('failures',0)) + int(root.attrib.get('errors',0))
+          print(f'tests={count}')
+          print(f'failures={failures}')
+          if count != 399: raise SystemExit(f'expected exactly 399 tests, got {count}')
+          if failures != 0: raise SystemExit(f'unit test failures={failures}')
+          PY
+
+      - name: Run lint
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage9-instrumented
+        run: |
+          set -euo pipefail
+          ./gradlew lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage11-lint.log
+          echo 'lintDebug=passed' | tee stage11-evidence/lint.txt
+
+      - name: Clean assemble debug
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage9-instrumented
+        run: |
+          set -euo pipefail
+          ./gradlew clean assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage11-assemble.log
+          echo 'clean_assembleDebug=passed' | tee stage11-evidence/assemble.txt
+
+      - name: Validate technical Stage 9 APK
+        working-directory: source
+        run: |
+          set -euo pipefail
+          APK_SOURCE=app/build/outputs/apk/debug/app-debug.apk
+          APK_OUT=stage11-evidence/rota-certa-0.1.194-stage9-latency-instrumented-ci.apk
+          test -s "$APK_SOURCE"
+          cp "$APK_SOURCE" "$APK_OUT"
+          unzip -tqq "$APK_OUT"
+          unzip -l "$APK_OUT" | grep -F 'classes.dex'
+          APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          AAPT="$(find "$ANDROID_SDK_ROOT/build-tools" -name aapt -type f | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          test -x "$AAPT"
+          "$AAPT" dump badging "$APK_OUT" | tee stage11-evidence/apk-badging.txt
+          grep -F "package: name='br.com.mapeiaia.rotacerta' versionCode='5478' versionName='0.1.194'" stage11-evidence/apk-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK_OUT" | tee stage11-evidence/apk-signature.txt
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' stage11-evidence/apk-signature.txt
+          grep -qi 'd9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' stage11-evidence/apk-signature.txt
+          for dex in $(zipinfo -1 "$APK_OUT" | grep -E '^classes([0-9]+)?\.dex$'); do unzip -p "$APK_OUT" "$dex"; done | strings > stage11-evidence/dex-strings.txt
+          for marker in \
+            FAROL_LATENCY_STAGE9 \
+            ACCESSIBILITY_IMMEDIATE_TEXT \
+            ACCESSIBILITY_CARD_BLOCKS \
+            OCR_CARD_GROUPS \
+            REAL_DEVICE_GATE \
+            POST_AUTH_READ_BINDING_FRESH \
+            OCR_EXTRACT_STRUCTURED \
+            READ_TO_DUPLICATE_SKIP \
+            FarolLatencyProbeStage9; do
+            grep -Fq "$marker" stage11-evidence/dex-strings.txt
+          done
+          sha256sum "$APK_OUT" | tee stage11-evidence/apk-sha256.txt
+          stat --printf='%s\n' "$APK_OUT" | tee stage11-evidence/apk-size-bytes.txt
+          cat > stage11-evidence/validation.txt <<'VALIDATION'
+          package=br.com.mapeiaia.rotacerta
+          versionName=0.1.194
+          versionCode=5478
+          purpose=stage9_ci_compilability_and_structural_neutrality_only
+          physical_measurement=false
+          optimization=false
+          bounded_memory_sink=true
+          max_events=512
+          authority_identity_preserved=true
+          screen_hash_authority_preserved=true
+          protected_never_write_preserved=true
+          public_release=false
+          latest_replaced=false
+          VALIDATION
+          sed -i 's/^          //' stage11-evidence/validation.txt
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage9-farol-latency-ci-failure
+          path: |
+            source/stage11-evidence/
+            source/stage9-materialize-0.1.194.log
+            source/stage11-tests.log
+            source/stage11-lint.log
+            source/stage11-assemble.log
+            source/app/build/reports/tests/
+            source/app/build/reports/lint-results-debug.html
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload Stage 9 CI evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-stage9-latency-instrumentation-ci-evidence
+          path: source/stage11-evidence/
+          retention-days: 30
+          if-no-files-found: error

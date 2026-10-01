@@ -1,0 +1,11 @@
+head=47fa9cbd4d96815794ab3db88253f984453b217d
+run=30749272318
+job=91500269757
+conclusion=success
+artifact_id=8833961162
+artifact_name=rota-certa-0.1.176-shortcut-single-tap-validated
+apk_sha256=b7180112912cc0656fd41c592e23e737677a37dbdcbedeef0afef2956d04eddb
+apk_bytes=55993295
+package=br.com.mapeiaia.rotacerta
+version=0.1.176
+version_code=5370
