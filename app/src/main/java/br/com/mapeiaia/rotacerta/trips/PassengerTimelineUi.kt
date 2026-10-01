@@ -3668,6 +3668,61 @@ internal suspend fun persistCanonicalPassengerMutation0582(
     return saved
 }
 
+internal fun passengerOperationalSaveMessage0714(selectionRaw: String): String = when (selectionRaw.trim().uppercase()) {
+    "PENDING" -> "Status Pendente salvo."
+    "CONFIRMED" -> "Passageiro confirmado."
+    "AT_LOCATION" -> "Status No local salvo."
+    "IN_CAR" -> "Status No carro salvo."
+    "PAID" -> "Pagamento confirmado."
+    "COMPLETED" -> "Passageiro concluído."
+    else -> "Status atualizado."
+}
+
+private fun saveExternalPassengerOperationalStatus0714(
+    row: EnhancedPassengerCardRow,
+    selectionRaw: String,
+    passengerStore: PassengerIdentityStore,
+): ExternalPassengerMetadata? {
+    val selection = selectionRaw.trim().uppercase()
+    if (selection !in setOf("PENDING", "CONFIRMED", "AT_LOCATION", "IN_CAR", "PAID", "COMPLETED")) return null
+    val key = row.externalReservationKey?.trim()?.takeIf(String::isNotEmpty) ?: return null
+    val current = passengerStore.externalMetadata(key) ?: ExternalPassengerMetadata(
+        reservationKey = key,
+        operationalStatus = row.operationalStatus,
+        paymentStatus = row.paymentStatus,
+        lastDriverSelection = row.lastDriverSelection,
+    )
+    if (
+        current.operationalStatus == PassengerOperationalStatus.COMPLETED &&
+        selection !in setOf("COMPLETED", "PAID")
+    ) return null
+    val operational = when (selection) {
+        "PENDING" -> PassengerOperationalStatus.PENDING
+        "CONFIRMED" -> PassengerOperationalStatus.CONFIRMED
+        "AT_LOCATION" -> PassengerOperationalStatus.AT_LOCATION
+        "IN_CAR" -> PassengerOperationalStatus.IN_CAR
+        "COMPLETED" -> PassengerOperationalStatus.COMPLETED
+        "PAID" -> current.operationalStatus
+        else -> current.operationalStatus
+    }
+    passengerStore.saveExternalMetadata(
+        current.copy(
+            operationalStatus = operational,
+            paymentStatus = if (selection == "PAID") PassengerPaymentStatus.PAID else current.paymentStatus,
+            lastDriverSelection = selection,
+        ),
+    )
+    val readback = passengerStore.externalMetadata(key) ?: return null
+    val statusMatches = if (selection == "PAID") {
+        readback.paymentStatus == PassengerPaymentStatus.PAID &&
+            readback.lastDriverSelection == "PAID"
+    } else {
+        readback.operationalStatus == operational &&
+            readback.lastDriverSelection == selection
+    }
+    return readback.takeIf { statusMatches }
+}
+
 internal fun passengerOperationalMutation0582(
     previous: Booking,
     selectionRaw: String,
@@ -3965,46 +4020,43 @@ internal fun passengerQuickMessageText0656(
     val clock0672 = boarding0672?.let { date0672 ->
         java.time.format.DateTimeFormatter.ofPattern("HH'h'mm", locale).format(date0672)
     }
-    val scheduleLine0672 = clock0672?.let { "Saída prevista às $it." }
-        ?: "Horário previsto do embarque ainda não disponível."
-    val name = row.name.ifBlank { "passageiro" }
+    val name = passengerFirstName0714(row.name)
     val origin = row.boarding?.trim()?.takeIf(String::isNotEmpty) ?: entry.origin.trim()
     val destination = row.dropoff?.trim()?.takeIf(String::isNotEmpty) ?: entry.destination.trim()
     val seatsText = if (row.seats == 1) "1 lugar" else "${row.seats} lugares"
-    val vehicleLines = listOf(vehicleMakeModel.trim(), vehicleColor.trim().uppercase(locale))
+    val vehicleLines = listOf(vehicleMakeModel.trim(), vehicleColor.trim().lowercase(locale))
         .filter(String::isNotBlank)
     val vehicleBlock = if (vehicleLines.isEmpty()) "" else {
-        "\n\nCarro\n\n" + vehicleLines.joinToString("\n\n")
+        "\nCarro: " + vehicleLines.joinToString(" • ")
     }
 
     return when (type) {
         PassengerQuickMessageType0656.CONFIRM_NOW -> buildString {
-            append("Olá, ").append(name).append("! Confirmando sua viagem:\n\n")
-            append(origin).append(" → ").append(destination).append("\n")
+            append("Oi, ").append(name).append("! Confirmando nossa viagem de ")
+                .append(origin).append(" para ").append(destination)
             if (dateTime0672 != null) {
-                append(dateTime0672).append(".")
-            } else {
-                append("Horário previsto do embarque ainda não disponível.")
+                append(", ").append(dateTime0672.replaceFirstChar { it.lowercase(locale) })
             }
-            append("\n\nEstá tudo certo?")
+            append(". Está tudo certo para você?")
+            append(vehicleBlock)
         }
         PassengerQuickMessageType0656.CONFIRM_TOMORROW ->
-            "Oi! Passando para confirmar nossa viagem amanhã 👍\n\n" +
-                scheduleLine0672 + "\n" +
-                "Perto te envio a localização em tempo real 🚗" +
+            "Oi, $name! Confirmando nossa viagem de amanhã" +
+                (clock0672?.let { " às $it" } ?: "") +
+                ". Perto do horário envio minha localização em tempo real." +
                 vehicleBlock
         PassengerQuickMessageType0656.CONFIRM_ONE_HOUR ->
-            "Oi, $name! Confirmando nossa viagem daqui a aproximadamente 1 hora 👍\n\n" +
-                scheduleLine0672 + "\n" +
-                "Em breve envio a localização em tempo real 🚗" +
+            "Oi, $name! Nossa viagem está prevista para daqui a cerca de 1 hora" +
+                (clock0672?.let { ", às $it" } ?: "") +
+                ". Está tudo certo por aí?" +
                 vehicleBlock
         PassengerQuickMessageType0656.AT_LOCATION ->
-            "Oi, $name! Já estou no local combinado para o embarque 📍"
+            "Oi, $name! Já cheguei ao local combinado para o embarque. 📍"
         PassengerQuickMessageType0656.FARE -> {
             val fare = row.fareMinorUnits?.let {
                 passengerTimelineFareClipboardText(it, row.fareCurrencyCode, localeTag)
             } ?: "valor ainda não disponível"
-            "Olá, $name! O valor exibido para sua reserva de $seatsText, de $origin para $destination, é $fare."
+            "Oi, $name! O valor da sua reserva para $seatsText é $fare."
         }
     }
 }
