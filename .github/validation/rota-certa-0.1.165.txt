@@ -1,0 +1,14 @@
+Rota Certa 0.1.165 — Linha do tempo autoritativa por tentativas
+
+Correção isolada do módulo Diagnóstico sobre a versão validada 0.1.164:
+- agrupa os eventos por mudança real de destino;
+- preserva decisões válidas anteriores mesmo quando há leituras incompletas posteriores;
+- separa a última decisão válida da última tentativa reconhecida;
+- informa resposta do Google Maps, distância, limpeza anterior e intervalo em milissegundos;
+- identifica quando a resposta foi descartada porque o card ou a janela já havia saído;
+- não altera farol, parser, Google Maps, Casa/Alfinetes, cores, raio, km ou overlay;
+- Manifest e permissões permanecem inalterados;
+- Coletor permanece removido.
+
+Validação final inclui os registros atualizados em docs/PROJECT_STATUS.md e docs/DECISIONS.md.
+A main permanece intacta até a validação prática do APK.
