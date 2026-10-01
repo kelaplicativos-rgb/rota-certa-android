@@ -437,10 +437,14 @@ internal class LiveTrackingShareManager0668(
         val session = repository.session() ?: return@withContext false
         val share = repository.passengerShare(passengerKey) ?: return@withContext false
         val settings = validatedSettings()
-        TrackingRemoteClient0668(settings).closeShare(TrackingCloseRequest0668(session.sessionId, share.token))
+        val response = TrackingRemoteClient0668(settings).closeShare(
+            TrackingCloseRequest0668(session.sessionId, share.token),
+        )
+        check(response.ok) { "Servidor não confirmou o encerramento do acompanhamento." }
+        val current = repository.session() ?: session
         repository.save(
-            session.copy(
-                shares = session.shares.map { if (it.token == share.token) it.copy(active = false) else it },
+            current.copy(
+                shares = current.shares.map { if (it.token == share.token) it.copy(active = false) else it },
             ),
         )
         true
