@@ -1,0 +1,26 @@
+Rota Certa 0.1.166
+
+Correção funcional universal sobre a versão validada 0.1.165:
+- qualquer pacote escolhido pelo usuário entra no mesmo caminho do farol;
+- nenhum nome de aplicativo é usado como autorização dentro da nova política;
+- a janela estável passa a vir da raiz real do aplicativo selecionado;
+- eventos da bolinha, do sistema ou com pacote nulo não podem substituir a janela real do card;
+- OCR pontual é permitido quando o pacote está selecionado, permanece como raiz estrita e o parser ainda não encontrou dois endereços;
+- OCR continua sem loop, sem polling e sem competir com rota ou decisão em andamento;
+- pacote não selecionado continua bloqueado;
+- parser, modelo de card, decisão, Google Maps, Casa/Alfinetes, Manifest e permissões permanecem preservados;
+- Coletor permanece removido.
+
+Evidência real que motivou a correção:
+- 99: acessibilidade incompleta chegou ao fallback, mas a exigência de provável card bloqueou o screenshot necessário para recuperar os endereços;
+- Uber: screenshot foi iniciado, porém uma janela transitória com pacote nulo alterou a sessão de 1759 para 1766 e descartou o resultado.
+
+Validação obrigatória:
+- aplicação idempotente dos scripts;
+- teste com pacote fictício selecionado;
+- teste de bloqueio para pacote não selecionado;
+- teste de preservação da janela raiz diante de overlay;
+- suíte unitária e de contrato;
+- Android Lint;
+- clean assembleDebug;
+- pacote, versão, versionCode, Manifest, assinatura e SHA-256 do APK.
