@@ -33,7 +33,6 @@ class FarolAddressRecovery0716ContractTest {
         val live = File("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").readText()
         assertTrue(live.contains("DistanceAuthority.ROAD_CONFIRMED"))
         assertTrue(live.contains("resolvePaidRoadFallback0715("))
-        assertTrue(live.contains("FAROL_PAID_ADDRESS_RECOVERY_STARTED_0716").not() || true)
         val paidAddressBackend = File("../trip-platform/functions/farol-paid-address-0695.js").readText()
         assertTrue(paidAddressBackend.contains("estabelecimento/ponto de interesse"))
         assertTrue(paidAddressBackend.contains("Não decida raio, cor, quilometragem"))
