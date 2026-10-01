@@ -128,6 +128,54 @@ internal val passengerQuickMessageChoices0656: List<PassengerQuickMessageChoice0
     PassengerQuickMessageChoice0656(PassengerQuickMessageType0656.FARE, "Valor da reserva"),
 )
 
+internal fun passengerFirstName0714(raw: String): String =
+    raw.trim().split(Regex("\\s+")).firstOrNull()?.takeIf(String::isNotBlank) ?: "Passageiro"
+
+internal data class PassengerMessageVehicle0714(
+    val makeModel: String = "",
+    val color: String = "",
+)
+
+internal fun resolvePassengerMessageVehicle0714(
+    context: Context,
+    entry: TripTimelineEntry,
+    store: TripStore,
+): PassengerMessageVehicle0714 {
+    val profileUuid = entry.blablaProfileUuid?.trim()?.lowercase()?.takeIf(String::isNotEmpty)
+    if (profileUuid != null) {
+        val matching = BlaBlaDynamicAccountRegistry(context.applicationContext).list()
+            .filter { it.profileUuid?.trim()?.lowercase() == profileUuid }
+        val account = matching.singleOrNull() ?: return PassengerMessageVehicle0714()
+        val snapshot = BlaBlaPublicProfileStore(context.applicationContext).read(account.id)
+            ?.takeIf {
+                it.identityVerified &&
+                    it.profileUuid.trim().equals(profileUuid, ignoreCase = true)
+            }
+            ?: return PassengerMessageVehicle0714()
+        return PassengerMessageVehicle0714(
+            makeModel = snapshot.vehicleMakeModel.trim(),
+            color = snapshot.vehicleColor.trim(),
+        )
+    }
+    val settings = store.onlineSettings()
+    return PassengerMessageVehicle0714(
+        makeModel = settings.vehicleMakeModel.trim(),
+        color = settings.vehicleColor.trim(),
+    )
+}
+
+internal fun passengerTrackingMessage0714(passengerName: String): String =
+    buildString {
+        append("🚗 ").append(passengerFirstName0714(passengerName)).append(", acompanhe a viagem em tempo real.\n\n")
+        append("O acompanhamento termina automaticamente no desembarque.\n\n")
+        append("👇 Toque somente no link abaixo:")
+    }
+
+internal fun passengerTrackingPayload0714(message: String, url: String): String = buildString {
+    append(message.trim())
+    if (url.isNotBlank()) append("\n\n").append(url.trim())
+}
+
 internal data class PassengerTimelineRenderSnapshot0394(
     val rows: List<EnhancedPassengerCardRow>,
     val profilesByRowKey: Map<String, PassengerProfile>,
@@ -677,8 +725,7 @@ internal fun EnhancedPassengerTimelineSection(
             }.onSuccess { outcome0668 ->
                 pendingTrackingRequest0668 = null
                 trackingRevision0676++
-                val trackingMessage0676 =
-                    "🚗 " + request0668.passengerName + ", acompanhe esta viagem em tempo real. Este link não mostra rastro, pode ser encaminhado a um familiar de confiança e expira automaticamente no desembarque:"
+                val trackingMessage0676 = passengerTrackingMessage0714(request0668.passengerName)
                 val openedDirectly0676 = openPassengerTrackingWhatsApp0676(
                     context = context,
                     rawPhone0676 = request0668.passengerPhone,
@@ -894,12 +941,16 @@ internal fun EnhancedPassengerTimelineSection(
     var statusShortcutRow0673 by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var boardingAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var dropoffAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
+    var boardingAddressSaving0714 by remember { mutableStateOf(false) }
+    var dropoffAddressSaving0714 by remember { mutableStateOf(false) }
     var quickMessageRow0656 by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var privateRefreshAttempted0656 by remember(trip?.id) { mutableStateOf(false) }
     var privateRefreshCompleted0656 by remember(trip?.id) { mutableStateOf(false) }
     var privateRefreshStartedAt0656 by remember(trip?.id) { mutableStateOf(0L) }
     val targetedRefreshCommit0656 by TargetedTripRefreshEvents0645.commit.collectAsState()
-    val vehicleSettings0656 = remember(store) { store.onlineSettings() }
+    val messageVehicle0714 = remember(entry.tripId, entry.blablaProfileUuid, store) {
+        resolvePassengerMessageVehicle0714(context, entry, store)
+    }
     val privateMetadataIncomplete0656 = rows.any(::passengerPrivateMetadataIncomplete0656)
     val privateMetadataFingerprint0656 = rows.joinToString("|") { row ->
         listOf(
@@ -947,7 +998,39 @@ internal fun EnhancedPassengerTimelineSection(
         }
         val selectedTrip0673 = trip
         if (selectedTrip0673 == null || currentBooking0673 == null) {
-            onChanged("A ocorrência canônica não está disponível para alterar o status.")
+            if (
+                BookingSource.BLABLACAR in passenger0673.sources &&
+                !passenger0673.externalReservationKey.isNullOrBlank()
+            ) {
+                val savedExternal0673 = saveExternalPassengerOperationalStatus0714(
+                    row = passenger0673,
+                    selectionRaw = selection0673,
+                    passengerStore = passengerStore,
+                )
+                if (savedExternal0673 != null) {
+                    identityRevision++
+                    UnifiedDebugEventStore.recordAlways(
+                        "PASSENGER_EXTERNAL_STATUS_READBACK_OK_0714",
+                        context.packageName,
+                        "rowKey=" + passengerCancellationHash(rowKey0673) +
+                            " selection=" + selection0673 + " authority=EXTERNAL_PASSENGER_METADATA",
+                    )
+                    if (selection0673 == "COMPLETED") {
+                        completionService.confirm(entry, passenger0673)?.let {
+                            completionRevision++
+                            identityRevision++
+                        }
+                        scope.launch(Dispatchers.IO) {
+                            runCatching { liveTrackingManager0668.closePassengerShare(rowKey0673) }
+                        }
+                    }
+                    onChanged(passengerOperationalSaveMessage0714(selection0673))
+                } else {
+                    onChanged("Nada foi alterado: não foi possível confirmar a gravação do status.")
+                }
+            } else {
+                onChanged("A ocorrência exata não está disponível para alterar o status.")
+            }
             return
         }
         scope.launch {
@@ -970,17 +1053,7 @@ internal fun EnhancedPassengerTimelineSection(
                         runCatching { liveTrackingManager0668.closePassengerShare(rowKey0673) }
                     }
                 }
-                onChanged(
-                    when (selection0673) {
-                        "PENDING" -> "Status Pendente salvo."
-                        "CONFIRMED" -> "Passageiro confirmado."
-                        "AT_LOCATION" -> "Status No local salvo."
-                        "IN_CAR" -> "Status No carro salvo."
-                        "PAID" -> "Pagamento confirmado."
-                        "COMPLETED" -> "Passageiro concluído."
-                        else -> "Status atualizado."
-                    },
-                )
+                onChanged(passengerOperationalSaveMessage0714(selection0673))
             }.onFailure { error0673 ->
                 onChanged("Nada foi alterado: " + (error0673.message ?: "falha ao gravar o status"))
             }
@@ -2124,7 +2197,7 @@ internal fun EnhancedPassengerTimelineSection(
                     contentPadding = ADDRESS_PLACE_PADDING,
                 ) {
                     Text(
-                        passengerTimelineCompactPlace(passenger.boarding),
+                        passengerOperationalAddressLabel0656(passenger, boarding = true),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -2147,7 +2220,7 @@ internal fun EnhancedPassengerTimelineSection(
                     contentPadding = ADDRESS_PLACE_PADDING,
                 ) {
                     Text(
-                        passengerTimelineCompactPlace(passenger.dropoff),
+                        passengerOperationalAddressLabel0656(passenger, boarding = false),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -2733,8 +2806,8 @@ internal fun EnhancedPassengerTimelineSection(
                                         row = row,
                                         type = choice.type,
                                         localeTag = PassengerMoney.spec(context).localeTag,
-                                        vehicleMakeModel = vehicleSettings0656.vehicleMakeModel,
-                                        vehicleColor = vehicleSettings0656.vehicleColor,
+                                        vehicleMakeModel = messageVehicle0714.makeModel,
+                                        vehicleColor = messageVehicle0714.color,
                                     )
                                     quickMessageRow0656 = null
                                     deliverPassengerQuickMessage0656(
@@ -2825,15 +2898,25 @@ internal fun EnhancedPassengerTimelineSection(
         PassengerAddressEditorDialog(
             title = "Endereço completo de embarque",
             initialValue = passengerAddressEditorInitialValue(row.boardingAddress, row.boarding),
-            onDismiss = { boardingAddressEditRow = null },
+            saving0714 = boardingAddressSaving0714,
+            onDismiss = { if (!boardingAddressSaving0714) boardingAddressEditRow = null },
             onSave = { address ->
                 val canonicalBooking0513 = row.localBookingId?.let(renderSnapshot.bookingsById::get)
                 val canonicalTrip0513 = trip?.takeIf { entry.canonicalBackendAuthoritative0494 }
-                boardingAddressEditRow = null
+                UnifiedDebugEventStore.recordAlways(
+                    "PASSENGER_ADDRESS_SAVE_REQUESTED_0714",
+                    context.packageName,
+                    "rowKey=" + passengerCancellationHash(passengerTimelineRowKey0394(row)) +
+                        " kind=BOARDING coordinatesInvalidated=true privateValueLogged=false",
+                )
                 if (canonicalBooking0513 != null && canonicalTrip0513 != null) {
+                    boardingAddressSaving0714 = true
                     scope.launch {
                         val updated0513 = canonicalBooking0513.copy(
                             boardingAddress = address,
+                            boardingLatitude = null,
+                            boardingLongitude = null,
+                            localMetadataTouched = true,
                             updatedAtMillis = System.currentTimeMillis(),
                         )
                         runCatching {
@@ -2845,14 +2928,44 @@ internal fun EnhancedPassengerTimelineSection(
                                 store = store,
                                 mutationCoordinator = mutationCoordinator,
                             )
-                        }.onSuccess {
-                            onChanged("Endereço de embarque salvo no estado canônico.")
+                        }.onSuccess { saved0513 ->
+                            val readback0513 = store.bookingsFor(canonicalTrip0513.id)
+                                .firstOrNull { it.id == saved0513.id }
+                            val verified0714 =
+                                saved0513.boardingAddress.trim() == address.trim() &&
+                                    saved0513.boardingLatitude == null &&
+                                    saved0513.boardingLongitude == null &&
+                                    readback0513?.boardingAddress?.trim() == address.trim() &&
+                                    readback0513.boardingLatitude == null &&
+                                    readback0513.boardingLongitude == null
+                            if (verified0714) {
+                                identityRevision++
+                                boardingAddressEditRow = null
+                                UnifiedDebugEventStore.recordAlways(
+                                    "PASSENGER_ADDRESS_READBACK_OK_0714",
+                                    context.packageName,
+                                    "rowKey=" + passengerCancellationHash(saved0513.id) +
+                                        " kind=BOARDING coordinatesInvalidated=true privateValueLogged=false",
+                                )
+                                onChanged("Endereço de embarque salvo.")
+                            } else {
+                                UnifiedDebugEventStore.recordAlways(
+                                    "PASSENGER_ADDRESS_READBACK_MISMATCH_0714",
+                                    context.packageName,
+                                    "rowKey=" + passengerCancellationHash(saved0513.id) +
+                                        " kind=BOARDING privateValueLogged=false",
+                                )
+                                onChanged("Endereço não confirmado após salvar. Nada será considerado concluído.")
+                            }
                         }.onFailure { error ->
                             onChanged("Endereço de embarque não salvo: " + (error.message ?: error.javaClass.simpleName))
                         }
+                        boardingAddressSaving0714 = false
                     }
                 } else if (savePassengerAddressLegacy0494(row, address, true, passengerStore)) {
-                    onChanged("Endereço de embarque salvo na ocorrência legada.")
+                    identityRevision++
+                    boardingAddressEditRow = null
+                    onChanged("Endereço de embarque salvo.")
                 } else {
                     Toast.makeText(context, "Reserva sem referência estável; endereço não foi salvo.", Toast.LENGTH_LONG).show()
                 }
@@ -2864,15 +2977,25 @@ internal fun EnhancedPassengerTimelineSection(
         PassengerAddressEditorDialog(
             title = "Endereço completo de destino",
             initialValue = passengerAddressEditorInitialValue(row.dropoffAddress, row.dropoff),
-            onDismiss = { dropoffAddressEditRow = null },
+            saving0714 = dropoffAddressSaving0714,
+            onDismiss = { if (!dropoffAddressSaving0714) dropoffAddressEditRow = null },
             onSave = { address ->
                 val canonicalBooking0513 = row.localBookingId?.let(renderSnapshot.bookingsById::get)
                 val canonicalTrip0513 = trip?.takeIf { entry.canonicalBackendAuthoritative0494 }
-                dropoffAddressEditRow = null
+                UnifiedDebugEventStore.recordAlways(
+                    "PASSENGER_ADDRESS_SAVE_REQUESTED_0714",
+                    context.packageName,
+                    "rowKey=" + passengerCancellationHash(passengerTimelineRowKey0394(row)) +
+                        " kind=DROPOFF coordinatesInvalidated=true privateValueLogged=false",
+                )
                 if (canonicalBooking0513 != null && canonicalTrip0513 != null) {
+                    dropoffAddressSaving0714 = true
                     scope.launch {
                         val updated0513 = canonicalBooking0513.copy(
                             dropoffAddress = address,
+                            dropoffLatitude = null,
+                            dropoffLongitude = null,
+                            localMetadataTouched = true,
                             updatedAtMillis = System.currentTimeMillis(),
                         )
                         runCatching {
@@ -2884,14 +3007,44 @@ internal fun EnhancedPassengerTimelineSection(
                                 store = store,
                                 mutationCoordinator = mutationCoordinator,
                             )
-                        }.onSuccess {
-                            onChanged("Endereço de destino salvo no estado canônico.")
+                        }.onSuccess { saved0513 ->
+                            val readback0513 = store.bookingsFor(canonicalTrip0513.id)
+                                .firstOrNull { it.id == saved0513.id }
+                            val verified0714 =
+                                saved0513.dropoffAddress.trim() == address.trim() &&
+                                    saved0513.dropoffLatitude == null &&
+                                    saved0513.dropoffLongitude == null &&
+                                    readback0513?.dropoffAddress?.trim() == address.trim() &&
+                                    readback0513.dropoffLatitude == null &&
+                                    readback0513.dropoffLongitude == null
+                            if (verified0714) {
+                                identityRevision++
+                                dropoffAddressEditRow = null
+                                UnifiedDebugEventStore.recordAlways(
+                                    "PASSENGER_ADDRESS_READBACK_OK_0714",
+                                    context.packageName,
+                                    "rowKey=" + passengerCancellationHash(saved0513.id) +
+                                        " kind=DROPOFF coordinatesInvalidated=true privateValueLogged=false",
+                                )
+                                onChanged("Endereço de destino salvo.")
+                            } else {
+                                UnifiedDebugEventStore.recordAlways(
+                                    "PASSENGER_ADDRESS_READBACK_MISMATCH_0714",
+                                    context.packageName,
+                                    "rowKey=" + passengerCancellationHash(saved0513.id) +
+                                        " kind=DROPOFF privateValueLogged=false",
+                                )
+                                onChanged("Endereço não confirmado após salvar. Nada será considerado concluído.")
+                            }
                         }.onFailure { error ->
                             onChanged("Endereço de destino não salvo: " + (error.message ?: error.javaClass.simpleName))
                         }
+                        dropoffAddressSaving0714 = false
                     }
                 } else if (savePassengerAddressLegacy0494(row, address, false, passengerStore)) {
-                    onChanged("Endereço de destino salvo na ocorrência legada.")
+                    identityRevision++
+                    dropoffAddressEditRow = null
+                    onChanged("Endereço de destino salvo.")
                 } else {
                     Toast.makeText(context, "Reserva sem referência estável; endereço não foi salvo.", Toast.LENGTH_LONG).show()
                 }
@@ -3180,13 +3333,14 @@ internal fun passengerAddressEditorInitialValue(savedAddress: String?, collected
 private fun PassengerAddressEditorDialog(
     title: String,
     initialValue: String,
+    saving0714: Boolean = false,
     onDismiss: () -> Unit,
     onSave: (String) -> Unit,
 ) {
     var value by remember(title, initialValue) { mutableStateOf(initialValue) }
     val normalized = value.trim()
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!saving0714) onDismiss() },
         title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -3205,9 +3359,9 @@ private fun PassengerAddressEditorDialog(
         },
         confirmButton = {
             TextButton(
-                enabled = normalized.isNotBlank(),
+                enabled = normalized.isNotBlank() && !saving0714,
                 onClick = { onSave(normalized) },
-            ) { Text("Salvar") }
+            ) { Text(if (saving0714) "Salvando…" else "Salvar") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
     )
@@ -3593,9 +3747,33 @@ private fun savePassengerAddressLegacy0494(
     val key = row.externalReservationKey ?: return false
     val current = passengerStore.externalMetadata(key) ?: ExternalPassengerMetadata(reservationKey = key)
     passengerStore.saveExternalMetadata(
-        if (boarding) current.copy(boardingAddress = address) else current.copy(dropoffAddress = address),
+        if (boarding) {
+            current.copy(
+                boardingAddress = address,
+                boardingLatitude = null,
+                boardingLongitude = null,
+                boardingAccuracyMeters = null,
+                boardingLocationSource = "",
+                boardingLocationCollectedAtMillis = null,
+            )
+        } else {
+            current.copy(
+                dropoffAddress = address,
+                dropoffLatitude = null,
+                dropoffLongitude = null,
+            )
+        },
     )
-    return true
+    val readback = passengerStore.externalMetadata(key) ?: return false
+    return if (boarding) {
+        readback.boardingAddress.trim() == address &&
+            readback.boardingLatitude == null &&
+            readback.boardingLongitude == null
+    } else {
+        readback.dropoffAddress.trim() == address &&
+            readback.dropoffLatitude == null &&
+            readback.dropoffLongitude == null
+    }
 }
 
 /** Legacy-only fare cache; canonical rows persist through the backend booking mutation. */
@@ -4162,10 +4340,7 @@ internal fun openPassengerTrackingWhatsApp0676(
     url0676: String,
 ): Boolean {
     val digits0676 = passengerWhatsAppDigits0515(rawPhone0676) ?: return false
-    val payload0676 = buildString {
-        append(message0676.trim())
-        if (url0676.isNotBlank()) append("\n").append(url0676.trim())
-    }
+    val payload0676 = passengerTrackingPayload0714(message0676, url0676)
     return runCatching {
         context.startActivity(
             Intent(
