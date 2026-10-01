@@ -70,7 +70,7 @@ class BlaBlaPublishedCapacity0366Test {
         assertEquals(9, summary.operationalInventorySeats)
         assertEquals(6, summary.totalAvailableSeats)
         assertEquals(3, summary.confirmedPassengerSeats)
-        assertEquals(7, summary.availableSeats)
+        assertEquals(6, summary.availableSeats)
         assertEquals(0, summary.overbookingSeats)
     }
 
@@ -84,7 +84,7 @@ class BlaBlaPublishedCapacity0366Test {
         val summary = operationalSeatSummary(trip, claims)
         assertEquals(1, summary.confirmedPassengerSeats)
         assertEquals(4, summary.rotaCertaQuotaSeats)
-        assertEquals(6, summary.availableSeats)
+        assertEquals(7, summary.availableSeats)
     }
 
     @Test
