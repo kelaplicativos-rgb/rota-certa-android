@@ -2,6 +2,42 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.709",
+      "build": 6000,
+      "commit": null,
+      "branch": "agent/organicmaps-offline-bridge-0.1.709",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Adiciona ponte funcional e isolada com o Organic Maps instalado usando somente a API/deep-link oficial om://.",
+        "A tela Navegação offline agora permite pesquisar um endereço no Organic Maps, escolher uma coordenada no mapa com retorno ao Rota Certa e iniciar navegação veicular offline a partir da localização atual.",
+        "Mantém o importador local de mapas .mwm do Rota Certa e exibe atribuição visível a Organic Maps e OpenStreetMap."
+      ],
+      "fixed": [
+        "Evita abrir manipuladores desconhecidos do esquema om://: o Rota Certa restringe o Intent aos pacotes oficiais conhecidos do Organic Maps.",
+        "Valida latitude/longitude antes de iniciar a navegação e rejeita coordenadas fora dos limites geográficos.",
+        "Declara visibilidade de pacote para Android 11+ e preserva o retorno de coordenada pelo contrato público de seleção de ponto."
+      ],
+      "improved": [
+        "A navegação offline imediata pode aproveitar os mapas já baixados no Organic Maps do aparelho sem alterar a autoridade atual do FAROL.",
+        "A integração é fail-closed: ausência do Organic Maps, retorno sem coordenada ou coordenada inválida não gera rota nem quilometragem no FAROL.",
+        "A base permanece pronta para futura incorporação do SDK/motor nativo dentro do próprio Rota Certa quando o empacotamento do SDK e os mapas regionais forem validados."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "A fundação 0.1.708 permitia apenas guardar .mwm; não havia ainda uma navegação offline funcional nem round-trip de coordenadas."
+      ],
+      "modulesAffected": [
+        "Navegação Offline",
+        "Organic Maps",
+        "Mapas",
+        "Configurações",
+        "FAROL",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.708",
       "build": 5999,
       "commit": null,
