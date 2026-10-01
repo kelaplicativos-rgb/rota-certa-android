@@ -1,5 +1,7 @@
 package br.com.mapeiaia.rotacerta
 
+import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -20,6 +22,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
@@ -41,14 +44,14 @@ class OfflineNavigationActivity0708 : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
-                OfflineNavigationScreen0708()
+                OfflineNavigationScreen0709()
             }
         }
     }
 }
 
 @Composable
-private fun OfflineNavigationScreen0708() {
+private fun OfflineNavigationScreen0709() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val store = remember { OfflineMapStore0708(context) }
     val scope = rememberCoroutineScope()
@@ -59,12 +62,17 @@ private fun OfflineNavigationScreen0708() {
             else maps.size.toString() + " mapa(s) regional(is) disponível(is).",
         )
     }
+    var navigationStatus by remember { mutableStateOf("") }
+    var destinationText by remember { mutableStateOf("") }
+    var destinationName by remember { mutableStateOf("") }
+    var organicMapsAvailable by remember { mutableStateOf(OrganicMapsOfflineBridge0709.isAvailable(context)) }
 
     fun refresh() {
         maps = store.listMaps()
+        organicMapsAvailable = OrganicMapsOfflineBridge0709.isAvailable(context)
     }
 
-    val picker = rememberLauncherForActivityResult(
+    val mapPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments(),
     ) { uris ->
         if (uris.isEmpty()) {
@@ -83,6 +91,38 @@ private fun OfflineNavigationScreen0708() {
         }
     }
 
+    val pointPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode != Activity.RESULT_OK) {
+            navigationStatus = "Seleção de ponto cancelada."
+            return@rememberLauncherForActivityResult
+        }
+        val picked = OrganicMapsOfflineBridge0709.extractPickedCoordinate(result.data)
+        if (picked == null) {
+            navigationStatus = "O Organic Maps retornou sem coordenada válida."
+            return@rememberLauncherForActivityResult
+        }
+        val (coordinate, name) = picked
+        destinationText = coordinate.wireValue()
+        if (!name.isNullOrBlank()) destinationName = name
+        navigationStatus = "Destino recebido: " + coordinate.wireValue()
+    }
+
+    fun launchPrepared(intent: Intent, successMessage: String) {
+        val prepared = OrganicMapsOfflineBridge0709.prepareIntent(context, intent)
+        if (prepared == null) {
+            navigationStatus = "Organic Maps não está instalado ou não responde a esta ação."
+            return
+        }
+        runCatching {
+            context.startActivity(prepared)
+            navigationStatus = successMessage
+        }.onFailure { error ->
+            navigationStatus = error.message ?: "Falha ao abrir o Organic Maps."
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -92,7 +132,7 @@ private fun OfflineNavigationScreen0708() {
     ) {
         Text("Navegação offline", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Text(
-            "Esta área prepara os mapas regionais que ficarão dentro do próprio Rota Certa. Você pode enviar os arquivos .mwm depois, sem precisar acessar Android/data.",
+            "O Rota Certa já mantém um espaço próprio para mapas .mwm e agora também possui uma ponte oficial para pesquisa, escolha de coordenada e navegação offline pelo Organic Maps instalado.",
             style = MaterialTheme.typography.bodyMedium,
         )
 
@@ -101,10 +141,135 @@ private fun OfflineNavigationScreen0708() {
                 modifier = Modifier.padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("Mapas offline", fontWeight = FontWeight.Bold)
+                Text("Ponte Organic Maps", fontWeight = FontWeight.Bold)
+                Text(
+                    if (organicMapsAvailable) {
+                        "Disponível no aparelho. A navegação pode usar os mapas que já estão baixados no Organic Maps mesmo sem internet."
+                    } else {
+                        "Organic Maps não detectado. A importação de .mwm do Rota Certa continua disponível, mas esta ponte não pode navegar."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+
+                OutlinedTextField(
+                    value = destinationText,
+                    onValueChange = { destinationText = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Destino: endereço ou latitude,longitude") },
+                    supportingText = {
+                        Text("Ex.: Rua Vicente Lopes, 8, São Paulo - SP ou -23.550520,-46.633308")
+                    },
+                )
+                OutlinedTextField(
+                    value = destinationName,
+                    onValueChange = { destinationName = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Nome do destino (opcional)") },
+                    singleLine = true,
+                )
+
+                Button(
+                    onClick = {
+                        val query = destinationText.trim()
+                        if (query.isBlank()) {
+                            navigationStatus = "Digite primeiro o endereço que deseja pesquisar."
+                        } else {
+                            val result = OrganicMapsOfflineBridge0709.launch(
+                                context,
+                                OrganicMapsOfflineBridge0709.buildSearchUri(query),
+                            )
+                            navigationStatus = result.reason
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = organicMapsAvailable,
+                ) {
+                    Text("Pesquisar endereço offline")
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        val request = OrganicMapsOfflineBridge0709.prepareIntent(
+                            context,
+                            OrganicMapsOfflineBridge0709.buildPickPointIntent("Rota Certa"),
+                        )
+                        if (request == null) {
+                            navigationStatus = "Organic Maps não está disponível para escolher o ponto."
+                        } else {
+                            pointPicker.launch(request)
+                            navigationStatus = "Escolha o destino no mapa e confirme."
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = organicMapsAvailable,
+                ) {
+                    Text("Escolher coordenada no mapa")
+                }
+
+                Button(
+                    onClick = {
+                        val coordinate = OrganicMapsOfflineBridge0709.parseCoordinate(destinationText)
+                        if (coordinate == null) {
+                            navigationStatus = "Para iniciar a navegação, use uma coordenada válida. Você pode obtê-la em Escolher coordenada no mapa."
+                        } else {
+                            val result = OrganicMapsOfflineBridge0709.launch(
+                                context,
+                                OrganicMapsOfflineBridge0709.buildNavigationUri(
+                                    destination = coordinate,
+                                    destinationName = destinationName.ifBlank { "Destino Rota Certa" },
+                                ),
+                            )
+                            navigationStatus = if (result.launched) {
+                                "Navegação offline enviada ao Organic Maps (" + result.packageName + ")."
+                            } else {
+                                result.reason
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = organicMapsAvailable,
+                ) {
+                    Text("Navegar offline agora")
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        val result = OrganicMapsOfflineBridge0709.openMain(context)
+                        navigationStatus = result.reason
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = organicMapsAvailable,
+                ) {
+                    Text("Abrir Organic Maps")
+                }
+
+                if (!organicMapsAvailable) {
+                    OutlinedButton(
+                        onClick = {
+                            runCatching { context.startActivity(OrganicMapsOfflineBridge0709.downloadPageIntent()) }
+                                .onFailure { navigationStatus = it.message ?: "Não foi possível abrir a página de instalação." }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Instalar Organic Maps")
+                    }
+                }
+
+                if (navigationStatus.isNotBlank()) {
+                    Text(navigationStatus, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("Mapas do próprio Rota Certa", fontWeight = FontWeight.Bold)
                 Text(
                     if (maps.isEmpty()) {
-                        "Aguardando mapas regionais. O aplicativo continua funcionando normalmente com a autoridade atual."
+                        "Aguardando mapas regionais .mwm. Você pode importá-los quando encontrar os arquivos."
                     } else {
                         maps.size.toString() + " mapa(s) importado(s), " +
                             formatOfflineBytes0708(maps.sumOf { it.sizeBytes }) + " no total."
@@ -112,13 +277,13 @@ private fun OfflineNavigationScreen0708() {
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Button(
-                    onClick = { picker.launch(arrayOf("*/*")) },
+                    onClick = { mapPicker.launch(arrayOf("*/*")) },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("Importar mapas (.mwm)")
                 }
                 Text(
-                    "Os arquivos são copiados para o armazenamento privado do Rota Certa. O arquivo original não é apagado.",
+                    "Os arquivos são copiados para o armazenamento privado do Rota Certa; o original não é apagado.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 if (status.isNotBlank()) {
@@ -132,19 +297,50 @@ private fun OfflineNavigationScreen0708() {
                 modifier = Modifier.padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("Motor offline", fontWeight = FontWeight.Bold)
+                Text("Autoridade do FAROL", fontWeight = FontWeight.Bold)
                 Text(
-                    if (maps.isEmpty()) {
-                        "Base preparada. O motor de rota não será autorizado sem mapas regionais."
-                    } else {
-                        "Mapas regionais presentes. A próxima etapa pode ligar busca, coordenadas, rota e navegação offline sobre estes arquivos."
-                    },
+                    "Fail-closed: esta versão não substitui o cálculo do FAROL por uma rota externa. A ponte Organic Maps é isolada até existir retorno de distância validado pelo motor incorporado.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Text(
-                    "Segurança: esta fase não altera o FAROL nem substitui o cálculo atual. Só a importação e o catálogo local de mapas foram habilitados.",
+                    "Isso impede que uma integração incompleta passe a pintar verde/vermelho ou publicar quilômetros incorretos.",
                     style = MaterialTheme.typography.bodySmall,
                 )
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("Créditos e dados de mapa", fontWeight = FontWeight.Bold)
+                Text(
+                    "Integração compatível com o Organic Maps Project. Dados de mapa: © OpenStreetMap e Organic Maps.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://organicmaps.app"))
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        },
+                    ) {
+                        Text("Organic Maps")
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://openstreetmap.org/copyright"))
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        },
+                    ) {
+                        Text("OpenStreetMap")
+                    }
+                }
             }
         }
 
@@ -158,22 +354,20 @@ private fun OfflineNavigationScreen0708() {
                     ) {
                         Text(map.name, fontWeight = FontWeight.Bold)
                         Text(formatOfflineBytes0708(map.sizeBytes), style = MaterialTheme.typography.bodySmall)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(
-                                onClick = {
-                                    scope.launch {
-                                        val removed = withContext(Dispatchers.IO) { store.remove(map.name) }
-                                        refresh()
-                                        status = if (removed) {
-                                            "Mapa removido: " + map.name
-                                        } else {
-                                            "Não foi possível remover " + map.name + "."
-                                        }
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    val removed = withContext(Dispatchers.IO) { store.remove(map.name) }
+                                    refresh()
+                                    status = if (removed) {
+                                        "Mapa removido: " + map.name
+                                    } else {
+                                        "Não foi possível remover " + map.name + "."
                                     }
-                                },
-                            ) {
-                                Text("Remover")
-                            }
+                                }
+                            },
+                        ) {
+                            Text("Remover")
                         }
                     }
                 }
