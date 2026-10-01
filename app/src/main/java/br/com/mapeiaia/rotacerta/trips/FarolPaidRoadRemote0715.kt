@@ -23,6 +23,7 @@ data class FarolPaidRoadResponse0715(
     val normalizedAddress: String = "",
     val confidence: Double = 0.0,
     val roadKm: Double? = null,
+    val targetIndex: Int = -1,
     val reason: String = "",
     val routeProvider: String = "",
     val addressProvider: String = "",
@@ -34,5 +35,6 @@ data class FarolPaidRoadResponse0715(
         get() = status.equals("RESOLVED", ignoreCase = true) &&
             normalizedAddress.isNotBlank() &&
             confidence >= 0.80 &&
-            roadKm?.let { it.isFinite() && it >= 0.0 } == true
+            roadKm?.let { it.isFinite() && it >= 0.0 } == true &&
+            targetIndex >= 0
 }
