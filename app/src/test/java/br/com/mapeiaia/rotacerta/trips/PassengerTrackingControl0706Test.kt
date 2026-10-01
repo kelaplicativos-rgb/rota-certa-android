@@ -29,13 +29,15 @@ class PassengerTrackingControl0706Test {
     }
 
     @Test
-    fun cardShortcutIsSingleSurfaceWithTwoSecondRevocation() {
+    fun cardShortcutIsSingleSurfaceWithNativeLongPressRevocation() {
         val source = File(
             "src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt",
         ).readText()
 
         assertContains(source, "PassengerTrackingShortcut0676(")
-        assertContains(source, "TRACKING_LONG_PRESS_MILLIS_0676 = 2_000L")
+        assertContains(source, ".combinedClickable(")
+        assertFalse(source.contains("TRACKING_LONG_PRESS_MILLIS_0676"))
+        assertFalse(source.contains("awaitFirstDown(requireUnconsumed = false)"))
         assertContains(source, "primary.copy(alpha = 0.24f)")
         assertContains(source, "openPassengerTrackingWhatsApp0676(")
         assertContains(source, "https://wa.me/\$digits0676?text=")
@@ -50,7 +52,11 @@ class PassengerTrackingControl0706Test {
         ).readText()
 
         assertContains(source, "fun isPassengerShareActive(passengerKey: String)")
-        assertContains(source, "Servidor não confirmou o encerramento do acompanhamento.")
-        assertTrue(source.indexOf("check(response.ok)") < source.indexOf("shares = session.shares.map"))
+        val closePassenger = source
+            .substringAfter("suspend fun closePassengerShare(passengerKey: String)")
+            .substringBefore("suspend fun closeActiveSession()")
+        assertContains(closePassenger, "val response = TrackingRemoteClient0668(settings).closeShare")
+        assertContains(closePassenger, "Servidor não confirmou o encerramento do acompanhamento.")
+        assertTrue(closePassenger.indexOf("check(response.ok)") < closePassenger.indexOf("repository.save"))
     }
 }
