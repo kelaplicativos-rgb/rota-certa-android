@@ -213,6 +213,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var farolVisualHeartbeatJob0711: Job? = null
     @Volatile private var farolLastConfirmedAddressAtElapsed0711: Long = 0L
     @Volatile private var farolLastConfirmedAddressSignature0711: String? = null
+    @Volatile private var farolRoadConfirmedBinding0713: String? = null
+    @Volatile private var farolRoadConfirmedDistanceKm0713: Double? = null
     private var proximityAlertMonitorStarted = false
     private var serviceReady = false
     private var analyzing = false
@@ -3792,6 +3794,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
             universalRouteJob = null
             lastAnalyzedHash = null
             currentDistanceKm = null
+            farolRoadConfirmedBinding0713 = null
+            farolRoadConfirmedDistanceKm0713 = null
             fastFarolStartedAtChecklist13 = System.currentTimeMillis()
         }
         stage19ActiveWindowId = evaluationStage19.windowId
@@ -3849,10 +3853,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
             "candidateToRouteStart",
             (SystemClock.elapsedRealtimeNanos() - stage26CandidateEventStartedNs).coerceAtLeast(0L),
         )
-        // 0.1.696 Local Decision Authority:
-        // 1) cached coordinate => local Haversine decision is FINAL immediately (color + km);
-        // 2) cached/network road distance may refine only the displayed km for the SAME binding;
-        // 3) road routing never owns Green/Red.
+        // 0.1.713 Road-KM Finality:
+        // 1) cached coordinate/Haversine may decide the recommendation internally;
+        // 2) Haversine kilometres are NEVER public;
+        // 3) only a confirmed road route may expose Green/Red + km for the same binding.
         val preliminaryDistancesStage637 = cachedLocalDistancesFastStage637(
             originAddress = fieldsStage19.destination.orEmpty(),
             destinations = targetsStage19.destinations,
@@ -3908,6 +3912,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                     bindingStage19,
                     traceIdStage20,
                     "ROAD_CACHE_REFINEMENT_0696",
+                    distanceAuthority0713 = FarolRoadKmFinality0713.DistanceAuthority.ROAD_CONFIRMED,
                 )
                 return
             }
@@ -4096,7 +4101,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             "LOCAL_RESOLVE_AUTHORITY_0696",
         )
 
-        // Only after the local final paint exists do we start optional road refinement.
+        // 0.1.713: local Haversine is internal only; road refinement is required before public km.
         if (!isStage19BindingFresh(bindingStage19)) {
             FarolCausalLatencyStage28.Metrics.increment("staleResultsDropped")
             return
@@ -4177,8 +4182,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val exactRoadDistances0696 = exactRoadDistancesCandidate0699 ?: run {
             rememberBubbleReason(
                 "stage699_remote_refinement_failed_soft",
-                if (remoteFailure0699 != null) "Decisão local preservada; falha recuperável no refinamento rodoviário."
-                else "Decisão local preservada; refinamento rodoviário indisponível nesta tentativa.",
+                if (remoteFailure0699 != null) "Cor local calculada; falha recuperável na rota rodoviária. KM permanece oculto."
+                else "Cor local calculada; rota rodoviária indisponível nesta tentativa. KM permanece oculto.",
             )
             if (remoteFailure0699 != null) {
                 FarolFlightRecorder0163.record(
@@ -4205,7 +4210,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (exactRoadDistances0696.all { it == null }) {
             rememberBubbleReason(
                 "stage696_remote_refinement_unavailable",
-                "Decisão local mantida; rota rodoviária não respondeu nesta tentativa.",
+                "Cor local mantida internamente; rota rodoviária não respondeu. KM permanece oculto.",
             )
             return
         }
@@ -4236,6 +4241,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             bindingStage19,
             traceIdStage20,
             "ROAD_REFINEMENT_0696",
+            distanceAuthority0713 = FarolRoadKmFinality0713.DistanceAuthority.ROAD_CONFIRMED,
         )
     }
 
@@ -4268,53 +4274,38 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (!isStage19LocalSemanticFresh0698(bindingStage19)) return
         if (!FarolLocalDecisionAuthority0696.isFinalLocalDecision(resultStage637)) return
 
-        val localFinal0696 = resultStage637.copy(
-            reason = "Decisão final local por coordenada + Haversine; rota rodoviária é apenas refinamento opcional.",
+        val localPrivate0713 = resultStage637.copy(
+            reason = "Cor local calculada por coordenada + Haversine; KM permanece privado até rota rodoviária confirmada.",
         )
         rememberBubbleReason(
-            "stage696_local_final_committed",
-            localFinal0696.reason,
+            "stage713_local_private_waiting_road",
+            localPrivate0713.reason,
         )
         UnifiedDebugEventStore.record(
-            FarolLocalDecisionAuthority0696.LOCAL_COMMIT_MARKER,
+            FarolRoadKmFinality0713.LOCAL_KM_SUPPRESSED_MARKER,
             universalResolvedForegroundPackage(),
-            "recommendation=${localFinal0696.recommendation}; distance=${FarolLocalDecisionAuthority0696.nearestDistanceKm(localFinal0696)}; binding=${bindingStage19.addressSignature}; roadRequired=false",
+            "recommendation=${localPrivate0713.recommendation}; localKm=${FarolLocalDecisionAuthority0696.nearestDistanceKm(localPrivate0713)}; binding=${bindingStage19.addressSignature}; roadRequired=true",
         )
         FarolMaximumForensicsStage38.record(
             SystemClock.elapsedRealtimeNanos(),
             System.currentTimeMillis(),
-            FarolLocalDecisionAuthority0696.LOCAL_COMMIT_MARKER,
+            FarolRoadKmFinality0713.LOCAL_KM_SUPPRESSED_MARKER,
             packageName = null,
             traceId = traceIdStage20,
             operationId = operationIdStage637,
-            details = "recommendation=${localFinal0696.recommendation}; distance=${FarolLocalDecisionAuthority0696.nearestDistanceKm(localFinal0696)}; binding=${bindingStage19.addressSignature}; roadRequired=false",
+            details = "recommendation=${localPrivate0713.recommendation}; localKm=${FarolLocalDecisionAuthority0696.nearestDistanceKm(localPrivate0713)}; binding=${bindingStage19.addressSignature}; roadRequired=true",
         )
-        bubblePrefs.edit().putString("fast_farol_last_path", "stage696_local_authority").apply()
+        bubblePrefs.edit().putString("fast_farol_last_path", "stage713_local_private_waiting_road").apply()
         applyUniversalTwoAddressResultStage19(
-            localFinal0696,
+            localPrivate0713,
             bindingStage19,
             traceIdStage20,
             operationIdStage637,
-            FarolLocalSemanticFreshness0698.PaintAuthority.LOCAL_SEMANTIC,
+            paintAuthority0698 = FarolLocalSemanticFreshness0698.PaintAuthority.LOCAL_SEMANTIC,
+            distanceAuthority0713 = FarolRoadKmFinality0713.DistanceAuthority.LOCAL_HAVERSINE,
         )
-        if (
-            isStage19LocalSemanticFresh0698(bindingStage19) &&
-            (currentRadarColor == RadarColor.Default || currentDistanceKm == null)
-        ) {
-            UnifiedDebugEventStore.record(
-                FarolLocalDecisionAuthority0696.WATCHDOG_REPAINT_MARKER,
-                universalResolvedForegroundPackage(),
-                "binding=${bindingStage19.addressSignature}; expected=${localFinal0696.recommendation}; distance=${FarolLocalDecisionAuthority0696.nearestDistanceKm(localFinal0696)}",
-            )
-            applyUniversalTwoAddressResultStage19(
-                localFinal0696,
-                bindingStage19,
-                traceIdStage20,
-                "LOCAL_WATCHDOG_REPAINT_0696",
-                FarolLocalSemanticFreshness0698.PaintAuthority.LOCAL_SEMANTIC,
-            )
-        }
     }
+
     private suspend fun applyUniversalTwoAddressResultStage19(
         resultStage19: AnalysisResult,
         bindingStage19: FarolUniversalVisualPipelineStage19.Binding,
@@ -4322,6 +4313,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         operationIdStage20: String,
         paintAuthority0698: FarolLocalSemanticFreshness0698.PaintAuthority =
             FarolLocalSemanticFreshness0698.PaintAuthority.VISUAL_SURFACE,
+        distanceAuthority0713: FarolRoadKmFinality0713.DistanceAuthority =
+            FarolRoadKmFinality0713.DistanceAuthority.LOCAL_HAVERSINE,
     ) {
         val localSemanticPaint0698 =
             paintAuthority0698 == FarolLocalSemanticFreshness0698.PaintAuthority.LOCAL_SEMANTIC
@@ -4340,6 +4333,30 @@ class LiveRideAccessibilityService : AccessibilityService() {
             Recommendation.InsufficientData -> RadarColor.Default
         }
         val distanceStage19 = resultStage19.nearestConfiguredDistanceKm()
+        if (distanceAuthority0713 != FarolRoadKmFinality0713.DistanceAuthority.ROAD_CONFIRMED) {
+            val preserveRoad0713 = FarolRoadKmFinality0713.shouldPreserveConfirmedRoad(
+                confirmedBinding = farolRoadConfirmedBinding0713,
+                candidateBinding = bindingStage19.addressSignature,
+                confirmedDistanceKm = farolRoadConfirmedDistanceKm0713,
+                currentDistanceKm = currentDistanceKm,
+            ) && (currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red)
+            UnifiedDebugEventStore.record(
+                FarolRoadKmFinality0713.LOCAL_KM_SUPPRESSED_MARKER,
+                universalResolvedForegroundPackage(),
+                "binding=${bindingStage19.addressSignature}; localKm=${distanceStage19 ?: -1.0}; preserveRoad=$preserveRoad0713; currentKm=${currentDistanceKm ?: -1.0}",
+            )
+            if (!preserveRoad0713) showOverlay(RadarColor.Default, distanceKm = null)
+            return
+        }
+        if (!FarolRoadKmFinality0713.isPublishableRoadDistance(distanceStage19)) {
+            UnifiedDebugEventStore.record(
+                FarolRoadKmFinality0713.INVALID_ROAD_KM_REJECTED_MARKER,
+                universalResolvedForegroundPackage(),
+                "binding=${bindingStage19.addressSignature}; roadKm=${distanceStage19 ?: -1.0}",
+            )
+            showOverlay(RadarColor.Default, distanceKm = null)
+            return
+        }
         FarolForensicCardBlackBoxStage32.recordPaintRequested(SystemClock.elapsedRealtimeNanos(), colorStage19.toString(), distanceStage19)
         FarolMaximumForensicsStage38.record(
             SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S38_FINAL_PAINT_PREPARE", packageName = null, traceId = traceIdStage20, operationId = operationIdStage20,
@@ -4357,6 +4374,21 @@ class LiveRideAccessibilityService : AccessibilityService() {
         stage20ExpectedPaintToken = paintTokenStage20
         try {
             showOverlay(colorStage19, distanceStage19)
+            if (
+                (colorStage19 == RadarColor.Green || colorStage19 == RadarColor.Red) &&
+                currentRadarColor == colorStage19 &&
+                currentDistanceKm == distanceStage19
+            ) {
+                farolRoadConfirmedBinding0713 = bindingStage19.addressSignature
+                farolRoadConfirmedDistanceKm0713 = distanceStage19
+                farolLastConfirmedAddressAtElapsed0711 = SystemClock.elapsedRealtime()
+                farolLastConfirmedAddressSignature0711 = bindingStage19.addressSignature
+                UnifiedDebugEventStore.record(
+                    FarolRoadKmFinality0713.ROAD_KM_PUBLISHED_MARKER,
+                    universalResolvedForegroundPackage(),
+                    "binding=${bindingStage19.addressSignature}; roadKm=$distanceStage19; color=$colorStage19",
+                )
+            }
             FarolMaximumForensicsStage38.record(
                 SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S38_FINAL_PAINT_APPLIED", packageName = null, traceId = traceIdStage20, operationId = operationIdStage20,
                 details = "color=$colorStage19; distanceKm=${distanceStage19 ?: -1.0}; currentColor=$currentRadarColor; currentDistance=$currentDistanceKm",
@@ -4418,17 +4450,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
             (currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red) &&
                 currentDistanceKm != null
 
-        if (hasPublicResult0711 &&
-            FarolOneSecondVisualAuthority0711.expired(
-                now0711,
-                farolLastConfirmedAddressAtElapsed0711,
-            )
-        ) {
-            hardClearUniversalTwoAddress(
-                reason = "Lease visual de 1 segundo expirou sem nova confirmação do endereço atual.",
-                keepWaitingYellow = false,
-            )
-        }
+        // 0.1.713: TTL sozinho nunca revoga um ROAD_CONFIRMED antes de observar a tela atual.
+        // Ausência, mudança ou ambiguidade continuam limpando abaixo; o mesmo endereço renova
+        // o lease ou reprocessa sem regressão visual para Haversine.
 
         val selected0711 = SelectedRideAppStore.read(applicationContext)
         val visible0711 = resolveVisibleAuthorizedRootStage16(selected0711)
@@ -6385,8 +6409,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
             applyUniversalTwoAddressResult(
                 cachedResultChecklist13,
                 decisionBindingChecklist13,
-            ) // exact_cache_before_yellow_checklist_13
-            return
+                distanceAuthority0713 = FarolRoadKmFinality0713.DistanceAuthority.LOCAL_HAVERSINE,
+            ) // 0.1.713: coordinate cache is private; road routing still runs.
         }
 
         screenshotFallbackJob127?.cancel()
@@ -6394,7 +6418,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         lastAccessibilityAcceptedAtMillis127 = System.currentTimeMillis()
         // accessibility_card_cancels_ocr_0_1_157
         UnifiedDebugEventStore.record("BUBBLE_ROUTE_REQUESTED", selectedPackageChecklist13, "destino=${fieldsChecklist13.destination.orEmpty()}; alvos=${targetsChecklist13.destinations.size}; generation=${decisionBindingChecklist13.screenGeneration}; windowGeneration=${decisionBindingChecklist13.windowGeneration}")
-        rememberBubbleReason("universal_waiting", "Destino final confirmado; distância local em cálculo.")
+        rememberBubbleReason("universal_waiting", "Destino final confirmado; rota rodoviária em cálculo. KM local permanece oculto.")
         if (currentRadarColor != RadarColor.Default || currentDistanceKm != null) {
             showOverlay(RadarColor.Default, distanceKm = null)
         } // destination_confirmed_orange_0_1_189
@@ -6573,8 +6597,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 routeDistances = cachedDistances0161,
             )
             bubblePrefs.edit().putString("fast_farol_last_path", "cache_exato_recuperado_0161").apply()
-            applyUniversalTwoAddressResult(cachedResult0161, decisionBinding0161Phase4)
-            return
+            applyUniversalTwoAddressResult(
+                cachedResult0161,
+                decisionBinding0161Phase4,
+                distanceAuthority0713 = FarolRoadKmFinality0713.DistanceAuthority.LOCAL_HAVERSINE,
+            )
         }
 
         UnifiedDebugEventStore.record(
@@ -6582,7 +6609,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             selectedPackage0161,
             "destino=$destination0161; alvos=${targets0161.destinations.size}; generation=${decisionBinding0161Phase4.screenGeneration}; windowGeneration=${decisionBinding0161Phase4.windowGeneration}; recovery=${recovery0161.strategy}",
         )
-        rememberBubbleReason("universal_waiting", "Card recuperado; calculando o ultimo destino.")
+        rememberBubbleReason("universal_waiting", "Card recuperado; calculando rota rodoviária. KM local permanece oculto.")
         if (currentRadarColor != RadarColor.Default || currentDistanceKm != null) {
             showOverlay(RadarColor.Default, distanceKm = null)
         }
@@ -6668,11 +6695,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
             return
         }
         UnifiedDebugEventStore.record("BUBBLE_ROUTE_CALL_START", universalActiveRidePackageName, "destino=${fields.destination.orEmpty()}; alvos=${targetsChecklist13.destinations.size}; generation=${decisionBinding0187Phase4.screenGeneration}; windowGeneration=${decisionBinding0187Phase4.windowGeneration}")
-        val routeDistancesChecklist13 = localDistancesFromAddressKm(
+        val localDistancesChecklist13 = localDistancesFromAddressKm(
             originAddress = fields.destination.orEmpty(),
             destinations = targetsChecklist13.destinations,
             apiKey = apiKeyChecklist13,
-        ) // single_exact_route_matrix_checklist_13
+        )
         if (!isDecisionBindingFresh0187Phase4(decisionBinding0187Phase4)) {
             FarolCausalLatencyStage28.Metrics.increment("staleResultsDropped")
             FarolMaximumForensicsStage38.record(SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "STALE_RESULT_DROPPED", decisionBinding0187Phase4.packageName, details = "phase=local_distance")
@@ -6683,15 +6710,50 @@ class LiveRideAccessibilityService : AccessibilityService() {
             )
             return
         }
-        UnifiedDebugEventStore.record("BUBBLE_ROUTE_CALL_END", universalActiveRidePackageName, "distancias=$routeDistancesChecklist13; fresh=true")
-        val resultChecklist13 = decideFastWorkRegionChecklist13(
+        val localResultChecklist13 = decideFastWorkRegionChecklist13(
             snapshotText = snapshotText,
             fields = fields,
             settings = settingsChecklist13,
             targets = targetsChecklist13,
-            routeDistances = routeDistancesChecklist13,
+            routeDistances = localDistancesChecklist13,
         )
-        applyUniversalTwoAddressResult(resultChecklist13, decisionBinding0187Phase4)
+        applyUniversalTwoAddressResult(
+            localResultChecklist13,
+            decisionBinding0187Phase4,
+            distanceAuthority0713 = FarolRoadKmFinality0713.DistanceAuthority.LOCAL_HAVERSINE,
+        )
+        if (!FarolLocalDecisionAuthority0696.isFinalLocalDecision(localResultChecklist13)) return
+
+        val roadDistancesChecklist13 = googleMapsService.trafficAwareDrivingDistancesFromAddressKm(
+            originAddress = fields.destination.orEmpty(),
+            destinations = targetsChecklist13.destinations,
+            apiKey = apiKeyChecklist13,
+        )
+        if (!isDecisionBindingFresh0187Phase4(decisionBinding0187Phase4)) {
+            FarolCausalLatencyStage28.Metrics.increment("staleResultsDropped")
+            return
+        }
+        UnifiedDebugEventStore.record("BUBBLE_ROUTE_CALL_END", universalActiveRidePackageName, "roadDistances=$roadDistancesChecklist13; fresh=true")
+        if (roadDistancesChecklist13.all { it == null }) {
+            rememberBubbleReason("stage713_legacy_road_unavailable", "Rota rodoviária indisponível; KM local permanece oculto.")
+            return
+        }
+        val refinedResultChecklist13 = attachExactRoadDistanceStage637(
+            localResultChecklist13,
+            targetsChecklist13,
+            roadDistancesChecklist13,
+        ).copy(
+            recommendation = FarolLocalDecisionAuthority0696.preserveLocalRecommendation(
+                localResultChecklist13.recommendation,
+                localResultChecklist13.recommendation,
+            ),
+            reason = "Cor decidida localmente; somente a quilometragem rodoviária confirmada é pública.",
+        )
+        applyUniversalTwoAddressResult(
+            refinedResultChecklist13,
+            decisionBinding0187Phase4,
+            distanceAuthority0713 = FarolRoadKmFinality0713.DistanceAuthority.ROAD_CONFIRMED,
+        )
     } // simple_saved_app_route_checklist_13
  // simple_saved_app_route_checklist_13
 
@@ -6699,6 +6761,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private suspend fun applyUniversalTwoAddressResult(
         result: AnalysisResult,
         decisionBinding0187Phase4: FarolDecisionBinding0187Phase4,
+        distanceAuthority0713: FarolRoadKmFinality0713.DistanceAuthority =
+            FarolRoadKmFinality0713.DistanceAuthority.LOCAL_HAVERSINE,
     ) {
         if (!isDecisionBindingFresh0187Phase4(decisionBinding0187Phase4)) return
         val colorChecklist13 = when (result.recommendation) {
@@ -6707,6 +6771,25 @@ class LiveRideAccessibilityService : AccessibilityService() {
             Recommendation.InsufficientData -> RadarColor.Default
         }
         val distanceChecklist13 = result.nearestConfiguredDistanceKm()
+        if (distanceAuthority0713 != FarolRoadKmFinality0713.DistanceAuthority.ROAD_CONFIRMED) {
+            val preserveRoad0713 = FarolRoadKmFinality0713.shouldPreserveConfirmedRoad(
+                confirmedBinding = farolRoadConfirmedBinding0713,
+                candidateBinding = decisionBinding0187Phase4.addressSignature,
+                confirmedDistanceKm = farolRoadConfirmedDistanceKm0713,
+                currentDistanceKm = currentDistanceKm,
+            ) && (currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red)
+            UnifiedDebugEventStore.record(
+                FarolRoadKmFinality0713.LOCAL_KM_SUPPRESSED_MARKER,
+                universalActiveRidePackageName,
+                "binding=${decisionBinding0187Phase4.addressSignature}; localKm=${distanceChecklist13 ?: -1.0}; preserveRoad=$preserveRoad0713",
+            )
+            if (!preserveRoad0713) showOverlay(RadarColor.Default, distanceKm = null)
+            return
+        }
+        if (!FarolRoadKmFinality0713.isPublishableRoadDistance(distanceChecklist13)) {
+            showOverlay(RadarColor.Default, distanceKm = null)
+            return
+        }
         lastAnalyzedHash = decisionBinding0187Phase4.screenHash
         UnifiedDebugEventStore.record(
             "BUBBLE_DECISION_READY",
@@ -6715,6 +6798,19 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
         rememberBubbleReason("universal_result", result.reason)
         showOverlay(colorChecklist13, distanceChecklist13)
+        if (
+            (colorChecklist13 == RadarColor.Green || colorChecklist13 == RadarColor.Red) &&
+            currentRadarColor == colorChecklist13 &&
+            currentDistanceKm == distanceChecklist13
+        ) {
+            farolRoadConfirmedBinding0713 = decisionBinding0187Phase4.addressSignature
+            farolRoadConfirmedDistanceKm0713 = distanceChecklist13
+            UnifiedDebugEventStore.record(
+                FarolRoadKmFinality0713.ROAD_KM_PUBLISHED_MARKER,
+                universalActiveRidePackageName,
+                "binding=${decisionBinding0187Phase4.addressSignature}; roadKm=$distanceChecklist13; color=$colorChecklist13; path=legacy",
+            )
+        }
         UnifiedDebugEventStore.record("BUBBLE_DECISION_PAINTED", universalActiveRidePackageName, "cor=$colorChecklist13; distancia=$distanceChecklist13; stage=$lastBubbleStateStage; motivo=$lastBubbleStateReason")
         val finishedAtChecklist13 = System.currentTimeMillis()
         val elapsedChecklist13 = if (fastFarolStartedAtChecklist13 > 0L) {
@@ -6805,6 +6901,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         universalLastActiveReadAtElapsedMillis0187 = 0L
         farolLastConfirmedAddressAtElapsed0711 = 0L
         farolLastConfirmedAddressSignature0711 = null
+        farolRoadConfirmedBinding0713 = null
+        farolRoadConfirmedDistanceKm0713 = null
         universalActiveRidePackageName = null
         universalLiveReadGate.reset()
         if (stateChanged) {

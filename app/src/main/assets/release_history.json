@@ -2,6 +2,45 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.713",
+      "build": 6004,
+      "commit": null,
+      "branch": "agent/farol-road-km-finality-0.1.713",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Separa a autoridade da cor e da quilometragem do FAROL: Haversine continua como evidência local interna, mas nunca é mostrado como KM.",
+        "Somente distância rodoviária confirmada para o mesmo endereço semântico pode publicar verde/vermelho + KM na bolinha.",
+        "Adiciona estado monotônico por binding: ROAD_CONFIRMED não pode regredir para Haversine ao reprocessar o mesmo card."
+      ],
+      "fixed": [
+        "Elimina o primeiro número provisório de Haversine que aparecia antes do KM rodoviário definitivo.",
+        "Remove a revogação baseada apenas no TTL antes de observar a tela atual; o heartbeat valida primeiro a superfície corrente.",
+        "Corrige caminhos legados e de recuperação que encerravam o fluxo após cache de coordenada/Haversine."
+      ],
+      "improved": [
+        "Mudança real de endereço, ausência de card, app não selecionado ou ambiguidade continuam limpando o resultado imediatamente.",
+        "Falha ou stale da rota rodoviária mantém KM oculto em vez de expor distância em linha reta.",
+        "Cache rodoviário confirmado continua sendo caminho rápido e pode publicar imediatamente."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.696-0.1.712: Haversine podia aparecer como KM final e depois ser substituído pela rota real.",
+        "0.1.711-0.1.712: expiração do lease podia apagar ROAD_CONFIRMED e provocar nova passagem visual pelo valor local."
+      ],
+      "modulesAffected": [
+        "FAROL",
+        "Bolinha",
+        "Leitura de cards",
+        "Geocodificação",
+        "Rotas",
+        "Heartbeat visual",
+        "Cache",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.712",
       "build": 6003,
       "commit": null,
