@@ -136,6 +136,11 @@ object OrganicMapsOfflineBridge0709 {
     fun isAvailable(context: Context): Boolean =
         resolveAllowedPackage(context, Intent(Intent.ACTION_VIEW, Uri.parse("om://map?v=1"))) != null
 
+    fun prepareIntent(context: Context, source: Intent): Intent? {
+        val packageName = resolveAllowedPackage(context, source) ?: return null
+        return Intent(source).setPackage(packageName)
+    }
+
     fun launch(context: Context, uri: Uri): OrganicMapsLaunchResult0709 =
         launchIntent(context, Intent(Intent.ACTION_VIEW, uri))
 
