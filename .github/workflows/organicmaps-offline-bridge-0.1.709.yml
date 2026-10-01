@@ -1,0 +1,187 @@
+name: Rota Certa 0.1.709 Organic Maps Offline Bridge exact SHA
+
+on:
+  push:
+    branches:
+      - 'agent/organicmaps-offline-bridge-0.1.709'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: organicmaps-offline-bridge-0709-${{ github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: 'agent/organicmaps-offline-bridge-0.1.709'
+      BASE_SHA: '8847c89a8daf51141567abe5d42940be498876be'
+      EXPECTED_VERSION_NAME: '0.1.709'
+      EXPECTED_VERSION_CODE: '6000'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Prove exact source scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'val releaseVersionName = "0.1.709"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 6_000' app/build.gradle.kts
+          grep -Fq '"version": "0.1.709"' app/src/main/assets/release_history.json
+          grep -Fq 'ORGANIC_MAPS_OFFLINE_BRIDGE_0709' app/src/main/java/br/com/mapeiaia/rotacerta/OrganicMapsOfflineBridge0709.kt
+          grep -Fq 'ORGANIC_MAPS_V2_NAV_CURRENT_LOCATION_0709' app/src/main/java/br/com/mapeiaia/rotacerta/OrganicMapsOfflineBridge0709.kt
+          grep -Fq 'ORGANIC_MAPS_PICK_POINT_ROUNDTRIP_0709' app/src/main/java/br/com/mapeiaia/rotacerta/OrganicMapsOfflineBridge0709.kt
+          grep -Fq 'ORGANIC_MAPS_BRIDGE_DOES_NOT_CHANGE_FAROL_AUTHORITY_0709' app/src/main/java/br/com/mapeiaia/rotacerta/OrganicMapsOfflineBridge0709.kt
+          grep -Fq 'Navegar offline agora' app/src/main/java/br/com/mapeiaia/rotacerta/OfflineNavigationActivity0708.kt
+          grep -Fq 'app.organicmaps.web' app/src/main/AndroidManifest.xml
+          grep -Fq 'android:scheme="om"' app/src/main/AndroidManifest.xml
+          git diff --check "$BASE_SHA"...HEAD
+          printf '%s\n' "$GITHUB_SHA" | tee /tmp/source-sha.txt
+          printf '%s\n' "$ROTA_CERTA_GIT_BRANCH" | tee /tmp/source-branch.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify release and focused offline navigation contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:verifyReleaseHistory --no-daemon --stacktrace | tee /tmp/release-history.log
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.OfflineMapFilePolicy0708Test' \
+            --tests 'br.com.mapeiaia.rotacerta.OrganicMapsOfflineBridge0709Test' \
+            --no-daemon --max-workers=2 --stacktrace \
+            | tee /tmp/focused-android-0709.log
+
+      - name: Compare complete Android failures with exact 0.1.708 base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add --detach /tmp/rc-base "$BASE_SHA"
+          chmod +x /tmp/rc-base/gradlew
+          set +e
+          (cd /tmp/rc-base && ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace) > /tmp/android-base-full.log 2>&1
+          BASE_EXIT=$?
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace > /tmp/android-head-full.log 2>&1
+          HEAD_EXIT=$?
+          set -e
+          python3 - <<'PY'
+          import pathlib, xml.etree.ElementTree as ET
+          def failures(root):
+              result=set()
+              d=pathlib.Path(root)/"app/build/test-results/testDebugUnitTest"
+              if not d.exists(): return result
+              for f in d.glob("*.xml"):
+                  tree=ET.parse(f)
+                  for case in tree.getroot().iter("testcase"):
+                      if case.find("failure") is not None or case.find("error") is not None:
+                          result.add(f"{case.attrib.get('classname','')}::{case.attrib.get('name','')}")
+              return result
+          base=failures("/tmp/rc-base")
+          head=failures(".")
+          new=sorted(head-base)
+          fixed=sorted(base-head)
+          pathlib.Path("/tmp/android-new-failures.txt").write_text("\n".join(new)+("\n" if new else ""))
+          pathlib.Path("/tmp/android-fixed-failures.txt").write_text("\n".join(fixed)+("\n" if fixed else ""))
+          print(f"base_failures={len(base)} head_failures={len(head)} new_failures={len(new)} fixed={len(fixed)}")
+          if new:
+              print("\n".join(new))
+              raise SystemExit(1)
+          PY
+          printf 'base_exit=%s\nhead_exit=%s\n' "$BASE_EXIT" "$HEAD_EXIT" | tee /tmp/android-regression-summary.txt
+
+      - name: Assemble exact-head APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/assemble.log
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Prove APK identity and Organic Maps bridge markers
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
+          grep -Fq 'ORGANIC_MAPS_OFFLINE_BRIDGE_0709' /tmp/dex-strings.txt
+          grep -Fq 'ORGANIC_MAPS_V2_NAV_CURRENT_LOCATION_0709' /tmp/dex-strings.txt
+          grep -Fq 'ORGANIC_MAPS_PICK_POINT_ROUNDTRIP_0709' /tmp/dex-strings.txt
+          grep -Fq 'ORGANIC_MAPS_BRIDGE_DOES_NOT_CHANGE_FAROL_AUTHORITY_0709' /tmp/dex-strings.txt
+          grep -Fq 'Navegar offline agora' /tmp/dex-strings.txt
+
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.709-6000-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          APK_SHA256="$(sha256sum "$FINAL" | awk '{print $1}')"
+          sha256sum "$FINAL" | tee /tmp/apk-sha256.txt
+          stat -c '%s' "$FINAL" | tee /tmp/apk-size-bytes.txt
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=$EXPECTED_VERSION_NAME"
+            echo "versionCode=$EXPECTED_VERSION_CODE"
+            echo "sourceSha=$GITHUB_SHA"
+            echo "sourceBranch=$ROTA_CERTA_GIT_BRANCH"
+            echo "deviceTarget=Samsung SM-S911B / Android 16"
+            echo "organicMapsOfficialScheme=om://"
+            echo "organicMapsV2Navigation=true"
+            echo "organicMapsPointRoundTrip=true"
+            echo "offlineMwmImport=true"
+            echo "farolAuthorityChanged=false"
+            echo "apkSha256=$APK_SHA256"
+          } | tee /tmp/final-proof.txt
+
+      - name: Upload exact-SHA APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-organicmaps-offline-bridge-0.1.709-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            /tmp/source-sha.txt
+            /tmp/source-branch.txt
+            /tmp/final-proof.txt
+            /tmp/apk-sha256.txt
+            /tmp/apk-size-bytes.txt
+            /tmp/aapt.txt
+            /tmp/apksigner.txt
+            /tmp/zip-integrity.txt
+            /tmp/focused-android-0709.log
+            /tmp/android-base-full.log
+            /tmp/android-head-full.log
+            /tmp/android-new-failures.txt
+            /tmp/android-fixed-failures.txt
+            /tmp/android-regression-summary.txt
+            /tmp/release-history.log
+            /tmp/assemble.log
