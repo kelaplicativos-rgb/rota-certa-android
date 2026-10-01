@@ -221,6 +221,7 @@ async function resolveFarolPaidRoad0715({
       normalizedAddress: "",
       confidence: normalized.confidence,
       roadKm: null,
+      targetIndex: -1,
       reason: normalized.reason || "Destino ambíguo.",
       routeProvider: "",
       addressProvider: "openai",
@@ -237,6 +238,7 @@ async function resolveFarolPaidRoad0715({
       normalizedAddress: normalized.normalizedAddress,
       confidence: normalized.confidence,
       roadKm: null,
+      targetIndex: -1,
       reason: "Destino normalizado, porém sem coordenada geocodificável confiável.",
       routeProvider: "",
       addressProvider: ADDRESS_PROVIDER,
@@ -247,13 +249,20 @@ async function resolveFarolPaidRoad0715({
   }
 
   const distances = await roadDistances0715(origin, normalizedTargets, fetchImpl);
-  const roadKm = distances.filter((value) => Number.isFinite(value) && value >= 0).sort((a, b) => a - b)[0];
-  if (!Number.isFinite(roadKm)) {
+  const ranked = distances
+    .map((value, index) => ({ value, index }))
+    .filter((entry) => Number.isFinite(entry.value) && entry.value >= 0)
+    .sort((left, right) => left.value - right.value);
+  const best = ranked[0];
+  const roadKm = best?.value;
+  const targetIndex = best?.index ?? -1;
+  if (!Number.isFinite(roadKm) || targetIndex < 0) {
     return {
       status: "UNRESOLVED",
       normalizedAddress: normalized.normalizedAddress,
       confidence: normalized.confidence,
       roadKm: null,
+      targetIndex: -1,
       reason: "Destino geocodificado, porém o roteador não devolveu distância rodoviária.",
       routeProvider: ROUTE_PROVIDER,
       addressProvider: ADDRESS_PROVIDER,
@@ -268,6 +277,7 @@ async function resolveFarolPaidRoad0715({
     normalizedAddress: normalized.normalizedAddress,
     confidence: normalized.confidence,
     roadKm,
+    targetIndex,
     reason: "Destino normalizado e quilometragem confirmada por rota rodoviária.",
     routeProvider: ROUTE_PROVIDER,
     addressProvider: ADDRESS_PROVIDER,
