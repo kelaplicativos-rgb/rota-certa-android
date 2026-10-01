@@ -539,7 +539,7 @@ private fun SegmentVacancyLine0671(
 ) {
     val available0671 = load0671.availableSeats.coerceAtLeast(0)
     val vacancy0671 = when (available0671) {
-        0 -> "LOTADO"
+        0 -> "CHEIO"
         1 -> "1 vaga"
         else -> "${available0671} vagas"
     }
@@ -575,7 +575,7 @@ private fun SegmentVacancyLine0671(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = if (overbooking0671 > 0) "$vacancy0671 +$overbooking0671" else vacancy0671,
+                text = if (overbooking0671 > 0) "$vacancy0671 • EXCESSO $overbooking0671" else vacancy0671,
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 1,
             )
