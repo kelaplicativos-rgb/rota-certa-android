@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 const {
   FarolPaidAddressError0695,
   resolveFarolAddress0695,
+  systemInstruction0695,
 } = require("../farol-paid-address-0695");
 
 function response(status, payload) {
@@ -77,4 +78,11 @@ test("429 does not retry inside paid fallback", async () => {
     (error) => error instanceof FarolPaidAddressError0695 && error.code === "openai_rate_limited",
   );
   assert.equal(calls, 1);
+});
+
+test("paid address contract explicitly accepts unambiguous establishments as destinations", () => {
+  const instruction = systemInstruction0695();
+  assert.match(instruction, /estabelecimento\/ponto de interesse/);
+  assert.match(instruction, /consulta geocodificável/);
+  assert.match(instruction, /Nunca invente/);
 });
