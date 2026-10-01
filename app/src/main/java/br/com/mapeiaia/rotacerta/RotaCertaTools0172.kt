@@ -130,7 +130,7 @@ object MessageTemplateStore0172 {
     const val DEFAULT_TRIP = "Oi, {nome}! Confirmando nossa viagem de {origem} para {destino}, {dia_semana}, {dia} de {mes}, às {horario}. Está tudo certo para você?"
     const val DEFAULT_VALUE = "Oi, {nome}! O valor da sua reserva para {lugares} é {valor}."
 
-    private fun firstName0714(raw: String?): String =
+    internal fun messageFirstName0714(raw: String?): String =
         raw.orEmpty().trim().split(Regex("\\s+")).firstOrNull()?.takeIf(String::isNotBlank) ?: "Passageiro"
 
     fun readTrip(context: Context): String {
@@ -163,13 +163,13 @@ object MessageTemplateStore0172 {
 
     fun formatTrip(context: Context, data: TripConfirmationData): String {
         val time = if (data.minute == 0) "${data.hour}h" else String.format(Locale("pt", "BR"), "%dh%02d", data.hour, data.minute)
-        val firstName0714 = firstName0714(data.passengerName)
-        val greeting = "Oi, $firstName0714!"
+        val firstName = messageFirstName0714(data.passengerName)
+        val greeting = "Oi, $firstName!"
         return MessageTemplateRenderer0172.apply(
             readTrip(context),
             mapOf(
                 "saudacao" to greeting,
-                "nome" to firstName0714,
+                "nome" to firstName,
                 "origem" to data.origin,
                 "destino" to data.destination,
                 "dia_semana" to data.weekday,
@@ -183,7 +183,7 @@ object MessageTemplateStore0172 {
     fun formatValue(context: Context, data: PassengerValueData): String = MessageTemplateRenderer0172.apply(
         readValue(context),
         mapOf(
-            "nome" to firstName0714(data.passengerName),
+            "nome" to messageFirstName0714(data.passengerName),
             "lugares" to if (data.seats == 1) "1 lugar" else "${data.seats} lugares",
             "origem" to data.origin,
             "destino" to data.destination,
