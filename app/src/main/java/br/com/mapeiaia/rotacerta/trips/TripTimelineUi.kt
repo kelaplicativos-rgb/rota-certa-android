@@ -2102,6 +2102,25 @@ private fun TimelineEntryCard(
         if (!expanded) queueTargetHtmlRefresh0607()
         onToggleExpanded()
     }
+    val openTimelineCard0714: () -> Unit = {
+        val target0714 = tripTarget0407
+        if (target0714 != null) {
+            val opened0714 = openBlaBlaHref(context, entry, target0714.tripHref)
+            if (opened0714) {
+                queueTargetHtmlRefresh0607()
+                UnifiedDebugEventStore.recordAlways(
+                    "TIMELINE_CARD_OPEN_BLABLACAR_0714",
+                    context.packageName,
+                    "tripKey=" + seatSyncDiagnosticKey(entry.tripId) +
+                        " exactTarget=true targetedRefresh=true childShortcut=false",
+                )
+            } else {
+                onChanged("Não foi possível abrir esta viagem na conta BlaBlaCar correspondente.")
+            }
+        } else {
+            toggleTimelineCard0712()
+        }
+    }
 
     Card(
         // 0.1.712: the card shell is deliberately not clickable. Only neutral route
@@ -2262,8 +2281,8 @@ private fun TimelineEntryCard(
                     .fillMaxWidth()
                     // TIMELINE_CARD_OPEN_SURFACE_0712
                     .clickable(
-                        onClickLabel = if (expanded) "Recolher trajeto" else "Abrir trajeto",
-                        onClick = toggleTimelineCard0712,
+                        onClickLabel = if (tripTarget0407 != null) "Abrir viagem na BlaBlaCar" else "Abrir trajeto",
+                        onClick = openTimelineCard0714,
                     )
                     .padding(vertical = 4.dp),
             ) {
@@ -2301,7 +2320,7 @@ private fun TimelineEntryCard(
                 publicLoads0549.forEach { load0580 ->
                     val seatCapacity0580 = operationalInventory0549?.coerceAtLeast(0)
                     val availabilityLabel0580 = when (load0580.availableSeats.coerceAtLeast(0)) {
-                        0 -> "LOTADO"
+                        0 -> "CHEIO"
                         1 -> "1 vaga"
                         else -> "${load0580.availableSeats.coerceAtLeast(0)} vagas"
                     }
@@ -2352,7 +2371,7 @@ private fun TimelineEntryCard(
                             )
                         }
                         Text(
-                            if (overbooking0580 > 0) "$availabilityLabel0580 +$overbooking0580" else availabilityLabel0580,
+                            if (overbooking0580 > 0) "$availabilityLabel0580 • EXCESSO $overbooking0580" else availabilityLabel0580,
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
@@ -2390,7 +2409,7 @@ private fun TimelineEntryCard(
                     .fillMaxWidth()
                     .clickable(
                         onClickLabel = if (expanded) "Recolher trajeto" else "Abrir trajeto",
-                        onClick = toggleTimelineCard0712,
+                        onClick = onToggleExpanded,
                     )
                     .padding(vertical = 4.dp),
                 style = MaterialTheme.typography.labelLarge,
@@ -2400,7 +2419,7 @@ private fun TimelineEntryCard(
 
             if (expanded && minimumAvailable0549 != null) {
                 Text(
-                    text = if (minimumAvailable0549 == 0) "LOTADO" else "$minimumAvailable0549 VAGA(S)",
+                    text = if (minimumAvailable0549 == 0) "CHEIO" else "$minimumAvailable0549 VAGA(S)",
                     style = MaterialTheme.typography.titleLarge,
                     color = agendaMuted0549,
                     fontWeight = FontWeight.Bold,
