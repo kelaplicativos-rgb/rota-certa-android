@@ -7969,6 +7969,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
             openSafetyRecorderModule0666(SafetyRecorderMode0666.AUDIO)
             return
         }
+        if (spec.id == GpsOfflineBubbleShortcutModule0710.SHORTCUT_ID) {
+            openOfflineNavigation0710()
+            return
+        }
         val intent0171 = Intent(this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             .putExtra(EXTRA_OPEN_TAB, spec.targetTab ?: TAB_CONFIG)
@@ -8172,6 +8176,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             "action_record_audio" -> { toggleSafetyRecorder0666(SafetyRecorderMode0666.AUDIO); return }
             "action_record_video" -> { toggleSafetyRecorder0666(SafetyRecorderMode0666.VIDEO); return }
             "safety_recorder" -> { openSafetyRecorderModule0666(SafetyRecorderMode0666.AUDIO); return }
+            GpsOfflineBubbleShortcutModule0710.SHORTCUT_ID -> { openOfflineNavigation0710(); return }
         }
         when (spec.action) {
             BubbleShortcutAction.CopyTripConfirmation -> copyTripConfirmationFromBubbleChecklist8() // trip_confirmation_action_checklist_8
@@ -8199,6 +8204,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             BubbleShortcutAction.StopApplication -> stopApplicationFromBubble()
             BubbleShortcutAction.CaptureCurrentAppAndScreen -> captureCurrentAppAndScreen138()
             BubbleShortcutAction.SaveScreenPrint -> saveScreenPrintStage32()
+            BubbleShortcutAction.OpenOfflineNavigation -> openOfflineNavigation0710()
             BubbleShortcutAction.OpenAuthorizedAppsAndCards -> openAuthorizedAppsAndCards146()
             BubbleShortcutAction.OpenRideAppLearning -> openRideAppLearning0702()
             BubbleShortcutAction.CreateAlert -> saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert, requireNotNull(spec.defaultName))
@@ -8231,6 +8237,16 @@ class LiveRideAccessibilityService : AccessibilityService() {
             intent = Intent(this, RideAppLearningActivity0700::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP),
             failureMessage = "Não consegui abrir o aprendizado de aplicativos.",
+        )
+    }
+
+    private fun openOfflineNavigation0710() {
+        launchShortcutActivity0176(
+            shortcutId = GpsOfflineBubbleShortcutModule0710.SHORTCUT_ID,
+            intent = Intent(this, OfflineNavigationActivity0708::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra(OfflineNavigationActivity0708.EXTRA_FOCUS_DESTINATION_0710, true),
+            failureMessage = "Não consegui abrir o GPS Offline.",
         )
     }
 
