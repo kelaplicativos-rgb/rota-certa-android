@@ -1207,6 +1207,8 @@ internal object PublicAgendaAutoSync0300 {
             } ?: run {
                 val rotaCertaQuota = configuredRotaCertaSeatAllocation.takeIf { it in 0..999 } ?: 0
                 val blablaRemaining = source.published_seats?.takeIf { it in 0..999 } ?: 0
+                // capacitySource=blablacar_remaining_plus_confirmed_peak_plus_rota_certa
+                // toPublicTrip() rebuilds the confirmed peak through operationalInventoryCapacity().
                 toPublicTrip(
                     source = source,
                     capacity = (blablaRemaining + rotaCertaQuota).coerceIn(0, 999),
