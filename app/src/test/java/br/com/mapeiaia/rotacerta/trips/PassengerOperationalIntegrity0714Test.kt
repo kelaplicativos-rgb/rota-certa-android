@@ -61,6 +61,17 @@ class PassengerOperationalIntegrity0714Test {
     }
 
     @Test
+    fun localOnlyPassengerDoesNotIncreaseBlaBlaCapacity() {
+        val trip = trip0714()
+        val local = booking("local", "a", "d").copy(
+            source = BookingSource.ROTA_CERTA,
+            capacityClaimType = CapacityClaimType.PASSENGER,
+        )
+        assertEquals(0, peakConfirmedPassengerSeats0714(trip, listOf(local)))
+        assertEquals(1, operationalInventoryCapacity(trip, listOf(local)))
+    }
+
+    @Test
     fun mirroredReservationIsAddedBackOnlyOnce() {
         val trip = trip0714()
         val bookings = listOf(
