@@ -2,6 +2,46 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.715",
+      "build": 6006,
+      "commit": null,
+      "branch": "agent/farol-paid-road-fallback-0.1.715",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Adiciona fallback terminal pago do FAROL somente após esgotar os provedores normais de rota rodoviária.",
+        "Reaproveita a OpenAI no backend para normalizar destino, estabelecimento ou ponto de interesse usando o contexto visível do card, sem permitir que o modelo estime quilometragem.",
+        "Confirma o KM final por geocodificação Nominatim + rota OSRM e publica pelo mesmo DistanceAuthority.ROAD_CONFIRMED do 0.1.713."
+      ],
+      "fixed": [
+        "Fecha o caso residual em que o endereço ou estabelecimento está visível e semanticamente identificável, mas o pipeline normal termina sem KM rodoviário.",
+        "Corrige o gate do 0.1.714 que falhava por ausência do marcador contratual de reconstrução de capacidade, preservando a lógica real de vagas restantes + pico confirmado + cota Rota Certa.",
+        "Descarta resposta terminal atrasada quando card, janela, geração ou assinatura do endereço deixam de ser atuais."
+      ],
+      "improved": [
+        "Uma única tentativa paga por fingerprint estável, com cache persistente e cooldown para impedir chamadas repetidas por churn de acessibilidade.",
+        "O backend devolve o índice exato da referência rodoviária vencedora para não misturar KM de casa e pinos.",
+        "Estabelecimentos ambíguos continuam sem resultado final em vez de escolher uma unidade por suposição."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.713-0.1.714: falha terminal de Google/OSM podia manter o endereço reconhecido, porém deixar a bolinha sem KM indefinidamente.",
+        "0.1.714: workflow podia parar no contrato BlaBlaPublishedCapacity0366Test antes da geração do APK."
+      ],
+      "modulesAffected": [
+        "FAROL",
+        "Bolinha",
+        "OpenAI",
+        "Backend",
+        "Geocodificação",
+        "Rotas",
+        "BlaBlaCar",
+        "Vagas por trecho",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.714",
       "build": 6005,
       "commit": null,
