@@ -2,6 +2,47 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.714",
+      "build": 6005,
+      "commit": null,
+      "branch": "agent/passenger-operational-integrity-0.1.714",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A área principal do card da Timeline abre a viagem exata na conta BlaBlaCar correspondente e dispara atualização individual, enquanto atalhos permanecem isolados.",
+        "Mensagens predefinidas passam a usar primeiro nome, texto direto, link de rastreamento isolado e veículo dinâmico do perfil Rota Certa associado à viagem.",
+        "Inventário externo passa a distinguir vagas ainda disponíveis na BlaBlaCar de capacidade operacional, reconstruindo o teto com o pico de ocupação confirmada por trecho."
+      ],
+      "fixed": [
+        "Endereço manual de embarque/desembarque só confirma salvamento após readback e invalida coordenadas antigas para impedir navegação ao ponto anterior.",
+        "Status operacional de passageiro BlaBlaCar sem Booking local passa a persistir em ExternalPassengerMetadata com readback.",
+        "Remove falso LOTADO +1/+2 causado por tratar vagas restantes como capacidade total; a interface usa CHEIO e EXCESSO apenas quando fisicamente real.",
+        "Backend passa a respeitar null explícito como limpeza de coordenadas e usa a mesma reconstrução de inventário do Android."
+      ],
+      "improved": [
+        "Timeline mostra endereço operacional exato quando houver edição manual, preservando o ponto de trecho apenas para itinerário/capacidade.",
+        "Mensagens deixam de reutilizar carro global em viagens BlaBlaCar de outro perfil; sem veículo comprovado para a conta, o bloco de carro é omitido.",
+        "Novos contratos de regressão cobrem capacidade 1 restante + 3 ocupados = teto 4, mensagens, persistência de status/endereço e navegação do card."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.712-0.1.713: alteração de endereço/status podia aparentar sucesso e retornar ao valor anterior após recomposição.",
+        "0.1.712-0.1.713: publishedSeats podia ser tratado como capacidade total e produzir excesso artificial.",
+        "0.1.712-0.1.713: mensagens rápidas podiam usar nome completo e veículo global não específico da viagem."
+      ],
+      "modulesAffected": [
+        "Timeline",
+        "Passageiros",
+        "BlaBlaCar",
+        "Vagas por trecho",
+        "Rastreamento",
+        "WhatsApp",
+        "Backend",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.713",
       "build": 6004,
       "commit": null,
