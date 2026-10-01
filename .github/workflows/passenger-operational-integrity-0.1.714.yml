@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: passenger-operational-integrity-0714-${{ github.sha }}
+  group: passenger-operational-integrity-0714-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
