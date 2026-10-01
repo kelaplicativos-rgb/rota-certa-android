@@ -13,9 +13,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -52,7 +50,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -76,9 +73,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 
 internal data class EnhancedPassengerCardRow(
@@ -463,20 +458,14 @@ private fun PassengerTrackingShortcut0676(
             .size(36.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(container0676)
-            .pointerInput(active0676) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
-                    try {
-                        val released0676 = withTimeout(TRACKING_LONG_PRESS_MILLIS_0676) {
-                            waitForUpOrCancellation()
-                        }
-                        if (released0676 != null) onTap0676()
-                    } catch (_: TimeoutCancellationException) {
-                        if (active0676) onLongPress0676()
-                        waitForUpOrCancellation()
-                    }
-                }
-            },
+            // 0.1.712: native gesture arbitration owns this child surface. A long press
+            // is consumed here and never falls through as a card click or a short tap.
+            .combinedClickable(
+                onClickLabel = "Compartilhar acompanhamento",
+                onLongClickLabel = if (active0676) "Encerrar acompanhamento" else null,
+                onClick = onTap0676,
+                onLongClick = if (active0676) onLongPress0676 else null,
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Text("🛰️", maxLines = 1)
@@ -637,6 +626,7 @@ internal fun EnhancedPassengerTimelineSection(
     val liveTrackingManager0668 = remember(context) { LiveTrackingShareManager0668(context) }
     var pendingTrackingRequest0668 by remember { mutableStateOf<PassengerTrackingLinkRequest0668?>(null) }
     var trackingRevision0676 by remember { mutableIntStateOf(0) }
+    var trackingStopInFlight0676 by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     fun passengerTrackingActive0676(row0676: EnhancedPassengerCardRow): Boolean {
         trackingRevision0676
@@ -645,7 +635,9 @@ internal fun EnhancedPassengerTimelineSection(
 
     fun stopPassengerTracking0676(row0676: EnhancedPassengerCardRow) {
         val passengerKey0676 = passengerTimelineRowKey0394(row0676)
+        if (passengerKey0676.isBlank() || passengerKey0676 in trackingStopInFlight0676) return
         if (!liveTrackingManager0668.isPassengerShareActive(passengerKey0676)) return
+        trackingStopInFlight0676 = trackingStopInFlight0676 + passengerKey0676
         scope.launch {
             runCatching {
                 withContext(Dispatchers.IO) { liveTrackingManager0668.closePassengerShare(passengerKey0676) }
@@ -657,6 +649,7 @@ internal fun EnhancedPassengerTimelineSection(
             }.onFailure { error0676 ->
                 onChanged("Não foi possível encerrar o acompanhamento: " + (error0676.message ?: "falha no servidor"))
             }
+            trackingStopInFlight0676 = trackingStopInFlight0676 - passengerKey0676
         }
     }
 
@@ -738,6 +731,11 @@ internal fun EnhancedPassengerTimelineSection(
     }
 
     fun sharePassengerTrackingShortcut0674(row0674: EnhancedPassengerCardRow) {
+        val passengerKey0674 = passengerTimelineRowKey0394(row0674)
+        if (passengerKey0674 in trackingStopInFlight0676) {
+            onChanged("Encerramento do acompanhamento em andamento. Aguarde a confirmação do servidor.")
+            return
+        }
         val selectedTrip0674 = trip
         val latitude0674 = row0674.dropoffLatitude
         val longitude0674 = row0674.dropoffLongitude
@@ -4108,7 +4106,6 @@ private fun openExternalPassengerBlaBla(context: Context, row: EnhancedPassenger
     return true
 }
 
-private const val TRACKING_LONG_PRESS_MILLIS_0676 = 2_000L
 
 internal fun passengerPhoneForStorage0671(raw: String): String? =
     passengerWhatsAppDigits0515(raw)?.let { "+$it" }
