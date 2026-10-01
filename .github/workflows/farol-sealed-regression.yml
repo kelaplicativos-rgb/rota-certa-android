@@ -37,6 +37,8 @@ jobs:
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
       GOOGLE_MAPS_API_KEY: ''
+      OM_TAG: '2026.08.27-18-android'
+      OM_VERSION: '2026.08.27-18'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -97,6 +99,24 @@ jobs:
           set -euo pipefail
           test -n "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
       - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build exact Organic Maps SDK required by current FAROL
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo apt-get install -y ninja-build
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"             "platforms;android-36"             "ndk;29.0.14206865"             "cmake;3.22.1"
+          git clone --depth 128 --branch "$OM_TAG" https://github.com/organicmaps/organicmaps.git /tmp/organicmaps
+          cd /tmp/organicmaps
+          git submodule update --init --recursive --depth 1 --jobs 8
+          test "$(tools/unix/version.sh android_name)" = "$OM_VERSION"
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          cd android
+          chmod +x ./gradlew
+          ./gradlew             :sdk:location:core:publishToMavenLocal             :sdk:publishToMavenLocal             :sdk:maps:world:publishToMavenLocal             -Parm64 -Pnjobs=2             --no-daemon --max-workers=2 --stacktrace
+          test -f "$HOME/.m2/repository/app/organicmaps/sdk/sdk/$OM_VERSION/sdk-$OM_VERSION.pom"
+          test -f "$HOME/.m2/repository/app/organicmaps/sdk/maps-world/$OM_VERSION/maps-world-$OM_VERSION.pom"
 
       - name: Run permanent FAROL regression contracts
         shell: bash
