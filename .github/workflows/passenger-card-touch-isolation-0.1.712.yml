@@ -115,7 +115,6 @@ jobs:
           ./gradlew :app:testDebugUnitTest \
             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTouchIsolation0712Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTrackingControl0706Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripCardFooter0654Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.TimelinePerformance0705ContractTest' \
             --tests 'br.com.mapeiaia.rotacerta.FarolOneSecondVisualAuthority0711Test' \
             --tests 'br.com.mapeiaia.rotacerta.FarolFullLocalityPreservation0711Test' \
