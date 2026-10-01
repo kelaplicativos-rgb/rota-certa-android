@@ -337,17 +337,21 @@ function canonicalPrivateBookingMetadata0513(raw, previous = null) {
     }
     fareMinorUnits = fare;
   }
+  const hasBoardingLatitude = Object.prototype.hasOwnProperty.call(input, "boardingLatitude");
+  const hasBoardingLongitude = Object.prototype.hasOwnProperty.call(input, "boardingLongitude");
+  const hasDropoffLatitude = Object.prototype.hasOwnProperty.call(input, "dropoffLatitude");
+  const hasDropoffLongitude = Object.prototype.hasOwnProperty.call(input, "dropoffLongitude");
   const boardingLatitude = canonicalPrivateCoordinate0515(
-    input.boardingLatitude != null ? input.boardingLatitude : prior.boardingLatitude, -90, 90,
+    hasBoardingLatitude ? input.boardingLatitude : prior.boardingLatitude, -90, 90,
   );
   const boardingLongitude = canonicalPrivateCoordinate0515(
-    input.boardingLongitude != null ? input.boardingLongitude : prior.boardingLongitude, -180, 180,
+    hasBoardingLongitude ? input.boardingLongitude : prior.boardingLongitude, -180, 180,
   );
   const dropoffLatitude = canonicalPrivateCoordinate0515(
-    input.dropoffLatitude != null ? input.dropoffLatitude : prior.dropoffLatitude, -90, 90,
+    hasDropoffLatitude ? input.dropoffLatitude : prior.dropoffLatitude, -90, 90,
   );
   const dropoffLongitude = canonicalPrivateCoordinate0515(
-    input.dropoffLongitude != null ? input.dropoffLongitude : prior.dropoffLongitude, -180, 180,
+    hasDropoffLongitude ? input.dropoffLongitude : prior.dropoffLongitude, -180, 180,
   );
   const hasBoardingCoordinates = boardingLatitude != null && boardingLongitude != null;
   const hasDropoffCoordinates = dropoffLatitude != null && dropoffLongitude != null;
@@ -2314,15 +2318,19 @@ function segmentCapacityPersistence(capacityState) {
     segmentBlockedLoads: capacityState.blockedLoads,
   };
 }
-function operationalSeatLimit(trip) {
+function operationalSeatLimit(trip, records = [], now = Date.now()) {
   const blablaAvailable = Number.isInteger(Number(trip && trip.publishedSeats)) && Number(trip.publishedSeats) >= 0
-    ? Number(trip.publishedSeats)
+    ? Math.min(999, Number(trip.publishedSeats))
     : 0;
   const configuredLocal = trip && trip.rotaCertaSeatAllocation != null ? Number(trip.rotaCertaSeatAllocation) : NaN;
   const rotaCertaAllocated = Number.isInteger(configuredLocal) && configuredLocal >= 0
-    ? configuredLocal
+    ? Math.min(999, configuredLocal)
     : 0;
-  return Math.min(999, blablaAvailable + rotaCertaAllocated);
+  const passengerLoads = reconciledSegmentCapacity(trip, records, now).passengerLoads;
+  const confirmedPeak = passengerLoads.length
+    ? Math.max(...passengerLoads.map((value) => Math.max(0, Number(value || 0))))
+    : 0;
+  return Math.min(999, blablaAvailable + confirmedPeak + rotaCertaAllocated);
 }
 
 function reconciledOperationalSeatSummary(trip, records, now = Date.now()) {
@@ -9642,13 +9650,12 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
       if (!preserveManagedClaims0436 && claimNamespace === "BLABLACAR_SYNC:" && !Number.isInteger(Number(candidateTrip.publishedSeats))) {
         throw Object.assign(new Error("A cota BlaBlaCar ainda não foi confirmada."), { httpStatus: 409, code: "capacity_unconfirmed" });
       }
-      const expectedInventory = operationalSeatLimit(candidateTrip);
-      if (!preserveManagedClaims0436 && Number(candidateTrip.capacity || 0) !== expectedInventory) {
-        throw Object.assign(new Error("O inventário operacional diverge das cotas canônicas."), { httpStatus: 409, code: "inventory_mismatch" });
-      }
-
       const bookingsSnap = await tx.get(tripRef.collection("bookings"));
       const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const expectedInventory = operationalSeatLimit(candidateTrip, records);
+      if (!preserveManagedClaims0436 && Number(candidateTrip.capacity || 0) !== expectedInventory) {
+        throw Object.assign(new Error("O inventário operacional diverge das vagas externas restantes + ocupação confirmada + cota Rota Certa."), { httpStatus: 409, code: "inventory_mismatch" });
+      }
       const authoritativeManagedReplacement0479 =
         bookedStopShapeMigrationAuthorized0439 &&
         claimNamespace === "BLABLACAR_SYNC:" &&
@@ -10722,7 +10729,7 @@ async function reconcileDriverAgendaSeatAllocation(req, res) {
         };
         let capacityKnown = true;
         if (publishedSeats != null) {
-          candidate.capacity = Math.min(999, publishedSeats + allocation);
+          candidate.capacity = operationalSeatLimit(candidate, records, now);
           candidate.capacityReliable = true;
         } else {
           // For an external publication without a fresh authoritative BlaBlaCar
