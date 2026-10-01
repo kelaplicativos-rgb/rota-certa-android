@@ -3194,22 +3194,38 @@ internal fun enhancedPassengerRows(
                     dropoffAddress = booking.dropoffAddress.takeIf(String::isNotBlank)
                         ?: privateMetadata0494?.dropoffAddress?.takeIf(String::isNotBlank)
                         ?: current.dropoffAddress,
-                    boardingLatitude = booking.boardingLatitude
-                        ?: privateMetadata0494?.boardingLatitude
-                        ?: boardingStop?.latitude
-                        ?: current.boardingLatitude,
-                    boardingLongitude = booking.boardingLongitude
-                        ?: privateMetadata0494?.boardingLongitude
-                        ?: boardingStop?.longitude
-                        ?: current.boardingLongitude,
-                    dropoffLatitude = booking.dropoffLatitude
-                        ?: privateMetadata0494?.dropoffLatitude
-                        ?: dropoffStop?.latitude
-                        ?: current.dropoffLatitude,
-                    dropoffLongitude = booking.dropoffLongitude
-                        ?: privateMetadata0494?.dropoffLongitude
-                        ?: dropoffStop?.longitude
-                        ?: current.dropoffLongitude,
+                    boardingLatitude = if (booking.localMetadataTouched && booking.boardingAddress.isNotBlank()) {
+                        booking.boardingLatitude
+                    } else {
+                        booking.boardingLatitude
+                            ?: privateMetadata0494?.boardingLatitude
+                            ?: boardingStop?.latitude
+                            ?: current.boardingLatitude
+                    },
+                    boardingLongitude = if (booking.localMetadataTouched && booking.boardingAddress.isNotBlank()) {
+                        booking.boardingLongitude
+                    } else {
+                        booking.boardingLongitude
+                            ?: privateMetadata0494?.boardingLongitude
+                            ?: boardingStop?.longitude
+                            ?: current.boardingLongitude
+                    },
+                    dropoffLatitude = if (booking.localMetadataTouched && booking.dropoffAddress.isNotBlank()) {
+                        booking.dropoffLatitude
+                    } else {
+                        booking.dropoffLatitude
+                            ?: privateMetadata0494?.dropoffLatitude
+                            ?: dropoffStop?.latitude
+                            ?: current.dropoffLatitude
+                    },
+                    dropoffLongitude = if (booking.localMetadataTouched && booking.dropoffAddress.isNotBlank()) {
+                        booking.dropoffLongitude
+                    } else {
+                        booking.dropoffLongitude
+                            ?: privateMetadata0494?.dropoffLongitude
+                            ?: dropoffStop?.longitude
+                            ?: current.dropoffLongitude
+                    },
                     boardingStopIndex = stopIndex ?: current.boardingStopIndex,
                     dropoffStopIndex = dropoffStopIndex ?: current.dropoffStopIndex,
                     matchedByPhone = candidateIndex >= 0,
@@ -3363,7 +3379,9 @@ private fun PassengerAddressEditorDialog(
                 onClick = { onSave(normalized) },
             ) { Text(if (saving0714) "Salvando…" else "Salvar") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+        dismissButton = {
+            TextButton(enabled = !saving0714, onClick = onDismiss) { Text("Cancelar") }
+        },
     )
 }
 
