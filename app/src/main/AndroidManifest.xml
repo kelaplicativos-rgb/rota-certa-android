@@ -56,7 +56,7 @@
             android:name=".FinancialActivity"
             android:exported="false"
             android:label="Controle financeiro" />
-<activity
+        <activity
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>
@@ -80,7 +80,7 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/rota_certa_accessibility" />
         </service>
-    
+
         <!-- STAGE47_TRIP_CALENDAR_BOOKING: isolated from FAROL/accessibility pipeline. -->
         <provider
             android:name=".trips.AgendaTraceProvider"
@@ -125,7 +125,7 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/trip_file_paths_stage47" />
         </provider>
-    
+
         <!-- STAGE47_BLABLACAR_DYNAMIC_MULTI_PROFILE: user-created isolated sessions; no pre-seeded accounts. -->
         <provider
             android:name=".trips.BlaBlaHarvestNavigationWatchdogProvider"
@@ -143,6 +143,11 @@
             android:exported="false" />
         <activity
             android:name=".trips.BlaBlaReliableSeatSyncActivity"
+            android:exported="false" />
+
+        <!-- PUBLIC_SEARCH: isolated read-only public BlaBlaCar search, no authenticated account reuse. -->
+        <activity
+            android:name=".trips.BlaBlaPublicSearchActivity"
             android:exported="false" />
     </application>
 </manifest>

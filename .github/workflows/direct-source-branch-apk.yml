@@ -72,8 +72,8 @@ jobs:
           grep -Fq 'origin_missing' "$NORMALIZER"
           grep -Fq 'destination_missing' "$NORMALIZER"
           grep -Fq 'trip_id_mismatch' "$NORMALIZER"
-          grep -Fq 'versionCode = 5567' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.274"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5568' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.275"' app/build.gradle.kts
 
       - name: Record protected FAROL before build
         shell: bash

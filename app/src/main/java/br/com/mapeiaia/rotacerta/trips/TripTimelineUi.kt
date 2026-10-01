@@ -7,12 +7,14 @@ import android.content.pm.PackageManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -151,6 +153,7 @@ fun TripTimelineScreen(
             ResponsiveTripAction("Integração online", onClick = onOpenOnlineSettings),
             ResponsiveTripAction(if (showSync) "Fechar sincronização" else "Sincronizar BlaBlaCar") { showSync = !showSync },
             ResponsiveTripAction("Limpar Timeline") {
+                archiveStore.clearExternal(physical)
                 val clearedResponse = collectorStore.saveResponse(
                     BlaBlaCollectorMonthResponse(
                         status = "cleared",
@@ -173,9 +176,9 @@ fun TripTimelineScreen(
                 UnifiedDebugEventStore.record(
                     "TIMELINE_CLEARED_BY_USER",
                     context.packageName,
-                    "externalTripsRemoved=true localTripsPreserved=${trips.size} localBookingsPreserved=${bookings.size}",
+                    "externalTripsRemoved=true externalArchiveStateReset=true localTripsPreserved=${trips.size} localBookingsPreserved=${bookings.size}",
                 )
-                onChanged("Timeline sincronizada limpa. Viagens locais, reservas e login foram preservados.")
+                onChanged("Timeline sincronizada limpa. Arquivamento externo zerado; viagens locais, reservas e login foram preservados.")
             },
             ResponsiveTripAction(if (showArchived) "Ver próximas" else "Ver arquivadas") { showArchived = !showArchived },
         ),
@@ -442,7 +445,23 @@ private fun TimelineEntryCard(
                 date.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
                 style = MaterialTheme.typography.labelLarge,
             )
-            timelineDirectionDisplayLabel(direction)?.let { Text(it, style = MaterialTheme.typography.labelLarge) }
+            timelineDirectionDisplayLabel(direction)?.let { label ->
+                val chipColor = when (direction) {
+                    TimelineDirectionState.OUTBOUND -> if (dark) Color(0xFF285A34) else Color(0xFFB8E6C4)
+                    TimelineDirectionState.INBOUND -> if (dark) Color(0xFF6A3A23) else Color(0xFFFFD1B8)
+                    TimelineDirectionState.NEUTRAL,
+                    TimelineDirectionState.UNKNOWN,
+                    -> MaterialTheme.colorScheme.surfaceVariant
+                }
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier
+                        .background(chipColor, RoundedCornerShape(999.dp))
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                )
+            }
             Text("${entry.origin} → ${entry.destination}", style = MaterialTheme.typography.titleMedium)
 
             val meta = listOfNotNull(entry.profileLabel.takeIf(String::isNotBlank), entry.blablaPrice).joinToString(" • ")
@@ -627,6 +646,16 @@ private class TripTimelineArchiveStore(context: Context) {
     fun setArchived(entry: TripTimelineEntry, archived: Boolean) {
         val edit = prefs.edit()
         aliases(entry).forEach { edit.putBoolean(it, archived) }
+        edit.apply()
+    }
+
+    fun clearExternal(entries: List<TripTimelineEntry>) {
+        val edit = prefs.edit()
+        entries
+            .filter(::hasExternalPublication)
+            .flatMap(::aliases)
+            .distinct()
+            .forEach(edit::remove)
         edit.apply()
     }
 

@@ -40,6 +40,27 @@ class PassengerCardActions0257Test {
     }
 
     @Test
+    fun dropoffMapsPrefersExactReservationAddress() {
+        val row = row().copy(
+            dropoff = "São Thomé das Letras",
+            dropoffAddress = "Praça Barão de Alfenas, São Thomé das Letras",
+        )
+        assertEquals(
+            "Praça Barão de Alfenas, São Thomé das Letras",
+            passengerDropoffMapTarget(row)?.query,
+        )
+    }
+
+    @Test
+    fun dropoffMapsFallsBackToCollectedDestinationWithoutInventing() {
+        assertEquals(
+            "Pouso Alegre",
+            passengerDropoffMapTarget(row().copy(dropoff = "Pouso Alegre"))?.query,
+        )
+        assertNull(passengerDropoffMapTarget(row().copy(dropoff = null, dropoffAddress = "")))
+    }
+
+    @Test
     fun operationalRouteOrderingRemainsAvailableWithoutVisualNextAction() {
         val rows = listOf(row(3, "Depois"), row(1, "Primeiro"), row(2, "Segundo"))
         val progress = TripRouteProgress(stopIndexProgress = 0.2, corridorDistanceKm = 0.1)

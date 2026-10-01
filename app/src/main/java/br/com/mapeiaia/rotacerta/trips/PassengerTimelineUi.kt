@@ -76,8 +76,8 @@ internal fun EnhancedPassengerTimelineSection(
 
     val progress = trip?.let { TripPassengerRouteOrder.progress(it, currentCoordinate) }
     // Keep trusted route/GPS ordering internally, but do not expose a
-    // "next action" status in the card. The driver now has an explicit
-    // pickup Maps action for each passenger.
+    // "next action" status in the card. The pickup/dropoff emojis are the
+    // explicit GPS actions while the place labels keep their existing editor action.
     val rows = passengerTimelineOperationalOrder(rawRows, progress)
 
     var profileRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
@@ -161,22 +161,6 @@ internal fun EnhancedPassengerTimelineSection(
                 ) {
                     Text("💰", maxLines = 1)
                 }
-
-                val pickupTarget = passengerPickupMapTarget(passenger)
-                IconButton(
-                    onClick = {
-                        if (pickupTarget != null) openPassengerPickupMap(context, pickupTarget)
-                    },
-                    enabled = pickupTarget != null,
-                    modifier = Modifier.size(36.dp),
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_pickup_maps_action),
-                        contentDescription = "Abrir embarque no Maps",
-                        tint = Color.Unspecified,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
             }
 
             Row(
@@ -184,25 +168,47 @@ internal fun EnhancedPassengerTimelineSection(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
+                val pickupTarget = passengerPickupMapTarget(passenger)
+                TextButton(
+                    onClick = {
+                        if (pickupTarget != null) openPassengerPickupMap(context, pickupTarget)
+                    },
+                    enabled = pickupTarget != null,
+                    modifier = Modifier.size(36.dp),
+                    contentPadding = ADDRESS_ICON_PADDING,
+                ) {
+                    Text("📍", maxLines = 1)
+                }
                 TextButton(
                     onClick = { boardingAddressEditRow = passenger },
                     modifier = Modifier.weight(1f),
                     contentPadding = ADDRESS_PLACE_PADDING,
                 ) {
                     Text(
-                        "📍 ${passengerTimelineCompactPlace(passenger.boarding)}",
+                        passengerTimelineCompactPlace(passenger.boarding),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
                 Text("→")
+                val dropoffTarget = passengerDropoffMapTarget(passenger)
+                TextButton(
+                    onClick = {
+                        if (dropoffTarget != null) openPassengerDropoffMap(context, dropoffTarget)
+                    },
+                    enabled = dropoffTarget != null,
+                    modifier = Modifier.size(36.dp),
+                    contentPadding = ADDRESS_ICON_PADDING,
+                ) {
+                    Text("🏁", maxLines = 1)
+                }
                 TextButton(
                     onClick = { dropoffAddressEditRow = passenger },
                     modifier = Modifier.weight(1f),
                     contentPadding = ADDRESS_PLACE_PADDING,
                 ) {
                     Text(
-                        "🏁 ${passengerTimelineCompactPlace(passenger.dropoff)}",
+                        passengerTimelineCompactPlace(passenger.dropoff),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -520,7 +526,7 @@ private fun PassengerAddressEditorDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
-                    "Este endereço pertence a esta reserva/viagem. O atalho do Maps usa o endereço completo de embarque quando ele estiver salvo.",
+                    "Este endereço pertence a esta reserva/viagem. Os atalhos 📍/🏁 abrem o GPS usando o endereço completo salvo quando ele estiver disponível.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -735,6 +741,13 @@ internal fun passengerPickupMapTarget(row: EnhancedPassengerCardRow): PassengerP
     return PassengerPickupMapTarget(query)
 }
 
+internal fun passengerDropoffMapTarget(row: EnhancedPassengerCardRow): PassengerPickupMapTarget? {
+    val exact = row.dropoffAddress.trim().takeIf(String::isNotEmpty)
+    val collected = row.dropoff?.trim()?.takeIf(String::isNotEmpty)
+    val query = exact ?: collected ?: return null
+    return PassengerPickupMapTarget(query)
+}
+
 internal data class ExternalPassengerTarget(val profileUuid: String, val href: String)
 
 internal fun externalPassengerTarget(row: EnhancedPassengerCardRow): ExternalPassengerTarget? {
@@ -777,6 +790,25 @@ private fun openPassengerPickupMap(context: Context, target: PassengerPickupMapT
         .recoverCatching { context.startActivity(fallbackIntent) }
         .onFailure {
             Toast.makeText(context, "Não foi possível abrir o local de embarque.", Toast.LENGTH_LONG).show()
+        }
+}
+
+private fun openPassengerDropoffMap(context: Context, target: PassengerPickupMapTarget) {
+    val uri = Uri.parse("geo:0,0?q=${Uri.encode(target.query)}")
+    val flags = Intent.FLAG_ACTIVITY_NEW_TASK
+    val mapsIntent = Intent(Intent.ACTION_VIEW, uri)
+        .setPackage("com.google.android.apps.maps")
+        .addFlags(flags)
+    val fallbackIntent = Intent(Intent.ACTION_VIEW, uri).addFlags(flags)
+    UnifiedDebugEventStore.record(
+        "PASSENGER_DROPOFF_MAP_OPEN",
+        context.packageName,
+        "timeline=true exact_or_collected_dropoff=true",
+    )
+    runCatching { context.startActivity(mapsIntent) }
+        .recoverCatching { context.startActivity(fallbackIntent) }
+        .onFailure {
+            Toast.makeText(context, "Não foi possível abrir o local de destino.", Toast.LENGTH_LONG).show()
         }
 }
 
@@ -841,3 +873,4 @@ private val CANONICAL_PROFILE_UUID = Regex(
 private val COMPACT_ACTION_PADDING = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
 private val COMPACT_NAME_PADDING = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
 private val ADDRESS_PLACE_PADDING = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
+private val ADDRESS_ICON_PADDING = PaddingValues(0.dp)
