@@ -9652,10 +9652,6 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
       }
       const bookingsSnap = await tx.get(tripRef.collection("bookings"));
       const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      const expectedInventory = operationalSeatLimit(candidateTrip, records);
-      if (!preserveManagedClaims0436 && Number(candidateTrip.capacity || 0) !== expectedInventory) {
-        throw Object.assign(new Error("O inventário operacional diverge das vagas externas restantes + ocupação confirmada + cota Rota Certa."), { httpStatus: 409, code: "inventory_mismatch" });
-      }
       const authoritativeManagedReplacement0479 =
         bookedStopShapeMigrationAuthorized0439 &&
         claimNamespace === "BLABLACAR_SYNC:" &&
@@ -9744,6 +9740,15 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         ? recordsWithProtected
         : recordsWithProtected.filter((record) => !managedCapacityClaim(record, claimNamespace));
       const candidateRecords = preserveManagedClaims0436 ? recordsWithProtected : [...preserved, ...desiredClaims];
+      if (!preserveManagedClaims0436) {
+        const expectedInventory0714 = operationalSeatLimit(candidateTrip, candidateRecords, now);
+        if (Number(candidateTrip.capacity || 0) !== expectedInventory0714) {
+          throw Object.assign(
+            new Error("O inventário operacional diverge das vagas externas restantes + ocupação confirmada + cota Rota Certa."),
+            { httpStatus: 409, code: "inventory_mismatch" },
+          );
+        }
+      }
       const capacityState = preserveManagedClaims0436 ? null : reconciledSegmentCapacity(candidateTrip, candidateRecords);
       const loads = preserveManagedClaims0436
         ? (Array.isArray(previous.segmentLoads) ? previous.segmentLoads : [])
