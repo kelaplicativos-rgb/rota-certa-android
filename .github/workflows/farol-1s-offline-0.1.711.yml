@@ -12,22 +12,51 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
       ROTA_CERTA_GIT_SHA: ${{ github.sha }}
       ROTA_CERTA_GIT_BRANCH: 'agent/farol-1s-visual-authority-0.1.711'
+      OM_TAG: '2026.08.27-18-android'
+      OM_VERSION: '2026.08.27-18'
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - uses: gradle/actions/setup-gradle@v4
-      - name: Compile
+
+      - name: Install native prerequisites
+        shell: bash
         run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo apt-get install -y ninja-build
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"             "platforms;android-36"             "ndk;29.0.14206865"             "cmake;3.22.1"
+
+      - name: Build exact Organic Maps SDK locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "$OM_TAG" https://github.com/organicmaps/organicmaps.git /tmp/organicmaps
+          cd /tmp/organicmaps
+          git submodule update --init --recursive --depth 1 --jobs 8
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          cd android
+          chmod +x ./gradlew
+          ./gradlew             :sdk:publishToMavenLocal             :sdk:maps:world:publishToMavenLocal             -Parm64 -Pnjobs=2             --no-daemon --max-workers=2 --stacktrace
+          test -f "$HOME/.m2/repository/app/organicmaps/sdk/sdk/$OM_VERSION/sdk-$OM_VERSION.pom"
+          test -f "$HOME/.m2/repository/app/organicmaps/sdk/maps-world/$OM_VERSION/maps-world-$OM_VERSION.pom"
+
+      - name: Compile Rota Certa against embedded SDK
+        shell: bash
+        run: |
+          set -euo pipefail
           chmod +x ./gradlew
           ./gradlew :app:compileDebugKotlin --no-daemon --max-workers=2 --stacktrace
