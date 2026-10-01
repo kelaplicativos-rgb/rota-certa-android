@@ -30,6 +30,7 @@ enum class BubbleShortcutAction {
     OpenRideAppLearning,
     OpenTextCorrection,
     SaveScreenPrint,
+    OpenOfflineNavigation,
 }
 
 enum class BubbleShortcutQuickAction {
@@ -69,6 +70,21 @@ object RouteBubbleShortcutModule : BubbleShortcutModule {
         emoji = "⚡",
         label = "Rota",
         action = BubbleShortcutAction.OpenRoute,
+        targetGroup = "general",
+        targetTab = "config",
+    )
+}
+
+object GpsOfflineBubbleShortcutModule0710 : BubbleShortcutModule {
+    const val CONTRACT_MARKER = "GPS_OFFLINE_GRID_MODULE_0710"
+    const val SHORTCUT_ID = "gps_offline"
+
+    override val spec = BubbleShortcutSpec(
+        id = SHORTCUT_ID,
+        emoji = "🧭",
+        label = "GPS Offline",
+        displayLabel = "GPS Offline",
+        action = BubbleShortcutAction.OpenOfflineNavigation,
         targetGroup = "general",
         targetTab = "config",
     )
@@ -305,6 +321,7 @@ object TripAgendaBubbleShortcutModuleStage47 : BubbleShortcutModule {
 object BubbleShortcutCatalog {
     val modules: List<BubbleShortcutModule> = listOf(
         RouteBubbleShortcutModule,
+        GpsOfflineBubbleShortcutModule0710,
         ReadingBubbleShortcutModule,
         DestinationBubbleShortcutModule,
         AlertsManagementBubbleShortcutModule,
@@ -338,7 +355,7 @@ object BubbleShortcutCatalog {
         ?: ShortcutActionCatalog0184.findSpec(id)
 
     fun requireValid() {
-        require(modules.size >= 22) { "A Home deve conter o catálogo completo de módulos, incluindo Leitura." }
+        require(modules.size >= 23) { "A Home deve conter o catálogo completo de módulos, incluindo Leitura e GPS Offline." }
         ShortcutActionCatalog0184.requireValid()
         require(modules.map { it.spec.id }.distinct().size == modules.size) {
             "Cada atalho precisa ter identificador unico."
