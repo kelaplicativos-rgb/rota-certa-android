@@ -355,7 +355,10 @@ object BubbleShortcutCatalog {
         ?: ShortcutActionCatalog0184.findSpec(id)
 
     fun requireValid() {
-        require(modules.size >= 23) { "A Home deve conter o catálogo completo de módulos, incluindo Leitura e GPS Offline." }
+        require(modules.size >= 22) { "A Home deve conter o catálogo completo de módulos, incluindo Leitura." }
+        require(modules.any { it.spec.id == GpsOfflineBubbleShortcutModule0710.SHORTCUT_ID }) {
+            "GPS Offline deve permanecer disponível no catálogo da Home e da grade."
+        }
         ShortcutActionCatalog0184.requireValid()
         require(modules.map { it.spec.id }.distinct().size == modules.size) {
             "Cada atalho precisa ter identificador unico."
