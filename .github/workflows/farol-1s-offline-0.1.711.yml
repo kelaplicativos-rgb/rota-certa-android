@@ -49,9 +49,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git clone --depth 1 --branch "$OM_TAG" https://github.com/organicmaps/organicmaps.git /tmp/organicmaps
+          git clone --depth 128 --branch "$OM_TAG" https://github.com/organicmaps/organicmaps.git /tmp/organicmaps
           cd /tmp/organicmaps
           git submodule update --init --recursive --depth 1 --jobs 8
+          test "$(tools/unix/version.sh android_name)" = "$OM_VERSION"
           echo "sdk.dir=$ANDROID_HOME" > android/local.properties
           cd android
           chmod +x ./gradlew
