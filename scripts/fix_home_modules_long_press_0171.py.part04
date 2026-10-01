@@ -1,0 +1,95 @@
+
+        Text(
+            "Todos os recursos ficam acessíveis pela Home. A grade da bolinha permanece reservada para execução rápida.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        BubbleShortcutCatalog.modules.forEach { module ->
+            ShortcutModuleCard0171(
+                spec = module.spec,
+                highlighted = module.spec.id == highlightedModuleId,
+                store0171 = store0171,
+                onOpenModule = onOpenModule,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ShortcutModuleCard0171(
+    spec: BubbleShortcutSpec,
+    highlighted: Boolean,
+    store0171: ShortcutLongPressPreferenceStore0171,
+    onOpenModule: (BubbleShortcutSpec) -> Unit,
+) {
+    val context = LocalContext.current
+    var expanded by remember(spec.id) { mutableStateOf(highlighted) }
+    var savedChoice by remember(spec.id) { mutableStateOf(store0171.read(spec.id)) }
+    var draftChoice by remember(spec.id) { mutableStateOf(savedChoice) }
+    LaunchedEffect(highlighted) {
+        if (highlighted) expanded = true
+    }
+    val choices = remember(spec.id, spec.doubleTapAction) {
+        ShortcutLongPressPolicy0171.availableChoices(spec)
+    }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    "${spec.emoji}  ${spec.displayLabel}",
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(if (expanded) "▲" else "▼", fontWeight = FontWeight.Bold)
+            }
+            if (expanded) {
+                Text(ShortcutLongPressPolicy0171.description(spec), style = MaterialTheme.typography.bodySmall)
+                Button(onClick = { onOpenModule(spec) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Abrir módulo")
+                }
+                Text("Ação ao manter pressionado o atalho", fontWeight = FontWeight.Bold)
+                OutlinedButton(
+                    onClick = {
+                        val index = choices.indexOf(draftChoice).coerceAtLeast(0)
+                        draftChoice = choices[(index + 1) % choices.size]
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(ShortcutLongPressPolicy0171.choiceLabel(draftChoice))
+                }
+                Button(
+                    onClick = {
+                        store0171.write(spec.id, draftChoice)
+                        savedChoice = draftChoice
+                        Toast.makeText(
+                            context,
+                            "Toque longo de ${spec.displayLabel} salvo.",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    },
+                    enabled = draftChoice != savedChoice,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Salvar ação do toque longo")
+                }
+                Text(
+                    "Atual: ${ShortcutLongPressPolicy0171.choiceLabel(savedChoice)}. Ações sensíveis pedem confirmação.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfessionalBubbleDashboard(
+''',
+    'componentes dos módulos na Home',
+)
+MAIN_ACTIVITY.write_text(main, encoding='utf-8')
+
+print('Rota Certa 0.1.171 aplicada')

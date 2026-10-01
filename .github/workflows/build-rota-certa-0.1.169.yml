@@ -1,0 +1,206 @@
+name: Build Rota Certa 0.1.169
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/build-rota-certa-0.1.169.yml
+      - scripts/fix_uber_notification_wakeup_0169.py
+      - docs/PROJECT_STATUS.md
+      - docs/DECISIONS.md
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout protected source
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+          path: source
+
+      - name: Checkout isolated patch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/fix-uber-overlay-event-gap-0.1.169
+          fetch-depth: 0
+          path: patches
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Materialize protected source through 0.1.168
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python scripts/fix_99_overlay_state_0151.py
+          python scripts/fix_selected_package_state_0152.py
+          python scripts/fix_transient_launcher_clear_0154.py
+          python scripts/fix_bounded_empty_read_preservation_0155.py
+          python scripts/fix_passive_churn_and_launcher_race_0156.py
+          python scripts/fix_subsecond_farol_0157.py
+          python scripts/remove_collector_completely_0158.py
+          python scripts/run_value_finance_0159.py
+          python scripts/fix_value_finance_0160.py
+          python scripts/fix_value_finance_0160_compile.py
+          python ../patches/scripts/fix_failed_card_autocapture_0161.py .
+          python ../patches/scripts/fix_failed_card_autocapture_0161_rerun.py .
+          python ../patches/scripts/fix_gigu_work_mode_session_0162.py .
+          python ../patches/scripts/fix_gigu_work_mode_session_0162_rerun.py .
+          python ../patches/scripts/fix_farol_flight_recorder_0163.py .
+          python ../patches/scripts/fix_farol_flight_recorder_0163_rerun.py .
+          python ../patches/scripts/fix_diagnostic_session_summary_0164.py .
+          python ../patches/scripts/fix_diagnostic_session_summary_0164_rerun.py .
+          python ../patches/scripts/fix_diagnostic_attempt_timeline_0165.py .
+          python ../patches/scripts/fix_diagnostic_attempt_timeline_0165_rerun.py .
+          python ../patches/scripts/fix_farol_selected_apps_0166.py .
+          python ../patches/scripts/fix_farol_selected_apps_0166_rerun.py .
+          python ../patches/scripts/fix_farol_realtime_0167.py .
+          python ../patches/scripts/fix_farol_realtime_0167_rerun.py .
+          python ../patches/scripts/run_fix_farol_unified_visual_0168.py .
+          python ../patches/scripts/fix_farol_unified_visual_0168_compile.py .
+          grep -q 'versionName = "0.1.168"' app/build.gradle.kts
+          grep -q 'versionCode = 5290' app/build.gradle.kts
+
+      - name: Snapshot protected 0.1.168 tree
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+          import json
+          snapshot = {p.as_posix(): sha256(p.read_bytes()).hexdigest() for p in sorted(Path('app').rglob('*')) if p.is_file()}
+          Path('/tmp/rota-certa-0168-source-snapshot.json').write_text(json.dumps(snapshot, sort_keys=True, indent=2), encoding='utf-8')
+          PY
+          cp app/src/main/AndroidManifest.xml /tmp/AndroidManifest-0.1.168.xml
+          sha256sum \
+            app/src/main/java/br/com/mapeiaia/rotacerta/DecisionEngine.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/FarolSelectedAppInputPolicy0166.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealtimeEventGate0167.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/FarolUnifiedVisual0168.kt \
+            > /tmp/protected-0.1.168.sha256
+
+      - name: Apply notification wakeup 0.1.169 twice
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python ../patches/scripts/fix_uber_notification_wakeup_0169.py .
+          python ../patches/scripts/fix_uber_notification_wakeup_0169.py .
+
+      - name: Verify isolated change boundary
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+          import json
+          before = json.loads(Path('/tmp/rota-certa-0168-source-snapshot.json').read_text(encoding='utf-8'))
+          after = {p.as_posix(): sha256(p.read_bytes()).hexdigest() for p in sorted(Path('app').rglob('*')) if p.is_file()}
+          modified = sorted(path for path in before.keys() & after.keys() if before[path] != after[path])
+          added = sorted(after.keys() - before.keys())
+          deleted = sorted(before.keys() - after.keys())
+          expected_modified = sorted([
+              'app/build.gradle.kts',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/AccessibilityEventFloodGate.kt',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt',
+              'app/src/main/res/xml/rota_certa_accessibility.xml',
+          ])
+          expected_added = sorted([
+              'app/src/main/java/br/com/mapeiaia/rotacerta/FarolNotificationWakeup0169.kt',
+              'app/src/test/java/br/com/mapeiaia/rotacerta/FarolNotificationWakeup0169Test.kt',
+              'app/src/test/java/br/com/mapeiaia/rotacerta/FarolNotificationWakeupContract0169Test.kt',
+          ])
+          assert modified == expected_modified, (modified, expected_modified)
+          assert added == expected_added, (added, expected_added)
+          assert deleted == [], deleted
+          print('Modified:', *modified, sep='\n- ')
+          print('Added:', *added, sep='\n- ')
+          PY
+          cmp -s /tmp/AndroidManifest-0.1.168.xml app/src/main/AndroidManifest.xml
+          sha256sum --check /tmp/protected-0.1.168.sha256
+
+      - name: Verify notification wakeup contracts
+        working-directory: source
+        run: |
+          set -euo pipefail
+          grep -q 'versionName = "0.1.169"' app/build.gradle.kts
+          grep -q 'versionCode = 5300' app/build.gradle.kts
+          grep -q 'typeNotificationStateChanged' app/src/main/res/xml/rota_certa_accessibility.xml
+          grep -q 'TYPE_NOTIFICATION_STATE_CHANGED = 64' app/src/main/java/br/com/mapeiaia/rotacerta/AccessibilityEventFloodGate.kt
+          grep -q 'farol_notification_wakeup_0_1_169' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'handleNotificationWakeup0169' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'maxCaptures: Int = 4' app/src/main/java/br/com/mapeiaia/rotacerta/FarolNotificationWakeup0169.kt
+          ! grep -q 'while (notificationWake' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          python -m py_compile ../patches/scripts/fix_uber_notification_wakeup_0169.py
+          test -n "${GOOGLE_MAPS_API_KEY:-}"
+
+      - name: Unit and contract tests
+        working-directory: source
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Android lint
+        working-directory: source
+        run: ./gradlew lintDebug --no-daemon --stacktrace
+
+      - name: Build APK
+        working-directory: source
+        run: ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Validate APK
+        working-directory: source
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          APKSIGNER=$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)
+          AAPT=$(find "$ANDROID_SDK_ROOT/build-tools" -name aapt -type f | sort -V | tail -1)
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee rota-certa-0.1.169-assinatura.txt
+          grep -qi 'd9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' rota-certa-0.1.169-assinatura.txt
+          BADGING=$($AAPT dump badging "$APK" | head -1)
+          echo "$BADGING"
+          echo "$BADGING" | grep -q "name='br.com.mapeiaia.rotacerta'"
+          echo "$BADGING" | grep -q "versionCode='5300'"
+          echo "$BADGING" | grep -q "versionName='0.1.169'"
+          $AAPT dump xmltree "$APK" AndroidManifest.xml > apk-manifest-tree.txt
+          grep -q 'LiveRideAccessibilityService' apk-manifest-tree.txt
+          for dex in $(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$'); do unzip -p "$APK" "$dex"; done | strings > dex-strings.txt
+          grep -q 'FarolNotificationWakeGate0169' dex-strings.txt
+          grep -q 'NOTIFICATION_WAKE_ACCEPTED_0169' dex-strings.txt
+          cp "$APK" rota-certa-0.1.169-uber-notification-wakeup-validado.apk
+          sha256sum rota-certa-0.1.169-uber-notification-wakeup-validado.apk | tee rota-certa-0.1.169-sha256.txt
+          printf 'Versao: 0.1.169 (5300)\nPacote: br.com.mapeiaia.rotacerta\nEscopo: despertar pontual por notificacao de aplicativo selecionado\nSem polling: maximo de quatro capturas por token, cancelaveis e com TTL\nManifest e permissoes: inalterados\n' > rota-certa-0.1.169-validacao.txt
+
+      - name: Upload validated APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.169-uber-notification-wakeup-validated
+          path: |
+            source/rota-certa-0.1.169-uber-notification-wakeup-validado.apk
+            source/rota-certa-0.1.169-sha256.txt
+            source/rota-certa-0.1.169-assinatura.txt
+            source/rota-certa-0.1.169-validacao.txt
+          retention-days: 90
+          if-no-files-found: error
