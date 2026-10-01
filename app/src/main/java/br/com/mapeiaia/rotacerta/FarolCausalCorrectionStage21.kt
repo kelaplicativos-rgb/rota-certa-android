@@ -9,6 +9,7 @@ object FarolCausalCorrectionStage21 {
     const val SEMANTIC_GATE_MARKER = "SEMANTIC_ADDRESS_GATE_BEFORE_CACHE_AND_GOOGLE_STAGE21"
     const val EVENT_COALESCING_MARKER = "EVENT_COALESCING_AND_SELF_OVERLAY_SUPPRESSION_STAGE21"
     const val OCR_COALESCING_MARKER = "OCR_SINGLE_FLIGHT_NO_BACKLOG_STAGE21"
+    const val LOCALITY_PRESERVATION_MARKER_0711 = "FULL_LOCALITY_PRESERVED_TO_OFFLINE_GEOCODER_0711"
 
     private const val NORMAL_BURST_NS = 75_000_000L
     private const val BUSY_BURST_NS = 180_000_000L
@@ -157,7 +158,7 @@ object FarolCausalCorrectionStage21 {
                     block,
                     UniversalScreenAddressParser.findAddresses(
                         WrappedAddressTextNormalizer.normalize(block.text),
-                    ).map(DestinationAddressIdentityPolicy::cleanDisplayAddress)
+                    ).map(DestinationAddressIdentityPolicy::cleanParserSegment)
                         .map(FarolCausalLatencyStage28::trimNarrativeSuffix)
                         .filter(String::isNotBlank)
                         .distinctBy(::canonical),
@@ -251,7 +252,7 @@ object FarolCausalCorrectionStage21 {
                 val normalized = WrappedAddressTextNormalizer.normalize(block.text)
                 val rawAddresses = UniversalScreenAddressParser.findAddresses(normalized)
                 val addresses = rawAddresses
-                    .map(DestinationAddressIdentityPolicy::cleanDisplayAddress)
+                    .map(DestinationAddressIdentityPolicy::cleanParserSegment)
                     .map(FarolCausalLatencyStage28::trimNarrativeSuffix)
                     .filter(String::isNotBlank)
                     .distinctBy(::canonical)
