@@ -7168,6 +7168,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             clearReadEvidence0187Phase4 = true,
         )
         if (::stage36RuntimeAuthority.isInitialized) stage36RuntimeAuthority.clearVisualLease(reason)
+        farolAddressRecovery0716.reset()
         universalActiveAddressSignature = null
         universalActiveCardIdentity0683 = null
         stage684AccessibilityRouteAddress = null
