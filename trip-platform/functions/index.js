@@ -2326,9 +2326,32 @@ function operationalSeatLimit(trip, records = [], now = Date.now()) {
   const rotaCertaAllocated = Number.isInteger(configuredLocal) && configuredLocal >= 0
     ? Math.min(999, configuredLocal)
     : 0;
-  const passengerLoads = reconciledSegmentCapacity(trip, records, now).passengerLoads;
-  const confirmedPeak = passengerLoads.length
-    ? Math.max(...passengerLoads.map((value) => Math.max(0, Number(value || 0))))
+  const stops = Array.isArray(trip && trip.stops) ? trip.stops : [];
+  const externalClaims = Array.from({ length: Math.max(0, stops.length - 1) }, () => new Map());
+  for (const record of records || []) {
+    if (!record || record.status !== "CONFIRMED" || Number(record.seats || 0) <= 0) continue;
+    const claimType = cleanText(record.capacityClaimType, 24).toUpperCase() || "PASSENGER";
+    const source = cleanText(record.source, 24).toUpperCase();
+    if (claimType !== "EXTERNAL_OCCUPANCY" && source !== "BLABLACAR") continue;
+    const fromIndex = stops.findIndex((stop) => stop.id === record.boardingStopId);
+    const toIndex = stops.findIndex((stop) => stop.id === record.dropoffStopId);
+    if (fromIndex < 0 || toIndex <= fromIndex) continue;
+    const groupId = cleanText(record.occupancyGroupId, 120);
+    const sourceReference = cleanText(record.sourceReference, 240);
+    const passengerId = cleanText(record.passengerId, 120);
+    const key = groupId ? `group:${groupId}`
+      : sourceReference ? `reference:${sourceReference}`
+        : passengerId ? `passenger:${passengerId}`
+          : `booking:${cleanText(record.id, 120)}`;
+    const seats = Math.max(0, Number(record.seats || 0));
+    for (let index = fromIndex; index < toIndex; index += 1) {
+      externalClaims[index].set(key, Math.max(externalClaims[index].get(key) || 0, seats));
+    }
+  }
+  const confirmedPeak = externalClaims.length
+    ? Math.max(...externalClaims.map((segment) =>
+        Array.from(segment.values()).reduce((sum, seats) => sum + Math.max(0, Number(seats || 0)), 0)
+      ))
     : 0;
   return Math.min(999, blablaAvailable + confirmedPeak + rotaCertaAllocated);
 }
