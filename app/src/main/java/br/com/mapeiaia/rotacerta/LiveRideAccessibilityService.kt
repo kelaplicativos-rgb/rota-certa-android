@@ -4310,18 +4310,29 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 return false
             }
 
-            val exact0715 = MutableList<Double?>(targetsStage19.destinations.size) { null }
-            exact0715[targetIndex0715] = roadKm0715
-            val refined0715 = attachExactRoadDistanceStage637(
-                localResult0696,
-                targetsStage19,
-                exact0715,
-            ).copy(
+            var routeIndex0715 = 0
+            val exactHome0715 = if (targetsStage19.homeCoordinate != null) {
+                val value0715 = roadKm0715.takeIf { targetIndex0715 == routeIndex0715 }
+                routeIndex0715 += 1
+                value0715
+            } else {
+                null
+            }
+            val exactPin0715 = targetsStage19.pins.map {
+                val value0715 = roadKm0715.takeIf { targetIndex0715 == routeIndex0715 }
+                routeIndex0715 += 1
+                value0715
+            }.filterNotNull().minOrNull()
+            if (exactHome0715 == null && exactPin0715 == null) return false
+
+            val refined0715 = localResult0696.copy(
                 recommendation = FarolLocalDecisionAuthority0696.preserveLocalRecommendation(
                     localResult0696.recommendation,
                     localResult0696.recommendation,
                 ),
                 reason = "Cor local preservada; KM rodoviário confirmado pelo fallback terminal 0715.",
+                pickupToHomeKm = exactHome0715,
+                pickupToAlternativeKm = exactPin0715,
             )
             UnifiedDebugEventStore.record(
                 FarolPaidRoadGate0715.RESOLVED_MARKER,
