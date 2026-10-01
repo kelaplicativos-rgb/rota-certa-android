@@ -1,0 +1,14 @@
+Rota Certa 0.1.164 — Resumo autoritativo da sessão
+
+Correção isolada do módulo Diagnóstico sobre a versão validada 0.1.163:
+- usa a trilha atual do gravador de voo para resumir a última tentativa real;
+- informa quantidade de sessões de card e avaliações com dois endereços;
+- mostra último pacote, embarque e destino reconhecidos;
+- informa se Casa ou Alfinete estavam realmente ativos com coordenada;
+- informa se a rota foi solicitada, se houve cache, chamada ao Google Maps e decisão;
+- destaca quando o fluxo foi bloqueado antes da rota porque não havia região ativa;
+- preserva integralmente o relatório detalhado abaixo do resumo;
+- não altera farol, parser, Google Maps, Casa/Alfinetes, Manifest ou permissões;
+- Coletor permanece removido.
+
+A main permanece intacta até a validação prática do APK.
