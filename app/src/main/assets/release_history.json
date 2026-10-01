@@ -2,6 +2,43 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.710",
+      "build": 6001,
+      "commit": null,
+      "branch": "agent/gps-offline-grid-shortcut-0.1.710",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Adiciona o módulo GPS Offline ao catálogo oficial de atalhos da Home e da grade flutuante.",
+        "Em instalações atualizadas com espaço disponível, o atalho 🧭 GPS Offline é migrado automaticamente para a grade existente.",
+        "Um toque no atalho abre diretamente a tela GPS Offline e posiciona o foco no campo Para onde você vai?.",
+        "A tela GPS Offline mantém pesquisa de endereço pelo Organic Maps offline, seleção de coordenada com retorno ao Rota Certa e início direto de navegação quando o destino já é uma coordenada."
+      ],
+      "fixed": [
+        "Elimina a necessidade de entrar em Controles gerais para chegar à navegação offline: a grade pode abrir o módulo diretamente.",
+        "A ação do novo atalho passa pelo mesmo launcher protegido usado pelos demais atalhos no Android 14/16, incluindo PendingIntent quando exigido.",
+        "A abertura longa do módulo GPS Offline também é desviada para a tela correta em vez de cair na Home genérica."
+      ],
+      "improved": [
+        "O campo de destino recebe foco quando a tela é aberta pela grade, reduzindo passos antes de digitar o endereço.",
+        "A integração continua fail-closed: o novo atalho não altera a autoridade do FAROL e não publica quilômetros externos como decisão do FAROL.",
+        "Preserva o importador .mwm e a atribuição Organic Maps/OpenStreetMap da base 0.1.709."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Ausência de acesso imediato à navegação offline pela grade de atalhos."
+      ],
+      "modulesAffected": [
+        "GPS Offline",
+        "Grade de atalhos",
+        "Organic Maps",
+        "Navegação Offline",
+        "FAROL",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.709",
       "build": 6000,
       "commit": null,
