@@ -2098,17 +2098,17 @@ private fun TimelineEntryCard(
         }
     }
 
+    val toggleTimelineCard0712: () -> Unit = {
+        if (!expanded) queueTargetHtmlRefresh0607()
+        onToggleExpanded()
+    }
+
     Card(
+        // 0.1.712: the card shell is deliberately not clickable. Only neutral route
+        // surfaces below can expand/collapse, so child controls own their gestures.
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
-            .clickable(
-                onClickLabel = if (expanded) "Recolher trajeto" else "Abrir trajeto",
-                onClick = {
-                    if (!expanded) queueTargetHtmlRefresh0607()
-                    onToggleExpanded()
-                },
-            ),
+            .padding(vertical = 8.dp),
         shape = RoundedCornerShape(26.dp),
         colors = CardDefaults.cardColors(containerColor = agendaBackground0549),
         border = BorderStroke(1.dp, agendaBorder0549),
@@ -2257,7 +2257,16 @@ private fun TimelineEntryCard(
                 )
             }
 
-            Row(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // TIMELINE_CARD_OPEN_SURFACE_0712
+                    .clickable(
+                        onClickLabel = if (expanded) "Recolher trajeto" else "Abrir trajeto",
+                        onClick = toggleTimelineCard0712,
+                    )
+                    .padding(vertical = 4.dp),
+            ) {
                 Column(modifier = Modifier.width(76.dp)) {
                     Text(departureClock0549, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(duration0549, style = MaterialTheme.typography.bodySmall, color = agendaMuted0549)
@@ -2377,7 +2386,13 @@ private fun TimelineEntryCard(
 
             Text(
                 text = if (expanded) "Recolher trajeto" else "Ver trajeto",
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(
+                        onClickLabel = if (expanded) "Recolher trajeto" else "Abrir trajeto",
+                        onClick = toggleTimelineCard0712,
+                    )
+                    .padding(vertical = 4.dp),
                 style = MaterialTheme.typography.labelLarge,
                 color = agendaSeatAccent0549,
                 fontWeight = FontWeight.Bold,
