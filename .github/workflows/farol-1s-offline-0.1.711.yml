@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: farol-1s-offline-0711
+  cancel-in-progress: true
+
 jobs:
   probe:
     runs-on: ubuntu-24.04
