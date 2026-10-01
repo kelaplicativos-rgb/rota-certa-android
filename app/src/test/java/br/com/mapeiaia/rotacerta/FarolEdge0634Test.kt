@@ -126,9 +126,10 @@ class FarolEdge0634Test {
     fun radar_monitor_remains_independent_from_farol_reading() {
         val live = src("LiveRideAccessibilityService.kt")
         val start = live.indexOf("    private fun startProximityAlertMonitor()")
-        val end = live.indexOf("    private fun checkDirectionalProximityAlertsChecklist5", start)
+        val endMarker = "} // single_core_alert_projection_0_1_685"
+        val end = live.indexOf(endMarker, start)
         assertTrue(start >= 0 && end > start)
-        val block = live.substring(start, end)
+        val block = live.substring(start, end + endMarker.length)
         assertFalse(block.contains("liveReadingEnabled"))
         assertFalse(block.contains("WorkModePolicy0162.isEnabled"))
     }
