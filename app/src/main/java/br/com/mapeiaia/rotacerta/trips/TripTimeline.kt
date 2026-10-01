@@ -202,7 +202,9 @@ internal fun tripChannelAllocationBreakdown(
         null
     }
     return TripChannelAllocationBreakdown(
-        operationalInventory = total ?: physical,
+        // The canonical/physical ceiling already includes passengers no longer
+        // present in BlaBlaCar's remaining-seat counter. Prefer it whenever known.
+        operationalInventory = physical ?: total,
         blablaQuota = blabla,
         rotaCertaQuota = rotaCerta,
     )
