@@ -34,6 +34,9 @@ class GoogleMapsService(context: Context? = null) {
     private val offlineAddressAtlas642: OfflineAddressAtlas642? = context
         ?.applicationContext
         ?.let(::OfflineAddressAtlas642)
+    private val organicMapsOfflineResolver0711: OrganicMapsOfflineAddressResolver0711? = context
+        ?.applicationContext
+        ?.let(::OrganicMapsOfflineAddressResolver0711)
     private var writesSincePrune = 0
 
     suspend fun geocode(query: String, region: DeviceRegion, apiKey: String): Coordinate? = withContext(Dispatchers.IO) {
@@ -132,6 +135,16 @@ class GoogleMapsService(context: Context? = null) {
     ): Coordinate? = withContext(Dispatchers.IO) {
         cachedFarolCoordinate(originAddress)?.let { return@withContext it }
 
+        organicMapsOfflineResolver0711?.resolve(originAddress)?.let { coordinate ->
+            learnOfflineAtlas642(originAddress, coordinate)
+            FarolFlightRecorder0163.record(
+                stage = "FAROL_ORGANIC_OFFLINE_RESOLVED_0711",
+                packageName = null,
+                details = "provider=organicmaps_embedded; network=false",
+            )
+            return@withContext coordinate
+        }
+
         resolvePlatformFirstOrigin640(originAddress)?.let { coordinate ->
             learnOfflineAtlas642(originAddress, coordinate)
             return@withContext coordinate
@@ -166,7 +179,23 @@ class GoogleMapsService(context: Context? = null) {
         FarolFlightRecorder0163.record(
             stage = FarolCoordinateResolution0697.STARTED_MARKER,
             packageName = null,
-            details = "globalDeadlineMs=${FarolCoordinateResolution0697.GLOBAL_DEADLINE_MS}",
+            details = "globalDeadlineMs=${FarolCoordinateResolution0697.GLOBAL_DEADLINE_MS}; offlineFirst=organicmaps0711",
+        )
+
+        organicMapsOfflineResolver0711?.resolve(originAddress)?.let { coordinate ->
+            learnOfflineAtlas642(originAddress, coordinate)
+            FarolFlightRecorder0163.record(
+                stage = "FAROL_ORGANIC_OFFLINE_RESOLVED_0711",
+                packageName = null,
+                details = "provider=organicmaps_embedded; network=false; elapsed_ms=${SystemClock.elapsedRealtime() - started}",
+            )
+            return coordinate
+        }
+
+        FarolFlightRecorder0163.record(
+            stage = "FAROL_ORGANIC_OFFLINE_MISS_0711",
+            packageName = null,
+            details = "fallback=legacy_resolvers; elapsed_ms=${SystemClock.elapsedRealtime() - started}; sdkFailure=${OrganicMapsEmbeddedRuntime0711.failureReason().orEmpty()}",
         )
 
         val result = withTimeoutOrNull(FarolCoordinateResolution0697.GLOBAL_DEADLINE_MS) {
