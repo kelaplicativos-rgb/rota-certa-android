@@ -1684,6 +1684,15 @@ class TripRemoteApi(
         requireDriverToken = true,
     )
 
+    suspend fun resolveFarolPaidRoad0715(
+        payload: FarolPaidRoadRequest0715,
+    ): FarolPaidRoadResponse0715 = request(
+        method = "POST",
+        path = "/v1/assistant/farol-road",
+        body = json.encodeToString(payload),
+        requireDriverToken = true,
+    )
+
     suspend fun learnRideApp0700(
         payload: RideAppLearningRequest0700,
     ): RideAppLearningResponse0700 = request(
