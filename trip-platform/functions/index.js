@@ -9,6 +9,7 @@ const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const { interpretAssistantCommand0410, AssistantInterpreterError0410, normalizeAllowedActions0410 } = require("./assistant-command-interpreter-0410");
 const { resolveFarolAddress0695, FarolPaidAddressError0695 } = require("./farol-paid-address-0695");
+const { resolveFarolPaidRoad0715, FarolPaidRoadError0715 } = require("./farol-paid-road-0715");
 const { learnRideApp0700, RideAppLearningError0700 } = require("./ride-app-learning-0700");
 const { CONTRACT_VERSION_0702, LEASE_MILLIS_0702, COLLECTION_0702, learningKey0702, cacheDecision0702, publicProfileResponse0702, publicProcessingResponse0702 } = require("./ride-app-learning-idempotency-0702");
 const { createLiveAgendaFeed0701 } = require("./live-agenda-feed-0701");
@@ -11083,6 +11084,56 @@ async function resolveFarolPaidAddressApi0695(req, res) {
   }
 }
 
+async function resolveFarolPaidRoadApi0715(req, res) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const destination = cleanText(body.destination, 500);
+  const context = cleanText(body.context, 1800);
+  const packageName = cleanText(body.packageName, 120);
+  const fingerprint = cleanText(body.fingerprint, 80);
+  const targets = Array.isArray(body.targets) ? body.targets.slice(0, 12) : [];
+  if (!destination) return fail(res, 400, "farol_road_destination_required", "Destino ausente.");
+  if (!targets.length) return fail(res, 400, "farol_road_targets_required", "Nenhum destino de referência configurado.");
+
+  const startedAt = Date.now();
+  const driverHash = sha256Hex(driver.username || "legacy").slice(0, 16);
+  try {
+    const result = await resolveFarolPaidRoad0715({
+      destination,
+      context,
+      packageName,
+      fingerprint,
+      targets,
+      apiKey: openaiApiKeySecret.value() || "",
+    });
+    console.log("farol_paid_road_0715", JSON.stringify({
+      driverHash,
+      fingerprint,
+      status: result.status,
+      confidence: result.confidence,
+      roadKm: result.roadKm,
+      routeProvider: result.routeProvider,
+      model: result.model,
+      latencyMs: Date.now() - startedAt,
+      success: result.status === "RESOLVED",
+    }));
+    return json(res, 200, result);
+  } catch (error) {
+    const status = error instanceof FarolPaidRoadError0715 ? error.httpStatus : 502;
+    const code = error instanceof FarolPaidRoadError0715 ? error.code : "farol_paid_road_failed";
+    console.log("farol_paid_road_0715", JSON.stringify({
+      driverHash,
+      fingerprint,
+      status: "FAILED",
+      errorCode: code,
+      latencyMs: Date.now() - startedAt,
+      success: false,
+    }));
+    return fail(res, status, code, error.message || "Falha no último recurso rodoviário do Farol.");
+  }
+}
+
 async function rideAppLearningStatusApi0702(req, res) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
@@ -11281,6 +11332,9 @@ exports.assistantApi = onRequest(
       }
       if (req.method === "POST" && path === "/v1/assistant/farol-address") {
         return await resolveFarolPaidAddressApi0695(req, res);
+      }
+      if (req.method === "POST" && path === "/v1/assistant/farol-road") {
+        return await resolveFarolPaidRoadApi0715(req, res);
       }
       if (req.method === "POST" && path === "/v1/assistant/learn-ride-app") {
         return await learnRideAppApi0700(req, res);
