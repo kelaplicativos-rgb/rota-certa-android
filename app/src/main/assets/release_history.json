@@ -2,6 +2,45 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.712",
+      "build": 6003,
+      "commit": null,
+      "branch": "agent/passenger-card-touch-isolation-0.1.712",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Isola a ação geral dos cards da Timeline e do navegador operacional em superfícies neutras específicas; atalhos de passageiro deixam de competir com um Card pai clicável.",
+        "O atalho 🛰️ passa a usar gesto nativo combinado: toque curto compartilha e pressão longa ativa revoga, sem temporizador manual nem leitura de ponteiro já consumido.",
+        "O compartilhamento do passageiro passa a iniciar somente o núcleo compartilhado de localização e não marca mais o rastreamento de trabalho como ativo."
+      ],
+      "fixed": [
+        "Corrige toques em WhatsApp, rastreamento, mensagens, embarque, desembarque, status e refresh que podiam ser interpretados também como ação do card.",
+        "Revogação do passageiro agora exige confirmação positiva do servidor antes de limpar o estado local.",
+        "Após revogar o acompanhamento, o serviço recebe reconciliação imediata e pode remover GPS/foreground service quando nenhum consumidor legítimo permanece.",
+        "Bloqueia recriação do link do mesmo passageiro enquanto a revogação está em andamento."
+      ],
+      "improved": [
+        "O teste antigo de ACK deixa de aceitar check(response.ok) pertencente ao fluxo familiar e passa a validar especificamente closePassengerShare.",
+        "Testes de regressão fixam a ausência de card-wide click concorrente, o gesto nativo do satélite e a separação entre acompanhamento de passageiro e rastreamento de trabalho."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.706/0.1.707: pressão longa do satélite podia ser perdida ou virar novo compartilhamento quando o Card pai disputava o gesto.",
+        "0.1.706/0.1.707: acompanhamento do passageiro iniciava ACTION_START e mantinha a autoridade de rastreamento de trabalho ativa após o encerramento."
+      ],
+      "modulesAffected": [
+        "Timeline",
+        "Navegador operacional",
+        "Passageiros",
+        "Rastreamento",
+        "GPS",
+        "WhatsApp",
+        "Privacidade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.711",
       "build": 6002,
       "commit": null,
