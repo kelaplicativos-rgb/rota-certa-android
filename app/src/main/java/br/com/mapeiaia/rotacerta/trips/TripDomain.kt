@@ -330,7 +330,7 @@ internal fun bookingOccupancyIdentityKey(booking: Booking): String =
         ?: "booking:${booking.id}"
 
 /**
- * Peak confirmed passenger occupancy observed on any single segment.
+ * Peak confirmed BlaBlaCar passenger occupancy observed on any single segment.
  *
  * BlaBlaCar's seat editor exposes the number still offered externally, not the
  * original physical ceiling. Reconstructing the ceiling therefore needs the
@@ -348,8 +348,8 @@ internal fun peakConfirmedPassengerSeats0714(
         .filter { it.tripId == trip.id }
         .filter { it.seats > 0 && it.status == BookingStatus.CONFIRMED }
         .filter {
-            it.capacityClaimType == CapacityClaimType.PASSENGER ||
-                it.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY
+            it.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY ||
+                it.source == BookingSource.BLABLACAR
         }
         .forEach { booking ->
             val fromIndex = orderedStops.indexOfFirst { it.id == booking.boardingStopId }
@@ -369,7 +369,7 @@ internal fun peakConfirmedPassengerSeats0714(
  * Canonical simultaneous operational ceiling.
  *
  * publishedSeats is the current BlaBlaCar availability (seats still offered).
- * Confirmed passengers are added back exactly once at their peak simultaneous
+ * Confirmed BlaBlaCar passengers are added back exactly once at their peak simultaneous
  * occupancy; Rota Certa's explicit extra allocation is then added separately.
  */
 fun operationalInventoryCapacity(
