@@ -761,9 +761,7 @@ private fun OperationalTripBrowserCard0563(
     val dateLabel = operationalDateLabel0568(date, today)
 
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = manageable0633, onClick = onOpen),
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -787,6 +785,17 @@ private fun OperationalTripBrowserCard0563(
             ) {
                 Text(
                     text = dateLabel,
+                    // OPERATIONAL_CARD_OPEN_SURFACE_0712: only this neutral header region
+                    // owns the general card action. Embedded passenger shortcuts are siblings,
+                    // never descendants of a competing card-wide clickable modifier.
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(
+                            enabled = manageable0633,
+                            onClickLabel = "Abrir viagem",
+                            onClick = onOpen,
+                        )
+                        .padding(vertical = 8.dp),
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Row(
