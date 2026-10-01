@@ -18,6 +18,8 @@ class FarolPaidRoadFallback0715ContractTest {
         assertTrue(live.contains("resolveFarolPaidRoad0715("))
         assertTrue(live.contains("FarolPaidRoadGate0715.STALE_DROPPED_MARKER"))
         assertTrue(live.contains("DistanceAuthority.ROAD_CONFIRMED"))
+        assertTrue(live.contains("pickupToHomeKm = exactHome0715"))
+        assertTrue(live.contains("pickupToAlternativeKm = exactPin0715"))
         assertFalse(live.contains("FAROL_COORDINATE_ALL_PROVIDERS_FAILED_0697\""))
     }
 
