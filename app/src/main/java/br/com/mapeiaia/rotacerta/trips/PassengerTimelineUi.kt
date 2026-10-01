@@ -644,6 +644,12 @@ internal fun EnhancedPassengerTimelineSection(
             }.onSuccess { closed0676 ->
                 if (closed0676) {
                     trackingRevision0676++
+                    runCatching {
+                        context.startService(
+                            Intent(context, WorkTrackingService::class.java)
+                                .setAction(WorkTrackingService.ACTION_RECONCILE_LOCATION_CORE_0681),
+                        )
+                    }
                     onChanged("Acompanhamento de " + row0676.name.ifBlank { "Passageiro" } + " encerrado imediatamente.")
                 }
             }.onFailure { error0676 ->
@@ -656,7 +662,8 @@ internal fun EnhancedPassengerTimelineSection(
     fun publishPassengerTracking0668(request0668: PassengerTrackingLinkRequest0668) {
         ContextCompat.startForegroundService(
             context,
-            Intent(context, WorkTrackingService::class.java).setAction(WorkTrackingService.ACTION_START),
+            Intent(context, WorkTrackingService::class.java)
+                .setAction(WorkTrackingService.ACTION_ENSURE_LOCATION_CORE_0681),
         )
         onChanged("Criando link temporário de acompanhamento para " + request0668.passengerName + "…")
         scope.launch {
