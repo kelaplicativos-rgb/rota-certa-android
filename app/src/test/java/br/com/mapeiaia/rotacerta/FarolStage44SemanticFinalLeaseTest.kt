@@ -111,8 +111,9 @@ class FarolStage44SemanticFinalLeaseTest {
 
     @Test fun sameSemanticCandidateReturnsBeforeInvalidation() {
         val s = source("LiveRideAccessibilityService.kt")
-        val a = s.indexOf("FarolSemanticFinalLeaseStage44.preservesSameSemanticCard(finalLeaseStage44, evaluationStage19.addressSignature)")
+        val a = s.indexOf("FarolCardLifeAuthority0683.sameCard(universalActiveCardIdentity0683, candidateCardIdentity0683)")
         val invalidate = s.indexOf("invalidateOldVisualBeforeCollectStage26(admissionStage26.visualGeneration, eventStartedNsStage26)", a)
+        assertTrue(a >= 0 && invalidate > a)
         val block = s.substring(a, invalidate)
         assertTrue(block.contains("S44_SEMANTIC_SAME_CARD_FINAL_PRESERVED"))
         assertTrue(block.contains("return true"))
@@ -132,11 +133,15 @@ class FarolStage44SemanticFinalLeaseTest {
 
     @Test fun provenDifferentOrAmbiguousCardStillFailsClosedToYellow() {
         val s = source("LiveRideAccessibilityService.kt")
-        val call = s.indexOf("invalidateOldVisualBeforeCollectStage26(admissionStage26.visualGeneration, eventStartedNsStage26)")
-        val candidateBranch = s.indexOf("if (evaluationStage19 != null) {", call)
-        assertTrue(call >= 0 && candidateBranch > call)
+        val proof = s.indexOf("S44_PROVEN_CARD_CHANGE_INVALIDATE")
+        val precedingCall = s.lastIndexOf(
+            "invalidateOldVisualBeforeCollectStage26(admissionStage26.visualGeneration, eventStartedNsStage26)",
+            proof,
+        )
+        assertTrue(proof >= 0 && precedingCall >= 0 && precedingCall < proof)
         val function = s.indexOf("private fun invalidateOldVisualBeforeCollectStage26(")
-        val end = s.indexOf("private fun collectUniversalAccessibilityBlocksStage19", function)
+        val end = s.indexOf("private fun invalidateProvenCardReplacement0683(", function)
+        assertTrue(function >= 0 && end > function)
         val block = s.substring(function, end)
         // Stage36 deliberately retains the old address signature as a freshness lease; Stage44 must not undo it.
         assertFalse(block.contains("universalActiveAddressSignature = null"))
