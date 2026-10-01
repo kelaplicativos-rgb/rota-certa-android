@@ -209,6 +209,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var lastSavedReadHash: Int? = null
     private var lastScreenshotMillis: Long = 0L
     private var continuousScanStarted = false
+    private var farolVisualHeartbeatJob0711: Job? = null
+    @Volatile private var farolLastConfirmedAddressAtElapsed0711: Long = 0L
+    @Volatile private var farolLastConfirmedAddressSignature0711: String? = null
     private var proximityAlertMonitorStarted = false
     private var serviceReady = false
     private var analyzing = false
@@ -295,7 +298,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var universalLastTriggerTraceAtMillis: Long = 0L // universal_runtime_stability_fields_0_1_101
     private val coreLiveReadTriggerGate = br.com.mapeiaia.rotacerta.core.CoreLiveReadTriggerGate(duplicateWindowMs = 180L)
     private var lastVisibleCardSignature: String? = null
-    private val STABLE_DECISION_ABSENCE_GRACE_MILLIS_141 = 3_000L
+    private val STABLE_DECISION_ABSENCE_GRACE_MILLIS_141 = 1_000L
     private val coreBubblePresenter = br.com.mapeiaia.rotacerta.core.CoreBubblePresenter
 
     override fun onCreate() {
@@ -3786,6 +3789,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         universalActiveCardIdentity0683 = candidateCardIdentity0683
         lastSnapshotHash = evaluationStage19.screenHash
         universalLastActiveReadAtElapsedMillis0187 = SystemClock.elapsedRealtime()
+        farolLastConfirmedAddressAtElapsed0711 = universalLastActiveReadAtElapsedMillis0187
+        farolLastConfirmedAddressSignature0711 = stableSanitizedAddressSignature0697
         stage19VisualVerificationPending = false
         val currentBindingStage20 = currentStage20BindingSnapshot()
         if (windowChangedStage19 || visualChangedStage19) {
@@ -4371,9 +4376,195 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun startContinuousScan() {
-        // event_driven_farol_0_1_162: sem while, timer ou OCR continuo.
-        // bubble_drag_scan_pause_0_1_116 — sem loop, portanto nenhum scan compete com o gesto.
+        if (continuousScanStarted || !serviceReady) return
         continuousScanStarted = true
+        farolVisualHeartbeatJob0711?.cancel()
+        farolVisualHeartbeatJob0711 = scope.launch {
+            while (kotlinx.coroutines.currentCoroutineContext().isActive) {
+                delay(FarolOneSecondVisualAuthority0711.HEARTBEAT_MILLIS)
+                if (bubbleGestureActive) continue
+                runCatching { verifyCurrentVisualAuthority0711() }
+                    .onFailure { error0711 ->
+                        UnifiedDebugEventStore.record(
+                            "FAROL_VISUAL_HEARTBEAT_FAILURE_0711",
+                            universalResolvedForegroundPackage(),
+                            "type=${error0711::class.java.simpleName}",
+                        )
+                    }
+            }
+        }
+    }
+
+    private suspend fun verifyCurrentVisualAuthority0711() {
+        if (!serviceReady || !WorkModePolicy0162.isEnabled(currentSettings)) return
+        if (!::stage36RuntimeAuthority.isInitialized || !stage36RuntimeAuthority.snapshot().enabled) return
+
+        val now0711 = SystemClock.elapsedRealtime()
+        val hasPublicResult0711 =
+            (currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red) &&
+                currentDistanceKm != null
+
+        if (hasPublicResult0711 &&
+            FarolOneSecondVisualAuthority0711.expired(
+                now0711,
+                farolLastConfirmedAddressAtElapsed0711,
+            )
+        ) {
+            hardClearUniversalTwoAddress(
+                reason = "Lease visual de 1 segundo expirou sem nova confirmação do endereço atual.",
+                keepWaitingYellow = false,
+            )
+        }
+
+        val selected0711 = SelectedRideAppStore.read(applicationContext)
+        val visible0711 = resolveVisibleAuthorizedRootStage16(selected0711)
+        val root0711 = visible0711.rootHandle
+        val package0711 = normalizePackageName(root0711?.packageName)
+        if (root0711 == null || package0711 == null || package0711 !in selected0711) {
+            hardClearUniversalTwoAddress(
+                reason = "Heartbeat visual: nenhum aplicativo de corrida selecionado com endereço atual.",
+                keepWaitingYellow = false,
+            )
+            return
+        }
+
+        val text0711 = collectImmediateVisibleTextChecklist13(root0711.node)
+        if (text0711.isBlank()) {
+            hardClearUniversalTwoAddress(
+                reason = "Heartbeat visual: tela atual sem texto/endereço de corrida.",
+                keepWaitingYellow = false,
+            )
+            scheduleScreenshotFallback127(package0711)
+            return
+        }
+
+        val bounds0711 = Rect()
+        runCatching { root0711.node.getBoundsInScreen(bounds0711) }
+        val block0711 = FarolUniversalVisualPipelineStage19.VisualBlock(
+            id = "heartbeat0711:${root0711.windowId ?: -1}",
+            parentId = null,
+            metadataPackageName = package0711,
+            windowId = root0711.windowId ?: -1,
+            windowLayer = 0,
+            depth = 1,
+            text = text0711,
+            source = FarolUniversalVisualPipelineStage19.Source.Accessibility,
+            left = bounds0711.left,
+            top = bounds0711.top,
+            right = bounds0711.right,
+            bottom = bounds0711.bottom,
+            syntheticRoot = false,
+        )
+        val evaluation0711 = withContext(Dispatchers.Default) {
+            FarolUniversalVisualPipelineStage19.evaluate(listOf(block0711))
+        }
+        if (evaluation0711 == null) {
+            hardClearUniversalTwoAddress(
+                reason = "Heartbeat visual: nenhum endereço válido permanece no card atual.",
+                keepWaitingYellow = false,
+            )
+            scheduleScreenshotFallback127(package0711)
+            return
+        }
+
+        val ownership0711 = FarolRideCardOwnershipStage47.evaluate(
+            packageName = package0711,
+            selectedPackages = selected0711,
+            text = evaluation0711.analysisText,
+            locationCount = evaluation0711.addresses.size,
+        )
+        if (!ownership0711.owned) {
+            hardClearUniversalTwoAddress(
+                reason = "Heartbeat visual: endereço visível não pertence a um card de corrida atual.",
+                keepWaitingYellow = false,
+            )
+            return
+        }
+
+        val sanitized0711 = FarolRouteAddressSanitizer0684.sanitize(evaluation0711.destination)
+        if (!sanitized0711.accepted || sanitized0711.sanitized.isNullOrBlank()) {
+            hardClearUniversalTwoAddress(
+                reason = "Heartbeat visual: endereço atual existe, mas ainda não é inequívoco.",
+                keepWaitingYellow = true,
+            )
+            farolLastConfirmedAddressAtElapsed0711 = now0711
+            scheduleScreenshotFallback127(package0711)
+            return
+        }
+
+        val observedRawSignature0711 = DestinationAddressIdentityPolicy.signature(
+            package0711,
+            sanitized0711.sanitized.orEmpty(),
+        )
+        val observedSignature0711 = universalActiveAddressSignature
+            ?.takeIf {
+                DestinationAddressIdentityPolicy.sameDestinationSignatures(
+                    it,
+                    observedRawSignature0711,
+                )
+            }
+            ?: observedRawSignature0711
+
+        when (
+            FarolOneSecondVisualAuthority0711.decide(
+                currentAddressSignature = universalActiveAddressSignature,
+                observedAddressSignature = observedSignature0711,
+                hasPublicResult = hasPublicResult0711,
+                nowElapsedMillis = now0711,
+                lastConfirmedElapsedMillis = farolLastConfirmedAddressAtElapsed0711,
+            )
+        ) {
+            FarolOneSecondVisualAuthority0711.Action.KEEP -> {
+                farolLastConfirmedAddressAtElapsed0711 = now0711
+                farolLastConfirmedAddressSignature0711 = observedSignature0711
+                universalLastActiveReadAtElapsedMillis0187 = now0711
+                UnifiedDebugEventStore.record(
+                    FarolOneSecondVisualAuthority0711.SAME_ADDRESS_RENEWS_LEASE_MARKER,
+                    package0711,
+                    "binding=$observedSignature0711; color=$currentRadarColor; distance=$currentDistanceKm",
+                )
+            }
+
+            FarolOneSecondVisualAuthority0711.Action.CLEAR_IDLE -> {
+                hardClearUniversalTwoAddress(
+                    reason = "Heartbeat visual sem endereço autorizado.",
+                    keepWaitingYellow = false,
+                )
+            }
+
+            FarolOneSecondVisualAuthority0711.Action.CLEAR_THEN_PROCESS -> {
+                UnifiedDebugEventStore.record(
+                    FarolOneSecondVisualAuthority0711.CHANGED_ADDRESS_REVOKES_OLD_RESULT_MARKER,
+                    package0711,
+                    "old=${universalActiveAddressSignature.orEmpty()}; new=$observedSignature0711",
+                )
+                hardClearUniversalTwoAddress(
+                    reason = "Heartbeat visual detectou outro endereço; resultado anterior revogado.",
+                    keepWaitingYellow = false,
+                )
+                farolLastConfirmedAddressAtElapsed0711 = now0711
+                farolLastConfirmedAddressSignature0711 = observedSignature0711
+                stage26CandidateEventStartedNs = SystemClock.elapsedRealtimeNanos()
+                processUniversalVisualStage19(
+                    evaluationStage19 = evaluation0711,
+                    sourceStage19 = "AccessibilityHeartbeat0711",
+                    ownershipTextStage47 = text0711,
+                    ownershipPackageStage47 = package0711,
+                )
+            }
+
+            FarolOneSecondVisualAuthority0711.Action.PROCESS -> {
+                farolLastConfirmedAddressAtElapsed0711 = now0711
+                farolLastConfirmedAddressSignature0711 = observedSignature0711
+                stage26CandidateEventStartedNs = SystemClock.elapsedRealtimeNanos()
+                processUniversalVisualStage19(
+                    evaluationStage19 = evaluation0711,
+                    sourceStage19 = "AccessibilityHeartbeat0711",
+                    ownershipTextStage47 = text0711,
+                    ownershipPackageStage47 = package0711,
+                )
+            }
+        }
     }
 
     private fun startProximityAlertMonitor() {
@@ -6598,6 +6789,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         lastOcrText = ""
         universalAccessibilityOwnsCard = false
         universalLastActiveReadAtElapsedMillis0187 = 0L
+        farolLastConfirmedAddressAtElapsed0711 = 0L
+        farolLastConfirmedAddressSignature0711 = null
         universalActiveRidePackageName = null
         universalLiveReadGate.reset()
         if (stateChanged) {
