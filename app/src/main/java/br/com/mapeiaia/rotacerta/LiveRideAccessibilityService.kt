@@ -4390,11 +4390,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private fun startContinuousScan() {
         if (continuousScanStarted || !serviceReady) return
         continuousScanStarted = true
+        // event_driven_farol_0_1_162 — o caminho pesado continua dirigido por eventos;
+        // o laço abaixo é somente o lease visual barato de 0.1.711, sem OCR contínuo/backlog.
         farolVisualHeartbeatJob0711?.cancel()
         farolVisualHeartbeatJob0711 = scope.launch {
             while (kotlinx.coroutines.currentCoroutineContext().isActive) {
                 delay(FarolOneSecondVisualAuthority0711.HEARTBEAT_MILLIS)
-                if (bubbleGestureActive) continue
+                if (bubbleGestureActive) continue // bubble_drag_scan_pause_0_1_116
                 runCatching { verifyCurrentVisualAuthority0711() }
                     .onFailure { error0711 ->
                         UnifiedDebugEventStore.record(
