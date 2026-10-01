@@ -3255,18 +3255,26 @@ internal fun enhancedPassengerRows(
                         ?: privateMetadata0494?.boardingAddress.orEmpty(),
                     dropoffAddress = booking.dropoffAddress.takeIf(String::isNotBlank)
                         ?: privateMetadata0494?.dropoffAddress.orEmpty(),
-                    boardingLatitude = booking.boardingLatitude
-                        ?: privateMetadata0494?.boardingLatitude
-                        ?: boardingStop?.latitude,
-                    boardingLongitude = booking.boardingLongitude
-                        ?: privateMetadata0494?.boardingLongitude
-                        ?: boardingStop?.longitude,
-                    dropoffLatitude = booking.dropoffLatitude
-                        ?: privateMetadata0494?.dropoffLatitude
-                        ?: dropoffStop?.latitude,
-                    dropoffLongitude = booking.dropoffLongitude
-                        ?: privateMetadata0494?.dropoffLongitude
-                        ?: dropoffStop?.longitude,
+                    boardingLatitude = if (booking.localMetadataTouched && booking.boardingAddress.isNotBlank()) {
+                        booking.boardingLatitude
+                    } else {
+                        booking.boardingLatitude ?: privateMetadata0494?.boardingLatitude ?: boardingStop?.latitude
+                    },
+                    boardingLongitude = if (booking.localMetadataTouched && booking.boardingAddress.isNotBlank()) {
+                        booking.boardingLongitude
+                    } else {
+                        booking.boardingLongitude ?: privateMetadata0494?.boardingLongitude ?: boardingStop?.longitude
+                    },
+                    dropoffLatitude = if (booking.localMetadataTouched && booking.dropoffAddress.isNotBlank()) {
+                        booking.dropoffLatitude
+                    } else {
+                        booking.dropoffLatitude ?: privateMetadata0494?.dropoffLatitude ?: dropoffStop?.latitude
+                    },
+                    dropoffLongitude = if (booking.localMetadataTouched && booking.dropoffAddress.isNotBlank()) {
+                        booking.dropoffLongitude
+                    } else {
+                        booking.dropoffLongitude ?: privateMetadata0494?.dropoffLongitude ?: dropoffStop?.longitude
+                    },
                     boardingStopIndex = stopIndex,
                     dropoffStopIndex = dropoffStopIndex,
                 )
