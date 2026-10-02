@@ -116,7 +116,12 @@ object MessageTemplateRenderer0172 {
     fun apply(template: String, replacements: Map<String, String>): String {
         var output = template
         replacements.forEach { (key, value) -> output = output.replace("{$key}", value) }
-        return output.trim().take(4_000)
+        return output
+            .replace(Regex("""([!?])\d+\s+(?=[A-ZÁÉÍÓÚÃÕÂÊÔÇ])"""), "$1 ")
+            .replace(Regex("""[ \t]+\n"""), "\n")
+            .replace(Regex("""\n{3,}"""), "\n\n")
+            .trim()
+            .take(4_000)
     }
 }
 
@@ -127,7 +132,7 @@ object MessageTemplateStore0172 {
 
     internal const val LEGACY_DEFAULT_TRIP_0714 = "{saudacao} Confirmando sua viagem:\n\n{origem} → {destino}\n{dia_semana}, {dia} de {mes}, às {horario}.\n\nEstá tudo certo?"
     internal const val LEGACY_DEFAULT_VALUE_0714 = "Olá, {nome}! O valor exibido para sua reserva de {lugares}, de {origem} para {destino}, é {valor}."
-    const val DEFAULT_TRIP = "Oi, {nome}! Confirmando nossa viagem de {origem} para {destino}, {dia_semana}, {dia} de {mes}, às {horario}. Está tudo certo para você?"
+    const val DEFAULT_TRIP = "Oi, {nome}! Confirmando nossa viagem de {origem} para {destino}, {dia_semana}, {dia} de {mes}, às {horario}. 👍\n\nEstá tudo certo para você?"
     const val DEFAULT_VALUE = "Oi, {nome}! O valor da sua reserva para {lugares} é {valor}."
 
     internal fun messageFirstName0714(raw: String?): String =
