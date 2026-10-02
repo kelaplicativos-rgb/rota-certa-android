@@ -69,16 +69,13 @@ test("0651 temporary credentials create a restricted session until password repl
   assert.match(passwordSession, /mustChangePassword: passwordChangeRequired0651/);
 });
 
-test("0651 recovery lifecycle is REQUESTED -> ISSUED -> COMPLETED", () => {
+test("0717 driver recovery action clears the old credential and keeps public request safe", () => {
   const reset = between(api, "async function resetDriverPassengerPassword", "async function updateDriverReferralSettings");
-  assert.match(reset, /passwordRecoveryStatus: "ISSUED"/);
-  assert.match(reset, /mustChangePassword: true/);
-  assert.match(reset, /await invalidatePassengerSessions\(currentContact\)/);
-
-  const change = between(api, "async function changePassengerPassword", "function passengerBookingIndexRef");
-  assert.match(change, /mustChangePassword: false/);
-  assert.match(change, /passwordChangeRequired0651: false/);
-  assert.match(change, /passwordRecoveryStatus: "COMPLETED"/);
+  assert.match(reset, /passwordRecoveryStatus: "CLEARED"/);
+  assert.match(reset, /passwordHash: FieldValue\.delete\(\)/);
+  assert.match(reset, /invalidatePassengerIdentitySessions/);
+  assert.doesNotMatch(reset, /mustChangePassword: true/);
+  assert.doesNotMatch(reset, /temporaryPassword/);
 });
 
 test("0651 public and private surfaces do not load protected data before mandatory replacement", () => {
