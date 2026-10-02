@@ -2,6 +2,46 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.719",
+      "build": 6010,
+      "commit": null,
+      "branch": "agent/message-vehicle-authority-0.1.719",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Centraliza a autoridade de veículo das mensagens rápidas no Carro do dia da ocorrência, preservando modelo, cor e placa.",
+        "Faz todos os cinco modelos rápidos de passageiro consumirem o mesmo bloco de veículo quando houver dados válidos.",
+        "Transforma MessageTemplateStore0172 em fachada de compatibilidade sobre a store tenant-aware usada pelo editor de frases."
+      ],
+      "fixed": [
+        "Remove retornos vazios prematuros do fallback de veículo que podiam apagar modelo e cor quando a conta BlaBlaCar não resolvia exatamente.",
+        "Corrige Estou no local e Valor da reserva, que antes ignoravam o bloco de veículo mesmo quando ele já estava resolvido.",
+        "Elimina a divergência em que o editor gravava TenantMessageTemplateStore enquanto preview e execução liam MessageTemplateStore0172."
+      ],
+      "improved": [
+        "Mantém Carro do dia como primeira autoridade e só consulta configuração Rota Certa/perfil como fallback sem misturar placa de veículos diferentes.",
+        "Adiciona regressões que travam a cadeia de fallback, o uso do bloco em todos os templates e a store única.",
+        "Preserva a 0.1.718 integralmente e valida o APK no SHA exato para Samsung SM-S911B / Android 16."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.717-0.1.718: alguns templates podiam sair sem modelo do carro por early return no resolvedor.",
+        "0.1.717-0.1.718: Estou no local e Valor da reserva não anexavam veículo.",
+        "0.1.480-0.1.718: editor tenant-aware e execução legada podiam ler stores diferentes."
+      ],
+      "modulesAffected": [
+        "Carro do dia",
+        "Passageiros",
+        "Agenda",
+        "Timeline",
+        "Central do Dia",
+        "Frases predefinidas",
+        "WhatsApp",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.718",
       "build": 6009,
       "commit": null,
