@@ -2,6 +2,46 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.719",
+      "build": 6010,
+      "commit": null,
+      "branch": "agent/message-vehicle-authority-final-0.1.719",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Centraliza a autoridade de veículo das mensagens rápidas: Carro do Dia canônico, configuração Rota Certa e perfil BlaBlaCar passam por uma única cadeia determinística.",
+        "Todas as cinco mensagens rápidas de passageiro passam a receber o mesmo bloco de modelo, cor e placa quando o veículo está disponível.",
+        "Unifica a leitura e gravação das frases editáveis para que editor, prévia e execução usem a mesma store isolada por usuário."
+      ],
+      "fixed": [
+        "Remove retornos vazios prematuros que interrompiam o fallback de veículo quando a conta ou snapshot BlaBlaCar não resolvia.",
+        "Corrige Estou no local e Valor da reserva, que ignoravam o bloco de veículo mesmo quando o Carro do Dia estava carregado.",
+        "Remove cache remember do veículo da mensagem para evitar modelo antigo após alteração do Carro do Dia."
+      ],
+      "improved": [
+        "Configuração Rota Certa tem precedência sobre perfil BlaBlaCar quando não existe Carro do Dia explícito.",
+        "A placa continua autoritativa somente no Carro do Dia, sem misturar dados de veículos de fontes diferentes.",
+        "Adiciona testes funcionais para precedência de fontes e presença do veículo em todos os templates rápidos."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.714-0.1.718: falha de resolução do perfil BlaBlaCar podia zerar o veículo antes de consultar a configuração Rota Certa.",
+        "0.1.656-0.1.718: templates Estou no local e Valor da reserva não anexavam o bloco de veículo.",
+        "0.1.717-0.1.718: mensagem podia manter veículo antigo por cache de composição."
+      ],
+      "modulesAffected": [
+        "Agenda",
+        "Timeline",
+        "Central do Dia",
+        "Passageiros",
+        "Mensagens predefinidas",
+        "WhatsApp",
+        "Carro do dia",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.718",
       "build": 6009,
       "commit": null,
