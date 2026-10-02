@@ -1969,6 +1969,20 @@ private fun TimelineEntryCard(
         )
     }
     var actionMenuExpanded0407 by remember(entry.tripId) { mutableStateOf(false) }
+    var showDayVehicle0717 by remember(entry.tripId) { mutableStateOf(false) }
+    val dayVehicleFallback0717 = remember(store) { store.onlineSettings() }
+    var dayVehicleModel0717 by remember(entry.tripId, trip?.vehicleMakeModel) {
+        mutableStateOf(trip?.vehicleMakeModel?.takeIf(String::isNotBlank) ?: dayVehicleFallback0717.vehicleMakeModel)
+    }
+    var dayVehicleColor0717 by remember(entry.tripId, trip?.vehicleColor) {
+        mutableStateOf(trip?.vehicleColor?.takeIf(String::isNotBlank) ?: dayVehicleFallback0717.vehicleColor)
+    }
+    var dayVehiclePlate0717 by remember(entry.tripId, trip?.vehiclePlate) {
+        mutableStateOf(trip?.vehiclePlate.orEmpty())
+    }
+    var dayVehicleCapacity0717 by remember(entry.tripId, trip?.physicalSeatCapacity) {
+        mutableStateOf((trip?.physicalSeatCapacity ?: 4).coerceIn(1, 999).toString())
+    }
     val commandAudit0407 = passiveCommandAudit0407
     val reverifyPending0407 = commandAudit0407?.pending == true
     val lastObservedAt0407 = trip?.lastObservedAtMillis ?: 0L
@@ -2028,6 +2042,107 @@ private fun TimelineEntryCard(
                 onChanged("Atualização bloqueada: a identidade forte desta viagem não pôde ser confirmada.")
             }
         }
+    }
+
+    if (showDayVehicle0717) {
+        val parsedCapacity0717 = dayVehicleCapacity0717.toIntOrNull()?.takeIf { it in 1..999 }
+        AlertDialog(
+            onDismissRequest = { showDayVehicle0717 = false },
+            title = { Text("🚗 Carro do dia") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Este veículo define o teto físico de vagas deste motorista neste dia e também alimenta as mensagens.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedTextField(
+                        value = dayVehicleModel0717,
+                        onValueChange = { dayVehicleModel0717 = it.take(120) },
+                        label = { Text("Marca/modelo") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = dayVehicleColor0717,
+                        onValueChange = { dayVehicleColor0717 = it.take(60) },
+                        label = { Text("Cor") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = dayVehiclePlate0717,
+                        onValueChange = { raw ->
+                            dayVehiclePlate0717 = raw.uppercase().filter { it.isLetterOrDigit() || it == '-' }.take(8)
+                        },
+                        label = { Text("Placa") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = dayVehicleCapacity0717,
+                        onValueChange = { dayVehicleCapacity0717 = it.filter(Char::isDigit).take(3) },
+                        label = { Text("Lugares para passageiros") },
+                        supportingText = { Text("Ex.: 4, 7 ou 60. As vagas nunca poderão ultrapassar este número.") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = parsedCapacity0717 != null,
+                    onClick = {
+                        val currentTrip0717 = trip
+                        val capacity0717 = parsedCapacity0717 ?: return@TextButton
+                        if (currentTrip0717 == null) {
+                            onChanged("Carro do dia indisponível: o card ainda não possui viagem canônica.")
+                            showDayVehicle0717 = false
+                            return@TextButton
+                        }
+                        val day0717 = Instant.ofEpochMilli(currentTrip0717.departureAtMillis)
+                            .atZone(ZoneId.systemDefault())
+                            .toLocalDate()
+                        val profileUuid0717 = currentTrip0717.blablaProfileUuid.orEmpty().trim().lowercase()
+                        val profileName0717 = currentTrip0717.blablaProfileName.orEmpty().trim().lowercase()
+                        val candidates0717 = store.trips().filter { candidate0717 ->
+                            val sameDay0717 = Instant.ofEpochMilli(candidate0717.departureAtMillis)
+                                .atZone(ZoneId.systemDefault())
+                                .toLocalDate() == day0717
+                            val sameDriver0717 = when {
+                                profileUuid0717.isNotBlank() ->
+                                    candidate0717.blablaProfileUuid.orEmpty().trim().lowercase() == profileUuid0717
+                                profileName0717.isNotBlank() ->
+                                    candidate0717.blablaProfileName.orEmpty().trim().lowercase() == profileName0717
+                                else -> candidate0717.id == currentTrip0717.id
+                            }
+                            sameDay0717 && sameDriver0717
+                        }.ifEmpty { listOf(currentTrip0717) }
+                        candidates0717.forEach { candidate0717 ->
+                            store.saveTrip(
+                                candidate0717.copy(
+                                    capacity = capacity0717,
+                                    physicalSeatCapacity = capacity0717,
+                                    vehicleDayConfigured = true,
+                                    vehicleMakeModel = dayVehicleModel0717.trim(),
+                                    vehicleColor = dayVehicleColor0717.trim(),
+                                    vehiclePlate = dayVehiclePlate0717.trim().uppercase(),
+                                ),
+                            )
+                        }
+                        UnifiedDebugEventStore.recordAlways(
+                            "CARRO_DO_DIA_SAVED_0717",
+                            context.packageName,
+                            "date=$day0717 trips=${candidates0717.size} capacity=$capacity0717 platePresent=${dayVehiclePlate0717.isNotBlank()}",
+                        )
+                        showDayVehicle0717 = false
+                        onChanged("Carro do dia salvo. ${candidates0717.size} viagem(ns) recalculada(s) com $capacity0717 lugares.")
+                    },
+                ) { Text("Salvar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDayVehicle0717 = false }) { Text("Cancelar") }
+            },
+        )
     }
 
     if (showMirrorDiagnostic0417) {
@@ -2178,6 +2293,13 @@ private fun TimelineEntryCard(
                                 },
                             )
                             DropdownMenuItem(
+                                text = { Text("🚗 Carro do dia") },
+                                onClick = {
+                                    actionMenuExpanded0407 = false
+                                    showDayVehicle0717 = true
+                                },
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Agenda pública: online/offline") },
                                 enabled = trip?.remoteId?.isNotBlank() == true || trip?.publicToken?.isNotBlank() == true,
                                 onClick = {
@@ -2249,6 +2371,19 @@ private fun TimelineEntryCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = agendaMuted0549,
             )
+            trip?.takeIf { it.vehicleDayConfigured }?.let { selected0717 ->
+                val vehicleLabel0717 = listOf(
+                    selected0717.vehicleMakeModel.trim(),
+                    selected0717.vehicleColor.trim().lowercase(),
+                    selected0717.vehiclePlate.trim().uppercase(),
+                ).filter(String::isNotBlank).joinToString(" • ")
+                Text(
+                    text = "🚗 " + vehicleLabel0717.ifBlank { "Carro do dia" } +
+                        " • ${selected0717.physicalSeatCapacity.coerceIn(1, 999)} lugares",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = agendaMuted0549,
+                )
+            }
             val targetedRefreshLabel0645 = when {
                 commandAudit0407?.pending == true ->
                     "⟳ Atualizando somente esta viagem…"
