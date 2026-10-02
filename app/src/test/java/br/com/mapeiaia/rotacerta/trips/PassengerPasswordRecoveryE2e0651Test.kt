@@ -20,25 +20,23 @@ class PassengerPasswordRecoveryE2e0651Test {
         assertTrue(remoteApi.contains("val passwordRecoveryIssuedAtMillis: Long = 0L"))
         assertTrue(remoteApi.contains("val passwordRecoveryCompletedAtMillis: Long = 0L"))
         assertTrue(remoteApi.contains("val accountMustChangePassword: Boolean = false"))
-        assertTrue(remoteApi.contains("val recoveryStatus: String = \"\""))
+        assertTrue(remoteApi.contains("val cleared: Boolean = false"))
     }
 
     @Test
-    fun requestedRecoveryIsVisiblePrioritizedAndActionable() {
+    fun requestedRecoveryRemainsVisibleButDriverActionClearsPassword() {
         assertTrue(passengerAdmin.contains("\"REQUESTED\" -> Text(\"🔑 Recuperação de senha solicitada\""))
-        assertTrue(passengerAdmin.contains("\"ISSUED\" -> Text(\"🟠 Senha temporária emitida • troca obrigatória pendente\""))
-        assertTrue(passengerAdmin.contains("\"COMPLETED\" -> Text(\"✅ Recuperação de senha concluída\""))
-        assertTrue(passengerAdmin.contains("access?.passwordRecoveryStatus == \"REQUESTED\" -> \"Gerar senha solicitada\""))
+        assertTrue(passengerAdmin.contains("Limpar senha"))
+        assertFalse(passengerAdmin.contains("Gerar senha solicitada"))
+        assertFalse(passengerAdmin.contains("Reparar acesso"))
         assertTrue(passengerAdmin.contains("it.remoteAccess?.passwordRecoveryStatus == \"REQUESTED\" -> 0"))
     }
 
     @Test
-    fun generatedTemporaryPasswordCanBeSentByWhatsappAndRequiresReplacement() {
-        assertTrue(passengerAdmin.contains("Enviar WhatsApp"))
-        assertTrue(passengerAdmin.contains("sendTemporaryPasswordWhatsApp0651"))
-        assertTrue(passengerAdmin.contains("O portal exigirá a criação de uma nova senha antes de liberar a Área VIP."))
-        assertTrue(passengerAdmin.contains("https://wa.me/"))
-        assertTrue(passengerAdmin.contains("Sua senha temporária da Área VIP é"))
+    fun driverClearDoesNotExposeOrSendTemporaryCredentials() {
+        assertTrue(passengerAdmin.contains("Senha limpa. O passageiro deverá criar uma nova senha no próximo acesso."))
+        assertFalse(remoteApi.contains("val temporaryPassword: String = \"\""))
+        assertTrue(remoteApi.contains("val invalidatedSessions: Int = 0"))
     }
 
     @Test
