@@ -2,6 +2,45 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.718",
+      "build": 6009,
+      "commit": null,
+      "branch": "agent/universal-search-index-0.1.718",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Substitui a varredura integral por tecla da Busca universal por um índice preparado em memória, construído fora da thread principal e consultado por postings de fragmentos.",
+        "Amplia aliases de data em pt-BR para formas longas, curtas, numéricas e abreviadas, incluindo consultas como qui., 15 de outubro e Dom. 04 Out.",
+        "Ao tocar em uma viagem encontrada, abre Gerenciar viagem com o card exato expandido e rola automaticamente até ele."
+      ],
+      "fixed": [
+        "Remove pontuação e acentos de forma consistente no texto indexado e na consulta, evitando que qui., dom. e out. eliminem resultados válidos.",
+        "Preserva busca por fragmento em qualquer posição, inclusive números, telefone, valores e trechos internos de texto.",
+        "Retira normalizações repetidas de título e subtítulo do caminho crítico de cada tecla e desloca a consulta do índice para Dispatchers.Default."
+      ],
+      "improved": [
+        "Mantém a semântica ALL-TERMS da busca anterior, mas intersecta listas de candidatos pequenas antes de ranquear resultados.",
+        "Evita reconstrução de Trip, Booking e PassengerProfile a cada caractere; o catálogo é preparado uma vez por snapshot.",
+        "Adiciona regressões automáticas para 15/10, qui 15 outubro, quinta 15 de outubro, 15 out, Dom. 04 Out e fragmentos em qualquer posição."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.687-0.1.717: pontuação e conectivos de datas humanas podiam impedir o encontro de uma viagem existente.",
+        "0.1.687-0.1.717: cada tecla podia percorrer todos os documentos completos da busca na composição.",
+        "0.1.687-0.1.717: abrir uma viagem pela busca expandia o item, mas não garantia rolagem até o card localizado."
+      ],
+      "modulesAffected": [
+        "Busca universal",
+        "Agenda",
+        "Timeline",
+        "Central do Dia",
+        "Passageiros",
+        "Reservas",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.717",
       "build": 6008,
       "commit": null,
