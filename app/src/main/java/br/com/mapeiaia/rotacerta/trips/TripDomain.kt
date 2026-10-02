@@ -386,11 +386,21 @@ internal fun peakConfirmedPassengerSeats0714(
 fun operationalInventoryCapacity(
     trip: Trip,
     @Suppress("UNUSED_PARAMETER") bookings: List<Booking>,
-): Int = trip.physicalSeatCapacity.coerceIn(1, 999)
+): Int = when {
+    trip.vehicleDayConfigured -> trip.physicalSeatCapacity.coerceIn(1, 999)
+    trip.recordOrigin == TripRecordOrigin.LOCAL -> trip.capacity.coerceIn(1, 999)
+    else -> trip.physicalSeatCapacity.coerceIn(1, 999)
+}
 
 fun Trip.withPhysicalSeatCapacity0717(): Trip {
-    val physical = physicalSeatCapacity.coerceIn(1, 999)
-    return if (capacity == physical) this else copy(capacity = physical)
+    val physical = when {
+        vehicleDayConfigured -> physicalSeatCapacity.coerceIn(1, 999)
+        recordOrigin == TripRecordOrigin.LOCAL -> capacity.coerceIn(1, 999)
+        else -> physicalSeatCapacity.coerceIn(1, 999)
+    }
+    return if (capacity == physical && physicalSeatCapacity == physical) this else {
+        copy(capacity = physical, physicalSeatCapacity = physical)
+    }
 }
 
 data class SegmentLoad(
