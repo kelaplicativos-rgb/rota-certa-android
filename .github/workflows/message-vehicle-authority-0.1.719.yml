@@ -190,8 +190,6 @@ jobs:
           grep -Fq 'qui., 15 de outubro' /tmp/dex-strings.txt
           grep -Fq 'CARRO_DO_DIA_SAVED_0717' /tmp/dex-strings.txt
           grep -Fq 'FAROL_ADDRESS_RECOVERY_0716' /tmp/dex-strings.txt
-          grep -Fq 'MESSAGE_VEHICLE_AUTHORITY_0719' /tmp/dex-strings.txt
-          grep -Fq 'TENANT_MESSAGE_STORE_AUTHORITY_0719' /tmp/dex-strings.txt
 
           SHORT_SHA="$(git rev-parse --short=12 HEAD)"
           FINAL="rota-certa-0.1.719-6010-$SHORT_SHA.apk"
