@@ -2,6 +2,45 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.721",
+      "build": 6012,
+      "commit": null,
+      "branch": "agent/trip-detail-readiness-recovery-0.1.721",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Transforma o readiness do detalhe administrativo da BlaBlaCar em barreira fail-closed: o parser do trip_detail.js só executa depois de a própria tela comprovar Resumo da viagem e controle vinculado à viagem.",
+        "Classifica DOM ainda não materializado como TRIP_DETAIL_NOT_READY_0721 e reutiliza o mecanismo existente de reciclagem de WebView para repetir exatamente o mesmo card.",
+        "Adiciona uma segunda passagem diferida para cards que permaneceram em loading após as tentativas imediatas, sem interromper a captura dos demais cards do perfil."
+      ],
+      "fixed": [
+        "Elimina o falso positivo em que o fim das 16 sondagens de readiness executava o parser mesmo com ready=false.",
+        "Bloqueia explicitamente readiness enquanto houver indicador visível de loading/progressbar/aria-busy na página da BlaBlaCar.",
+        "Impede que link público, vagas, passageiros e demais etapas secundárias sejam consultados quando o detalhe-base ainda não foi validado."
+      ],
+      "improved": [
+        "Cards irmãos continuam sendo capturados e publicados individualmente enquanto um card transitório aguarda nova tentativa.",
+        "A revalidação diferida usa WebView novo e preserva o último estado canônico confirmado quando a BlaBlaCar não materializa o detalhe.",
+        "Novos testes de regressão fixam a taxonomia NOT_READY, a ausência do antigo bypass por quantidade de tentativas e a detecção de loaders."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.606-0.1.720: esgotar PREPARE_PASSES_0605 podia executar trip_detail.js mesmo com TRIP_READY_0606=false.",
+        "0.1.676-0.1.720: URL correta + payload decodificável + HTML não vazio podiam mascarar uma página ainda em Loading como detalhe tecnicamente válido.",
+        "0.1.606-0.1.720: um card preso em loading podia consumir etapas secundárias e terminar como MISSING_ROSTER_ITINERARY_PASSENGER_SEGMENTS_SEATS_PUBLIC_LINK sem entrar no retry correto."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Captura HTML",
+        "Agenda",
+        "Timeline",
+        "Central do Dia",
+        "XML",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.720",
       "build": 6011,
       "commit": null,
