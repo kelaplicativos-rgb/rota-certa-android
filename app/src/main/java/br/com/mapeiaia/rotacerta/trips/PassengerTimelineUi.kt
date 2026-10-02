@@ -137,41 +137,61 @@ internal data class PassengerMessageVehicle0714(
     val plate: String = "",
 )
 
+internal fun PassengerMessageVehicle0714.hasVehicleIdentity0719(): Boolean =
+    makeModel.isNotBlank() || color.isNotBlank() || plate.isNotBlank()
+
+internal fun choosePassengerMessageVehicle0719(
+    tripConfigured: Boolean,
+    tripVehicle: PassengerMessageVehicle0714,
+    settingsVehicle: PassengerMessageVehicle0714,
+    profileVehicle: PassengerMessageVehicle0714?,
+): PassengerMessageVehicle0714 {
+    if (tripConfigured) return tripVehicle
+    if (settingsVehicle.hasVehicleIdentity0719()) return settingsVehicle
+    if (profileVehicle?.hasVehicleIdentity0719() == true) return profileVehicle
+    return PassengerMessageVehicle0714()
+}
+
 internal fun resolvePassengerMessageVehicle0714(
     context: Context,
     entry: TripTimelineEntry,
     store: TripStore,
     trip: Trip? = null,
 ): PassengerMessageVehicle0714 {
-    trip?.takeIf { it.vehicleDayConfigured }?.let { selected ->
-        return PassengerMessageVehicle0714(
-            makeModel = selected.vehicleMakeModel.trim(),
-            color = selected.vehicleColor.trim(),
-            plate = selected.vehiclePlate.trim().uppercase(),
-        )
-    }
-    val profileUuid = entry.blablaProfileUuid?.trim()?.lowercase()?.takeIf(String::isNotEmpty)
-    if (profileUuid != null) {
-        val matching = BlaBlaDynamicAccountRegistry(context.applicationContext).list()
+    val tripVehicle0719 = PassengerMessageVehicle0714(
+        makeModel = trip?.vehicleMakeModel.orEmpty().trim(),
+        color = trip?.vehicleColor.orEmpty().trim(),
+        plate = trip?.vehiclePlate.orEmpty().trim().uppercase(),
+    )
+    val settings0719 = store.onlineSettings()
+    val settingsVehicle0719 = PassengerMessageVehicle0714(
+        makeModel = settings0719.vehicleMakeModel.trim(),
+        color = settings0719.vehicleColor.trim(),
+    )
+    val profileUuid0719 = entry.blablaProfileUuid?.trim()?.lowercase()?.takeIf(String::isNotEmpty)
+    val profileVehicle0719 = profileUuid0719?.let { profileUuid ->
+        val account0719 = BlaBlaDynamicAccountRegistry(context.applicationContext).list()
             .filter { it.profileUuid?.trim()?.lowercase() == profileUuid }
-        val account = matching.singleOrNull() ?: return PassengerMessageVehicle0714()
-        val snapshot = BlaBlaPublicProfileStore(context.applicationContext).read(account.id)
+            .singleOrNull()
+            ?: return@let null
+        val snapshot0719 = BlaBlaPublicProfileStore(context.applicationContext).read(account0719.id)
             ?.takeIf {
                 it.identityVerified &&
                     it.profileUuid.trim().equals(profileUuid, ignoreCase = true)
             }
-            ?: return PassengerMessageVehicle0714()
-        return PassengerMessageVehicle0714(
-            makeModel = snapshot.vehicleMakeModel.trim(),
-            color = snapshot.vehicleColor.trim(),
+            ?: return@let null
+        PassengerMessageVehicle0714(
+            makeModel = snapshot0719.vehicleMakeModel.trim(),
+            color = snapshot0719.vehicleColor.trim(),
         )
     }
-    val settings = store.onlineSettings()
-    return PassengerMessageVehicle0714(
-        makeModel = settings.vehicleMakeModel.trim(),
-        color = settings.vehicleColor.trim(),
+    return choosePassengerMessageVehicle0719(
+        tripConfigured = trip?.vehicleDayConfigured == true,
+        tripVehicle = tripVehicle0719,
+        settingsVehicle = settingsVehicle0719,
+        profileVehicle = profileVehicle0719,
     )
-}
+} // MESSAGE_VEHICLE_AUTHORITY_0719
 
 internal fun passengerTrackingMessage0714(passengerName: String): String =
     buildString {
@@ -957,17 +977,12 @@ internal fun EnhancedPassengerTimelineSection(
     var privateRefreshCompleted0656 by remember(trip?.id) { mutableStateOf(false) }
     var privateRefreshStartedAt0656 by remember(trip?.id) { mutableStateOf(0L) }
     val targetedRefreshCommit0656 by TargetedTripRefreshEvents0645.commit.collectAsState()
-    val messageVehicle0714 = remember(
-        entry.tripId,
-        entry.blablaProfileUuid,
-        trip?.vehicleDayConfigured,
-        trip?.vehicleMakeModel,
-        trip?.vehicleColor,
-        trip?.vehiclePlate,
-        store,
-    ) {
-        resolvePassengerMessageVehicle0714(context, entry, store, trip)
-    }
+    val messageVehicle0714 = resolvePassengerMessageVehicle0714(
+        context = context,
+        entry = entry,
+        store = store,
+        trip = trip,
+    ) // live read: no stale remember cache for car-of-day/message vehicle
     val privateMetadataIncomplete0656 = rows.any(::passengerPrivateMetadataIncomplete0656)
     val privateMetadataFingerprint0656 = rows.joinToString("|") { row ->
         listOf(
@@ -4130,12 +4145,14 @@ internal fun passengerQuickMessageText0656(
                 ".\n\nEstá tudo certo por aí?" +
                 vehicleBlock
         PassengerQuickMessageType0656.AT_LOCATION ->
-            "Oi, $name! Já cheguei ao local combinado para o embarque. 📍"
+            "Oi, $name! Já cheguei ao local combinado para o embarque. 📍" +
+                vehicleBlock
         PassengerQuickMessageType0656.FARE -> {
             val fare = row.fareMinorUnits?.let {
                 passengerTimelineFareClipboardText(it, row.fareCurrencyCode, localeTag)
             } ?: "valor ainda não disponível"
-            "Oi, $name! O valor da sua reserva para $seatsText é $fare."
+            "Oi, $name! O valor da sua reserva para $seatsText é $fare." +
+                vehicleBlock
         }
     }
 }
