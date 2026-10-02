@@ -10665,7 +10665,12 @@ async function listDriverTripSyncState0402(req, res) {
       publicUrl: cleanText(canonicalProjection0494.publicUrl || data.publicUrl, 1200),
       publicBookingEnabled: canonicalProjection0494.publicBookingEnabled === true,
       itineraryAuthoritative: canonicalProjection0494.itineraryAuthoritative !== false,
-      capacity: Math.max(0, Number(canonicalProjection0494.capacity || data.capacity || 0)),
+      capacity: Math.max(1, Number(canonicalProjection0494.physicalSeatCapacity || data.physicalSeatCapacity || 4)),
+      physicalSeatCapacity: Math.max(1, Number(canonicalProjection0494.physicalSeatCapacity || data.physicalSeatCapacity || 4)),
+      vehicleDayConfigured: canonicalProjection0494.vehicleDayConfigured === true || data.vehicleDayConfigured === true,
+      vehicleMakeModel: cleanText(canonicalProjection0494.vehicleMakeModel || data.vehicleMakeModel, 120),
+      vehicleColor: cleanText(canonicalProjection0494.vehicleColor || data.vehicleColor, 60),
+      vehiclePlate: cleanText(canonicalProjection0494.vehiclePlate || data.vehiclePlate, 16).toUpperCase(),
       publishedSeats:
         canonicalProjection0494.publishedSeats == null && data.publishedSeats == null
           ? null
@@ -10712,7 +10717,11 @@ async function listDriverTripSyncState0402(req, res) {
       segmentPassengerLoads: segmentPassengerLoads0494,
       segmentBlockedLoads: segmentBlockedLoads0494,
       segmentAvailableSeats: segmentLoads0494.map((load) =>
-        Math.max(0, Math.max(0, Number(canonicalProjection0494.capacity || data.capacity || 0)) - Math.max(0, Number(load || 0)))
+        Math.max(
+          0,
+          Math.max(1, Number(canonicalProjection0494.physicalSeatCapacity || data.physicalSeatCapacity || 4)) -
+            Math.max(0, Number(load || 0)),
+        )
       ),
       sourceSeatCounts: sourceSeatCounts0494,
       canonicalIssues: canonicalIssues0494,
