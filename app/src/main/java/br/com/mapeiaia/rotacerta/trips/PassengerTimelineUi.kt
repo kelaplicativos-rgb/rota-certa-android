@@ -143,34 +143,49 @@ internal fun resolvePassengerMessageVehicle0714(
     store: TripStore,
     trip: Trip? = null,
 ): PassengerMessageVehicle0714 {
+    // 0.1.719: the canonical car-of-day is authoritative. A failed secondary
+    // lookup must never erase it or terminate the fallback chain with an empty vehicle.
     trip?.takeIf { it.vehicleDayConfigured }?.let { selected ->
-        return PassengerMessageVehicle0714(
+        val canonical0719 = PassengerMessageVehicle0714(
             makeModel = selected.vehicleMakeModel.trim(),
             color = selected.vehicleColor.trim(),
             plate = selected.vehiclePlate.trim().uppercase(),
         )
+        if (
+            canonical0719.makeModel.isNotBlank() ||
+            canonical0719.color.isNotBlank() ||
+            canonical0719.plate.isNotBlank()
+        ) return canonical0719
     }
+
+    val settings0719 = store.onlineSettings()
+    val rotaCertaFallback0719 = PassengerMessageVehicle0714(
+        makeModel = settings0719.vehicleMakeModel.trim(),
+        color = settings0719.vehicleColor.trim(),
+    )
+
     val profileUuid = entry.blablaProfileUuid?.trim()?.lowercase()?.takeIf(String::isNotEmpty)
     if (profileUuid != null) {
         val matching = BlaBlaDynamicAccountRegistry(context.applicationContext).list()
             .filter { it.profileUuid?.trim()?.lowercase() == profileUuid }
-        val account = matching.singleOrNull() ?: return PassengerMessageVehicle0714()
-        val snapshot = BlaBlaPublicProfileStore(context.applicationContext).read(account.id)
+        val account = matching.singleOrNull()
+        val snapshot = account
+            ?.let { BlaBlaPublicProfileStore(context.applicationContext).read(it.id) }
             ?.takeIf {
                 it.identityVerified &&
                     it.profileUuid.trim().equals(profileUuid, ignoreCase = true)
             }
-            ?: return PassengerMessageVehicle0714()
-        return PassengerMessageVehicle0714(
-            makeModel = snapshot.vehicleMakeModel.trim(),
-            color = snapshot.vehicleColor.trim(),
-        )
+        if (snapshot != null) {
+            val profileVehicle0719 = PassengerMessageVehicle0714(
+                makeModel = snapshot.vehicleMakeModel.trim(),
+                color = snapshot.vehicleColor.trim(),
+            )
+            if (profileVehicle0719.makeModel.isNotBlank() || profileVehicle0719.color.isNotBlank()) {
+                return profileVehicle0719
+            }
+        }
     }
-    val settings = store.onlineSettings()
-    return PassengerMessageVehicle0714(
-        makeModel = settings.vehicleMakeModel.trim(),
-        color = settings.vehicleColor.trim(),
-    )
+    return rotaCertaFallback0719
 }
 
 internal fun passengerTrackingMessage0714(passengerName: String): String =
@@ -4130,12 +4145,14 @@ internal fun passengerQuickMessageText0656(
                 ".\n\nEstá tudo certo por aí?" +
                 vehicleBlock
         PassengerQuickMessageType0656.AT_LOCATION ->
-            "Oi, $name! Já cheguei ao local combinado para o embarque. 📍"
+            "Oi, $name! Já cheguei ao local combinado para o embarque. 📍" +
+                vehicleBlock
         PassengerQuickMessageType0656.FARE -> {
             val fare = row.fareMinorUnits?.let {
                 passengerTimelineFareClipboardText(it, row.fareCurrencyCode, localeTag)
             } ?: "valor ainda não disponível"
-            "Oi, $name! O valor da sua reserva para $seatsText é $fare."
+            "Oi, $name! O valor da sua reserva para $seatsText é $fare." +
+                vehicleBlock
         }
     }
 }
