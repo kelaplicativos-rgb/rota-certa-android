@@ -134,13 +134,22 @@ internal fun passengerFirstName0714(raw: String): String =
 internal data class PassengerMessageVehicle0714(
     val makeModel: String = "",
     val color: String = "",
+    val plate: String = "",
 )
 
 internal fun resolvePassengerMessageVehicle0714(
     context: Context,
     entry: TripTimelineEntry,
     store: TripStore,
+    trip: Trip? = null,
 ): PassengerMessageVehicle0714 {
+    trip?.takeIf { it.vehicleDayConfigured }?.let { selected ->
+        return PassengerMessageVehicle0714(
+            makeModel = selected.vehicleMakeModel.trim(),
+            color = selected.vehicleColor.trim(),
+            plate = selected.vehiclePlate.trim().uppercase(),
+        )
+    }
     val profileUuid = entry.blablaProfileUuid?.trim()?.lowercase()?.takeIf(String::isNotEmpty)
     if (profileUuid != null) {
         val matching = BlaBlaDynamicAccountRegistry(context.applicationContext).list()
@@ -948,8 +957,16 @@ internal fun EnhancedPassengerTimelineSection(
     var privateRefreshCompleted0656 by remember(trip?.id) { mutableStateOf(false) }
     var privateRefreshStartedAt0656 by remember(trip?.id) { mutableStateOf(0L) }
     val targetedRefreshCommit0656 by TargetedTripRefreshEvents0645.commit.collectAsState()
-    val messageVehicle0714 = remember(entry.tripId, entry.blablaProfileUuid, store) {
-        resolvePassengerMessageVehicle0714(context, entry, store)
+    val messageVehicle0714 = remember(
+        entry.tripId,
+        entry.blablaProfileUuid,
+        trip?.vehicleDayConfigured,
+        trip?.vehicleMakeModel,
+        trip?.vehicleColor,
+        trip?.vehiclePlate,
+        store,
+    ) {
+        resolvePassengerMessageVehicle0714(context, entry, store, trip)
     }
     val privateMetadataIncomplete0656 = rows.any(::passengerPrivateMetadataIncomplete0656)
     val privateMetadataFingerprint0656 = rows.joinToString("|") { row ->
@@ -2832,6 +2849,7 @@ internal fun EnhancedPassengerTimelineSection(
                                         localeTag = PassengerMoney.spec(context).localeTag,
                                         vehicleMakeModel = messageVehicle0714.makeModel,
                                         vehicleColor = messageVehicle0714.color,
+                                        vehiclePlate = messageVehicle0714.plate,
                                     )
                                     quickMessageRow0656 = null
                                     deliverPassengerQuickMessage0656(
@@ -4053,6 +4071,7 @@ internal fun passengerQuickMessageText0656(
     localeTag: String = "pt-BR",
     vehicleMakeModel: String = "",
     vehicleColor: String = "",
+    vehiclePlate: String = "",
 ): String {
     val locale = java.util.Locale.forLanguageTag(localeTag.ifBlank { "pt-BR" })
     val zone0672 = passengerScheduleZone0672(trip)
@@ -4078,11 +4097,14 @@ internal fun passengerQuickMessageText0656(
     val origin = row.boarding?.trim()?.takeIf(String::isNotEmpty) ?: entry.origin.trim()
     val destination = row.dropoff?.trim()?.takeIf(String::isNotEmpty) ?: entry.destination.trim()
     val seatsText = if (row.seats == 1) "1 lugar" else "${row.seats} lugares"
-    val vehicleLines = listOf(vehicleMakeModel.trim(), vehicleColor.trim().lowercase(locale))
+    val vehicleDescriptor0717 = listOf(vehicleMakeModel.trim(), vehicleColor.trim().lowercase(locale))
         .filter(String::isNotBlank)
-    val vehicleBlock = if (vehicleLines.isEmpty()) "" else {
-        "\nCarro: " + vehicleLines.joinToString(" • ")
-    }
+        .joinToString(" • ")
+    val normalizedPlate0717 = vehiclePlate.trim().uppercase(locale).replace(Regex("\\s+"), "")
+    val vehicleBlock = buildList {
+        if (vehicleDescriptor0717.isNotBlank()) add("🚗 Carro: $vehicleDescriptor0717")
+        if (normalizedPlate0717.isNotBlank()) add("Placa: $normalizedPlate0717")
+    }.takeIf(List<String>::isNotEmpty)?.joinToString(separator = "\n", prefix = "\n\n").orEmpty()
 
     return when (type) {
         PassengerQuickMessageType0656.CONFIRM_NOW -> buildString {
@@ -4091,18 +4113,18 @@ internal fun passengerQuickMessageText0656(
             if (dateTime0672 != null) {
                 append(", ").append(dateTime0672.replaceFirstChar { ch -> ch.toString().lowercase(locale) })
             }
-            append(". Está tudo certo para você?")
+            append(". 👍\n\nEstá tudo certo para você?")
             append(vehicleBlock)
         }
         PassengerQuickMessageType0656.CONFIRM_TOMORROW ->
             "Oi, $name! Confirmando nossa viagem de amanhã" +
                 (clock0672?.let { " às $it" } ?: "") +
-                ". Perto do horário envio minha localização em tempo real." +
+                ". 👍\n\nPerto do horário envio minha localização em tempo real. 🚗" +
                 vehicleBlock
         PassengerQuickMessageType0656.CONFIRM_ONE_HOUR ->
             "Oi, $name! Nossa viagem está prevista para daqui a cerca de 1 hora" +
                 (clock0672?.let { ", às $it" } ?: "") +
-                ". Está tudo certo por aí?" +
+                ".\n\nEstá tudo certo por aí?" +
                 vehicleBlock
         PassengerQuickMessageType0656.AT_LOCATION ->
             "Oi, $name! Já cheguei ao local combinado para o embarque. 📍"
