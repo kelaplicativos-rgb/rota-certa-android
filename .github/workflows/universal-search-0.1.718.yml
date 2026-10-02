@@ -1,0 +1,129 @@
+name: Universal search index 0.1.718 APK
+
+on:
+  push:
+    branches:
+      - 'agent/universal-search-index-0.1.718'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: universal-search-0718-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: agent/universal-search-index-0.1.718
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Prove exact source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
+          grep -Fq 'releaseVersionName = "0.1.718"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 6_009' app/build.gradle.kts
+          grep -Fq '"version": "0.1.718"' app/src/main/assets/release_history.json
+          grep -Fq 'UNIVERSAL_SEARCH_PREPARED_INDEX_0718' app/src/main/java/br/com/mapeiaia/rotacerta/trips/UniversalTripSearch0687.kt
+          grep -Fq 'dateNaturalLongFormatter' app/src/main/java/br/com/mapeiaia/rotacerta/trips/UniversalTripSearch0687.kt
+          grep -Fq 'dayMonthShortFormatter' app/src/main/java/br/com/mapeiaia/rotacerta/trips/UniversalTripSearch0687.kt
+          grep -Fq 'manageTripListState0718' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'portugueseAbbreviatedDatesFindTheExactTrips' app/src/test/java/br/com/mapeiaia/rotacerta/trips/UniversalTripSearch0687Test.kt
+          grep -Fq 'preparedIndexKeepsAnyPositionSubstringBehavior' app/src/test/java/br/com/mapeiaia/rotacerta/trips/UniversalTripSearch0687Test.kt
+          git diff --check
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run search regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.UniversalTripSearch0687Test'             --no-daemon --max-workers=2 --stacktrace | tee /tmp/search-0718-tests.log
+
+      - name: Run full unit suite lint and assemble
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug             --no-daemon --max-workers=2 --stacktrace | tee /tmp/search-0718-full-validation.log
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
+
+      - name: Prove APK identity signing and final SHA
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/search-0718-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/search-0718-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/search-0718-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='6009'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.718'" <<< "$PACKAGE_LINE"
+          grep -Fq "sdkVersion:'26'" /tmp/search-0718-aapt.txt
+          grep -Fq "targetSdkVersion:'35'" /tmp/search-0718-aapt.txt
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/search-0718-apksigner.txt
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/search-0718-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/search-0718-dex-strings.txt
+          grep -Fq "$ROTA_CERTA_GIT_SHA" /tmp/search-0718-dex-strings.txt
+          grep -Fq 'UNIVERSAL_SEARCH_PREPARED_INDEX_0718' /tmp/search-0718-dex-strings.txt
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.718-6009-$SHORT_SHA-SM-S911B.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.718"
+            echo "versionCode=6009"
+            echo "branch=agent/universal-search-index-0.1.718"
+            echo "commit=$ROTA_CERTA_GIT_SHA"
+            echo "deviceTarget=Samsung SM-S911B / Android 16"
+            echo "preparedIndex=UNIVERSAL_SEARCH_PREPARED_INDEX_0718"
+            echo "dateQueryQui15Outubro=TESTED"
+            echo "dateQueryDom04Out=TESTED"
+            echo "dateAliases=PT_BR_LONG_SHORT_NUMERIC"
+            echo "punctuationAccentNormalization=ACTIVE"
+            echo "substringIndex=NGRAM_1_3_WITH_EXACT_VERIFICATION"
+            echo "directTripCardNavigation=ACTIVE"
+            echo "fullUnitSuite=PASS"
+            echo "lintDebug=PASS"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee universal-search-0718-proof.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-universal-search-0.1.718-${{ github.sha }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            universal-search-0718-proof.txt
+            /tmp/search-0718-tests.log
+            /tmp/search-0718-full-validation.log
+            /tmp/search-0718-aapt.txt
+            /tmp/search-0718-apksigner.txt
+            /tmp/search-0718-zip-integrity.txt
+            app/build/test-results/testDebugUnitTest/
+            app/build/reports/lint-results-debug.html
+          if-no-files-found: error
+          retention-days: 30
