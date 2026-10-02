@@ -67,10 +67,10 @@ class BlaBlaPublishedCapacity0366Test {
         val summary = operationalSeatSummary(trip, claims)
         assertEquals(2, summary.blablaQuotaSeats)
         assertEquals(4, summary.rotaCertaQuotaSeats)
-        assertEquals(9, summary.operationalInventorySeats)
-        assertEquals(6, summary.totalAvailableSeats)
+        assertEquals(7, summary.operationalInventorySeats)
+        assertEquals(4, summary.totalAvailableSeats)
         assertEquals(3, summary.confirmedPassengerSeats)
-        assertEquals(6, summary.availableSeats)
+        assertEquals(4, summary.availableSeats)
         assertEquals(0, summary.overbookingSeats)
     }
 
@@ -84,7 +84,7 @@ class BlaBlaPublishedCapacity0366Test {
         val summary = operationalSeatSummary(trip, claims)
         assertEquals(1, summary.confirmedPassengerSeats)
         assertEquals(4, summary.rotaCertaQuotaSeats)
-        assertEquals(7, summary.availableSeats)
+        assertEquals(6, summary.availableSeats)
     }
 
     @Test
@@ -119,15 +119,11 @@ class BlaBlaPublishedCapacity0366Test {
     }
 
     @Test
-    fun publicAgendaSourceDerivesInventoryFromBlaBlaQuotaAndRotaCertaQuota() {
-        val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt").readText()
-        assertFalse(source.contains("combinedAgendaAvailableSeats"))
-        assertFalse(source.contains("rotaCertaSeatPool"))
-        assertTrue(source.contains("operationalInventory"))
-        assertTrue(source.contains("blablaRemaining"))
-        assertTrue(source.contains("rotaCertaQuota"))
-        assertTrue(source.contains("capacitySource=blablacar_remaining_plus_confirmed_peak_plus_rota_certa"))
-        assertFalse(source.contains("capacitySource=blablacar_quota_plus_rota_certa_quota"))
+    fun publicAgendaSourceUsesPhysicalInventoryInsteadOfSummingChannels() {
+        val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt").readText()
+        assertTrue(source.contains("physicalSeatCapacity"))
+        assertTrue(source.contains("channel quotas"))
+        assertFalse(source.contains("((blablaAvailable ?: 0) + confirmedPeak + rotaCertaQuota)"))
     }
 
     private fun entry(
@@ -191,6 +187,7 @@ class BlaBlaPublishedCapacity0366Test {
         title = "A → C",
         departureAtMillis = 1_800_000_000_000L,
         capacity = capacity,
+        physicalSeatCapacity = capacity,
         rotaCertaSeatAllocation = rotaCertaSeatAllocation,
         status = TripStatus.PUBLISHED,
         stops = listOf(
