@@ -1,16 +1,16 @@
-name: Rota Certa 0.1.720 durable agenda XML exact SHA
+name: Rota Certa 0.1.721 trip detail readiness + durable XML exact SHA
 
 on:
   push:
     branches:
-      - 'agent/agenda-xml-durable-deploy-0.1.720'
+      - 'agent/trip-detail-readiness-recovery-0.1.721'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-xml-durable-0720-${{ github.ref }}
+  group: trip-detail-readiness-0721-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -22,10 +22,10 @@ jobs:
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       ROTA_CERTA_GIT_SHA: ${{ github.sha }}
-      ROTA_CERTA_GIT_BRANCH: 'agent/agenda-xml-durable-deploy-0.1.720'
-      BASE_SHA: 'ee32e1149d3c436bda868c667a18592941cf5f31'
-      EXPECTED_VERSION_NAME: '0.1.720'
-      EXPECTED_VERSION_CODE: '6011'
+      ROTA_CERTA_GIT_BRANCH: 'agent/trip-detail-readiness-recovery-0.1.721'
+      BASE_SHA: 'f01bbdcddaee76aebd0aeaa229ee02581b1cd910'
+      EXPECTED_VERSION_NAME: '0.1.721'
+      EXPECTED_VERSION_CODE: '6012'
       OM_TAG: '2026.08.27-18-android'
       OM_VERSION: '2026.08.27-18'
 
@@ -81,9 +81,9 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          grep -Fq 'val releaseVersionName = "0.1.720"' app/build.gradle.kts
-          grep -Fq 'val releaseVersionCode = 6_011' app/build.gradle.kts
-          grep -Fq '"version": "0.1.720"' app/src/main/assets/release_history.json
+          grep -Fq 'val releaseVersionName = "0.1.721"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 6_012' app/build.gradle.kts
+          grep -Fq '"version": "0.1.721"' app/src/main/assets/release_history.json
           grep -Fq 'UNIVERSAL_SEARCH_PREPARED_INDEX_0718' app/src/main/java/br/com/mapeiaia/rotacerta/trips/UniversalTripSearch0687.kt
           grep -Fq 'term.windowed(size = 3' app/src/main/java/br/com/mapeiaia/rotacerta/trips/UniversalTripSearch0687.kt
           grep -Fq "EEEE, dd 'de' MMMM 'de' yyyy" app/src/main/java/br/com/mapeiaia/rotacerta/trips/UniversalTripSearch0687.kt
@@ -96,6 +96,10 @@ jobs:
           grep -Fq 'FAROL_ADDRESS_RECOVERY_0716' app/src/main/java/br/com/mapeiaia/rotacerta/FarolAddressRecovery0716.kt
           grep -Fq 'MESSAGE_VEHICLE_AUTHORITY_0719' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
           grep -Fq 'TENANT_MESSAGE_STORE_AUTHORITY_0719' app/src/main/java/br/com/mapeiaia/rotacerta/RotaCertaTools0172.kt
+          grep -Fq 'TRIP_DETAIL_NOT_READY_0721' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'return !loadingActive && summary && boundControl' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'BLABLACAR_TRIP_DETAIL_DEFERRED_RECOVERED_0721' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          ! grep -Fq 'if (ready || pass + 1 >= PREPARE_PASSES_0605)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
           grep -Fq '"source": "/api/agenda/**"' trip-platform/firebase.json
           grep -Fq '"source": "/api/v1/agenda/**"' trip-platform/firebase.json
           grep -Fq 'parts.length === 3 && parts[0] === "api" && parts[1] === "agenda"' trip-platform/functions/index.js
@@ -142,8 +146,10 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.FarolAddressRecovery0716Test' \
             --tests 'br.com.mapeiaia.rotacerta.FarolRoadKmFinality0713Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineCardOpenRefresh0707Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.RidesIndexDetailPipeline0676Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TripDetailReadiness0721Test' \
             --no-daemon --max-workers=2 --stacktrace \
-            | tee /tmp/focused-android-0720.log
+            | tee /tmp/focused-android-0721.log
 
       - name: Compare complete Android failures with exact 0.1.719 base
         shell: bash
@@ -222,9 +228,11 @@ jobs:
           grep -Fq 'qui., 15 de outubro' /tmp/dex-strings.txt
           grep -Fq 'CARRO_DO_DIA_SAVED_0717' /tmp/dex-strings.txt
           grep -Fq 'FAROL_ADDRESS_RECOVERY_0716' /tmp/dex-strings.txt
+          grep -Fq 'TRIP_DETAIL_NOT_READY_0721' /tmp/dex-strings.txt
+          grep -Fq 'BLABLACAR_TRIP_DETAIL_DEFERRED_RECOVERED_0721' /tmp/dex-strings.txt
 
           SHORT_SHA="$(git rev-parse --short=12 HEAD)"
-          FINAL="rota-certa-0.1.720-6011-$SHORT_SHA.apk"
+          FINAL="rota-certa-0.1.721-6012-$SHORT_SHA.apk"
           cp "$APK" "$FINAL"
           APK_SHA256="$(sha256sum "$FINAL" | awk '{print $1}')"
           sha256sum "$FINAL" | tee /tmp/apk-sha256.txt
@@ -246,6 +254,11 @@ jobs:
             echo "messageVehicleAuthority0719=true"
             echo "allPassengerQuickTemplatesVehicle=true"
             echo "tenantMessageStoreUnified=true"
+            echo "tripDetailFailClosed0721=true"
+            echo "visibleLoadingRejected0721=true"
+            echo "notReadyRetryable0721=true"
+            echo "deferredFreshWebViewRetry0721=true"
+            echo "durableAgendaXml0720Preserved=true"
             echo "apkSha256=$APK_SHA256"
           } | tee /tmp/final-proof.txt
 
@@ -273,7 +286,7 @@ jobs:
             --allow-unauthenticated \
             --clear-secrets \
             --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$GITHUB_SHA" \
-            --quiet | tee /tmp/backend-deploy-0720.log
+            --quiet | tee /tmp/backend-deploy-0721.log
 
       - name: Stage exact APK for direct install
         id: hosted
@@ -304,9 +317,9 @@ jobs:
         run: |
           set -euo pipefail
           BASE='https://rota-certa-7ccc8.web.app'
-          curl --retry 20 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health-0720.json
-          grep -Fq '"ok":true' /tmp/live-health-0720.json
-          grep -Fq "\"backendGitSha\":\"$GITHUB_SHA\"" /tmp/live-health-0720.json
+          curl --retry 20 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health-0721.json
+          grep -Fq '"ok":true' /tmp/live-health-0721.json
+          grep -Fq "\"backendGitSha\":\"$GITHUB_SHA\"" /tmp/live-health-0721.json
 
           for SPEC in \
             "canonical|/v1/public/agenda-feed/ezequiel.xml" \
@@ -372,7 +385,7 @@ jobs:
       - name: Upload exact-SHA APK and proof
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-agenda-xml-durable-0.1.720-${{ github.sha }}
+          name: rota-certa-trip-detail-readiness-0.1.721-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
           path: |
@@ -385,7 +398,7 @@ jobs:
             /tmp/apksigner.txt
             /tmp/zip-integrity.txt
             /tmp/apk-files.txt
-            /tmp/focused-android-0720.log
+            /tmp/focused-android-0721.log
             /tmp/android-base-full.log
             /tmp/android-head-full.log
             /tmp/android-new-failures.txt
