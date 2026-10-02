@@ -77,8 +77,14 @@ data class Trip(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
     val departureAtMillis: Long,
-    /** Derived simultaneous operational inventory ceiling for this trip. Never sourced from legacy vehicleCapacity. */
-    val capacity: Int = 0,
+    /** Physical passenger-seat ceiling for this trip. 0.1.717 never enlarges this from channel quotas. */
+    val capacity: Int = 4,
+    /** Car-of-the-day fields. When configured they survive collector refreshes and drive capacity + messages. */
+    val physicalSeatCapacity: Int = 4,
+    val vehicleDayConfigured: Boolean = false,
+    val vehicleMakeModel: String = "",
+    val vehicleColor: String = "",
+    val vehiclePlate: String = "",
     val status: TripStatus = TripStatus.DRAFT,
     val stops: List<TripStop>,
     val publicToken: String = UUID.randomUUID().toString().replace("-", ""),
@@ -235,6 +241,11 @@ internal fun canonicalTripStateHash0406(
         append(trip.agendaVisibleUntilMillis0581).append('|')
         append(trip.status.name).append('|')
         append(trip.capacity).append('|')
+        append(trip.physicalSeatCapacity).append('|')
+        append(trip.vehicleDayConfigured).append('|')
+        append(trip.vehicleMakeModel.trim()).append('|')
+        append(trip.vehicleColor.trim()).append('|')
+        append(trip.vehiclePlate.trim().uppercase()).append('|')
         append(trip.publishedSeats ?: -1).append('|')
         append(trip.rotaCertaSeatAllocation ?: -1).append('|')
         append(trip.capacityReliable).append('|')
@@ -366,24 +377,20 @@ internal fun peakConfirmedPassengerSeats0714(
 }
 
 /**
- * Canonical simultaneous operational ceiling.
+ * Canonical simultaneous physical ceiling.
  *
- * publishedSeats is the current BlaBlaCar availability (seats still offered).
- * Confirmed BlaBlaCar passengers are added back exactly once at their peak simultaneous
- * occupancy; Rota Certa's explicit extra allocation is then added separately.
+ * Channel quotas (BlaBlaCar / Rota Certa) describe availability inside the vehicle;
+ * they never create extra physical seats. The car-of-the-day capacity is the invariant
+ * shared by Timeline, Agenda, Central do Dia and Viagem Certa.
  */
 fun operationalInventoryCapacity(
     trip: Trip,
-    bookings: List<Booking>,
-): Int {
-    val blablaAvailable = trip.publishedSeats?.takeIf { it in 0..999 }
-    val rotaCertaQuota = trip.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0
-    val confirmedPeak = if (blablaAvailable != null) {
-        peakConfirmedPassengerSeats0714(trip, bookings)
-    } else {
-        0
-    }
-    return ((blablaAvailable ?: 0) + confirmedPeak + rotaCertaQuota).coerceIn(0, 999)
+    @Suppress("UNUSED_PARAMETER") bookings: List<Booking>,
+): Int = trip.physicalSeatCapacity.coerceIn(1, 999)
+
+fun Trip.withPhysicalSeatCapacity0717(): Trip {
+    val physical = physicalSeatCapacity.coerceIn(1, 999)
+    return if (capacity == physical) this else copy(capacity = physical)
 }
 
 data class SegmentLoad(
@@ -422,7 +429,7 @@ data class TripOperationalSeatSummary(
     val blablaQuotaSeats: Int,
     /** Configured Rota Certa quota before occupancy. */
     val rotaCertaQuotaSeats: Int,
-    /** blablaQuotaSeats + rotaCertaQuotaSeats. */
+    /** Physical passenger-seat ceiling from the car of the day. */
     val operationalInventorySeats: Int,
     /** Minimum remaining seats across all trip segments. */
     val totalAvailableSeats: Int,
@@ -435,8 +442,8 @@ data class TripOperationalSeatSummary(
 /**
  * Canonical whole-trip inventory/occupancy summary.
  *
- * Quotas create the operational inventory. Confirmed passengers and blocked
- * seats consume that inventory through the shared per-segment engine.
+ * The physical car capacity creates the operational inventory. Channel quotas,
+ * confirmed passengers and blocked seats are reconciled inside that ceiling.
  */
 fun operationalSeatSummary(
     trip: Trip,
