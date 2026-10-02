@@ -388,14 +388,14 @@ fun operationalInventoryCapacity(
     @Suppress("UNUSED_PARAMETER") bookings: List<Booking>,
 ): Int = when {
     trip.vehicleDayConfigured -> trip.physicalSeatCapacity.coerceIn(1, 999)
-    trip.recordOrigin == TripRecordOrigin.LOCAL -> trip.capacity.coerceIn(1, 999)
+    trip.recordOrigin == TripRecordOrigin.LOCAL && trip.capacity in 1..999 -> trip.capacity
     else -> trip.physicalSeatCapacity.coerceIn(1, 999)
 }
 
 fun Trip.withPhysicalSeatCapacity0717(): Trip {
     val physical = when {
         vehicleDayConfigured -> physicalSeatCapacity.coerceIn(1, 999)
-        recordOrigin == TripRecordOrigin.LOCAL -> capacity.coerceIn(1, 999)
+        recordOrigin == TripRecordOrigin.LOCAL && capacity in 1..999 -> capacity
         else -> physicalSeatCapacity.coerceIn(1, 999)
     }
     return if (capacity == physical && physicalSeatCapacity == physical) this else {
