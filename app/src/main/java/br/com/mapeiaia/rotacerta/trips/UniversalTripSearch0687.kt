@@ -118,7 +118,7 @@ internal class UniversalSearchIndex0718 private constructor(
                 indexed.document.searchableNormalized
                     .split(' ')
                     .asSequence()
-                    .map(String::trim)
+                    .map { token -> token.trim() }
                     .filter(String::isNotBlank)
                     .distinct()
                     .forEach { token ->
