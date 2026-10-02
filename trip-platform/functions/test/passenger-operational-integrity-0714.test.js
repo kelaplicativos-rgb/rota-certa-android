@@ -11,13 +11,13 @@ test("0714 explicit null coordinates are authoritative clears", () => {
   assert.match(source, /hasBoardingLatitude \? input\.boardingLatitude : prior\.boardingLatitude/);
 });
 
-test("0714 BlaBla remaining seats rebuild capacity from external confirmed peak only", () => {
+test("0717 physical car capacity is the backend seat ceiling", () => {
   const fn = source
     .split("function operationalSeatLimit(trip, records = [], now = Date.now()) {")[1]
     .split("\n}")[0];
-  assert.match(fn, /blablaAvailable \+ confirmedPeak \+ rotaCertaAllocated/);
-  assert.match(fn, /claimType !== "EXTERNAL_OCCUPANCY" && source !== "BLABLACAR"/);
-  assert.match(fn, /record\.status !== "CONFIRMED"/);
+  assert.match(fn, /physicalSeatCapacity/);
+  assert.match(fn, /return physical/);
+  assert.doesNotMatch(fn, /blablaAvailable \+ confirmedPeak \+ rotaCertaAllocated/);
 });
 
 test("0714 inventory invariant evaluates the atomic incoming claim set", () => {
