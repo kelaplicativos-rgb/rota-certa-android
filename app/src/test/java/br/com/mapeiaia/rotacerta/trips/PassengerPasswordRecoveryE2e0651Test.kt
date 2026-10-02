@@ -37,7 +37,7 @@ class PassengerPasswordRecoveryE2e0651Test {
         assertTrue(passengerAdmin.contains("Senha limpa. O passageiro deverá criar uma nova senha no próximo acesso."))
         val resetResponse = remoteApi.substring(
             remoteApi.indexOf("data class DriverPassengerResetPasswordResponse"),
-            remoteApi.indexOf("data class DriverPassengerReferralSettingsRequest"),
+            remoteApi.indexOf("data class DriverReferralSettingsRequest"),
         )
         assertFalse(resetResponse.contains("temporaryPassword"))
         assertTrue(resetResponse.contains("val cleared: Boolean = false"))
