@@ -1162,14 +1162,29 @@ function canonicalEndpointStopShapeMigration0439(previousStopsRaw, nextStopsRaw,
 
 function normalizeDriverTrip(raw, previous = null, allowBookedStopShapeMigration0439 = false, allowCanonicalBoundBlaBlaPublicUrl0582 = false) {
   const preserveVehicle0717 = Boolean(previous && previous.vehicleDayConfigured === true && raw.vehicleDayConfigured !== true);
+  const legacyExternal0717 = Boolean(
+    cleanText(raw && raw.recordOrigin, 40).toUpperCase() === "EXTERNAL_BACKING" ||
+    cleanText(raw && raw.blablaTripId, 160) ||
+    cleanText(raw && raw.blablaProfileUuid, 160)
+  );
+  const legacyRawCapacity0717 = Number(raw && raw.capacity);
+  const legacyPhysical0717 =
+    !legacyExternal0717 && Number.isInteger(legacyRawCapacity0717) && legacyRawCapacity0717 >= 1 && legacyRawCapacity0717 <= 999
+      ? legacyRawCapacity0717
+      : 4;
   const requestedPhysical0717 = Number(
     preserveVehicle0717
       ? previous.physicalSeatCapacity
-      : (raw.physicalSeatCapacity == null ? NaN : raw.physicalSeatCapacity)
+      : (raw.physicalSeatCapacity == null ? legacyPhysical0717 : raw.physicalSeatCapacity)
   );
-  // Legacy clients did not have a physical-seat field. Never trust their derived
-  // capacity as a physical vehicle fact because 0.1.714-0.1.716 could inflate it.
-  const fallbackPhysical0717 = Number(previous && previous.physicalSeatCapacity || 4);
+  // Legacy external clients did not have a physical-seat field and their derived
+  // capacity may have been inflated by 0.1.714-0.1.716. Legacy LOCAL trips retain
+  // their explicit vehicle capacity so vans/buses remain compatible.
+  const fallbackPhysical0717 = Number(
+    previous && previous.physicalSeatCapacity != null
+      ? previous.physicalSeatCapacity
+      : legacyPhysical0717
+  );
   const physicalSeatCapacity = Number.isInteger(requestedPhysical0717) && requestedPhysical0717 >= 1 && requestedPhysical0717 <= 999
     ? requestedPhysical0717
     : (Number.isInteger(fallbackPhysical0717) && fallbackPhysical0717 >= 1 && fallbackPhysical0717 <= 999 ? fallbackPhysical0717 : 4);
