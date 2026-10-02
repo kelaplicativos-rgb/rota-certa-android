@@ -398,6 +398,11 @@ function tripRelevantChanges(previous, updated) {
     changedField("title", previous && previous.title, updated && updated.title),
     changedField("stops", previous && previous.stops, updated && updated.stops),
     changedField("capacity", Number(previous && previous.capacity || 0), Number(updated && updated.capacity || 0)),
+    changedField("physicalSeatCapacity", Number(previous && previous.physicalSeatCapacity || 0), Number(updated && updated.physicalSeatCapacity || 0)),
+    changedField("vehicleDayConfigured", Boolean(previous && previous.vehicleDayConfigured), Boolean(updated && updated.vehicleDayConfigured)),
+    changedField("vehicleMakeModel", previous && previous.vehicleMakeModel, updated && updated.vehicleMakeModel),
+    changedField("vehicleColor", previous && previous.vehicleColor, updated && updated.vehicleColor),
+    changedField("vehiclePlate", previous && previous.vehiclePlate, updated && updated.vehiclePlate),
     changedField("rotaCertaSeatAllocation", Number(previous && previous.rotaCertaSeatAllocation || 0), Number(updated && updated.rotaCertaSeatAllocation || 0)),
     changedField("publishedSeats", previous && previous.publishedSeats, updated && updated.publishedSeats),
   ].filter(Boolean);
@@ -1156,8 +1161,30 @@ function canonicalEndpointStopShapeMigration0439(previousStopsRaw, nextStopsRaw,
 }
 
 function normalizeDriverTrip(raw, previous = null, allowBookedStopShapeMigration0439 = false, allowCanonicalBoundBlaBlaPublicUrl0582 = false) {
-  const capacity = Number(raw.capacity);
-  if (!Number.isInteger(capacity) || capacity < 0 || capacity > 999) throw new Error("Inventário operacional inválido.");
+  const preserveVehicle0717 = Boolean(previous && previous.vehicleDayConfigured === true && raw.vehicleDayConfigured !== true);
+  const requestedPhysical0717 = Number(
+    preserveVehicle0717
+      ? previous.physicalSeatCapacity
+      : (raw.physicalSeatCapacity == null ? raw.capacity : raw.physicalSeatCapacity)
+  );
+  const fallbackPhysical0717 = Number(previous && (previous.physicalSeatCapacity || previous.capacity) || 4);
+  const physicalSeatCapacity = Number.isInteger(requestedPhysical0717) && requestedPhysical0717 >= 1 && requestedPhysical0717 <= 999
+    ? requestedPhysical0717
+    : (Number.isInteger(fallbackPhysical0717) && fallbackPhysical0717 >= 1 && fallbackPhysical0717 <= 999 ? fallbackPhysical0717 : 4);
+  const capacity = physicalSeatCapacity;
+  const vehicleDayConfigured = raw.vehicleDayConfigured === true || preserveVehicle0717;
+  const vehicleMakeModel = cleanText(
+    preserveVehicle0717 ? previous.vehicleMakeModel : (raw.vehicleMakeModel == null ? (previous && previous.vehicleMakeModel) : raw.vehicleMakeModel),
+    120,
+  );
+  const vehicleColor = cleanText(
+    preserveVehicle0717 ? previous.vehicleColor : (raw.vehicleColor == null ? (previous && previous.vehicleColor) : raw.vehicleColor),
+    60,
+  );
+  const vehiclePlate = cleanText(
+    preserveVehicle0717 ? previous.vehiclePlate : (raw.vehiclePlate == null ? (previous && previous.vehiclePlate) : raw.vehiclePlate),
+    16,
+  ).toUpperCase().replace(/\s+/g, "");
   const departureAtMillis = Number(raw.departureAtMillis);
   if (!Number.isFinite(departureAtMillis) || departureAtMillis <= 0) throw new Error("Horário de saída inválido.");
   const status = cleanText(raw.status, 24) || "DRAFT";
@@ -1257,6 +1284,11 @@ function normalizeDriverTrip(raw, previous = null, allowBookedStopShapeMigration
     title: cleanText(raw.title, 220),
     departureAtMillis,
     capacity,
+    physicalSeatCapacity,
+    vehicleDayConfigured,
+    vehicleMakeModel,
+    vehicleColor,
+    vehiclePlate,
     status,
     stops,
     blablaProfileUuid,
@@ -1771,7 +1803,12 @@ function canonicalPublicTripPayload0411(token, data) {
     ),
     timezoneId: cleanText(data.publicTimezoneId0411, 80),
     status: cleanText(publicTrip.status, 24),
-    capacity: Math.max(0, Number(publicTrip.capacity || 0)),
+    capacity: Math.max(1, Number(publicTrip.physicalSeatCapacity || publicTrip.capacity || 4)),
+    physicalSeatCapacity: Math.max(1, Number(publicTrip.physicalSeatCapacity || publicTrip.capacity || 4)),
+    vehicleDayConfigured: publicTrip.vehicleDayConfigured === true,
+    vehicleMakeModel: cleanText(publicTrip.vehicleMakeModel, 120),
+    vehicleColor: cleanText(publicTrip.vehicleColor, 60),
+    vehiclePlate: cleanText(publicTrip.vehiclePlate, 16).toUpperCase(),
     stops: canonicalDepartureStops0495(
       (Array.isArray(publicTrip.stops) ? publicTrip.stops : [])
         .map(canonicalPublicStop0411)
@@ -2320,41 +2357,11 @@ function segmentCapacityPersistence(capacityState) {
   };
 }
 function operationalSeatLimit(trip, records = [], now = Date.now()) {
-  const blablaAvailable = Number.isInteger(Number(trip && trip.publishedSeats)) && Number(trip.publishedSeats) >= 0
-    ? Math.min(999, Number(trip.publishedSeats))
-    : 0;
-  const configuredLocal = trip && trip.rotaCertaSeatAllocation != null ? Number(trip.rotaCertaSeatAllocation) : NaN;
-  const rotaCertaAllocated = Number.isInteger(configuredLocal) && configuredLocal >= 0
-    ? Math.min(999, configuredLocal)
-    : 0;
-  const stops = Array.isArray(trip && trip.stops) ? trip.stops : [];
-  const externalClaims = Array.from({ length: Math.max(0, stops.length - 1) }, () => new Map());
-  for (const record of records || []) {
-    if (!record || record.status !== "CONFIRMED" || Number(record.seats || 0) <= 0) continue;
-    const claimType = cleanText(record.capacityClaimType, 24).toUpperCase() || "PASSENGER";
-    const source = cleanText(record.source, 24).toUpperCase();
-    if (claimType !== "EXTERNAL_OCCUPANCY" && source !== "BLABLACAR") continue;
-    const fromIndex = stops.findIndex((stop) => stop.id === record.boardingStopId);
-    const toIndex = stops.findIndex((stop) => stop.id === record.dropoffStopId);
-    if (fromIndex < 0 || toIndex <= fromIndex) continue;
-    const groupId = cleanText(record.occupancyGroupId, 120);
-    const sourceReference = cleanText(record.sourceReference, 240);
-    const passengerId = cleanText(record.passengerId, 120);
-    const key = groupId ? `group:${groupId}`
-      : sourceReference ? `reference:${sourceReference}`
-        : passengerId ? `passenger:${passengerId}`
-          : `booking:${cleanText(record.id, 120)}`;
-    const seats = Math.max(0, Number(record.seats || 0));
-    for (let index = fromIndex; index < toIndex; index += 1) {
-      externalClaims[index].set(key, Math.max(externalClaims[index].get(key) || 0, seats));
-    }
-  }
-  const confirmedPeak = externalClaims.length
-    ? Math.max(...externalClaims.map((segment) =>
-        Array.from(segment.values()).reduce((sum, seats) => sum + Math.max(0, Number(seats || 0)), 0)
-      ))
-    : 0;
-  return Math.min(999, blablaAvailable + confirmedPeak + rotaCertaAllocated);
+  void records;
+  void now;
+  const physical = Number(trip && (trip.physicalSeatCapacity == null ? trip.capacity : trip.physicalSeatCapacity));
+  if (Number.isInteger(physical) && physical >= 1 && physical <= 999) return physical;
+  return 4;
 }
 
 function reconciledOperationalSeatSummary(trip, records, now = Date.now()) {
@@ -5283,10 +5290,6 @@ async function clearPassengerPinFailures0624(driverUsername, passengerContact) {
   await passengerPinGuardRef0624(driverUsername, passengerContact).delete().catch(() => {});
 }
 
-function temporaryPassengerPassword() {
-  return String(crypto.randomInt(0, 10_000)).padStart(4, "0");
-}
-
 function passengerPassword0625(value) {
   const password = String(value || "").trim();
   if (!/^\d{4}$/.test(password)) {
@@ -6822,8 +6825,6 @@ async function resetDriverPassengerPassword(req, res) {
   if (!stablePassengerId) {
     return fail(res, 409, "passenger_identity_unavailable", "O passengerId deste passageiro ainda não está disponível.");
   }
-  const temporaryPassword = temporaryPassengerPassword();
-  const salt = crypto.randomBytes(16).toString("hex");
   const accountRef = db.collection("passengerAccounts").doc(sha256Hex(currentContact));
   const currentAccount = await accountRef.get();
   const currentData = currentAccount.exists ? currentAccount.data() : {};
@@ -6831,33 +6832,34 @@ async function resetDriverPassengerPassword(req, res) {
   if (currentPassengerId && currentPassengerId !== stablePassengerId) {
     return fail(res, 409, "passenger_global_identity_conflict", "Este WhatsApp já pertence a outro passengerId.");
   }
-  const wasActivated = currentAccount.exists && passengerAccountIsActivated(currentData);
   const now = Date.now();
   await accountRef.set({
     passengerContact: currentContact,
     passengerId: stablePassengerId,
-    passwordSalt: salt,
-    passwordHash: passengerPasswordDigest(temporaryPassword, salt),
-    mustChangePassword: true,
+    passwordSalt: FieldValue.delete(),
+    passwordHash: FieldValue.delete(),
+    passwordFormat0625: FieldValue.delete(),
+    pinAuthVersion0624: FieldValue.delete(),
+    mustChangePassword: false,
+    passwordClearedAtMillis0683: now,
     createdAtMillis: Number(currentData.createdAtMillis || now),
     updatedAtMillis: now,
   }, { merge: true });
   await db.collection("driverPassengerAccess").doc(access.id).set({
-    passwordRecoveryStatus: "ISSUED",
-    passwordRecoveryRequestedAtMillis: Number(access.passwordRecoveryRequestedAtMillis || 0),
-    passwordRecoveryIssuedAtMillis: now,
-    passwordRecoveryCompletedAtMillis: 0,
+    passwordRecoveryStatus: "CLEARED",
+    passwordRecoveryIssuedAtMillis: 0,
+    passwordRecoveryCompletedAtMillis: now,
     updatedAtMillis: now,
   }, { merge: true });
-  await invalidatePassengerSessions(currentContact);
+  const invalidatedSessions = await invalidatePassengerIdentitySessions(stablePassengerId, currentContact).catch(() => 0);
+  await clearPassengerPinFailures0624(driver.username, currentContact).catch(() => {});
+  await clearPassengerPinFailures0624("", currentContact).catch(() => {});
   return json(res, 200, {
-    temporaryPassword,
-    firstAccessPassword: !wasActivated,
-    accountActivatedBeforeReset: wasActivated,
-    recoveryStatus: "ISSUED",
+    cleared: true,
+    invalidatedSessions,
+    passengerId: stablePassengerId,
   });
 }
-
 async function updateDriverReferralSettings(req, res) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
