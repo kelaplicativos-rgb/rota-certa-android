@@ -11,7 +11,7 @@ class Stage47Reliability0251Test {
     }
 
     @Test
-    fun legacyVehicleCapacityIsIgnoredAndChannelInventoryDrivesTimelineEntries() {
+    fun physicalTimelineCapacityIsNotReplacedByChannelQuotas() {
         val external = entry(id = "external", capacity = 99, rosterComplete = true).copy(blablaPublishedSeats = 3)
         val second = entry(id = "local", capacity = 77, rosterComplete = true).copy(blablaPublishedSeats = 2)
         val updated = applyConfiguredVehicleCapacity(
@@ -19,15 +19,15 @@ class Stage47Reliability0251Test {
             vehicleCapacity = 999,
             rotaCertaSeatAllocation = 2,
         )
-        assertEquals(5, updated[0].capacity)
-        assertEquals(4, updated[1].capacity)
+        assertEquals(99, updated[0].capacity)
+        assertEquals(77, updated[1].capacity)
     }
 
     @Test
-    fun legacyVehicleCapacityCannotInventInventoryWithoutChannelEvidence() {
+    fun existingPhysicalCapacitySurvivesWhenChannelEvidenceIsMissing() {
         val external = entry(id = "external", capacity = 8, rosterComplete = true)
         assertEquals(
-            0,
+            8,
             applyConfiguredVehicleCapacity(
                 entries = listOf(external),
                 vehicleCapacity = 999,
