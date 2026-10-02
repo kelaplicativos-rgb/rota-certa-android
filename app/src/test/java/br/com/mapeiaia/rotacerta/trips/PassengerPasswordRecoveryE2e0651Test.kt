@@ -35,8 +35,13 @@ class PassengerPasswordRecoveryE2e0651Test {
     @Test
     fun driverClearDoesNotExposeOrSendTemporaryCredentials() {
         assertTrue(passengerAdmin.contains("Senha limpa. O passageiro deverá criar uma nova senha no próximo acesso."))
-        assertFalse(remoteApi.contains("val temporaryPassword: String = \"\""))
-        assertTrue(remoteApi.contains("val invalidatedSessions: Int = 0"))
+        val resetResponse = remoteApi.substring(
+            remoteApi.indexOf("data class DriverPassengerResetPasswordResponse"),
+            remoteApi.indexOf("data class DriverPassengerReferralSettingsRequest"),
+        )
+        assertFalse(resetResponse.contains("temporaryPassword"))
+        assertTrue(resetResponse.contains("val cleared: Boolean = false"))
+        assertTrue(resetResponse.contains("val invalidatedSessions: Int = 0"))
     }
 
     @Test
