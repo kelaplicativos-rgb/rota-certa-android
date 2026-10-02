@@ -4101,10 +4101,13 @@ internal fun passengerQuickMessageText0656(
         .filter(String::isNotBlank)
         .joinToString(" • ")
     val normalizedPlate0717 = vehiclePlate.trim().uppercase(locale).replace(Regex("\\s+"), "")
-    val vehicleBlock = buildList {
+    val vehicleBlockLines0717 = buildList {
         if (vehicleDescriptor0717.isNotBlank()) add("🚗 Carro: $vehicleDescriptor0717")
         if (normalizedPlate0717.isNotBlank()) add("Placa: $normalizedPlate0717")
-    }.takeIf(List<String>::isNotEmpty)?.joinToString(separator = "\n", prefix = "\n\n").orEmpty()
+    }
+    val vehicleBlock = if (vehicleBlockLines0717.isEmpty()) "" else {
+        vehicleBlockLines0717.joinToString(separator = "\n", prefix = "\n\n")
+    }
 
     return when (type) {
         PassengerQuickMessageType0656.CONFIRM_NOW -> buildString {
