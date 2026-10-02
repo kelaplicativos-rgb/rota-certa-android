@@ -15,20 +15,19 @@ function between(source, startMarker, endMarker) {
   return source.slice(start, end);
 }
 
-test("0650 driver password recovery works for activated and first-access accounts", () => {
+test("0717 driver password reset clears credential and sessions", () => {
   const reset = between(
     api,
     "async function resetDriverPassengerPassword",
     "async function updateDriverReferralSettings",
   );
   assert.match(reset, /passengerAccessForIdentity\(driver\.username, passengerId, passengerContact\)/);
-  assert.match(reset, /passengerAccessIsAuthorized\(access\)/);
-  assert.match(reset, /passenger_global_identity_conflict/);
-  assert.match(reset, /mustChangePassword: true/);
-  assert.match(reset, /firstAccessPassword: !wasActivated/);
-  assert.match(reset, /accountActivatedBeforeReset: wasActivated/);
-  assert.match(reset, /await invalidatePassengerSessions\(currentContact\)/);
-  assert.doesNotMatch(reset, /passenger_account_not_activated/);
+  assert.match(reset, /passwordSalt: FieldValue\.delete\(\)/);
+  assert.match(reset, /passwordHash: FieldValue\.delete\(\)/);
+  assert.match(reset, /passwordClearedAtMillis0683/);
+  assert.match(reset, /invalidatePassengerIdentitySessions/);
+  assert.match(reset, /cleared: true/);
+  assert.doesNotMatch(reset, /temporaryPassword/);
 });
 
 test("0650 reset-password route remains driver authenticated and explicit", () => {
