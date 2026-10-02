@@ -290,6 +290,7 @@ private fun TripApp(
     val bookingsByTripId0648 = remember(bookings) { bookings.groupBy { it.tripId } }
     var localCapacityIncrementalBaseline by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     val timelineListState = rememberLazyListState()
+    val manageTripListState0718 = rememberLazyListState()
     var pendingCreateForPassengerId by remember { mutableStateOf("") }
     var addPassengerResumePassengerId by remember { mutableStateOf<String?>(null) }
     var addPassengerResumeTripId by remember { mutableStateOf<String?>(null) }
@@ -1249,7 +1250,26 @@ private fun TripApp(
                 )
                 TripScreen.LIST -> {
                     val onlineSettings = store.onlineSettings()
+                    val selectedManageTripIndex0718 = selectedId?.let { selectedTripId ->
+                        sortedManageTrips0648.indexOfFirst { trip -> trip.id == selectedTripId }
+                    } ?: -1
+                    val manageHeaderItems0718 =
+                        (if (onlineSettings.publicAgendaUrl != null) 1 else 0) +
+                            (if (onlineSettings.googleCalendarMirrorUrl != null) 1 else 0)
+                    androidx.compose.runtime.LaunchedEffect(
+                        screen,
+                        selectedId,
+                        sortedManageTrips0648,
+                        manageHeaderItems0718,
+                    ) {
+                        if (screen == TripScreen.LIST && selectedManageTripIndex0718 >= 0) {
+                            manageTripListState0718.scrollToItem(
+                                manageHeaderItems0718 + selectedManageTripIndex0718,
+                            )
+                        }
+                    }
                     LazyColumn(
+                        state = manageTripListState0718,
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f),
