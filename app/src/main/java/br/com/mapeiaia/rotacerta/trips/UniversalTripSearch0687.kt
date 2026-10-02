@@ -41,6 +41,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 internal const val UNIVERSAL_SEARCH_MARKER_0687 = "UNIVERSAL_SEARCH_ENGINE_0687"
+internal const val UNIVERSAL_SEARCH_INDEX_MARKER_0718 = "UNIVERSAL_SEARCH_PREPARED_INDEX_0718"
 
 internal enum class UniversalSearchKind0687(val label: String) {
     TRIP("Viagem"),
@@ -65,11 +66,138 @@ internal data class UniversalSearchHit0687(
     val score: Int,
 )
 
+private data class UniversalSearchIndexedDocument0718(
+    val document: UniversalSearchDocument0687,
+    val titleNormalized: String,
+    val subtitleNormalized: String,
+)
+
+private fun searchFragments0718(token: String): Set<String> {
+    if (token.isBlank()) return emptySet()
+    val fragments = LinkedHashSet<String>()
+    fragments += token
+
+    val substringWindow = if (token.length <= 48) 32 else 12
+    for (start in token.indices) {
+        val maxEnd = minOf(token.length, start + substringWindow)
+        for (end in (start + 1)..maxEnd) {
+            fragments += token.substring(start, end)
+        }
+    }
+    if (token.length > substringWindow) {
+        val edgeLimit = minOf(token.length, 32)
+        for (length in (substringWindow + 1)..edgeLimit) {
+            fragments += token.take(length)
+            fragments += token.takeLast(length)
+        }
+    }
+    return fragments
+}
+
+/**
+ * Prepared in-memory index inspired by dedicated launcher search apps: expensive catalog work
+ * happens once off the UI thread, while each keystroke intersects compact postings instead of
+ * rescanning every complete Trip/Booking/Profile string.
+ */
+internal class UniversalSearchIndex0718 private constructor(
+    private val indexedDocuments: List<UniversalSearchIndexedDocument0718>,
+    private val postings: Map<String, IntArray>,
+) {
+    companion object {
+        fun build(documents: List<UniversalSearchDocument0687>): UniversalSearchIndex0718 {
+            val indexedDocuments = documents.map { document ->
+                UniversalSearchIndexedDocument0718(
+                    document = document,
+                    titleNormalized = UniversalSearchEngine0687.normalize(document.title),
+                    subtitleNormalized = UniversalSearchEngine0687.normalize(document.subtitle),
+                )
+            }
+            val mutablePostings = HashMap<String, MutableList<Int>>()
+            indexedDocuments.forEachIndexed { index, indexed ->
+                val perDocumentFragments = LinkedHashSet<String>()
+                indexed.document.searchableNormalized
+                    .split(' ')
+                    .asSequence()
+                    .map(String::trim)
+                    .filter(String::isNotBlank)
+                    .distinct()
+                    .forEach { token ->
+                        perDocumentFragments += searchFragments0718(token)
+                    }
+                perDocumentFragments.forEach { fragment ->
+                    mutablePostings.getOrPut(fragment) { ArrayList() }.add(index)
+                }
+            }
+            val frozenPostings = mutablePostings.mapValues { (_, indexes) ->
+                indexes.toIntArray()
+            }
+            return UniversalSearchIndex0718(indexedDocuments, frozenPostings)
+        }
+    }
+
+    private fun candidatesForTerm(term: String): IntArray {
+        postings[term]?.let { return it }
+        if (term.length <= 32) return IntArray(0)
+        return indexedDocuments.indices
+            .filter { index -> indexedDocuments[index].document.searchableNormalized.contains(term) }
+            .toIntArray()
+    }
+
+    fun search(query: String): List<UniversalSearchHit0687> {
+        val normalizedQuery = UniversalSearchEngine0687.normalize(query)
+        if (normalizedQuery.isBlank()) return emptyList()
+        val terms = normalizedQuery.split(' ').filter(String::isNotBlank)
+        if (terms.isEmpty()) return emptyList()
+
+        var candidates: MutableSet<Int>? = null
+        for (term in terms) {
+            val posting = candidatesForTerm(term)
+            if (posting.isEmpty()) return emptyList()
+            val current = posting.toMutableSet()
+            candidates = if (candidates == null) {
+                current
+            } else {
+                candidates.apply { retainAll(current) }
+            }
+            if (candidates.isNullOrEmpty()) return emptyList()
+        }
+
+        return (candidates ?: emptySet()).map { index ->
+            val indexed = indexedDocuments[index]
+            val document = indexed.document
+            val body = document.searchableNormalized
+            val fullQueryInTitle = indexed.titleNormalized.contains(normalizedQuery)
+            val fullQueryInSubtitle = indexed.subtitleNormalized.contains(normalizedQuery)
+            val fullQueryInBody = body.contains(normalizedQuery)
+            val firstBodyPosition = terms
+                .mapNotNull { term -> body.indexOf(term).takeIf { it >= 0 } }
+                .minOrNull()
+                ?: 10_000
+            val score = when {
+                indexed.titleNormalized == normalizedQuery -> 0
+                fullQueryInTitle -> 10
+                fullQueryInSubtitle -> 20
+                fullQueryInBody -> 30
+                else -> 40
+            } + firstBodyPosition.coerceAtMost(10_000)
+            UniversalSearchHit0687(document, score)
+        }.sortedWith(
+            compareBy<UniversalSearchHit0687> { it.score }
+                .thenBy { it.document.kind.ordinal }
+                .thenBy(String.CASE_INSENSITIVE_ORDER) { it.document.title },
+        )
+    }
+}
+
 internal object UniversalSearchEngine0687 {
     private val localePtBr = Locale("pt", "BR")
     private val zone = ZoneId.of("America/Sao_Paulo")
     private val dateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm EEEE MMMM", localePtBr)
     private val dateCompactFormatter = DateTimeFormatter.ofPattern("ddMMyyyy HHmm", localePtBr)
+    private val dateNaturalLongFormatter = DateTimeFormatter.ofPattern("EEEE, dd 'de' MMMM 'de' yyyy", localePtBr)
+    private val dateNaturalShortFormatter = DateTimeFormatter.ofPattern("EEE, dd 'de' MMM", localePtBr)
+    private val dayMonthLongFormatter = DateTimeFormatter.ofPattern("dd 'de' MMMM", localePtBr)
+    private val dayMonthShortFormatter = DateTimeFormatter.ofPattern("dd MMM", localePtBr)
 
     internal fun normalize(value: String): String {
         if (value.isBlank()) return ""
@@ -77,6 +205,7 @@ internal object UniversalSearchEngine0687 {
         return decomposed
             .replace(Regex("\\p{M}+"), "")
             .lowercase(Locale.ROOT)
+            .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()
     }
@@ -91,6 +220,13 @@ internal object UniversalSearchEngine0687 {
                 safe.toString(),
                 local.format(dateTimeFormatter),
                 local.format(dateCompactFormatter),
+                local.format(dateNaturalLongFormatter),
+                local.format(dateNaturalShortFormatter),
+                local.format(dayMonthLongFormatter),
+                local.format(dayMonthShortFormatter),
+                "%02d/%02d/%04d".format(Locale.ROOT, local.dayOfMonth, local.monthValue, local.year),
+                "%02d/%02d".format(Locale.ROOT, local.dayOfMonth, local.monthValue),
+                "%d/%d".format(Locale.ROOT, local.dayOfMonth, local.monthValue),
                 local.dayOfMonth.toString(),
                 "%02d".format(Locale.ROOT, local.dayOfMonth),
                 local.monthValue.toString(),
@@ -315,38 +451,13 @@ internal object UniversalSearchEngine0687 {
         return docs.distinctBy(UniversalSearchDocument0687::key)
     }
 
+    internal fun prepare(documents: List<UniversalSearchDocument0687>): UniversalSearchIndex0718 =
+        UniversalSearchIndex0718.build(documents)
+
     internal fun search(
         documents: List<UniversalSearchDocument0687>,
         query: String,
-    ): List<UniversalSearchHit0687> {
-        val normalizedQuery = normalize(query)
-        if (normalizedQuery.isBlank()) return emptyList()
-        val terms = normalizedQuery.split(' ').filter(String::isNotBlank)
-        if (terms.isEmpty()) return emptyList()
-
-        return documents.mapNotNull { document ->
-            val body = document.searchableNormalized
-            if (terms.any { !body.contains(it) }) return@mapNotNull null
-            val title = normalize(document.title)
-            val subtitle = normalize(document.subtitle)
-            val fullQueryInTitle = title.contains(normalizedQuery)
-            val fullQueryInSubtitle = subtitle.contains(normalizedQuery)
-            val fullQueryInBody = body.contains(normalizedQuery)
-            val firstBodyPosition = terms.minOfOrNull { body.indexOf(it).coerceAtLeast(0) } ?: 0
-            val score = when {
-                title == normalizedQuery -> 0
-                fullQueryInTitle -> 10
-                fullQueryInSubtitle -> 20
-                fullQueryInBody -> 30
-                else -> 40
-            } + firstBodyPosition.coerceAtMost(10_000)
-            UniversalSearchHit0687(document, score)
-        }.sortedWith(
-            compareBy<UniversalSearchHit0687> { it.score }
-                .thenBy { it.document.kind.ordinal }
-                .thenBy(String.CASE_INSENSITIVE_ORDER) { it.document.title },
-        )
-    }
+    ): List<UniversalSearchHit0687> = prepare(documents).search(query)
 }
 
 @Composable
@@ -359,13 +470,16 @@ internal fun UniversalSearchScreen0687(
     val context = LocalContext.current
     val focusRequester = remember { FocusRequester() }
     var query by remember { mutableStateOf("") }
-    var documents by remember { mutableStateOf<List<UniversalSearchDocument0687>>(emptyList()) }
+    var preparedIndex by remember { mutableStateOf<UniversalSearchIndex0718?>(null) }
+    var results by remember { mutableStateOf<List<UniversalSearchHit0687>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
 
     LaunchedEffect(trips, bookings) {
         loading = true
-        documents = withContext(Dispatchers.IO) {
-            buildUniversalSearchSnapshot0687(context, trips, bookings)
+        preparedIndex = withContext(Dispatchers.IO) {
+            UniversalSearchEngine0687.prepare(
+                buildUniversalSearchSnapshot0687(context, trips, bookings),
+            )
         }
         loading = false
     }
@@ -374,8 +488,15 @@ internal fun UniversalSearchScreen0687(
         focusRequester.requestFocus()
     }
 
-    val results = remember(documents, query) {
-        UniversalSearchEngine0687.search(documents, query)
+    LaunchedEffect(preparedIndex, query) {
+        val currentIndex = preparedIndex
+        results = if (currentIndex == null || query.isBlank()) {
+            emptyList()
+        } else {
+            withContext(Dispatchers.Default) {
+                currentIndex.search(query)
+            }
+        }
     }
 
     Column(
@@ -396,9 +517,9 @@ internal fun UniversalSearchScreen0687(
                 )
             },
             label = { Text("Buscar em tudo") },
-            placeholder = { Text("Ex.: 17, Gabriela, Penha, R$ 93") },
+            placeholder = { Text("Ex.: qui., 15 de outubro; Dom. 04 Out; Gabriela") },
             supportingText = {
-                Text("Pesquisa literal por qualquer caractere, número, data, telefone, endereço, valor, viagem ou passageiro.")
+                Text("Busca indexada instantânea por data, abreviação, nome, telefone, endereço, valor, viagem ou passageiro.")
             },
         )
 
