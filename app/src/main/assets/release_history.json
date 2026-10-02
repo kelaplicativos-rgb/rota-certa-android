@@ -2,6 +2,49 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.717",
+      "build": 6008,
+      "commit": null,
+      "branch": "agent/vehicle-day-capacity-password-regressions-0.1.717",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Adiciona Carro do dia por motorista e data com marca/modelo, cor, placa e quantidade física de lugares para passageiros.",
+        "Faz Agenda, Timeline, Central do Dia e Viagem Certa consumirem o mesmo teto físico de capacidade da viagem em vez de somar cotas de canais.",
+        "Mensagens rápidas passam a priorizar o Carro do dia e incluem placa quando preenchida, com blocos legíveis para WhatsApp."
+      ],
+      "fixed": [
+        "Elimina a regressão que podia fabricar 6, 7 ou 9 vagas ao somar vagas restantes da BlaBlaCar, passageiros confirmados e cota Rota Certa.",
+        "Restaura Limpar senha como ação administrativa: apaga a credencial, invalida sessões e preserva passengerId, histórico, reservas, créditos e permissões.",
+        "Remove novamente os fluxos regressivos Gerar nova senha e Reparar acesso da administração do passageiro.",
+        "Restaura espaçamento das mensagens predefinidas e sanitiza concatenações numéricas acidentais após pontuação."
+      ],
+      "improved": [
+        "Trocar o Carro do dia recalcula as viagens do mesmo motorista na mesma data usando capacidade de 1 a 999 lugares.",
+        "Snapshots públicos e valores canônicos antigos são limitados ao teto físico para impedir que dados contaminados reapareçam na interface.",
+        "Capacidade física e dados do Carro do dia sobrevivem a novas capturas HTML da BlaBlaCar."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.714-0.1.716: capacidade operacional podia ser inflada por soma de canais e ocupação.",
+        "0.1.684-0.1.716: o contrato Limpar senha da 0.1.683 saiu da linhagem principal e o fluxo antigo reapareceu.",
+        "0.1.714-0.1.716: mensagens rápidas ficaram excessivamente compactas e sem placa do veículo do dia."
+      ],
+      "modulesAffected": [
+        "Agenda",
+        "Timeline",
+        "Central do Dia",
+        "Viagem Certa",
+        "Vagas por trecho",
+        "Carro do dia",
+        "Passageiros",
+        "WhatsApp",
+        "Backend",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.716",
       "build": 6007,
       "commit": null,
