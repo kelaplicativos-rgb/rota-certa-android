@@ -2498,10 +2498,10 @@ internal object AgendaBackgroundSync0392 {
                     source.passenger_roster_complete &&
                     source.itinerary_authoritative
             ) {
-                val quota06122 = source.published_seats?.takeIf { it in 0..999 } ?: 0
+                val physical0617 = existing?.physicalSeatCapacity?.takeIf { it in 1..999 } ?: 4
                 PublicAgendaAutoSync0300.toPublicTrip(
                     source = source,
-                    capacity = (quota06122 + perTripAllocation).coerceIn(0, 999),
+                    capacity = physical0617,
                     nowMillis = Long.MIN_VALUE,
                     rotaCertaSeatAllocation = perTripAllocation,
                 )
