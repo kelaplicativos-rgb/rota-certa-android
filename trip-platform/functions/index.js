@@ -11581,9 +11581,11 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     }
     const agendaFeedRoute0701 =
       (parts.length === 4 && parts[0] === "api" && parts[1] === "v1" && parts[2] === "agenda") ||
+      (parts.length === 3 && parts[0] === "api" && parts[1] === "agenda") ||
       (parts.length === 4 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "agenda-feed");
     if (req.method === "GET" && agendaFeedRoute0701) {
-      const feedMatch0701 = /^([A-Za-z0-9-]{1,80})\.(xml|json)$/i.exec(parts[3] || "");
+      const feedFile0701 = parts[parts.length - 1] || "";
+      const feedMatch0701 = /^([A-Za-z0-9-]{1,80})\.(xml|json)$/i.exec(feedFile0701);
       if (!feedMatch0701 || isReservedPublicUsername(feedMatch0701[1])) {
         return fail(res, 404, "agenda_feed_not_found", "Feed da agenda não encontrado.");
       }
