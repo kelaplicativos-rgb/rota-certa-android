@@ -14,6 +14,11 @@ class AgendaPrivateMirror0434Test {
             title = "Origem → Destino",
             departureAtMillis = 1_800_000_000_000L,
             capacity = 6,
+            physicalSeatCapacity = 6,
+            vehicleDayConfigured = true,
+            vehicleMakeModel = "Veículo teste",
+            vehicleColor = "Cinza",
+            vehiclePlate = "ABC1D23",
             status = TripStatus.PUBLISHED,
             stops = listOf(
                 TripStop(
