@@ -20,6 +20,7 @@ class AgendaCombinedSeatPools0369Test {
         title = "A → B",
         departureAtMillis = 4_000_000_000_000L,
         capacity = physicalCapacity,
+        physicalSeatCapacity = physicalCapacity,
         rotaCertaSeatAllocation = rotaCertaQuota,
         status = TripStatus.PUBLISHED,
         stops = stops,
@@ -51,7 +52,7 @@ class AgendaCombinedSeatPools0369Test {
     )
 
     @Test
-    fun twoBlaBlaQuotaPlusFourRotaCertaQuotaBuildsInventorySix() {
+    fun twoBlaBlaQuotaPlusFourRotaCertaQuotaStayInsidePhysicalSeven() {
         val trip = trip(
             physicalCapacity = 7,
             blablaQuota = 2,
@@ -64,8 +65,8 @@ class AgendaCombinedSeatPools0369Test {
         assertEquals(2, summary.blablaQuotaSeats)
         assertEquals(4, summary.rotaCertaQuotaSeats)
         assertEquals(4, summary.rotaCertaQuotaSeats)
-        assertEquals(6, summary.totalAvailableSeats)
-        assertEquals(6, summary.availableSeats)
+        assertEquals(7, summary.totalAvailableSeats)
+        assertEquals(7, summary.availableSeats)
         assertEquals(0, summary.confirmedPassengerSeats)
         assertEquals(0, summary.blockedSeats)
     }
@@ -89,8 +90,8 @@ class AgendaCombinedSeatPools0369Test {
         assertEquals(3, summary.confirmedPassengerSeats)
         assertEquals(2, summary.blablaQuotaSeats)
         assertEquals(4, summary.rotaCertaQuotaSeats)
-        assertEquals(6, summary.operationalInventorySeats)
-        assertEquals(3, summary.availableSeats)
+        assertEquals(7, summary.operationalInventorySeats)
+        assertEquals(5, summary.availableSeats)
     }
 
     @Test
@@ -105,7 +106,7 @@ class AgendaCombinedSeatPools0369Test {
         assertEquals(1, summary.confirmedPassengerSeats)
         assertEquals(2, summary.blablaQuotaSeats)
         assertEquals(4, summary.rotaCertaQuotaSeats)
-        assertEquals(5, summary.availableSeats)
+        assertEquals(6, summary.availableSeats)
     }
 
     @Test
@@ -175,10 +176,10 @@ class AgendaCombinedSeatPools0369Test {
     fun cancellationReleasesRotaCertaSeatImmediately() {
         val trip = trip(7, blablaQuota = 2, rotaCertaQuota = 4)
         val active = booking("rota", trip, 1, BookingSource.ROTA_CERTA)
-        assertEquals(5, operationalSeatSummary(trip, listOf(active)).availableSeats)
+        assertEquals(6, operationalSeatSummary(trip, listOf(active)).availableSeats)
 
         val cancelled = active.copy(status = BookingStatus.CANCELLED)
-        assertEquals(6, operationalSeatSummary(trip, listOf(cancelled)).availableSeats)
+        assertEquals(7, operationalSeatSummary(trip, listOf(cancelled)).availableSeats)
     }
 
     @Test
@@ -212,24 +213,16 @@ class AgendaCombinedSeatPools0369Test {
     }
 
     @Test
-    fun architectureUsesSeatEditorAsRemainingSeatEvidenceAndRemovesLegacyPhysicalCapacity() {
-        val agenda = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt").readText()
+    fun architectureUsesCarOfDayAsPhysicalCapacityAuthority() {
         val domain = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt").readText()
         val ui = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
 
-        assertTrue(agenda.contains("blablaQuota"))
-        assertTrue(agenda.contains("rotaCertaQuota"))
-        assertTrue(agenda.contains("operationalInventory"))
-        assertTrue(agenda.contains("capacitySource=blablacar_quota_plus_rota_certa_quota"))
-        assertFalse(agenda.contains("blablacar_remaining_plus_external_peak_plus_rota_certa"))
-        assertTrue(domain.contains("operationalInventoryCapacity"))
-        assertTrue(domain.contains("bookingOccupancyIdentityKey"))
-        assertTrue(domain.contains("EXTERNAL_OCCUPANCY"))
-        assertFalse(ui.contains("Capacidade de passageiros"))
-        assertFalse(ui.contains("Capacidade do veículo"))
-        assertTrue(ui.contains("Vagas disponibilizadas no Rota Certa"))
-        assertTrue(ui.contains("Inventário operacional"))
-        assertTrue(ui.contains("LOTADO"))
+        assertTrue(domain.contains("physicalSeatCapacity"))
+        assertTrue(domain.contains("withPhysicalSeatCapacity0717"))
+        assertTrue(ui.contains("🚗 Carro do dia"))
+        assertTrue(ui.contains("Lugares para passageiros"))
+        assertTrue(ui.contains("CARRO_DO_DIA_SAVED_0717"))
+        assertFalse(domain.contains("((blablaAvailable ?: 0) + confirmedPeak + rotaCertaQuota)"))
     }
 
     @Test
