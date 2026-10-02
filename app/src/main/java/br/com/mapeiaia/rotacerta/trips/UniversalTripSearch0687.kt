@@ -75,20 +75,10 @@ private data class UniversalSearchIndexedDocument0718(
 private fun searchFragments0718(token: String): Set<String> {
     if (token.isBlank()) return emptySet()
     val fragments = LinkedHashSet<String>()
-    fragments += token
-
-    val substringWindow = if (token.length <= 48) 32 else 12
-    for (start in token.indices) {
-        val maxEnd = minOf(token.length, start + substringWindow)
-        for (end in (start + 1)..maxEnd) {
-            fragments += token.substring(start, end)
-        }
-    }
-    if (token.length > substringWindow) {
-        val edgeLimit = minOf(token.length, 32)
-        for (length in (substringWindow + 1)..edgeLimit) {
-            fragments += token.take(length)
-            fragments += token.takeLast(length)
+    val maxGram = minOf(3, token.length)
+    for (gramSize in 1..maxGram) {
+        for (start in 0..(token.length - gramSize)) {
+            fragments += token.substring(start, start + gramSize)
         }
     }
     return fragments
@@ -96,8 +86,8 @@ private fun searchFragments0718(token: String): Set<String> {
 
 /**
  * Prepared in-memory index inspired by dedicated launcher search apps: expensive catalog work
- * happens once off the UI thread, while each keystroke intersects compact postings instead of
- * rescanning every complete Trip/Booking/Profile string.
+ * happens once off the UI thread. A compact 1–3 character n-gram index narrows candidates first,
+ * then verifies exact substrings, avoiding a full Trip/Booking/Profile scan on every keystroke.
  */
 internal class UniversalSearchIndex0718 private constructor(
     private val indexedDocuments: List<UniversalSearchIndexedDocument0718>,
@@ -136,10 +126,25 @@ internal class UniversalSearchIndex0718 private constructor(
     }
 
     private fun candidatesForTerm(term: String): IntArray {
-        postings[term]?.let { return it }
-        if (term.length <= 32) return IntArray(0)
-        return indexedDocuments.indices
+        if (term.length <= 3) {
+            return postings[term] ?: IntArray(0)
+        }
+        val grams = term.windowed(size = 3, step = 1, partialWindows = false)
+        var candidates: MutableSet<Int>? = null
+        for (gram in grams) {
+            val posting = postings[gram] ?: return IntArray(0)
+            val current = posting.toMutableSet()
+            candidates = if (candidates == null) {
+                current
+            } else {
+                candidates.apply { retainAll(current) }
+            }
+            if (candidates.isNullOrEmpty()) return IntArray(0)
+        }
+        return (candidates ?: emptySet())
+            .asSequence()
             .filter { index -> indexedDocuments[index].document.searchableNormalized.contains(term) }
+            .toList()
             .toIntArray()
     }
 
