@@ -2117,7 +2117,7 @@ private fun TimelineEntryCard(
                             }
                             sameDay0717 && sameDriver0717
                         }.ifEmpty { listOf(currentTrip0717) }
-                        candidates0717.forEach { candidate0717 ->
+                        val savedCandidates0717 = candidates0717.map { candidate0717 ->
                             store.saveTrip(
                                 candidate0717.copy(
                                     capacity = capacity0717,
@@ -2132,10 +2132,58 @@ private fun TimelineEntryCard(
                         UnifiedDebugEventStore.recordAlways(
                             "CARRO_DO_DIA_SAVED_0717",
                             context.packageName,
-                            "date=$day0717 trips=${candidates0717.size} capacity=$capacity0717 platePresent=${dayVehiclePlate0717.isNotBlank()}",
+                            "date=$day0717 trips=${savedCandidates0717.size} capacity=$capacity0717 platePresent=${dayVehiclePlate0717.isNotBlank()}",
                         )
                         showDayVehicle0717 = false
-                        onChanged("Carro do dia salvo. ${candidates0717.size} viagem(ns) recalculada(s) com $capacity0717 lugares.")
+                        onChanged("Carro do dia salvo. ${savedCandidates0717.size} viagem(ns) recalculada(s) com $capacity0717 lugares.")
+                        if (store.onlineSettings().configured) {
+                            scope.launch {
+                                val queuedIds0717 = linkedSetOf<String>()
+                                savedCandidates0717.forEach { saved0717 ->
+                                    val external0717 = saved0717.externalSnapshot
+                                    if (
+                                        saved0717.recordOrigin == TripRecordOrigin.EXTERNAL_BACKING &&
+                                        external0717 != null
+                                    ) {
+                                        mutationCoordinator.recordExternalTenantMutation(
+                                            sourceTrip = external0717,
+                                            configuredRotaCertaSeatAllocation = saved0717.rotaCertaSeatAllocation ?: 0,
+                                            seatAllocationVersion = saved0717.seatAllocationVersionUsed,
+                                            mutationType = "CARRO_DO_DIA_CHANGED_0717",
+                                        )?.let { queued0717 -> queuedIds0717 += queued0717.canonicalTripId }
+                                    } else {
+                                        mutationCoordinator.recordLocalMutation(
+                                            canonicalTripId = saved0717.id,
+                                            mutationType = "CARRO_DO_DIA_CHANGED_0717",
+                                            source = "TIMELINE_CARRO_DO_DIA",
+                                            reconcileBookingInventory = false,
+                                        )?.let { queued0717 -> queuedIds0717 += queued0717.canonicalTripId }
+                                    }
+                                }
+                                val delivered0717 = if (queuedIds0717.isEmpty()) 0 else {
+                                    mutationCoordinator.drainPending(
+                                        limit = maxOf(32, queuedIds0717.size * 2),
+                                        canonicalTripIds = queuedIds0717,
+                                    )
+                                }
+                                BookingRealtimeEvents0356.notifyChanged()
+                                TripWidgetProvider.updateAll(context.applicationContext)
+                                UnifiedDebugEventStore.recordAlways(
+                                    "CARRO_DO_DIA_PUBLISHED_0717",
+                                    context.packageName,
+                                    "date=$day0717 queued=${queuedIds0717.size} delivered=$delivered0717",
+                                )
+                                onChanged(
+                                    if (queuedIds0717.isEmpty()) {
+                                        "Carro do dia salvo localmente; nenhuma publicação remota era necessária."
+                                    } else if (delivered0717 > 0) {
+                                        "Carro do dia sincronizado com Agenda, Timeline, Central do Dia e Viagem Certa."
+                                    } else {
+                                        "Carro do dia salvo; a sincronização remota continuará pela fila segura."
+                                    },
+                                )
+                            }
+                        }
                     },
                 ) { Text("Salvar") }
             },
