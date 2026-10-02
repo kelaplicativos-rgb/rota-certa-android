@@ -16,16 +16,21 @@ class TripUnifiedInventory0372Test {
         blablaQuota: Int?,
         rotaCerta: Int,
         stops: List<TripStop> = abStops,
-    ) = Trip(
+    ): Trip {
+        val physical = ((blablaQuota ?: 0) + rotaCerta).coerceAtLeast(1)
+        return Trip(
         id = "trip",
         title = "A → B",
         departureAtMillis = 4_000_000_000_000L,
-        capacity = 0,
+        capacity = physical,
+        physicalSeatCapacity = physical,
+        vehicleDayConfigured = true,
         status = TripStatus.PUBLISHED,
         stops = stops,
         publishedSeats = blablaQuota,
         rotaCertaSeatAllocation = rotaCerta,
     )
+    }
 
     private fun booking(
         id: String,
@@ -149,10 +154,11 @@ class TripUnifiedInventory0372Test {
     @Test
     fun test09ZeroAvailabilityIsStableAndNeverNegative() {
         val base = normalized(trip(blablaQuota = 0, rotaCerta = 0), emptyList())
-        val summary = operationalSeatSummary(base, emptyList())
+        val full = listOf(booking("only-seat"))
+        val summary = operationalSeatSummary(base, full)
         assertEquals(0, summary.availableSeats)
         assertEquals(0, summary.overbookingSeats)
-        assertEquals(0, SeatAvailabilityEngine.remainingSeatsForWholeTrip(base, emptyList()))
+        assertEquals(0, SeatAvailabilityEngine.remainingSeatsForWholeTrip(base, full))
     }
 
     @Test
@@ -196,14 +202,14 @@ class TripUnifiedInventory0372Test {
     }
 
     @Test
-    fun test13LegacyVehicleCapacityIsReadCompatibleButIgnoredOperationally() {
+    fun test13LegacyVehicleCapacityIsReadCompatibleButCannotOverrideCanonicalPhysicalCapacity() {
         val models = File("src/main/java/br/com/mapeiaia/rotacerta/Models.kt").readText()
         val repository = File("src/main/java/br/com/mapeiaia/rotacerta/Repositories.kt").readText()
         val timeline = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
         assertTrue(models.contains("val vehicleCapacity: Int = 0"))
         assertTrue(repository.contains("Read-only legacy compatibility"))
-        assertTrue(timeline.contains("@Suppress(\"UNUSED_PARAMETER\") vehicleCapacity"))
-        assertFalse(timeline.contains("capacity = vehicleCapacity"))
+        assertTrue(timeline.contains("val configuredPhysical = vehicleCapacity.takeIf { it in 1..999 }"))
+        assertTrue(timeline.contains("entry.capacity.takeIf { it in 1..999 } ?: configuredPhysical ?: 4"))
     }
 
     @Test
