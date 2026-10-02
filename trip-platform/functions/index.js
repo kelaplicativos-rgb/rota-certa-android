@@ -1659,6 +1659,11 @@ function canonicalTimelinePrivateStop0513(raw, index) {
 function canonicalPublicTripPayloadFromStored0434(raw) {
   const payload = raw && typeof raw === "object" ? raw : {};
   const departureAtMillis = Math.max(0, Number(payload.departureAtMillis || 0));
+  const requestedPhysical0717 = Number(payload.physicalSeatCapacity);
+  const physicalSeatCapacity0717 =
+    Number.isInteger(requestedPhysical0717) && requestedPhysical0717 >= 1 && requestedPhysical0717 <= 999
+      ? requestedPhysical0717
+      : 4;
   return {
     schemaVersion: "public-trip-v2",
     canonicalTripId: cleanText(payload.canonicalTripId, 180),
@@ -1674,7 +1679,12 @@ function canonicalPublicTripPayloadFromStored0434(raw) {
     ),
     timezoneId: cleanText(payload.timezoneId, 80),
     status: cleanText(payload.status, 24),
-    capacity: Math.max(0, Number(payload.capacity || 0)),
+    capacity: physicalSeatCapacity0717,
+    physicalSeatCapacity: physicalSeatCapacity0717,
+    vehicleDayConfigured: payload.vehicleDayConfigured === true,
+    vehicleMakeModel: cleanText(payload.vehicleMakeModel, 120),
+    vehicleColor: cleanText(payload.vehicleColor, 60),
+    vehiclePlate: cleanText(payload.vehiclePlate, 16).toUpperCase(),
     stops: (Array.isArray(payload.stops) ? payload.stops : []).map(canonicalPublicStop0411),
     segmentLoads: (Array.isArray(payload.segmentLoads) ? payload.segmentLoads : []).map((v) => Math.max(0, Number(v || 0))),
     segmentPassengerLoads: (Array.isArray(payload.segmentPassengerLoads) ? payload.segmentPassengerLoads : []).map((v) => Math.max(0, Number(v || 0))),
@@ -1708,6 +1718,17 @@ function canonicalSegmentVector0497(primaryRaw, fallbackRaw, expectedSegments) {
 
 function canonicalPublicTripPayloadFromCurrentCanonicalOccupancy0497(token, data) {
   const payload = canonicalPublicTripPayloadFromStored0434(data && data.canonicalPublicProjection0434);
+  const currentPhysical0717 = Number(data && data.physicalSeatCapacity);
+  const physicalSeatCapacity0717 =
+    Number.isInteger(currentPhysical0717) && currentPhysical0717 >= 1 && currentPhysical0717 <= 999
+      ? currentPhysical0717
+      : payload.physicalSeatCapacity;
+  payload.capacity = physicalSeatCapacity0717;
+  payload.physicalSeatCapacity = physicalSeatCapacity0717;
+  if (data && data.vehicleDayConfigured === true) payload.vehicleDayConfigured = true;
+  if (data && cleanText(data.vehicleMakeModel, 120)) payload.vehicleMakeModel = cleanText(data.vehicleMakeModel, 120);
+  if (data && cleanText(data.vehicleColor, 60)) payload.vehicleColor = cleanText(data.vehicleColor, 60);
+  if (data && cleanText(data.vehiclePlate, 16)) payload.vehiclePlate = cleanText(data.vehiclePlate, 16).toUpperCase();
   const expectedSegments = Math.max(0, (Array.isArray(payload.stops) ? payload.stops.length : 0) - 1);
   // 0501: restore the collector-backed vacancy baseline from the public projection.
   // 0497 still owns the live anonymous passenger dots; root segmentLoads may contain
