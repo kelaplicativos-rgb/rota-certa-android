@@ -14,16 +14,21 @@ class TripInventorySourceTruth0374Test {
         TripStop(id = "d", order = 3, name = "D"),
     )
 
-    private fun trip(blablaQuota: Int, rotaCertaQuota: Int, tripStops: List<TripStop> = stops) = Trip(
+    private fun trip(blablaQuota: Int, rotaCertaQuota: Int, tripStops: List<TripStop> = stops): Trip {
+        val physical = (blablaQuota + rotaCertaQuota).coerceAtLeast(1)
+        return Trip(
         id = "trip",
         title = "A → D",
         departureAtMillis = 4_000_000_000_000L,
-        capacity = 0,
+        capacity = physical,
+        physicalSeatCapacity = physical,
+        vehicleDayConfigured = true,
         status = TripStatus.PUBLISHED,
         stops = tripStops,
         publishedSeats = blablaQuota,
         rotaCertaSeatAllocation = rotaCertaQuota,
     )
+    }
 
     private fun booking(
         id: String,
@@ -186,7 +191,7 @@ class TripInventorySourceTruth0374Test {
     }
 
     @Test
-    fun timelineNormalizationNeverAddsConfirmedPassengersToQuota() {
+    fun timelineNormalizationNeverReplacesPhysicalCapacityWithQuota() {
         val entry = TripTimelineEntry(
             tripId = "timeline-ext-test",
             profileId = "profile",
@@ -207,8 +212,8 @@ class TripInventorySourceTruth0374Test {
         )
         val normalized = applyConfiguredVehicleCapacity(listOf(entry), vehicleCapacity = 99, rotaCertaSeatAllocation = 0).single()
         val publicCapacity = timelinePublicCapacityResolution(normalized)
-        assertEquals(3, normalized.capacity)
-        assertEquals(0, publicCapacity.availableSeats)
+        assertEquals(99, normalized.capacity)
+        assertEquals(96, publicCapacity.availableSeats)
     }
 
     @Test
