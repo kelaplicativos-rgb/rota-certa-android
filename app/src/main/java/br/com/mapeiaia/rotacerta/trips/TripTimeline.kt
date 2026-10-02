@@ -309,7 +309,12 @@ internal fun canonicalTimelineProjection0494(
             id = canonicalId,
             title = state.title.ifBlank { "${origin.name} → ${destination.name}" },
             departureAtMillis = state.departureAtMillis,
-            capacity = state.capacity.coerceAtLeast(0),
+            capacity = state.physicalSeatCapacity.coerceIn(1, 999),
+            physicalSeatCapacity = state.physicalSeatCapacity.coerceIn(1, 999),
+            vehicleDayConfigured = state.vehicleDayConfigured,
+            vehicleMakeModel = state.vehicleMakeModel.trim(),
+            vehicleColor = state.vehicleColor.trim(),
+            vehiclePlate = state.vehiclePlate.trim().uppercase(),
             status = tripStatus,
             stops = stops,
             publicToken = state.remoteTripId.ifBlank { canonicalId },
@@ -357,7 +362,7 @@ internal fun canonicalTimelineProjection0494(
             origin = origin.name,
             destination = destination.name,
             status = tripStatus,
-            capacity = state.capacity.coerceAtLeast(0),
+            capacity = state.physicalSeatCapacity.coerceIn(1, 999),
             minimumOccupiedSeats = state.minimumOccupiedSeats.coerceAtLeast(0),
             maximumOccupiedSeats = state.maximumOccupiedSeats.coerceAtLeast(0),
             sourcePassengerSeats = sourceCounts,
@@ -586,7 +591,32 @@ private fun mergeTimelineTrip0525(local: Trip, remote: Trip): Trip {
     return local.copy(
         title = if (remoteNewer && remote.title.isNotBlank()) remote.title else local.title.ifBlank { remote.title },
         departureAtMillis = if (remoteNewer && remote.departureAtMillis > 0L) remote.departureAtMillis else local.departureAtMillis,
-        capacity = if (remoteNewer && remote.capacityReliable && remote.capacity >= 0) remote.capacity else local.capacity,
+        capacity = when {
+            local.vehicleDayConfigured -> local.physicalSeatCapacity.coerceIn(1, 999)
+            remoteNewer && remote.vehicleDayConfigured -> remote.physicalSeatCapacity.coerceIn(1, 999)
+            else -> local.physicalSeatCapacity.coerceIn(1, 999)
+        },
+        physicalSeatCapacity = when {
+            local.vehicleDayConfigured -> local.physicalSeatCapacity.coerceIn(1, 999)
+            remoteNewer && remote.vehicleDayConfigured -> remote.physicalSeatCapacity.coerceIn(1, 999)
+            else -> local.physicalSeatCapacity.coerceIn(1, 999)
+        },
+        vehicleDayConfigured = local.vehicleDayConfigured || (remoteNewer && remote.vehicleDayConfigured),
+        vehicleMakeModel = when {
+            local.vehicleDayConfigured && local.vehicleMakeModel.isNotBlank() -> local.vehicleMakeModel
+            remoteNewer && remote.vehicleDayConfigured -> remote.vehicleMakeModel
+            else -> local.vehicleMakeModel.ifBlank { remote.vehicleMakeModel }
+        },
+        vehicleColor = when {
+            local.vehicleDayConfigured && local.vehicleColor.isNotBlank() -> local.vehicleColor
+            remoteNewer && remote.vehicleDayConfigured -> remote.vehicleColor
+            else -> local.vehicleColor.ifBlank { remote.vehicleColor }
+        },
+        vehiclePlate = when {
+            local.vehicleDayConfigured && local.vehiclePlate.isNotBlank() -> local.vehiclePlate
+            remoteNewer && remote.vehicleDayConfigured -> remote.vehiclePlate
+            else -> local.vehiclePlate.ifBlank { remote.vehiclePlate }
+        },
         status = if (remoteNewer) remote.status else local.status,
         stops = if (remoteNewer && remote.stops.size >= 2) mergeTimelineStops0525(local.stops, remote.stops) else local.stops,
         publicToken = newerText(remote.publicToken, local.publicToken).orEmpty(),
