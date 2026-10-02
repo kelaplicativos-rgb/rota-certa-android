@@ -117,16 +117,22 @@ internal fun timelinePublicCapacityResolution(
     occupiedSeats: Int = entry.maximumOccupiedSeats,
 ): TimelinePublicCapacityResolution {
     if (entry.canonicalBackendAuthoritative0494) {
+        val physical0717 = entry.capacity.coerceIn(1, 999)
+        val consumed0717 = entry.minimumOccupiedSeats.coerceAtLeast(0) + entry.operationalBlockedSeats.coerceAtLeast(0)
+        val physicalAvailable0717 = (physical0717 - consumed0717).coerceAtLeast(0)
         val available = entry.canonicalAvailableSeatsMinimum0494
+            ?.coerceIn(0, physical0717)
+            ?.let { minOf(it, physicalAvailable0717) }
+            ?: physicalAvailable0717
         return TimelinePublicCapacityResolution(
-            operationalInventory = entry.capacity.takeIf { it >= 0 },
+            operationalInventory = physical0717,
             blablaQuota = entry.blablaPublishedSeats,
             passengerSeats = entry.minimumOccupiedSeats.coerceAtLeast(0),
             blockedSeats = entry.operationalBlockedSeats.coerceAtLeast(0),
-            effectiveCapacity = entry.capacity.takeIf { it >= 0 },
+            effectiveCapacity = physical0717,
             availableSeats = available,
-            overbookingSeats = entry.canonicalOverbookingSeats0494.coerceAtLeast(0),
-            capacitySource = "CANONICAL_STATE",
+            overbookingSeats = maxOf(entry.canonicalOverbookingSeats0494.coerceAtLeast(0), (consumed0717 - physical0717).coerceAtLeast(0)),
+            capacitySource = "CANONICAL_PHYSICAL_0717",
         )
     }
     val confirmedWholeTrip = entry.sourcePassengerSeats.values.sumOf { it.coerceAtLeast(0) }
@@ -156,7 +162,8 @@ internal fun canonicalTimelineSegmentLoads0494(
             to = stops[index + 1],
             occupiedSeats = occupied.coerceAtLeast(0),
             availableSeats = entry.canonicalSegmentAvailableSeats0494.getOrNull(index)
-                ?.coerceAtLeast(0)
+                ?.coerceIn(0, entry.capacity.coerceIn(1, 999))
+                ?.let { observed0717 -> minOf(observed0717, (entry.capacity.coerceIn(1, 999) - occupied.coerceAtLeast(0)).coerceAtLeast(0)) }
                 ?: return@mapNotNull null,
             passengerSeats = entry.canonicalSegmentPassengerLoads0494.getOrNull(index)
                 ?.coerceAtLeast(0)
@@ -196,15 +203,9 @@ internal fun tripChannelAllocationBreakdown(
     val physical = physicalPassengerCapacity?.takeIf { it in 1..999 }
     val blabla = blablaPublishedSeats?.takeIf { it in 0..999 }
     val rotaCerta = rotaCertaSeatAllocation?.takeIf { it in 0..999 }
-    val total = if (blabla != null || rotaCerta != null) {
-        ((blabla ?: 0) + (rotaCerta ?: 0)).coerceAtMost(999)
-    } else {
-        null
-    }
     return TripChannelAllocationBreakdown(
-        // The canonical/physical ceiling already includes passengers no longer
-        // present in BlaBlaCar's remaining-seat counter. Prefer it whenever known.
-        operationalInventory = physical ?: total,
+        // 0.1.717: quotas are channels inside the car; they never manufacture seats.
+        operationalInventory = physical ?: 4,
         blablaQuota = blabla,
         rotaCertaQuota = rotaCerta,
     )
