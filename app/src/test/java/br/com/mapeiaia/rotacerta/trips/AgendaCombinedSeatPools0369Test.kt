@@ -91,7 +91,7 @@ class AgendaCombinedSeatPools0369Test {
         assertEquals(2, summary.blablaQuotaSeats)
         assertEquals(4, summary.rotaCertaQuotaSeats)
         assertEquals(7, summary.operationalInventorySeats)
-        assertEquals(5, summary.availableSeats)
+        assertEquals(4, summary.availableSeats)
     }
 
     @Test
@@ -135,7 +135,7 @@ class AgendaCombinedSeatPools0369Test {
 
         assertEquals(1, summary.confirmedPassengerSeats)
         assertEquals(4, summary.rotaCertaQuotaSeats)
-        assertEquals(5, summary.availableSeats)
+        assertEquals(6, summary.availableSeats)
     }
 
     @Test
@@ -150,7 +150,7 @@ class AgendaCombinedSeatPools0369Test {
 
         assertEquals(2, summary.confirmedPassengerSeats)
         assertEquals(4, summary.rotaCertaQuotaSeats)
-        assertEquals(4, summary.availableSeats)
+        assertEquals(5, summary.availableSeats)
     }
 
     @Test
@@ -169,7 +169,7 @@ class AgendaCombinedSeatPools0369Test {
         assertEquals(0, summary.confirmedPassengerSeats)
         assertEquals(1, summary.blockedSeats)
         assertEquals(4, summary.rotaCertaQuotaSeats)
-        assertEquals(5, summary.availableSeats)
+        assertEquals(6, summary.availableSeats)
     }
 
     @Test
