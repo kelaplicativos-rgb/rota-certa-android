@@ -65,15 +65,15 @@ class AgendaCanonicalProjectionConvergence0408Test {
     }
 
     @Test
-    fun availabilitySequenceFourTwoZeroOneKeepsIdentityAndOnlyZeroIsFull() {
+    fun channelAvailabilitySequenceNeverChangesPhysicalIdentityOrCapacity() {
         val tripId = "capacity-trip"
-        val capacities = listOf(4, 2, 0, 1)
-        val identities = capacities.map { seats ->
+        val publishedSequence = listOf(4, 2, 0, 1)
+        val identities = publishedSequence.map { seats ->
             val canonical = trip(profileA, tripId, now + 5L * 86_400_000L, publishedSeats = seats)
             val range = canonicalProjectionAvailabilityRange0408(canonical, emptyList(), now)
-            assertEquals(seats, range.minimum)
-            assertEquals(seats, range.maximum)
-            assertEquals(if (seats == 0) "FULL" else "PUBLISHED", expectedProjectionStatus0408(canonical, emptyList(), now))
+            assertEquals(4, range.minimum)
+            assertEquals(4, range.maximum)
+            assertEquals("PUBLISHED", expectedProjectionStatus0408(canonical, emptyList(), now))
             canonical.tripKey
         }
         assertEquals(1, identities.distinct().size)
@@ -285,9 +285,11 @@ class AgendaCanonicalProjectionConvergence0408Test {
         assertFalse(projectionCapacityMatches0408(canonical, emptyList(), wrongRemote, now))
         val correct = wrongRemote.copy(
             status = "PUBLISHED",
-            operationalAvailableSeats = 1,
-            availableSeatsMinimum = 1,
-            availableSeatsMaximum = 1,
+            capacity = 4,
+            physicalSeatCapacity = 4,
+            operationalAvailableSeats = 4,
+            availableSeatsMinimum = 4,
+            availableSeatsMaximum = 4,
         )
         assertTrue(projectionCapacityMatches0408(canonical, emptyList(), correct, now))
         assertEquals("PUBLISHED", expectedProjectionStatus0408(canonical, emptyList(), now))
@@ -357,7 +359,12 @@ class AgendaCanonicalProjectionConvergence0408Test {
             id = internalId,
             title = "$origin → $destination",
             departureAtMillis = departure,
-            capacity = publishedSeats,
+            capacity = 4,
+            physicalSeatCapacity = 4,
+            vehicleDayConfigured = true,
+            vehicleMakeModel = "Veículo teste",
+            vehicleColor = "Cinza",
+            vehiclePlate = "ABC1D23",
             status = TripStatus.PUBLISHED,
             stops = listOf(
                 TripStop(id = internalId + "-a", order = 0, name = origin),
@@ -408,6 +415,11 @@ class AgendaCanonicalProjectionConvergence0408Test {
             blablaTripId = canonical.blablaTripId.orEmpty(),
             title = canonical.title,
             capacity = operationalInventoryCapacity(canonical, emptyList()),
+            physicalSeatCapacity = canonical.physicalSeatCapacity,
+            vehicleDayConfigured = canonical.vehicleDayConfigured,
+            vehicleMakeModel = canonical.vehicleMakeModel,
+            vehicleColor = canonical.vehicleColor,
+            vehiclePlate = canonical.vehiclePlate,
             publishedSeats = canonical.publishedSeats,
             rotaCertaSeatAllocation = canonical.rotaCertaSeatAllocation ?: 0,
             operationalAvailableSeats = available.minimum,
