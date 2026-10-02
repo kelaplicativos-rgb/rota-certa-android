@@ -138,32 +138,22 @@ object MessageTemplateStore0172 {
     internal fun messageFirstName0714(raw: String?): String =
         raw.orEmpty().trim().split(Regex("\\s+")).firstOrNull()?.takeIf(String::isNotBlank) ?: "Passageiro"
 
-    fun readTrip(context: Context): String {
-        val stored = prefs(context).getString(KEY_TRIP, null)?.takeIf(String::isNotBlank)
-        return when (stored) {
-            null, LEGACY_DEFAULT_TRIP_0714 -> DEFAULT_TRIP
-            else -> stored
-        }
-    }
+    fun readTrip(context: Context): String =
+        TenantMessageTemplateStore.readTrip(context) // TENANT_MESSAGE_STORE_AUTHORITY_0719
 
-    fun readValue(context: Context): String {
-        val stored = prefs(context).getString(KEY_VALUE, null)?.takeIf(String::isNotBlank)
-        return when (stored) {
-            null, LEGACY_DEFAULT_VALUE_0714 -> DEFAULT_VALUE
-            else -> stored
-        }
-    }
+    fun readValue(context: Context): String =
+        TenantMessageTemplateStore.readValue(context)
 
     fun saveTrip(context: Context, value: String) {
-        prefs(context).edit().putString(KEY_TRIP, value.trim().take(4_000).ifBlank { DEFAULT_TRIP }).apply()
+        TenantMessageTemplateStore.saveTrip(context, value)
     }
 
     fun saveValue(context: Context, value: String) {
-        prefs(context).edit().putString(KEY_VALUE, value.trim().take(4_000).ifBlank { DEFAULT_VALUE }).apply()
+        TenantMessageTemplateStore.saveValue(context, value)
     }
 
     fun restoreDefaults(context: Context) {
-        prefs(context).edit().putString(KEY_TRIP, DEFAULT_TRIP).putString(KEY_VALUE, DEFAULT_VALUE).apply()
+        TenantMessageTemplateStore.restoreDefaults(context)
     }
 
     fun formatTrip(context: Context, data: TripConfirmationData): String {
