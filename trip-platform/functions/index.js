@@ -1339,7 +1339,8 @@ function itineraryIsAuthoritative(token, data) {
 
 function safePublicTripFromCanonical0434(token, data) {
   const payload = canonicalPublicTripPayload0411(token, data);
-  const capacity = Math.max(0, Number(payload.capacity || 0));
+  const rawPhysical0717 = Number(payload.physicalSeatCapacity || payload.capacity || 4);
+  const capacity = Number.isInteger(rawPhysical0717) && rawPhysical0717 >= 1 && rawPhysical0717 <= 999 ? rawPhysical0717 : 4;
   const reliable = payload.capacityReliable === true;
   const payloadAvailableMaximum = Math.max(0, Number(payload.availableSeatsMaximum || 0));
   const capacityState0485 = canonicalPublicCapacityState0485({
@@ -1387,7 +1388,7 @@ function safePublicTripFromCanonical0434(token, data) {
     rotaCertaAvailableSeats: Math.max(0, payloadAvailableMaximum - Math.max(0, Number(payload.publishedSeats || 0))),
     totalAvailableSeats: capacityState0485.availableSeatsMinimum,
     totalConsideredSeats: capacityState0485.availableSeatsMinimum,
-    operationalAvailableSeats: Math.max(0, Number(payload.operationalAvailableSeats || 0)),
+    operationalAvailableSeats: Math.min(capacity, Math.max(0, Number(payload.operationalAvailableSeats || 0))),
     physicalAvailableSeatsMinimum: capacityState0485.availableSeatsMinimum,
     physicalAvailableSeatsMaximum: capacityState0485.availableSeatsMaximum,
     operationalOverbookingSeats: capacityState0485.overbookingSeats,
@@ -1411,7 +1412,8 @@ function safePublicTrip(token, data) {
   if (data && data.canonicalPublicProjection0434 && typeof data.canonicalPublicProjection0434 === "object") {
     return safePublicTripFromCanonical0434(token, data);
   }
-  const capacity = Math.max(0, Number(data.capacity || 0));
+  const rawPhysical0717 = Number(data && data.physicalSeatCapacity != null ? data.physicalSeatCapacity : 4);
+  const capacity = Number.isInteger(rawPhysical0717) && rawPhysical0717 >= 1 && rawPhysical0717 <= 999 ? rawPhysical0717 : 4;
   const expectedSegments = Math.max(0, (Array.isArray(data.stops) ? data.stops.length : 0) - 1);
   const segmentLoads = Array.isArray(data.segmentLoads)
     ? data.segmentLoads.slice(0, expectedSegments).map((load) => Math.max(0, Number(load || 0)))
@@ -1433,12 +1435,15 @@ function safePublicTrip(token, data) {
   });
   const confirmedPassengerSeats = Math.max(0, Number(data.confirmedPassengerSeats || 0));
   const blockedSeats = Math.max(0, Number(data.blockedSeats || 0));
-  const blablaAvailableSeats = Math.max(
-    0,
-    Number(
-      data.blablaAvailableSeats != null
-        ? data.blablaAvailableSeats
-        : (data.publishedSeats != null ? data.publishedSeats : 0),
+  const blablaAvailableSeats = Math.min(
+    capacity,
+    Math.max(
+      0,
+      Number(
+        data.blablaAvailableSeats != null
+          ? data.blablaAvailableSeats
+          : (data.publishedSeats != null ? data.publishedSeats : 0),
+      ),
     ),
   );
   const rotaCertaAllocatedSeats = Math.max(
@@ -1449,25 +1454,31 @@ function safePublicTrip(token, data) {
         : (data.rotaCertaSeatAllocation != null ? data.rotaCertaSeatAllocation : 0),
     ),
   );
-  const rotaCertaAvailableSeats = Math.max(
-    0,
-    Number(
-      data.rotaCertaAvailableSeats != null
-        ? data.rotaCertaAvailableSeats
-        : rotaCertaAllocatedSeats,
+  const rotaCertaAvailableSeats = Math.min(
+    capacity,
+    Math.max(
+      0,
+      Number(
+        data.rotaCertaAvailableSeats != null
+          ? data.rotaCertaAvailableSeats
+          : rotaCertaAllocatedSeats,
+      ),
     ),
   );
-  const operationalAvailableSeats = Math.max(
-    0,
-    Number(
-      data.operationalAvailableSeats != null
-        ? data.operationalAvailableSeats
-        : blablaAvailableSeats + rotaCertaAvailableSeats,
+  const operationalAvailableSeats = Math.min(
+    capacity,
+    Math.max(
+      0,
+      Number(
+        data.operationalAvailableSeats != null
+          ? data.operationalAvailableSeats
+          : Math.max(blablaAvailableSeats, rotaCertaAvailableSeats),
+      ),
     ),
   );
-  const totalAvailableSeats = Math.max(
-    0,
-    Number(data.totalAvailableSeats != null ? data.totalAvailableSeats : operationalAvailableSeats),
+  const totalAvailableSeats = Math.min(
+    capacity,
+    Math.max(0, Number(data.totalAvailableSeats != null ? data.totalAvailableSeats : operationalAvailableSeats)),
   );
   const totalConsideredSeats = totalAvailableSeats;
   const operationalOverbookingSeats = Math.max(0, Number(data.operationalOverbookingSeats || 0));
