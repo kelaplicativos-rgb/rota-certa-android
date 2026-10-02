@@ -59,8 +59,8 @@ private fun MessageTemplatesScreen0172(onClose: () -> Unit) {
             OutlinedButton(onClick = onClose) { Text("Voltar") }
         }
         Text("Estas frases são usadas pelas bolinhas Copiar viagem e Valor e permanecem isoladas por usuário do Rota Certa.", style = MaterialTheme.typography.bodySmall)
-        TemplateCard0172("Copiar viagem", trip, "{saudacao}, {nome}, {origem}, {destino}, {dia_semana}, {dia}, {mes}, {horario}") { editingTrip = true }
-        TemplateCard0172("Valor", value, "{nome}, {lugares}, {origem}, {destino}, {valor}") { editingValue = true }
+        TemplateCard0172("Copiar viagem", trip, "{saudacao}, {nome}, {origem}, {destino}, {dia_semana}, {dia}, {mes}, {horario}; veículo é anexado pela ocorrência quando disponível") { editingTrip = true }
+        TemplateCard0172("Valor", value, "{nome}, {lugares}, {origem}, {destino}, {valor}; veículo é anexado pela ocorrência quando disponível") { editingValue = true }
         OutlinedButton(
             onClick = {
                 TenantMessageTemplateStore.restoreDefaults(context)
