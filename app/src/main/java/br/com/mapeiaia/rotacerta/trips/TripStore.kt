@@ -62,7 +62,9 @@ class TripStore(context: Context) {
         }
 
 
-    fun trips(): List<Trip> = decode<List<Trip>>(prefs.getString(tripsKey, null)).orEmpty()
+    fun trips(): List<Trip> = decode<List<Trip>>(prefs.getString(tripsKey, null))
+        .orEmpty()
+        .map(Trip::withPhysicalSeatCapacity0717)
         .sortedByDescending(Trip::departureAtMillis)
 
     fun bookings(): List<Booking> = decode<List<Booking>>(prefs.getString(bookingsKey, null)).orEmpty()
@@ -645,10 +647,22 @@ class TripStore(context: Context) {
             allTrips.firstOrNull { it.tripKey == key }
         }
         val existing = existingById ?: existingByStrongKey
-        val incoming = if (existing != null && existing.id != keyedIncoming.id) {
+        val identityAdjusted = if (existing != null && existing.id != keyedIncoming.id) {
             keyedIncoming.copy(id = existing.id, createdAtMillis = existing.createdAtMillis)
         } else {
             keyedIncoming
+        }
+        val incoming = if (existing?.vehicleDayConfigured == true && !identityAdjusted.vehicleDayConfigured) {
+            identityAdjusted.copy(
+                capacity = existing.physicalSeatCapacity.coerceIn(1, 999),
+                physicalSeatCapacity = existing.physicalSeatCapacity.coerceIn(1, 999),
+                vehicleDayConfigured = true,
+                vehicleMakeModel = existing.vehicleMakeModel,
+                vehicleColor = existing.vehicleColor,
+                vehiclePlate = existing.vehiclePlate,
+            )
+        } else {
+            identityAdjusted.withPhysicalSeatCapacity0717()
         }
         if (existing != null && existing.canonicalRevision > 0L && incoming.canonicalRevision < existing.canonicalRevision) {
             UnifiedDebugEventStore.record(
