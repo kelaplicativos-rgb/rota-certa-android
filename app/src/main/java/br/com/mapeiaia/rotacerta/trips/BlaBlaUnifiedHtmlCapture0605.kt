@@ -478,6 +478,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
 
         val captures = mutableListOf<BlaBlaRidesTripCapture0605>()
         val collected = mutableListOf<BlaBlaCollectorTrip>()
+        val deferredNotReady0721 = mutableListOf<Pair<Int, ParsedExternalRide0535>>()
         var incomplete = 0
         var transportRecoveryExhausted0621 = false
         var unattemptedDueTransport0621 = 0
@@ -529,6 +530,9 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                         captures += captured.evidence
                         captured.trip?.let(collected::add)
                         if (!captured.operationalComplete) incomplete++
+                        if (captured.evidence.errorCode == "TRIP_DETAIL_NOT_READY_0721") {
+                            deferredNotReady0721 += index to ride
+                        }
 
                         store.updateProfile(captureId, account.id) { previous ->
                             previous.copy(tripCaptures0605 = captures.toList())
@@ -614,6 +618,74 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                             )
                             if (index + 1 < futureRides.size) {
                                 destroyUnifiedCaptureWebView0621(webView)
+                                webView = createUnifiedCaptureWebView0621(app, account)
+                            }
+                        }
+                    }
+
+                    if (deferredNotReady0721.isNotEmpty()) {
+                        destroyUnifiedCaptureWebView0621(webView)
+                        delay(DEFERRED_NOT_READY_BACKOFF_MS_0721)
+                        webView = createUnifiedCaptureWebView0621(app, account)
+                        deferredNotReady0721.forEachIndexed { retryIndex0721, pair0721 ->
+                            val captureIndex0721 = pair0721.first
+                            val ride0721 = pair0721.second
+                            transaction0610?.let { BlaBlaHtmlCaptureTransaction0610.heartbeat(app, it) }
+                            onProgress(
+                                "Revalidando carregamento " + (retryIndex0721 + 1) + "/" +
+                                    deferredNotReady0721.size + " • " + ride0721.date + " " +
+                                    ride0721.departureTime + " • " + account.displayLabel,
+                            )
+                            val recaptured0721 = captureTrip0605(
+                                webView = webView,
+                                store = store,
+                                captureId = captureId,
+                                definition = definition,
+                                ride = ride0721,
+                                scripts = scripts,
+                            )
+                            captures[captureIndex0721] = recaptured0721.evidence
+                            store.updateProfile(captureId, account.id) { previous ->
+                                previous.copy(tripCaptures0605 = captures.toList())
+                            }
+                            if (recaptured0721.operationalComplete && recaptured0721.trip != null) {
+                                incomplete = (incomplete - 1).coerceAtLeast(0)
+                                collected.removeAll { it.trip_id == ride0721.tripId }
+                                collected += recaptured0721.trip
+                                val deferredCommitted0721 = publishLiveHtmlCard0617(
+                                    context = app,
+                                    account = account,
+                                    trip = recaptured0721.trip,
+                                    lastUrl = recaptured0721.evidence.finalUrl,
+                                    captureId = captureId,
+                                    rotaCertaSeatAllocation = liveSettings0617.rotaCertaSeatAllocation,
+                                    seatAllocationVersion = liveSettings0617.rotaCertaSeatAllocationVersion,
+                                    scopedStateIsolation0662 = scopedStateIsolation0662,
+                                    expectedTransaction0610 = transaction0610,
+                                )
+                                UnifiedDebugEventStore.recordAlways(
+                                    "BLABLACAR_TRIP_DETAIL_DEFERRED_RECOVERED_0721",
+                                    app.packageName,
+                                    "captureId=" + BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId) +
+                                        " accountKey=" + store.accountKey(account.id) +
+                                        " trip=" + (captureIndex0721 + 1) + "/" + futureRides.size +
+                                        " liveCommitted=" + deferredCommitted0721 +
+                                        " sameCard=true freshWebView=true",
+                                )
+                            } else {
+                                UnifiedDebugEventStore.recordAlways(
+                                    "BLABLACAR_TRIP_DETAIL_DEFERRED_STILL_PENDING_0721",
+                                    app.packageName,
+                                    "captureId=" + BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId) +
+                                        " accountKey=" + store.accountKey(account.id) +
+                                        " trip=" + (captureIndex0721 + 1) + "/" + futureRides.size +
+                                        " errorCode=" + recaptured0721.evidence.errorCode.ifBlank { "UNKNOWN" } +
+                                        " preservePreviousCanonical=true",
+                                )
+                            }
+                            if (retryIndex0721 + 1 < deferredNotReady0721.size) {
+                                destroyUnifiedCaptureWebView0621(webView)
+                                delay(DEFERRED_NOT_READY_BETWEEN_CARDS_MS_0721)
                                 webView = createUnifiedCaptureWebView0621(app, account)
                             }
                         }
@@ -2399,6 +2471,8 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
     private const val UNIFIED_FLIGHT_RETRY_MS_0605 = 250L
     private const val TRANSPORT_RECOVERY_ATTEMPTS_0621 = 2
     private const val TRANSPORT_RECOVERY_BACKOFF_MS_0621 = 2_500L
+    private const val DEFERRED_NOT_READY_BACKOFF_MS_0721 = 4_000L
+    private const val DEFERRED_NOT_READY_BETWEEN_CARDS_MS_0721 = 1_000L
     private const val PASSENGER_DETAIL_ATTEMPTS_0653 = 3
     private const val PASSENGER_DETAIL_RETRY_MS_0653 = 650L
     private const val PASSENGER_PREPARE_PASSES_0657 = 2
