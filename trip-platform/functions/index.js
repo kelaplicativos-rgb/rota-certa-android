@@ -1174,6 +1174,9 @@ function normalizeDriverTrip(raw, previous = null, allowBookedStopShapeMigration
     ? requestedPhysical0717
     : (Number.isInteger(fallbackPhysical0717) && fallbackPhysical0717 >= 1 && fallbackPhysical0717 <= 999 ? fallbackPhysical0717 : 4);
   const capacity = physicalSeatCapacity;
+  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 999) {
+    throw new Error("Capacidade física do veículo inválida.");
+  }
   const vehicleDayConfigured = raw.vehicleDayConfigured === true || preserveVehicle0717;
   const vehicleMakeModel = cleanText(
     preserveVehicle0717 ? previous.vehicleMakeModel : (raw.vehicleMakeModel == null ? (previous && previous.vehicleMakeModel) : raw.vehicleMakeModel),
