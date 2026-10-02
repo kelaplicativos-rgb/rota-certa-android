@@ -1165,9 +1165,11 @@ function normalizeDriverTrip(raw, previous = null, allowBookedStopShapeMigration
   const requestedPhysical0717 = Number(
     preserveVehicle0717
       ? previous.physicalSeatCapacity
-      : (raw.physicalSeatCapacity == null ? raw.capacity : raw.physicalSeatCapacity)
+      : (raw.physicalSeatCapacity == null ? NaN : raw.physicalSeatCapacity)
   );
-  const fallbackPhysical0717 = Number(previous && (previous.physicalSeatCapacity || previous.capacity) || 4);
+  // Legacy clients did not have a physical-seat field. Never trust their derived
+  // capacity as a physical vehicle fact because 0.1.714-0.1.716 could inflate it.
+  const fallbackPhysical0717 = Number(previous && previous.physicalSeatCapacity || 4);
   const physicalSeatCapacity = Number.isInteger(requestedPhysical0717) && requestedPhysical0717 >= 1 && requestedPhysical0717 <= 999
     ? requestedPhysical0717
     : (Number.isInteger(fallbackPhysical0717) && fallbackPhysical0717 >= 1 && fallbackPhysical0717 <= 999 ? fallbackPhysical0717 : 4);
@@ -1367,6 +1369,11 @@ function safePublicTripFromCanonical0434(token, data) {
     departureAtMillis: payload.departureAtMillis,
     timezoneId: payload.timezoneId,
     capacity,
+    physicalSeatCapacity: capacity,
+    vehicleDayConfigured: payload.vehicleDayConfigured === true,
+    vehicleMakeModel: cleanText(payload.vehicleMakeModel, 120),
+    vehicleColor: cleanText(payload.vehicleColor, 60),
+    vehiclePlate: cleanText(payload.vehiclePlate, 16).toUpperCase(),
     status: capacityState0485.status,
     stops: payload.stops,
     segmentLoads: payload.segmentLoads,
@@ -1510,6 +1517,11 @@ function safePublicTrip(token, data) {
     departureAtMillis: data.departureAtMillis,
     timezoneId: cleanText(data.publicTimezoneId0411, 80),
     capacity,
+    physicalSeatCapacity: capacity,
+    vehicleDayConfigured: data.vehicleDayConfigured === true,
+    vehicleMakeModel: cleanText(data.vehicleMakeModel, 120),
+    vehicleColor: cleanText(data.vehicleColor, 60),
+    vehiclePlate: cleanText(data.vehiclePlate, 16).toUpperCase(),
     status: capacityState0485.status,
     stops: data.stops,
     segmentLoads,
@@ -1816,10 +1828,10 @@ function canonicalPublicTripPayload0411(token, data) {
     status: cleanText(publicTrip.status, 24),
     capacity: Math.max(1, Number(publicTrip.physicalSeatCapacity || publicTrip.capacity || 4)),
     physicalSeatCapacity: Math.max(1, Number(publicTrip.physicalSeatCapacity || publicTrip.capacity || 4)),
-    vehicleDayConfigured: publicTrip.vehicleDayConfigured === true,
-    vehicleMakeModel: cleanText(publicTrip.vehicleMakeModel, 120),
-    vehicleColor: cleanText(publicTrip.vehicleColor, 60),
-    vehiclePlate: cleanText(publicTrip.vehiclePlate, 16).toUpperCase(),
+    vehicleDayConfigured: publicTrip.vehicleDayConfigured === true || (data && data.vehicleDayConfigured === true),
+    vehicleMakeModel: cleanText(publicTrip.vehicleMakeModel || (data && data.vehicleMakeModel), 120),
+    vehicleColor: cleanText(publicTrip.vehicleColor || (data && data.vehicleColor), 60),
+    vehiclePlate: cleanText(publicTrip.vehiclePlate || (data && data.vehiclePlate), 16).toUpperCase(),
     stops: canonicalDepartureStops0495(
       (Array.isArray(publicTrip.stops) ? publicTrip.stops : [])
         .map(canonicalPublicStop0411)
