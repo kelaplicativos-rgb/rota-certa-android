@@ -95,8 +95,8 @@ class PassengerMessageVehicle0719Test {
                 vehicleColor = "Cinza-escuro",
                 vehiclePlate = "TBJ4F74",
             )
-            assertContains(message, "🚗 Carro: Hyundai HB20 • cinza-escuro", "template=$type")
-            assertContains(message, "Placa: TBJ4F74", "template=$type")
+            assertContains(message, "🚗 Carro: Hyundai HB20 • cinza-escuro")
+            assertContains(message, "Placa: TBJ4F74")
         }
     }
 }
