@@ -2,6 +2,43 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.720",
+      "build": 6011,
+      "commit": null,
+      "branch": "agent/agenda-xml-durable-deploy-0.1.720",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Torna o feed XML da Agenda resiliente com três rotas públicas equivalentes sobre a mesma projeção canônica: /v1/public/agenda-feed/{motorista}.xml, /api/v1/agenda/{motorista}.xml e o alias histórico /api/agenda/{motorista}.xml.",
+        "Acopla deploy do tripApi e do Firebase Hosting ao mesmo SHA da release antes da validação pública do feed.",
+        "Adiciona smoke de produção obrigatório para XML, JSON, ausência de PII, filtros e identidade do backend antes de aceitar o artefato final."
+      ],
+      "fixed": [
+        "Restaura compatibilidade com o endereço histórico /api/agenda/ezequiel.xml sem criar uma segunda fonte de Agenda.",
+        "Elimina a janela em que o tripApi podia ser atualizado sem que o Firebase Hosting correspondente fosse republicado.",
+        "Impede workflow verde quando o health responde mas as rotas públicas do XML não estão realmente acessíveis."
+      ],
+      "improved": [
+        "Os três endpoints XML usam exatamente o mesmo live-agenda-feed-v1 e a mesma autoridade canônica de viagens, capacidade e vagas por trecho.",
+        "O APK final é publicado no Hosting somente depois de ser verificado contra pacote, versão, assinatura e SHA exato.",
+        "A prova de deploy passa a registrar SHA do backend, equivalência semântica dos aliases XML e SHA-256 do APK."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.701-0.1.719: o endpoint amigável /api/v1/agenda dependia de rewrite específico do Hosting sem alias histórico.",
+        "0.1.716-0.1.719: workflows posteriores podiam implantar tripApi sem republicar Hosting e sem testar o XML em produção."
+      ],
+      "modulesAffected": [
+        "Agenda pública",
+        "XML",
+        "Backend",
+        "Firebase Hosting",
+        "CI/CD",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.719",
       "build": 6010,
       "commit": null,
