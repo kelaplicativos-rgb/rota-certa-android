@@ -884,58 +884,25 @@ fun PassengerAdminScreen(
                                     }
                                 }
                                 result
-                                    .onSuccess {
-                                        temporaryPassword = it.temporaryPassword
-                                        temporaryPasswordFor = candidate.displayName
-                                        temporaryPasswordWhatsapp0651 = activeAccessWhatsapp
+                                    .onSuccess { response ->
+                                        reloadRemote(syncDirectory = false)
                                         onChanged(
-                                            if (it.firstAccessPassword) {
-                                                "Senha temporária de primeiro acesso gerada."
+                                            if (response.cleared) {
+                                                "Senha limpa. O passageiro deverá criar uma nova senha no próximo acesso."
                                             } else {
-                                                "Nova senha temporária gerada."
+                                                "A senha não foi alterada."
                                             },
                                         )
-                                        reloadRemote(syncDirectory = false)
                                     }
-                                    .onFailure { onChanged("Falha ao gerar nova senha: ${it.message ?: "erro de conexão"}") }
+                                    .onFailure { onChanged("Falha ao limpar senha: ${it.message ?: "erro de conexão"}") }
                                 loading = false
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text(
-                            when {
-                                access?.passwordRecoveryStatus == "REQUESTED" -> "Gerar senha solicitada"
-                                access?.accountActivated == false -> "Gerar senha de primeiro acesso"
-                                else -> "Gerar nova senha"
-                            },
-                        )
+                        Text("Limpar senha")
                     }
-                    if (access == null && canonicalAccessProfile != null) {
-                        OutlinedButton(
-                            enabled = settings.configured && !loading && passwordRecoveryAvailable0650,
-                            onClick = {
-                                loading = true
-                                scope.launch {
-                                    val canonical = withContext(Dispatchers.IO) { canonicalProfile(candidate) }
-                                    if (canonical == null) {
-                                        onChanged("Não foi possível vincular a identidade canônica deste passageiro.")
-                                    } else {
-                                        runCatching {
-                                            TripRemoteApi(settings).syncPassengerDirectory(listOf(canonical))
-                                        }.onSuccess {
-                                            reloadRemote(syncDirectory = false)
-                                            onChanged("Acesso deste passageiro reparado e sincronizado individualmente.")
-                                        }.onFailure {
-                                            onChanged("Falha ao reparar acesso: ${it.message ?: "erro de conexão"}")
-                                        }
-                                    }
-                                    loading = false
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { Text("Reparar acesso") }
-                    }
+
                 }
                 }
             }
