@@ -208,6 +208,7 @@ private data class UnifiedDirectScripts0605(
 private data class UnifiedEvaluatedPage0605(
     val finalUrl: String,
     val payload: String,
+    val tripReady0721: Boolean = true,
 )
 
 private data class UnifiedCapturedTrip0605(
@@ -336,8 +337,10 @@ internal fun tripDetailVerificationError0676(
     expectedTripId: String,
     observedTripId: String?,
     domHtmlBytes: Int,
+    detailReady0721: Boolean = true,
 ): String = when {
     !detailPagePresent -> "TRIP_DETAIL_LOAD_FAILED_0676"
+    !detailReady0721 -> "TRIP_DETAIL_NOT_READY_0721"
     !payloadPresent || !payloadDecoded -> "TRIP_DETAIL_PAYLOAD_DECODE_FAILED_0676"
     observedTripId?.trim() != expectedTripId.trim() -> "TRIP_DETAIL_ID_MISMATCH_0676"
     domHtmlBytes <= 0 -> "TRIP_DETAIL_DOM_EMPTY_0676"
@@ -350,6 +353,7 @@ internal fun shouldRetryTripDetailFailure0676(errorCode: String): Boolean =
         "TRIP_DETAIL_PAYLOAD_DECODE_FAILED_0676",
         "TRIP_DETAIL_ID_MISMATCH_0676",
         "TRIP_DETAIL_DOM_EMPTY_0676",
+        "TRIP_DETAIL_NOT_READY_0721",
     )
 
 internal object BlaBlaUnifiedHtmlCapture0605 {
@@ -1238,7 +1242,11 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             BlaBlaCollectorUrlModule.tripId(finalUrl) == ride.tripId &&
                 !BlaBlaCollectorUrlModule.isPassenger(finalUrl)
         }
-        val detail = decode0605<UnifiedTripDetailEnvelope0605>(detailPage?.payload)
+        val detail = if (detailPage?.tripReady0721 == true) {
+            decode0605<UnifiedTripDetailEnvelope0605>(detailPage.payload)
+        } else {
+            null
+        }
         val observedTripId0676 = detail?.let { BlaBlaCollectorUrlModule.tripId(it.detail.url) }
         val scriptError0677 = detail?.scriptError?.trim().orEmpty()
         val detailError0676 = if (scriptError0677.isNotBlank()) {
@@ -1251,6 +1259,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 expectedTripId = ride.tripId,
                 observedTripId = observedTripId0676,
                 domHtmlBytes = detail?.domHtml?.toByteArray(Charsets.UTF_8)?.size ?: 0,
+                detailReady0721 = detailPage?.tripReady0721 == true,
             )
         }
         if (detailError0676.isNotBlank()) {
@@ -2330,8 +2339,21 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                         if (completed) return@postDelayed
                         view.evaluateJavascript(TRIP_READY_0606) { rawReady ->
                             val ready = rawReady?.trim()?.equals("true", ignoreCase = true) == true
-                            if (ready || pass + 1 >= PREPARE_PASSES_0605) {
+                            if (ready) {
                                 evaluate(view)
+                            } else if (pass + 1 >= PREPARE_PASSES_0605) {
+                                val finalUrl = view.url.orEmpty()
+                                if (!acceptUrl(finalUrl)) {
+                                    finish(null)
+                                } else {
+                                    finish(
+                                        UnifiedEvaluatedPage0605(
+                                            finalUrl = finalUrl,
+                                            payload = "",
+                                            tripReady0721 = false,
+                                        ),
+                                    )
+                                }
                             } else {
                                 prepare(view, pass + 1)
                             }
@@ -2393,10 +2415,29 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             text.includes('trip summary') ||
             text.includes('résumé du trajet') ||
             text.includes('resumen del viaje');
+          const isVisible = (node) => {
+            if (!node || !node.isConnected) return false;
+            const style = window.getComputedStyle ? window.getComputedStyle(node) : null;
+            if (style && (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0')) return false;
+            return !node.getClientRects || node.getClientRects().length > 0;
+          };
+          const loadingActive = Array.from(document.querySelectorAll(
+            '[role="progressbar"], [aria-busy="true"], [aria-valuetext]'
+          )).some((node) => {
+            if (!isVisible(node)) return false;
+            const marker = String(
+              (node.getAttribute('aria-valuetext') || '') + ' ' +
+              (node.getAttribute('aria-label') || '') + ' ' +
+              (node.textContent || '')
+            ).replace(/\s+/g, ' ').trim().toLowerCase();
+            return node.getAttribute('role') === 'progressbar' ||
+              node.getAttribute('aria-busy') === 'true' ||
+              /loading|carregando|chargement|cargando/.test(marker);
+          });
           const boundControl = !!document.querySelector(
             'a[href*="/rides/offer/edit/"], a[href*="/rides/offer/map"], a[href*="/rides/offer/passenger/"], a[href*="/trip?"]'
           );
-          return summary && boundControl;
+          return !loadingActive && summary && boundControl;
         })();
     """.trimIndent()
 
