@@ -138,33 +138,17 @@ object MessageTemplateStore0172 {
     internal fun messageFirstName0714(raw: String?): String =
         raw.orEmpty().trim().split(Regex("\\s+")).firstOrNull()?.takeIf(String::isNotBlank) ?: "Passageiro"
 
-    fun readTrip(context: Context): String {
-        val stored = prefs(context).getString(KEY_TRIP, null)?.takeIf(String::isNotBlank)
-        return when (stored) {
-            null, LEGACY_DEFAULT_TRIP_0714 -> DEFAULT_TRIP
-            else -> stored
-        }
-    }
+    // 0.1.719: keep this legacy API as a compatibility facade only.
+    // Editor, preview and execution now share the same tenant-aware source of truth.
+    fun readTrip(context: Context): String = TenantMessageTemplateStore.readTrip(context)
 
-    fun readValue(context: Context): String {
-        val stored = prefs(context).getString(KEY_VALUE, null)?.takeIf(String::isNotBlank)
-        return when (stored) {
-            null, LEGACY_DEFAULT_VALUE_0714 -> DEFAULT_VALUE
-            else -> stored
-        }
-    }
+    fun readValue(context: Context): String = TenantMessageTemplateStore.readValue(context)
 
-    fun saveTrip(context: Context, value: String) {
-        prefs(context).edit().putString(KEY_TRIP, value.trim().take(4_000).ifBlank { DEFAULT_TRIP }).apply()
-    }
+    fun saveTrip(context: Context, value: String) = TenantMessageTemplateStore.saveTrip(context, value)
 
-    fun saveValue(context: Context, value: String) {
-        prefs(context).edit().putString(KEY_VALUE, value.trim().take(4_000).ifBlank { DEFAULT_VALUE }).apply()
-    }
+    fun saveValue(context: Context, value: String) = TenantMessageTemplateStore.saveValue(context, value)
 
-    fun restoreDefaults(context: Context) {
-        prefs(context).edit().putString(KEY_TRIP, DEFAULT_TRIP).putString(KEY_VALUE, DEFAULT_VALUE).apply()
-    }
+    fun restoreDefaults(context: Context) = TenantMessageTemplateStore.restoreDefaults(context)
 
     fun formatTrip(context: Context, data: TripConfirmationData): String {
         val time = if (data.minute == 0) "${data.hour}h" else String.format(Locale("pt", "BR"), "%dh%02d", data.hour, data.minute)
