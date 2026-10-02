@@ -1,16 +1,16 @@
-name: Rota Certa 0.1.719 message vehicle authority exact SHA
+name: Rota Certa 0.1.720 durable agenda XML exact SHA
 
 on:
   push:
     branches:
-      - 'agent/message-vehicle-authority-final-0.1.719'
+      - 'agent/agenda-xml-durable-deploy-0.1.720'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: message-vehicle-authority-0719-${{ github.ref }}
+  group: agenda-xml-durable-0720-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -19,11 +19,13 @@ jobs:
     timeout-minutes: 150
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       ROTA_CERTA_GIT_SHA: ${{ github.sha }}
-      ROTA_CERTA_GIT_BRANCH: 'agent/message-vehicle-authority-final-0.1.719'
-      BASE_SHA: 'be8f544f4a04bdc5012c3c5f5160e1f05a944c9e'
-      EXPECTED_VERSION_NAME: '0.1.719'
-      EXPECTED_VERSION_CODE: '6010'
+      ROTA_CERTA_GIT_BRANCH: 'agent/agenda-xml-durable-deploy-0.1.720'
+      BASE_SHA: 'ee32e1149d3c436bda868c667a18592941cf5f31'
+      EXPECTED_VERSION_NAME: '0.1.720'
+      EXPECTED_VERSION_CODE: '6011'
       OM_TAG: '2026.08.27-18-android'
       OM_VERSION: '2026.08.27-18'
 
@@ -32,6 +34,10 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
       - uses: actions/setup-java@v4
         with:
@@ -75,9 +81,9 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          grep -Fq 'val releaseVersionName = "0.1.719"' app/build.gradle.kts
-          grep -Fq 'val releaseVersionCode = 6_010' app/build.gradle.kts
-          grep -Fq '"version": "0.1.719"' app/src/main/assets/release_history.json
+          grep -Fq 'val releaseVersionName = "0.1.720"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 6_011' app/build.gradle.kts
+          grep -Fq '"version": "0.1.720"' app/src/main/assets/release_history.json
           grep -Fq 'UNIVERSAL_SEARCH_PREPARED_INDEX_0718' app/src/main/java/br/com/mapeiaia/rotacerta/trips/UniversalTripSearch0687.kt
           grep -Fq 'term.windowed(size = 3' app/src/main/java/br/com/mapeiaia/rotacerta/trips/UniversalTripSearch0687.kt
           grep -Fq "EEEE, dd 'de' MMMM 'de' yyyy" app/src/main/java/br/com/mapeiaia/rotacerta/trips/UniversalTripSearch0687.kt
@@ -90,10 +96,36 @@ jobs:
           grep -Fq 'FAROL_ADDRESS_RECOVERY_0716' app/src/main/java/br/com/mapeiaia/rotacerta/FarolAddressRecovery0716.kt
           grep -Fq 'MESSAGE_VEHICLE_AUTHORITY_0719' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
           grep -Fq 'TENANT_MESSAGE_STORE_AUTHORITY_0719' app/src/main/java/br/com/mapeiaia/rotacerta/RotaCertaTools0172.kt
+          grep -Fq '"source": "/api/agenda/**"' trip-platform/firebase.json
+          grep -Fq '"source": "/api/v1/agenda/**"' trip-platform/firebase.json
+          grep -Fq 'parts.length === 3 && parts[0] === "api" && parts[1] === "agenda"' trip-platform/functions/index.js
+          grep -Fq 'feedFile0701 = parts[parts.length - 1]' trip-platform/functions/index.js
           grep -Fq 'everyPredefinedPassengerMessageCarriesTheSameVehicleBlock' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerMessageVehicle0719Test.kt
           git diff --check "$BASE_SHA"...HEAD
           printf '%s\n' "$GITHUB_SHA" | tee /tmp/source-sha.txt
           printf '%s\n' "$ROTA_CERTA_GIT_BRANCH" | tee /tmp/source-branch.txt
+
+      - name: Validate backend XML contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/functions/live-agenda-feed-0701.js
+          node --test trip-platform/functions/test/live-agenda-feed-0701.test.js | tee /tmp/live-agenda-feed-tests.log
+          node - <<'NODE' | tee /tmp/agenda-route-contract.log
+          const fs = require("fs");
+          const assert = require("assert");
+          const firebase = JSON.parse(fs.readFileSync("trip-platform/firebase.json", "utf8"));
+          const rewrites = firebase.hosting.rewrites || [];
+          assert(rewrites.some(r => r.source === "/api/agenda/**" && r.function && r.function.functionId === "tripApi"));
+          assert(rewrites.some(r => r.source === "/api/v1/agenda/**" && r.function && r.function.functionId === "tripApi"));
+          assert(rewrites.some(r => r.source === "/v1/**" && r.function && r.function.functionId === "tripApi"));
+          const index = fs.readFileSync("trip-platform/functions/index.js", "utf8");
+          assert(index.includes('(parts.length === 3 && parts[0] === "api" && parts[1] === "agenda")'));
+          assert(index.includes('feedFile0701 = parts[parts.length - 1]'));
+          console.log("agenda_route_contract=PASS");
+          NODE
+          npm --prefix trip-platform/functions install --no-audit --no-fund
 
       - name: Verify release and focused regressions
         shell: bash
@@ -111,9 +143,9 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.FarolRoadKmFinality0713Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineCardOpenRefresh0707Test' \
             --no-daemon --max-workers=2 --stacktrace \
-            | tee /tmp/focused-android-0719.log
+            | tee /tmp/focused-android-0720.log
 
-      - name: Compare complete Android failures with exact 0.1.717 base
+      - name: Compare complete Android failures with exact 0.1.719 base
         shell: bash
         run: |
           set -euo pipefail
@@ -192,7 +224,7 @@ jobs:
           grep -Fq 'FAROL_ADDRESS_RECOVERY_0716' /tmp/dex-strings.txt
 
           SHORT_SHA="$(git rev-parse --short=12 HEAD)"
-          FINAL="rota-certa-0.1.719-6010-$SHORT_SHA.apk"
+          FINAL="rota-certa-0.1.720-6011-$SHORT_SHA.apk"
           cp "$APK" "$FINAL"
           APK_SHA256="$(sha256sum "$FINAL" | awk '{print $1}')"
           sha256sum "$FINAL" | tee /tmp/apk-sha256.txt
@@ -217,10 +249,130 @@ jobs:
             echo "apkSha256=$APK_SHA256"
           } | tee /tmp/final-proof.txt
 
+      - name: Authenticate Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy exact-head tripApi
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          gcloud functions deploy tripApi \
+            --gen2 \
+            --project="$PROJECT" \
+            --region=southamerica-east1 \
+            --runtime=nodejs20 \
+            --source=trip-platform/functions \
+            --entry-point=tripApi \
+            --trigger-http \
+            --allow-unauthenticated \
+            --clear-secrets \
+            --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$GITHUB_SHA" \
+            --quiet | tee /tmp/backend-deploy-0720.log
+
+      - name: Stage exact APK for direct install
+        id: hosted
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p trip-platform/public/downloads
+          cp "${{ steps.proof.outputs.apk }}" "trip-platform/public/downloads/${{ steps.proof.outputs.apk }}"
+          test "$(sha256sum "trip-platform/public/downloads/${{ steps.proof.outputs.apk }}" | awk '{print $1}')" = "$(awk '{print $1}' /tmp/apk-sha256.txt)"
+          echo "url=https://rota-certa-7ccc8.web.app/downloads/${{ steps.proof.outputs.apk }}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy exact-head Firebase Hosting
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+          chmod 600 /tmp/firebase-sa.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          npx --yes firebase-tools@14.12.0 deploy \
+            --only hosting \
+            --project "$PROJECT" \
+            --config trip-platform/firebase.json \
+            --non-interactive | tee /tmp/hosting-deploy-0720.log
+
+      - name: Smoke deployed health XML aliases JSON and APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://rota-certa-7ccc8.web.app'
+          curl --retry 20 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health-0720.json
+          grep -Fq '"ok":true' /tmp/live-health-0720.json
+          grep -Fq "\"backendGitSha\":\"$GITHUB_SHA\"" /tmp/live-health-0720.json
+
+          for SPEC in \
+            "canonical|/v1/public/agenda-feed/ezequiel.xml" \
+            "friendly|/api/v1/agenda/ezequiel.xml" \
+            "legacy|/api/agenda/ezequiel.xml"
+          do
+            NAME="${SPEC%%|*}"
+            PATH_PART="${SPEC#*|}"
+            curl --retry 20 --retry-delay 2 --fail --silent --show-error \
+              -D "/tmp/feed-${NAME}-headers.txt" \
+              "$BASE$PATH_PART" | tee "/tmp/feed-${NAME}.xml"
+            grep -Fq '<agenda' "/tmp/feed-${NAME}.xml"
+            grep -Fq 'schemaVersion="live-agenda-feed-v1"' "/tmp/feed-${NAME}.xml"
+            grep -Fq 'motorista="ezequiel"' "/tmp/feed-${NAME}.xml"
+            grep -Eqi '^content-type: application/xml' "/tmp/feed-${NAME}-headers.txt"
+            grep -Eqi '^cache-control: .*no-store' "/tmp/feed-${NAME}-headers.txt"
+            ! grep -Eqi 'passengerContact|whatsapp|telefone|email' "/tmp/feed-${NAME}.xml"
+          done
+
+          curl --retry 20 --retry-delay 2 --fail --silent --show-error \
+            "$BASE/v1/public/agenda-feed/ezequiel.json" | tee /tmp/feed.json
+          grep -Fq '"schemaVersion":"live-agenda-feed-v1"' /tmp/feed.json
+          grep -Fq '"driverUsername":"ezequiel"' /tmp/feed.json
+          ! grep -Eqi 'passengerContact|whatsapp|telefone|email' /tmp/feed.json
+
+          curl --retry 20 --retry-delay 2 --fail --silent --show-error \
+            "$BASE/api/agenda/ezequiel.xml?data=2026-10-02&origem=Pouso%20Alegre&destino=S%C3%A3o%20Paulo" \
+            | tee /tmp/feed-filtered.xml
+          grep -Fq '<agenda' /tmp/feed-filtered.xml
+          grep -Fq '<consulta data="2026-10-02"' /tmp/feed-filtered.xml
+
+          python3 - <<'PY' | tee /tmp/feed-semantic-proof.txt
+          import json, xml.etree.ElementTree as ET
+          for path in ["/tmp/feed-canonical.xml","/tmp/feed-friendly.xml","/tmp/feed-legacy.xml"]:
+              root=ET.parse(path).getroot()
+              assert root.tag=="agenda"
+              assert root.attrib.get("schemaVersion")=="live-agenda-feed-v1"
+              assert root.attrib.get("motorista")=="ezequiel"
+              assert root.find("viagens") is not None
+          payload=json.load(open("/tmp/feed.json",encoding="utf-8"))
+          assert payload["schemaVersion"]=="live-agenda-feed-v1"
+          assert payload["driverUsername"]=="ezequiel"
+          print("xml_aliases=PASS")
+          print("json_feed=PASS")
+          PY
+
+          curl --retry 10 --retry-delay 2 --fail --silent --show-error \
+            "${{ steps.hosted.outputs.url }}" -o /tmp/installed-candidate.apk
+          test "$(sha256sum /tmp/installed-candidate.apk | awk '{print $1}')" = "$(awk '{print $1}' /tmp/apk-sha256.txt)"
+
+          {
+            echo "canonicalXml=PASS"
+            echo "friendlyXml=PASS"
+            echo "legacyXml=PASS"
+            echo "jsonFeed=PASS"
+            echo "noPii=PASS"
+            echo "backendExactSha=PASS"
+            echo "hostingExactConfig=PASS"
+            echo "hostedApk=PASS"
+            echo "apkUrl=${{ steps.hosted.outputs.url }}"
+          } >> /tmp/final-proof.txt
+
       - name: Upload exact-SHA APK and proof
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-message-vehicle-authority-0.1.719-${{ github.sha }}
+          name: rota-certa-agenda-xml-durable-0.1.720-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
           path: |
@@ -233,7 +385,7 @@ jobs:
             /tmp/apksigner.txt
             /tmp/zip-integrity.txt
             /tmp/apk-files.txt
-            /tmp/focused-android-0719.log
+            /tmp/focused-android-0720.log
             /tmp/android-base-full.log
             /tmp/android-head-full.log
             /tmp/android-new-failures.txt
