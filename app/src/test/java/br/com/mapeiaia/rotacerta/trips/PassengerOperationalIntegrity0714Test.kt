@@ -130,7 +130,7 @@ class PassengerOperationalIntegrity0714Test {
     }
 
     @Test
-    fun vehicleCopyUsesPerProfileRotaCertaSnapshotForBlaBlaTrips() {
+    fun vehicleCopyUsesCarOfDayThenRotaCertaThenVerifiedBlaBlaFallback() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt").readText()
         val resolver = source
             .substringAfter("internal fun resolvePassengerMessageVehicle0714(")
@@ -138,7 +138,13 @@ class PassengerOperationalIntegrity0714Test {
         assertContains(resolver, "BlaBlaDynamicAccountRegistry")
         assertContains(resolver, "BlaBlaPublicProfileStore")
         assertContains(resolver, "identityVerified")
-        assertTrue(resolver.indexOf("return PassengerMessageVehicle0714()") < resolver.indexOf("val settings = store.onlineSettings()"))
+        assertContains(resolver, "val settings0719 = store.onlineSettings()")
+        assertContains(resolver, "choosePassengerMessageVehicle0719(")
+        assertFalse(resolver.contains("?: return PassengerMessageVehicle0714()"))
+        assertTrue(
+            resolver.indexOf("val settings0719 = store.onlineSettings()") <
+                resolver.indexOf("val profileUuid0719"),
+        )
     }
 
     @Test
