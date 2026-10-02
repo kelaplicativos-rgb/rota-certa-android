@@ -138,7 +138,9 @@ class PassengerOperationalIntegrity0714Test {
         assertContains(resolver, "BlaBlaDynamicAccountRegistry")
         assertContains(resolver, "BlaBlaPublicProfileStore")
         assertContains(resolver, "identityVerified")
-        assertTrue(resolver.indexOf("return PassengerMessageVehicle0714()") < resolver.indexOf("val settings = store.onlineSettings()"))
+        assertContains(resolver, "return rotaCertaFallback0719")
+        assertFalse(resolver.contains("return PassengerMessageVehicle0714()"))
+        assertTrue(resolver.indexOf("trip?.takeIf { it.vehicleDayConfigured }") < resolver.indexOf("val profileUuid"))
     }
 
     @Test
