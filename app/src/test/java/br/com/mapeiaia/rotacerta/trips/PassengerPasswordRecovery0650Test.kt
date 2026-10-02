@@ -11,14 +11,17 @@ class PassengerPasswordRecovery0650Test {
     private val remoteApi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt").readText()
 
     @Test
-    fun passwordRecoveryIsVisibleWithoutAccountActivatedGate() {
-        assertTrue(passengerAdmin.contains("Gerar nova senha"))
-        assertTrue(passengerAdmin.contains("Gerar senha de primeiro acesso"))
-        assertTrue(passengerAdmin.contains("Reparar acesso"))
+    fun passwordClearIsVisibleWithoutAccountActivatedGate() {
+        assertTrue(passengerAdmin.contains("Limpar senha"))
+        assertFalse(passengerAdmin.contains("Gerar nova senha"))
+        assertFalse(passengerAdmin.contains("Gerar senha de primeiro acesso"))
+        assertFalse(passengerAdmin.contains("Reparar acesso"))
         assertTrue(passengerAdmin.contains("passwordRecoveryAvailable0650"))
         assertFalse(passengerAdmin.contains("if (access?.accountActivated == true)"))
         assertTrue(passengerAdmin.contains("if (error.httpStatus != 404) throw error"))
         assertTrue(passengerAdmin.contains("api.syncPassengerDirectory(listOf(canonical))"))
+        assertTrue(remoteApi.contains("val cleared: Boolean = false"))
+        assertTrue(remoteApi.contains("val invalidatedSessions: Int = 0"))
     }
 
     @Test
