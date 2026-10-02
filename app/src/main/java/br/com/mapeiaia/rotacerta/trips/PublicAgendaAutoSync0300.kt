@@ -1206,12 +1206,11 @@ internal object PublicAgendaAutoSync0300 {
                 )
             } ?: run {
                 val rotaCertaQuota = configuredRotaCertaSeatAllocation.takeIf { it in 0..999 } ?: 0
-                val blablaRemaining = source.published_seats?.takeIf { it in 0..999 } ?: 0
-                // capacitySource=blablacar_remaining_plus_confirmed_peak_plus_rota_certa
-                // toPublicTrip() rebuilds the confirmed peak through operationalInventoryCapacity().
+                // capacitySource=physical_vehicle_0717
+                // Channel quotas remain metadata inside the physical car ceiling.
                 toPublicTrip(
                     source = source,
-                    capacity = (blablaRemaining + rotaCertaQuota).coerceIn(0, 999),
+                    capacity = 4,
                     rotaCertaSeatAllocation = rotaCertaQuota,
                     nowMillis = nowMillis,
                 )
@@ -2242,7 +2241,8 @@ internal object PublicAgendaAutoSync0300 {
             id = "public:$token",
             title = "${shortPlace(origin)} → ${shortPlace(destination)}",
             departureAtMillis = departure,
-            capacity = safeCapacity,
+            capacity = safeCapacity.coerceIn(1, 999),
+            physicalSeatCapacity = safeCapacity.coerceIn(1, 999),
             rotaCertaSeatAllocation = rotaCertaSeatAllocation.coerceIn(0, 999),
             status = TripStatus.PUBLISHED,
             stops = stops,
