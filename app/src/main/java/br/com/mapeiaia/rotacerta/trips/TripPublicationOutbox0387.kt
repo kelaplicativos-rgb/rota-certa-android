@@ -772,13 +772,24 @@ internal class TripMutationCoordinator0387(
         ) ?: return null
         val allocation = configuredRotaCertaSeatAllocation?.takeIf { it in 0..999 }
             ?: 0
-        val blablaQuota = sourceTrip.published_seats?.takeIf { it in 0..999 } ?: 0
+        val existingCanonical0717 = store.getTrip(canonicalTripId)
+            ?: store.trips().firstOrNull {
+                it.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
+                    it.blablaTripId?.trim() == tripId
+            }
+        val physical0717 = existingCanonical0717?.physicalSeatCapacity?.takeIf { it in 1..999 } ?: 4
         val synthesized = PublicAgendaAutoSync0300.toPublicTrip(
             source = sourceTrip,
-            capacity = (blablaQuota + allocation).coerceIn(0, 999),
+            capacity = physical0717,
             rotaCertaSeatAllocation = allocation,
         ) ?: return null
         val transportTrip0468 = synthesized.trip.copy(
+            capacity = physical0717,
+            physicalSeatCapacity = physical0717,
+            vehicleDayConfigured = existingCanonical0717?.vehicleDayConfigured == true,
+            vehicleMakeModel = existingCanonical0717?.vehicleMakeModel.orEmpty(),
+            vehicleColor = existingCanonical0717?.vehicleColor.orEmpty(),
+            vehiclePlate = existingCanonical0717?.vehiclePlate.orEmpty(),
             tripKey = canonicalTripId,
             recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
             canonicalRevision = 0L,
