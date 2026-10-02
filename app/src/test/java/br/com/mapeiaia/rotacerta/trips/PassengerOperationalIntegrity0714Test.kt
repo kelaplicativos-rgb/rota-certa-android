@@ -68,7 +68,7 @@ class PassengerOperationalIntegrity0714Test {
             capacityClaimType = CapacityClaimType.PASSENGER,
         )
         assertEquals(0, peakConfirmedPassengerSeats0714(trip, listOf(local)))
-        assertEquals(1, operationalInventoryCapacity(trip, listOf(local)))
+        assertEquals(4, operationalInventoryCapacity(trip, listOf(local)))
     }
 
     @Test
@@ -79,7 +79,7 @@ class PassengerOperationalIntegrity0714Test {
             booking("mirror", "a", "d", group = "same").copy(source = BookingSource.ROTA_CERTA),
         )
         assertEquals(1, peakConfirmedPassengerSeats0714(trip, bookings))
-        assertEquals(2, operationalInventoryCapacity(trip, bookings))
+        assertEquals(4, operationalInventoryCapacity(trip, bookings))
     }
 
     @Test
@@ -142,12 +142,12 @@ class PassengerOperationalIntegrity0714Test {
     }
 
     @Test
-    fun backendTreatsExplicitNullAsCoordinateInvalidationAndUsesConfirmedPeak() {
+    fun backendTreatsExplicitNullAsCoordinateInvalidationAndUsesPhysicalCeiling() {
         val backend = File("../trip-platform/functions/index.js").readText()
         assertContains(backend, "hasBoardingLatitude")
         assertContains(backend, "hasDropoffLongitude")
         assertContains(backend, "operationalSeatLimit(trip, records = [], now = Date.now())")
-        assertContains(backend, "confirmedPeak")
-        assertContains(backend, "blablaAvailable + confirmedPeak + rotaCertaAllocated")
+        assertContains(backend, "physicalSeatCapacity")
+        assertFalse(backend.contains("blablaAvailable + confirmedPeak + rotaCertaAllocated"))
     }
 }
