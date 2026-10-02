@@ -100,7 +100,7 @@ class TripSegmentSeatSync0292Test {
     }
 
     @Test
-    fun channelInventoryOverridesStaleCardCapacityWithoutUsingLegacyVehicleCapacity() {
+    fun physicalCardCapacityIsNotInflatedByChannelQuotasOrLegacyVehicleCapacity() {
         val entry = TripTimelineEntry(
             tripId = "x",
             profileId = "p",
@@ -122,7 +122,7 @@ class TripSegmentSeatSync0292Test {
             vehicleCapacity = 999,
             rotaCertaSeatAllocation = 2,
         ).single()
-        assertEquals(4, updated.capacity)
+        assertEquals(2, updated.capacity)
     }
 
     private fun booking(id: String, source: BookingSource, from: String, to: String, seats: Int) = Booking(
