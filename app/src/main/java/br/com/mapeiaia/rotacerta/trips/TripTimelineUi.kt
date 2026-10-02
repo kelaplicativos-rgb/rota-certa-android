@@ -1401,8 +1401,8 @@ internal fun applyPublicExternalBookingsToTimeline(
 
 /**
  * Legacy function name retained for binary/source compatibility with existing tests and callers.
- * vehicleCapacity is intentionally ignored. The operational inventory is exactly:
- * synchronized BlaBlaCar quota + configured Rota Certa quota. Occupancy is subtracted later.
+ * 0.1.717: the canonical/vehicle physical ceiling owns capacity; channel quotas only describe
+ * availability inside that ceiling and are never summed to create extra seats.
  */
 internal fun applyCanonicalTripCapacity0406(
     entries: List<TripTimelineEntry>,
@@ -1434,15 +1434,15 @@ internal fun applyCanonicalTripCapacity0406(
 
 internal fun applyConfiguredVehicleCapacity(
     entries: List<TripTimelineEntry>,
-    @Suppress("UNUSED_PARAMETER") vehicleCapacity: Int,
+    vehicleCapacity: Int,
     rotaCertaSeatAllocation: Int = 0,
 ): List<TripTimelineEntry> {
     val localAllocation = rotaCertaSeatAllocation.takeIf { it in 0..999 } ?: 0
+    val configuredPhysical = vehicleCapacity.takeIf { it in 1..999 }
     return entries.map { entry ->
-        val blablaQuota = entry.blablaPublishedSeats?.takeIf { it in 0..999 } ?: 0
-        val operationalInventory = (blablaQuota + localAllocation).coerceIn(0, 999)
+        val physical = entry.capacity.takeIf { it in 1..999 } ?: configuredPhysical ?: 4
         entry.copy(
-            capacity = operationalInventory,
+            capacity = physical,
             rotaCertaSeatAllocation = localAllocation,
         )
     }
