@@ -233,7 +233,7 @@ fun PassengerAdminScreen(
         }
     }
 
-    suspend fun reloadRemote(syncDirectory: Boolean = true) {
+    suspend fun reloadRemote(syncDirectory: Boolean = true, silentErrors: Boolean = false) {
         if (!settings.configured) {
             AgendaTrace.event(context, "PASSENGERS_REMOTE_LOAD_SKIPPED", "reason=integration_not_configured")
             return
@@ -288,7 +288,9 @@ fun PassengerAdminScreen(
                 "PASSENGERS_REMOTE_LOAD_ERROR",
                 "error=" + (error.message ?: error::class.java.simpleName).take(240),
             )
-            onChanged("Não foi possível carregar acessos dos passageiros: ${error.message ?: "erro de conexão"}")
+            if (!silentErrors) {
+                onChanged("Não foi possível carregar acessos dos passageiros: ${error.message ?: "erro de conexão"}")
+            }
             return
         }
         withContext(Dispatchers.IO) {
@@ -885,14 +887,40 @@ fun PassengerAdminScreen(
                                 }
                                 result
                                     .onSuccess { response ->
-                                        reloadRemote(syncDirectory = false)
-                                        onChanged(
-                                            if (response.cleared) {
-                                                "Senha limpa. O passageiro deverá criar uma nova senha no próximo acesso."
-                                            } else {
-                                                "A senha não foi alterada."
-                                            },
-                                        )
+                                        if (response.cleared && response.verified) {
+                                            remotePassengers = remotePassengers.map { item ->
+                                                val samePassenger =
+                                                    item.passengerId.isNotBlank() &&
+                                                        item.passengerId == response.passengerId
+                                                val sameContact =
+                                                    passengerAdminContactKey(item.passengerContact) ==
+                                                        passengerAdminContactKey(activeAccessWhatsapp)
+                                                if (samePassenger || sameContact) {
+                                                    item.copy(
+                                                        accountActivated = false,
+                                                        accountMustChangePassword = false,
+                                                        passwordRecoveryStatus = "CLEARED",
+                                                        passwordRecoveryIssuedAtMillis = 0L,
+                                                        passwordRecoveryCompletedAtMillis = response.passwordClearedAtMillis0723,
+                                                    )
+                                                } else {
+                                                    item
+                                                }
+                                            }
+                                            AgendaTrace.event(
+                                                context,
+                                                "PASSENGER_PASSWORD_CLEAR_CONFIRMED_0723",
+                                                "passengerId=" + response.passengerId.take(80) +
+                                                    " invalidatedSessions=" + response.invalidatedSessions +
+                                                    " passwordStateVersion=" + response.passwordStateVersion0723,
+                                            )
+                                            onChanged("Senha limpa. O passageiro deverá criar uma nova senha no próximo acesso.")
+                                            scope.launch {
+                                                reloadRemote(syncDirectory = false, silentErrors = true)
+                                            }
+                                        } else {
+                                            onChanged("A limpeza da senha não foi confirmada pelo servidor.")
+                                        }
                                     }
                                     .onFailure { onChanged("Falha ao limpar senha: ${it.message ?: "erro de conexão"}") }
                                 loading = false
