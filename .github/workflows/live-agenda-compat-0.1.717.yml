@@ -1,0 +1,438 @@
+name: Rota Certa 0.1.717 Live agenda compatibility exact SHA
+
+on:
+  push:
+    branches:
+      - 'agent/live-agenda-compat-0.1.717'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-agenda-compat-0717-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build-deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: 'agent/live-agenda-compat-0.1.717'
+      BASE_SHA: '9bb9d0e10250dfeaaedb8c76be717cbe0e453b87'
+      EXPECTED_VERSION_NAME: '0.1.717'
+      EXPECTED_VERSION_CODE: '6008'
+      OM_TAG: '2026.08.27-18-android'
+      OM_VERSION: '2026.08.27-18'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install native prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo apt-get install -y ninja-build
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"             "platforms;android-36"             "ndk;29.0.14206865"             "cmake;3.22.1"
+
+      - name: Build exact Organic Maps SDK locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 128 --branch "$OM_TAG" https://github.com/organicmaps/organicmaps.git /tmp/organicmaps
+          cd /tmp/organicmaps
+          git submodule update --init --recursive --depth 1 --jobs 8
+          test "$(tools/unix/version.sh android_name)" = "$OM_VERSION"
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          cd android
+          chmod +x ./gradlew
+          ./gradlew             :sdk:location:core:publishToMavenLocal             :sdk:publishToMavenLocal             :sdk:maps:world:publishToMavenLocal             -Parm64 -Pnjobs=2             --no-daemon --max-workers=2 --stacktrace             | tee /tmp/organicmaps-sdk-build.log
+
+      - name: Prove exact source and protected FAROL
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'val releaseVersionName = "0.1.717"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 6_008' app/build.gradle.kts
+          grep -Fq '"version": "0.1.717"' app/src/main/assets/release_history.json
+          grep -Fq 'PASSENGER_EXTERNAL_STATUS_READBACK_OK_0714' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'PASSENGER_ADDRESS_READBACK_OK_0714' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'passengerTrackingPayload0714' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'resolvePassengerMessageVehicle0714' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'TIMELINE_CARD_OPEN_BLABLACAR_0714' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'peakConfirmedPassengerSeats0714' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'blablaAvailable + confirmedPeak + rotaCertaAllocated' trip-platform/functions/index.js
+          grep -Fq 'hasBoardingLatitude' trip-platform/functions/index.js
+          grep -Fq 'FAROL_ROAD_KM_FINALITY_0713' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRoadKmFinality0713.kt
+          grep -Fq 'FAROL_PAID_ROAD_FALLBACK_0715' app/src/main/java/br/com/mapeiaia/rotacerta/FarolPaidRoadGate0715.kt
+          grep -Fq 'FAROL_PAID_ROAD_STALE_DROPPED_0715' app/src/main/java/br/com/mapeiaia/rotacerta/FarolPaidRoadGate0715.kt
+          grep -Fq 'FAROL_ADDRESS_RECOVERY_0716' app/src/main/java/br/com/mapeiaia/rotacerta/FarolAddressRecovery0716.kt
+          grep -Fq 'FAROL_PAID_ADDRESS_RECOVERY_STARTED_0716' app/src/main/java/br/com/mapeiaia/rotacerta/FarolAddressRecovery0716.kt
+          grep -Fq 'coordinate_unresolved_after_grace_0716' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'FAROL_HEARTBEAT_SAME_CARD_PRESERVED_0716' app/src/main/java/br/com/mapeiaia/rotacerta/FarolAddressRecovery0716.kt
+          grep -Fq 'resolvePaidRoadFallback0715' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'remote_refinement_null' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'remote_refinement_all_null' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq '/v1/assistant/farol-road' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          grep -Fq 'capacitySource=blablacar_remaining_plus_confirmed_peak_plus_rota_certa' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'FAROL_PAID_ROAD_FALLBACK_0715' trip-platform/functions/farol-paid-road-0715.js
+          grep -Fq 'router.project-osrm.org' trip-platform/functions/farol-paid-road-0715.js
+          grep -Fq '"source": "/api/agenda/**"' trip-platform/firebase.json
+          grep -Fq 'const feedPart0701 = parts.length === 3 ? parts[2] : parts[3];' trip-platform/functions/index.js
+          git diff --check "$BASE_SHA"...HEAD
+          printf '%s\n' "$GITHUB_SHA" | tee /tmp/source-sha.txt
+          printf '%s\n' "$ROTA_CERTA_GIT_BRANCH" | tee /tmp/source-branch.txt
+
+      - name: Validate backend syntax and 0.1.714 + 0.1.715 + 0.1.716 contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd trip-platform/functions
+          npm install --package-lock=false --ignore-scripts --no-audit --no-fund
+          npm run check
+          node --check index.js
+          node --test \
+            test/passenger-operational-integrity-0714.test.js \
+            test/farol-paid-address-0695.test.js \
+            test/farol-paid-road-0715.test.js \
+            test/live-agenda-feed-0701.test.js \
+            test/live-agenda-compat-0717.test.js \
+            | tee /tmp/backend-tests-0717.log
+
+      - name: Compare backend failures with exact 0.1.715 base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add --detach /tmp/rc-base "$BASE_SHA"
+          ln -s "$GITHUB_WORKSPACE/trip-platform/functions/node_modules" /tmp/rc-base/trip-platform/functions/node_modules
+          set +e
+          (cd /tmp/rc-base/trip-platform/functions && node --test             test/backend-canonical-authority-0468.test.js             test/timeline-canonical-backend-0494.test.js) > /tmp/backend-base-full.log 2>&1
+          BASE_BACKEND_EXIT=$?
+          (cd trip-platform/functions && node --test             test/backend-canonical-authority-0468.test.js             test/timeline-canonical-backend-0494.test.js) > /tmp/backend-head-full.log 2>&1
+          HEAD_BACKEND_EXIT=$?
+          set -e
+          grep '^not ok ' /tmp/backend-base-full.log | sed -E 's/^not ok [0-9]+ - //' | sort -u > /tmp/backend-base-failures.txt || true
+          grep '^not ok ' /tmp/backend-head-full.log | sed -E 's/^not ok [0-9]+ - //' | sort -u > /tmp/backend-head-failures.txt || true
+          comm -13 /tmp/backend-base-failures.txt /tmp/backend-head-failures.txt > /tmp/backend-new-failures.txt
+          printf 'base_exit=%s\nhead_exit=%s\n' "$BASE_BACKEND_EXIT" "$HEAD_BACKEND_EXIT" | tee /tmp/backend-regression-summary.txt
+          echo "base_failures=$(wc -l < /tmp/backend-base-failures.txt)"
+          echo "head_failures=$(wc -l < /tmp/backend-head-failures.txt)"
+          echo "new_failures=$(wc -l < /tmp/backend-new-failures.txt)"
+          test ! -s /tmp/backend-new-failures.txt
+
+      - name: Verify release and focused Android contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:verifyReleaseHistory --no-daemon --stacktrace | tee /tmp/release-history.log
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.FarolAddressRecovery0716Test'             --tests 'br.com.mapeiaia.rotacerta.FarolAddressRecovery0716ContractTest'             --tests 'br.com.mapeiaia.rotacerta.FarolPaidAiGate0695Test'             --tests 'br.com.mapeiaia.rotacerta.FarolPaidRoadGate0715Test'             --tests 'br.com.mapeiaia.rotacerta.FarolPaidRoadFallback0715ContractTest'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalIntegrity0714Test'             --tests 'br.com.mapeiaia.rotacerta.MessageTemplateRenderer0172Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalShortcuts0656Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerQuickOps0673Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTouchIsolation0712Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTrackingControl0706Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublishedCapacity0366Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineCardOpenRefresh0707Test'             --tests 'br.com.mapeiaia.rotacerta.FarolRoadKmFinality0713Test'             --tests 'br.com.mapeiaia.rotacerta.FarolOneSecondVisualAuthority0711Test'             --no-daemon --max-workers=2 --stacktrace             | tee /tmp/focused-android-0716.log
+
+      - name: Compare complete Android failures with exact 0.1.715 base
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -e /tmp/rc-base/.git || git worktree add --detach /tmp/rc-base "$BASE_SHA"
+          chmod +x /tmp/rc-base/gradlew
+          set +e
+          (cd /tmp/rc-base && ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace) > /tmp/android-base-full.log 2>&1
+          BASE_EXIT=$?
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace > /tmp/android-head-full.log 2>&1
+          HEAD_EXIT=$?
+          set -e
+          python3 - <<'PY'
+          import pathlib, xml.etree.ElementTree as ET
+          def failures(root):
+              result=set()
+              d=pathlib.Path(root)/"app/build/test-results/testDebugUnitTest"
+              if not d.exists():
+                  return result
+              for f in d.glob("*.xml"):
+                  try:
+                      tree=ET.parse(f)
+                  except Exception:
+                      continue
+                  for case in tree.getroot().iter("testcase"):
+                      if case.find("failure") is not None or case.find("error") is not None:
+                          result.add(f"{case.attrib.get('classname','')}::{case.attrib.get('name','')}")
+              return result
+          base=failures("/tmp/rc-base")
+          head=failures(".")
+          new=sorted(head-base)
+          fixed=sorted(base-head)
+          pathlib.Path("/tmp/android-new-failures.txt").write_text("\n".join(new)+("\n" if new else ""))
+          pathlib.Path("/tmp/android-fixed-failures.txt").write_text("\n".join(fixed)+("\n" if fixed else ""))
+          print(f"base_failures={len(base)} head_failures={len(head)} new_failures={len(new)} fixed={len(fixed)}")
+          if new:
+              print("\n".join(new))
+              raise SystemExit(1)
+          PY
+          printf 'base_exit=%s\nhead_exit=%s\n' "$BASE_EXIT" "$HEAD_EXIT" | tee /tmp/android-regression-summary.txt
+
+      - name: Assemble exact-head APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/assemble.log
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Prove APK identity
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/zip-integrity.txt
+          unzip -l "$APK" | tee /tmp/apk-files.txt
+          grep -Eq 'lib/arm64-v8a/liborganicmaps\.so' /tmp/apk-files.txt
+          grep -Eq 'assets/World\.mwm' /tmp/apk-files.txt
+          grep -Eq 'assets/WorldCoasts\.mwm' /tmp/apk-files.txt
+
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/apksigner.txt
+
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
+          grep -Fq 'FAROL_ROAD_KM_FINALITY_0713' /tmp/dex-strings.txt
+          grep -Fq 'FAROL_PAID_ROAD_FALLBACK_0715' /tmp/dex-strings.txt
+          grep -Fq 'FAROL_PAID_ROAD_RESOLVED_0715' /tmp/dex-strings.txt
+          grep -Fq 'FAROL_PAID_ROAD_STALE_DROPPED_0715' /tmp/dex-strings.txt
+          grep -Fq 'FAROL_ADDRESS_RECOVERY_0716' /tmp/dex-strings.txt
+          grep -Fq 'FAROL_PAID_ADDRESS_RECOVERY_STARTED_0716' /tmp/dex-strings.txt
+          grep -Fq 'FAROL_HEARTBEAT_SAME_CARD_PRESERVED_0716' /tmp/dex-strings.txt
+          grep -Fq 'PASSENGER_EXTERNAL_STATUS_READBACK_OK_0714' /tmp/dex-strings.txt
+          grep -Fq 'PASSENGER_ADDRESS_READBACK_OK_0714' /tmp/dex-strings.txt
+          grep -Fq 'TIMELINE_CARD_OPEN_BLABLACAR_0714' /tmp/dex-strings.txt
+          grep -Fq 'CHEIO' /tmp/dex-strings.txt
+
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.717-6008-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          APK_SHA256="$(sha256sum "$FINAL" | awk '{print $1}')"
+          sha256sum "$FINAL" | tee /tmp/apk-sha256.txt
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=$EXPECTED_VERSION_NAME"
+            echo "versionCode=$EXPECTED_VERSION_CODE"
+            echo "sourceSha=$GITHUB_SHA"
+            echo "sourceBranch=$ROTA_CERTA_GIT_BRANCH"
+            echo "deviceTarget=Samsung SM-S911B / Android 16"
+            echo "passengerStatusReadback=true"
+            echo "manualAddressReadback=true"
+            echo "manualAddressClearsStaleCoordinates=true"
+            echo "cardMainSurfaceOpensExactBlaBla=true"
+            echo "cardShortcutIsolation=true"
+            echo "trackingCopyIsolatedLink=true"
+            echo "vehiclePerProfile=true"
+            echo "blablaRemainingSeatSemantics=true"
+            echo "fullLabel=CHEIO"
+            echo "paidRoadFallback0715=true"
+            echo "openAiDistanceAuthority=false"
+            echo "roadRouteProvider=osrm"
+            echo "paidRoadLatestWins=true"
+            echo "paidRoadPersistentCache=true"
+            echo "paidAddressRecovery0716=true"
+            echo "addressRecoveryGrace0716=true"
+            echo "sameCardHeartbeatPreserved0716=true"
+            echo "liveAgendaLegacyAlias0717=true"
+            echo "liveAgendaHostingSameSha0717=true"
+            echo "apkSha256=$APK_SHA256"
+          } | tee /tmp/final-proof.txt
+
+      - name: Authenticate Google Cloud backend deploy
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy exact HEAD tripApi
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          gcloud functions deploy tripApi             --gen2             --project="$PROJECT"             --region=southamerica-east1             --runtime=nodejs20             --source=trip-platform/functions             --entry-point=tripApi             --trigger-http             --allow-unauthenticated             --clear-secrets             --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$GITHUB_SHA"             --quiet | tee /tmp/backend-deploy-0715.log
+
+      - name: Deploy exact HEAD assistantApi with paid fallback secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          gcloud secrets versions access latest --secret=OPENAI_API_KEY --project="$PROJECT" >/dev/null
+          gcloud secrets versions access latest --secret=ROTA_CERTA_DRIVER_TOKEN --project="$PROJECT" >/dev/null
+          gcloud functions deploy assistantApi \
+            --gen2 \
+            --project="$PROJECT" \
+            --region=southamerica-east1 \
+            --runtime=nodejs20 \
+            --source=trip-platform/functions \
+            --entry-point=assistantApi \
+            --trigger-http \
+            --allow-unauthenticated \
+            --set-secrets=OPENAI_API_KEY=OPENAI_API_KEY:latest,ROTA_CERTA_DRIVER_TOKEN=ROTA_CERTA_DRIVER_TOKEN:latest \
+            --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$GITHUB_SHA" \
+            --quiet | tee /tmp/assistant-deploy-0715.log
+
+      - name: Stage exact APK for Hosting
+        id: hosted
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="${{ steps.proof.outputs.apk }}"
+          test -s "$APK"
+          mkdir -p trip-platform/public/downloads
+          cp "$APK" "trip-platform/public/downloads/$APK"
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          test "$(sha256sum "trip-platform/public/downloads/$APK" | awk '{print $1}')" = "$APK_SHA256"
+          echo "url=https://rota-certa-7ccc8.web.app/downloads/$APK" >> "$GITHUB_OUTPUT"
+          echo "sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Firebase Hosting exact HEAD
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+          chmod 600 /tmp/firebase-sa.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          npx --yes firebase-tools@14.12.0 deploy \
+            --only hosting \
+            --project "$PROJECT" \
+            --config trip-platform/firebase.json \
+            --non-interactive | tee /tmp/hosting-deploy-0717.log
+
+      - name: Smoke exact deployed backend, live agenda aliases and hosted APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 20 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health-0717.json
+          grep -Fq '"ok":true' /tmp/live-health-0717.json
+          grep -Fq "\"backendGitSha\":\"$GITHUB_SHA\"" /tmp/live-health-0717.json
+
+          fetch_xml() {
+            local path="$1"
+            local body="$2"
+            local headers="$3"
+            curl --retry 20 --retry-delay 2 --fail --silent --show-error \
+              -D "$headers" "$BASE$path" | tee "$body"
+            grep -Fq '<agenda' "$body"
+            grep -Fq 'schemaVersion="live-agenda-feed-v1"' "$body"
+            grep -Fq 'motorista="ezequiel"' "$body"
+            grep -Eqi '^content-type: application/xml' "$headers"
+            grep -Eqi '^cache-control: .*no-store' "$headers"
+            ! grep -Eqi 'passengerContact|whatsapp|telefone|email' "$body"
+          }
+
+          fetch_xml "/v1/public/agenda-feed/ezequiel.xml" /tmp/feed-canonical-0717.xml /tmp/feed-canonical-0717.headers
+          fetch_xml "/api/v1/agenda/ezequiel.xml" /tmp/feed-v1-alias-0717.xml /tmp/feed-v1-alias-0717.headers
+          fetch_xml "/api/agenda/ezequiel.xml" /tmp/feed-legacy-alias-0717.xml /tmp/feed-legacy-alias-0717.headers
+
+          sed -E 's/ geradoEm="[^"]*"//' /tmp/feed-canonical-0717.xml > /tmp/feed-canonical-0717.norm
+          sed -E 's/ geradoEm="[^"]*"//' /tmp/feed-v1-alias-0717.xml > /tmp/feed-v1-alias-0717.norm
+          sed -E 's/ geradoEm="[^"]*"//' /tmp/feed-legacy-alias-0717.xml > /tmp/feed-legacy-alias-0717.norm
+          diff -u /tmp/feed-canonical-0717.norm /tmp/feed-v1-alias-0717.norm
+          diff -u /tmp/feed-canonical-0717.norm /tmp/feed-legacy-alias-0717.norm
+
+          curl --retry 20 --retry-delay 2 --fail --silent --show-error \
+            "$BASE/v1/public/agenda-feed/ezequiel.json" | tee /tmp/feed-0717.json
+          grep -Fq '"schemaVersion":"live-agenda-feed-v1"' /tmp/feed-0717.json
+          grep -Fq '"driverUsername":"ezequiel"' /tmp/feed-0717.json
+
+          curl --retry 20 --retry-delay 2 --fail --silent --show-error \
+            "$BASE/api/agenda/ezequiel.xml?data=2026-10-02&origem=Pouso%20Alegre&destino=S%C3%A3o%20Paulo" \
+            | tee /tmp/feed-query-0717.xml
+          grep -Fq '<agenda' /tmp/feed-query-0717.xml
+
+          curl --retry 10 --retry-delay 2 --fail --silent --show-error \
+            "${{ steps.hosted.outputs.url }}" -o /tmp/hosted-0717.apk
+          test "$(sha256sum /tmp/hosted-0717.apk | awk '{print $1}')" = "${{ steps.hosted.outputs.sha256 }}"
+
+          {
+            echo "backend_sha=$GITHUB_SHA"
+            echo "canonical_xml=PASS"
+            echo "v1_alias_xml=PASS"
+            echo "legacy_alias_xml=PASS"
+            echo "alias_parity=PASS"
+            echo "json_feed=PASS"
+            echo "no_store=PASS"
+            echo "no_pii=PASS"
+            echo "hosted_apk=PASS"
+            echo "hosted_apk_url=${{ steps.hosted.outputs.url }}"
+            echo "hosted_apk_sha256=${{ steps.hosted.outputs.sha256 }}"
+          } | tee /tmp/live-agenda-0717-proof.txt
+
+      - name: Upload exact-SHA APK and proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-live-agenda-compat-0.1.717-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            /tmp/source-sha.txt
+            /tmp/source-branch.txt
+            /tmp/final-proof.txt
+            /tmp/apk-sha256.txt
+            /tmp/aapt.txt
+            /tmp/apksigner.txt
+            /tmp/zip-integrity.txt
+            /tmp/apk-files.txt
+            /tmp/focused-android-0716.log
+            /tmp/android-base-full.log
+            /tmp/android-head-full.log
+            /tmp/android-new-failures.txt
+            /tmp/android-fixed-failures.txt
+            /tmp/android-regression-summary.txt
+            /tmp/backend-tests-0717.log
+            /tmp/backend-base-full.log
+            /tmp/backend-head-full.log
+            /tmp/backend-base-failures.txt
+            /tmp/backend-head-failures.txt
+            /tmp/backend-new-failures.txt
+            /tmp/backend-regression-summary.txt
+            /tmp/backend-deploy-0715.log
+            /tmp/assistant-deploy-0715.log
+            /tmp/live-health-0717.json
+            /tmp/hosting-deploy-0717.log
+            /tmp/feed-canonical-0717.xml
+            /tmp/feed-v1-alias-0717.xml
+            /tmp/feed-legacy-alias-0717.xml
+            /tmp/feed-0717.json
+            /tmp/feed-query-0717.xml
+            /tmp/live-agenda-0717-proof.txt
+            /tmp/release-history.log
+            /tmp/assemble.log
+            /tmp/organicmaps-sdk-build.log
