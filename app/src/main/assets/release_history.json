@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.717",
+      "build": 6008,
+      "commit": null,
+      "branch": "agent/live-agenda-compat-0.1.717",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Restaura compatibilidade pública do feed de Agenda em /api/agenda/{motorista}.xml e .json sem duplicar a autoridade canônica já usada pelo feed 0701.",
+        "Mantém simultaneamente os endpoints /api/v1/agenda/{motorista} e /v1/public/agenda-feed/{motorista}, todos projetados pelo mesmo live-agenda-feed-v1.",
+        "Amarra o workflow da release ao deploy do tripApi e do Firebase Hosting no mesmo SHA antes de validar os feeds públicos."
+      ],
+      "fixed": [
+        "Evita que o backend esteja atualizado enquanto o Hosting conserva rewrites antigos, situação em que /v1/health fica verde mas o XML amigável permanece indisponível.",
+        "Elimina a quebra de integrações e conversas antigas que ainda usam /api/agenda/ezequiel.xml.",
+        "Impede conclusão do workflow sem smoke HTTP real dos três aliases XML e do JSON canônico."
+      ],
+      "improved": [
+        "Smoke de produção verifica HTTP 200, application/xml, no-store, schema live-agenda-feed-v1, motorista e ausência de PII.",
+        "Os aliases são comparados pelo conteúdo funcional do feed, preservando uma única fonte canônica de viagens, vagas e trechos.",
+        "A release continua derivada integralmente da 0.1.716, sem alterar a lógica FAROL, Timeline ou capacidade."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.701-0.1.716: a rota /api/v1/agenda dependia de rewrite de Hosting que workflows posteriores podiam deixar sem republicação.",
+        "Integrações antigas com /api/agenda/ezequiel.xml não tinham compatibilidade explícita no backend/Hosting."
+      ],
+      "modulesAffected": [
+        "Agenda pública",
+        "XML",
+        "JSON",
+        "Firebase Hosting",
+        "tripApi",
+        "CI/CD",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.716",
       "build": 6007,
       "commit": null,
