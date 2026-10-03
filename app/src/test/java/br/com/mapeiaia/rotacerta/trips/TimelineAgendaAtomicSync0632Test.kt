@@ -174,8 +174,12 @@ class TimelineAgendaAtomicSync0632Test {
     fun publicAgendaUsesCanonicalChangeChannelAndNeverShowsContradictoryOccupancy() {
         val shell = File("../trip-platform/public/public-agenda-shell-0569.js").readText()
         assertTrue(shell.contains("watchAgendaCanonicalChanges0632"))
-        assertTrue(shell.contains("/changes?since="))
+        assertTrue(shell.contains("query.set(\"since\", String(agendaChangeCursor0632))"))
+        assertTrue(shell.contains("query.set(\"sinceToken\", agendaChangeToken0724)"))
         assertTrue(shell.contains("changeCursor0495"))
+        assertTrue(shell.contains("changeToken0724"))
+        assertTrue(shell.contains("agendaReloadPending0724"))
+        assertTrue(shell.contains("agendaLoadPromise0724"))
         assertTrue(shell.contains("rawPassengerSeats + availableSeats === capacity"))
         assertTrue(shell.contains("derivedPassengerSeats"))
         assertTrue(shell.contains("projectionAdjusted0632"))
