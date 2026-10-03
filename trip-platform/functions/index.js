@@ -6882,44 +6882,143 @@ async function resetDriverPassengerPassword(req, res) {
   if (!passengerAccessIsAuthorized(access)) {
     return fail(res, 403, "passenger_access_unavailable", "O acesso deste passageiro não está autorizado nesta agenda.");
   }
+
   const currentContact = normalizeBrazilWhatsapp(access.passengerContact);
-  const stablePassengerId = cleanText(access.passengerId, 120) || passengerId;
+  const accessPassengerId = cleanText(access.passengerId, 120);
+  if (passengerContact && passengerContact !== currentContact) {
+    return fail(res, 409, "passenger_identity_mismatch", "O WhatsApp informado não corresponde ao passageiro selecionado.");
+  }
+  if (passengerId && accessPassengerId && passengerId !== accessPassengerId) {
+    return fail(res, 409, "passenger_identity_mismatch", "O passengerId informado não corresponde ao passageiro selecionado.");
+  }
+  const stablePassengerId = accessPassengerId || passengerId;
   if (!stablePassengerId) {
     return fail(res, 409, "passenger_identity_unavailable", "O passengerId deste passageiro ainda não está disponível.");
   }
+
   const accountRef = db.collection("passengerAccounts").doc(sha256Hex(currentContact));
-  const currentAccount = await accountRef.get();
-  const currentData = currentAccount.exists ? currentAccount.data() : {};
-  const currentPassengerId = cleanText(currentData.passengerId, 120);
-  if (currentPassengerId && currentPassengerId !== stablePassengerId) {
-    return fail(res, 409, "passenger_global_identity_conflict", "Este WhatsApp já pertence a outro passengerId.");
+  const accessRef = db.collection("driverPassengerAccess").doc(access.id);
+  const auditId = "passenger_password_clear_" + sha256Hex([
+    driver.username,
+    stablePassengerId,
+    currentContact,
+    Date.now(),
+    crypto.randomBytes(8).toString("hex"),
+  ].join("|")).slice(0, 48);
+
+  let passwordStateVersion0723 = 0;
+  let passwordClearedAtMillis0723 = 0;
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const [accountSnap, accessSnap] = await Promise.all([tx.get(accountRef), tx.get(accessRef)]);
+      if (!accessSnap.exists || !passengerAccessIsAuthorized(accessSnap.data())) {
+        throw Object.assign(new Error("O acesso deste passageiro não está autorizado nesta agenda."), {
+          httpStatus: 403,
+          code: "passenger_access_unavailable",
+        });
+      }
+      const freshAccess = accessSnap.data();
+      const freshContact = normalizeBrazilWhatsapp(freshAccess.passengerContact);
+      const freshPassengerId = cleanText(freshAccess.passengerId, 120);
+      if (
+        freshContact !== currentContact ||
+        (freshPassengerId && freshPassengerId !== stablePassengerId)
+      ) {
+        throw Object.assign(new Error("A identidade do passageiro mudou durante a operação. Atualize a lista e tente novamente."), {
+          httpStatus: 409,
+          code: "passenger_identity_changed",
+        });
+      }
+
+      const currentData = accountSnap.exists ? accountSnap.data() : {};
+      const currentPassengerId = cleanText(currentData.passengerId, 120);
+      if (currentPassengerId && currentPassengerId !== stablePassengerId) {
+        throw Object.assign(new Error("Este WhatsApp já pertence a outro passengerId."), {
+          httpStatus: 409,
+          code: "passenger_global_identity_conflict",
+        });
+      }
+
+      const now = Date.now();
+      const nextVersion = Math.max(0, Number(currentData.passwordStateVersion0723 || 0)) + 1;
+      tx.set(accountRef, {
+        passengerContact: currentContact,
+        passengerId: stablePassengerId,
+        passwordSalt: FieldValue.delete(),
+        passwordHash: FieldValue.delete(),
+        passwordFormat0625: FieldValue.delete(),
+        pinAuthVersion0624: FieldValue.delete(),
+        mustChangePassword: false,
+        passwordClearedAtMillis0683: now,
+        passwordClearedAtMillis0723: now,
+        passwordStateVersion0723: nextVersion,
+        createdAtMillis: Number(currentData.createdAtMillis || now),
+        updatedAtMillis: now,
+      }, { merge: true });
+      tx.set(accessRef, {
+        passwordRecoveryStatus: "CLEARED",
+        passwordRecoveryIssuedAtMillis: 0,
+        passwordRecoveryCompletedAtMillis: now,
+        passwordClearedAtMillis0723: now,
+        passwordStateVersion0723: nextVersion,
+        updatedAtMillis: now,
+      }, { merge: true });
+      tx.create(db.collection("tripChangeEvents").doc(auditId), {
+        eventId: auditId,
+        eventType: "PASSENGER_PASSWORD_CLEARED",
+        tripId: "",
+        publicToken: "",
+        bookingId: "",
+        passengerId: stablePassengerId,
+        driverUsername: driver.username,
+        actor: "DRIVER",
+        actorId: "driver-app",
+        source: "ROTA_CERTA_ANDROID",
+        createdAtMillis: now,
+        changes: [{
+          field: "passwordState",
+          before: passengerAccountIsActivated(currentData) ? "ACTIVE" : "CLEARED",
+          after: "CLEARED",
+        }],
+        affectedPassengerIds: [stablePassengerId],
+        passwordStateVersion0723: nextVersion,
+      });
+      return { now, nextVersion };
+    });
+    passwordClearedAtMillis0723 = result.now;
+    passwordStateVersion0723 = result.nextVersion;
+  } catch (error) {
+    return fail(res, error.httpStatus || 409, error.code || "passenger_password_clear_failed", error.message || "Não foi possível limpar a senha.");
   }
-  const now = Date.now();
-  await accountRef.set({
-    passengerContact: currentContact,
-    passengerId: stablePassengerId,
-    passwordSalt: FieldValue.delete(),
-    passwordHash: FieldValue.delete(),
-    passwordFormat0625: FieldValue.delete(),
-    pinAuthVersion0624: FieldValue.delete(),
-    mustChangePassword: false,
-    passwordClearedAtMillis0683: now,
-    createdAtMillis: Number(currentData.createdAtMillis || now),
-    updatedAtMillis: now,
-  }, { merge: true });
-  await db.collection("driverPassengerAccess").doc(access.id).set({
-    passwordRecoveryStatus: "CLEARED",
-    passwordRecoveryIssuedAtMillis: 0,
-    passwordRecoveryCompletedAtMillis: now,
-    updatedAtMillis: now,
-  }, { merge: true });
-  const invalidatedSessions = await invalidatePassengerIdentitySessions(stablePassengerId, currentContact).catch(() => 0);
+
+  let invalidatedSessions;
+  try {
+    invalidatedSessions = await invalidatePassengerIdentitySessions(stablePassengerId, currentContact);
+  } catch (_) {
+    return fail(res, 500, "passenger_session_invalidation_failed", "A senha foi limpa, mas as sessões antigas não puderam ser encerradas. Repita a operação antes de liberar o acesso.");
+  }
   await clearPassengerPinFailures0624(driver.username, currentContact).catch(() => {});
   await clearPassengerPinFailures0624("", currentContact).catch(() => {});
+
+  const verifiedAccount = await accountRef.get();
+  const verifiedData = verifiedAccount.exists ? verifiedAccount.data() : {};
+  const verifiedPassengerId = cleanText(verifiedData.passengerId, 120);
+  const verifiedCleared =
+    !passengerAccountIsActivated(verifiedData) &&
+    verifiedPassengerId === stablePassengerId &&
+    Number(verifiedData.passwordStateVersion0723 || 0) === passwordStateVersion0723 &&
+    Number(verifiedData.passwordClearedAtMillis0723 || 0) === passwordClearedAtMillis0723;
+  if (!verifiedCleared) {
+    return fail(res, 500, "password_clear_verification_failed", "A limpeza da senha não pôde ser confirmada. Repita a operação antes de liberar o acesso.");
+  }
+
   return json(res, 200, {
     cleared: true,
+    verified: true,
     invalidatedSessions,
     passengerId: stablePassengerId,
+    passwordStateVersion0723,
+    passwordClearedAtMillis0723,
   });
 }
 async function updateDriverReferralSettings(req, res) {
@@ -7277,6 +7376,30 @@ async function requirePassengerSession(req, res) {
     clearPassengerKnownDeviceCookie0626(res);
     fail(res, 401, "passenger_session_invalid", "Sua sessão não é válida. Entre novamente.");
     return null;
+  }
+
+  const sessionPassengerContact0723 = cleanText(data.passengerContact, 40);
+  if (sessionPassengerContact0723) {
+    const accountSnap0723 = await db.collection("passengerAccounts")
+      .doc(sha256Hex(sessionPassengerContact0723))
+      .get();
+    if (accountSnap0723.exists) {
+      const account0723 = accountSnap0723.data();
+      const passwordClearedAtMillis0723 = Math.max(
+        0,
+        Number(account0723.passwordClearedAtMillis0723 || 0),
+        Number(account0723.passwordClearedAtMillis0683 || 0),
+      );
+      if (
+        passwordClearedAtMillis0723 > 0 &&
+        Number(data.createdAtMillis || 0) <= passwordClearedAtMillis0723
+      ) {
+        await sessionRef.delete().catch(() => {});
+        clearPassengerKnownDeviceCookie0626(res);
+        fail(res, 401, "password_reset_session_invalidated", "Sua senha foi limpa. Crie uma nova senha para entrar novamente.");
+        return null;
+      }
+    }
   }
 
   const requestPath0651 = cleanText((req.path || req.url || "").split("?")[0], 320);
