@@ -1,0 +1,56 @@
+name: XML Online Snapshot
+
+on:
+  push:
+    paths:
+      - 'tools/xml-online-reader/refresh.trigger'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fetch-xml:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Fetch current XML
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p snapshot
+          curl --fail --silent --show-error --location \
+            --connect-timeout 10 --max-time 30 \
+            -H 'Accept: application/xml,text/xml,text/plain,*/*' \
+            -A 'RotaCertaXmlReader-GitHubActions/1.0' \
+            'https://rota-certa-7ccc8.web.app/v1/public/agenda-feed/ezequiel.xml' \
+            -o snapshot/ezequiel.xml
+          cp snapshot/ezequiel.xml snapshot/ezequiel.txt
+          python - <<'PY'
+          import json
+          import pathlib
+          import xml.etree.ElementTree as ET
+          from datetime import datetime, timezone
+          p = pathlib.Path('snapshot/ezequiel.xml')
+          data = p.read_bytes()
+          root = ET.fromstring(data)
+          meta = {
+              'ok': True,
+              'bytes': len(data),
+              'root_tag': root.tag,
+              'fetched_at': datetime.now(timezone.utc).isoformat(),
+              'source_url': 'https://rota-certa-7ccc8.web.app/v1/public/agenda-feed/ezequiel.xml',
+          }
+          pathlib.Path('snapshot/metadata.json').write_text(
+              json.dumps(meta, ensure_ascii=False, indent=2),
+              encoding='utf-8',
+          )
+          PY
+
+      - name: Upload private workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-xml-online
+          path: snapshot/
+          if-no-files-found: error
+          retention-days: 1
