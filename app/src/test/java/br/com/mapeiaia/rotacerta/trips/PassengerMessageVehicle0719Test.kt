@@ -3,6 +3,7 @@ package br.com.mapeiaia.rotacerta.trips
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 class PassengerMessageVehicle0719Test {
     private val entry = TripTimelineEntry(
@@ -84,7 +85,11 @@ class PassengerMessageVehicle0719Test {
     }
 
     @Test
-    fun everyPredefinedPassengerMessageCarriesTheSameVehicleBlock() {
+    fun vehicleBlockAppearsOnlyWhenPassengerNeedsToIdentifyCar() {
+        val typesWithVehicle = setOf(
+            PassengerQuickMessageType0656.CONFIRM_ONE_HOUR,
+            PassengerQuickMessageType0656.AT_LOCATION,
+        )
         PassengerQuickMessageType0656.entries.forEach { type ->
             val message = passengerQuickMessageText0656(
                 entry = entry,
@@ -95,8 +100,24 @@ class PassengerMessageVehicle0719Test {
                 vehicleColor = "Cinza-escuro",
                 vehiclePlate = "TBJ4F74",
             )
-            assertContains(message, "🚗 Carro: Hyundai HB20 • cinza-escuro")
-            assertContains(message, "Placa: TBJ4F74")
+            if (type in typesWithVehicle) {
+                assertContains(message, "🚗 Carro: Hyundai HB20 • cinza-escuro")
+                assertContains(message, "Placa: TBJ4F74")
+            } else {
+                assertFalse(message.contains("🚗 Carro:"))
+                assertFalse(message.contains("Placa:"))
+                assertFalse(message.contains("TBJ4F74"))
+            }
         }
     }
+
+    @Test
+    fun contextualVehiclePolicyIsExplicitForEveryQuickMessageType() {
+        assertFalse(shouldIncludePassengerVehicle0656(PassengerQuickMessageType0656.CONFIRM_NOW))
+        assertFalse(shouldIncludePassengerVehicle0656(PassengerQuickMessageType0656.CONFIRM_TOMORROW))
+        assertEquals(true, shouldIncludePassengerVehicle0656(PassengerQuickMessageType0656.CONFIRM_ONE_HOUR))
+        assertEquals(true, shouldIncludePassengerVehicle0656(PassengerQuickMessageType0656.AT_LOCATION))
+        assertFalse(shouldIncludePassengerVehicle0656(PassengerQuickMessageType0656.FARE))
+    }
+
 }
