@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.724",
+      "build": 6015,
+      "commit": null,
+      "branch": "agent/public-agenda-lossless-realtime-0.1.724",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Transforma a sincronização Timeline → estado canônico → Agenda Pública em invalidação sem perda: nenhuma mudança é reconhecida pelo navegador antes de o novo corpo da Agenda ser buscado e aplicado.",
+        "Adiciona changeToken0724 baseado no snapshot canônico do Firestore, incluindo updateTime de cada documento, para detectar alterações no mesmo milissegundo, exclusões e mudanças cuja marca temporal numérica não avance.",
+        "Mantém o listener Firestore do backend como caminho primário de baixa latência e preserva o refresh periódico apenas como contingência."
+      ],
+      "fixed": [
+        "Corrige a corrida em que o long-poll avançava changeCursor0495 enquanto loadAgenda0569 já estava em voo; o carregamento era descartado e a Agenda podia ficar desatualizada até o próximo refresh de 15 segundos.",
+        "Impede perda de invalidação durante cargas simultâneas usando single-flight com dirty flag: qualquer atualização concorrente obriga uma nova leitura imediatamente após a leitura em andamento.",
+        "Corrige cache obsoleto do shell público: index.html passa a apontar para o runtime 0.1.724 e os arquivos críticos recebem política explícita de revalidação."
+      ],
+      "improved": [
+        "Mantém compatibilidade com changeCursor0495 para clientes anteriores e usa sinceToken nos clientes novos.",
+        "A atualização pública passa a convergir pelo mesmo estado canônico que alimenta Timeline e Agenda, sem depender de atualização manual do passageiro.",
+        "Adiciona regressões de backend, navegador, cache e versão para a sincronização pública em tempo real."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Agenda Pública podia permanecer visualmente atrasada apesar de a Timeline e o backend já terem a revisão nova.",
+        "Duas mudanças canônicas no mesmo milissegundo ou remoção do documento de maior timestamp podiam escapar do cursor numérico baseado apenas em updatedAtMillis."
+      ],
+      "modulesAffected": [
+        "Timeline",
+        "Agenda Pública",
+        "Área VIP",
+        "Firebase tripApi",
+        "Firestore",
+        "Hosting",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.723",
       "build": 6014,
       "commit": null,

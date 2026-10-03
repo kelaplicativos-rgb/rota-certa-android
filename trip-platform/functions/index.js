@@ -669,8 +669,33 @@ async function listPassengerNotifications(req, res) {
   });
 }
 
-function waitForCanonicalInvalidation0495(req, res, query, sinceMillis, cursorForDocs, source) {
+
+function canonicalAgendaChangeToken0724(docs) {
+  const rows = selectCanonicalTripDocuments0495(docs)
+    .map((doc) => {
+      const data = doc.data() || {};
+      const updateTime = doc.updateTime || {};
+      const seconds = Math.max(0, Number(updateTime.seconds || 0));
+      const nanoseconds = Math.max(0, Number(updateTime.nanoseconds || 0));
+      return [
+        String(doc.id || ""),
+        seconds,
+        nanoseconds,
+        Math.max(0, Number(data.updatedAtMillis || 0)),
+        Math.max(0, Number(data.canonicalRevision || 0)),
+        Math.max(0, Number(data.publicationRevision || 0)),
+        cleanText(data.status, 24),
+        data.deleted === true ? "1" : "0",
+        data.publicAgendaOnline0471 === false ? "0" : "1",
+      ].join("|");
+    })
+    .sort();
+  return crypto.createHash("sha256").update(rows.join("\n"), "utf8").digest("hex");
+}
+
+function waitForCanonicalInvalidation0495(req, res, query, sinceMillis, cursorForDocs, source, tokenForDocs = null, sinceTokenRaw = "") {
   const since = Math.max(0, Number(sinceMillis || 0));
+  const sinceToken = cleanText(sinceTokenRaw, 128);
   const timeoutMillis = 25_000;
   return new Promise((resolve) => {
     let settled = false;
@@ -696,6 +721,7 @@ function waitForCanonicalInvalidation0495(req, res, query, sinceMillis, cursorFo
     timer = setTimeout(() => finish({
       changed: false,
       cursor: since,
+      token: sinceToken,
       source,
       timeout: true,
     }), timeoutMillis);
@@ -703,10 +729,14 @@ function waitForCanonicalInvalidation0495(req, res, query, sinceMillis, cursorFo
     unsubscribe = query.onSnapshot(
       (snapshot) => {
         const cursor = Math.max(0, Number(cursorForDocs(snapshot.docs) || 0));
-        if (cursor > since) {
+        const token = tokenForDocs ? cleanText(tokenForDocs(snapshot.docs), 128) : "";
+        const tokenChanged = sinceToken && token && token !== sinceToken;
+        const cursorChanged = cursor > since;
+        if (tokenChanged || (!sinceToken && cursorChanged) || (sinceToken && !token && cursorChanged)) {
           finish({
             changed: true,
             cursor,
+            token,
             source,
             timeout: false,
           });
@@ -4563,6 +4593,7 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
       (latest, doc) => Math.max(latest, Math.max(0, Number(doc.data().updatedAtMillis || 0))),
       0,
     ),
+    changeToken0724: canonicalAgendaChangeToken0724(canonicalDocs0495),
   });
 }
 
@@ -4600,6 +4631,8 @@ async function waitPublicAgendaCanonicalChange0495(res, req, usernameRaw, agenda
       0,
     ),
     "PUBLIC_AGENDA",
+    (docs) => canonicalAgendaChangeToken0724(docs),
+    req.query && req.query.sinceToken,
   );
 }
 

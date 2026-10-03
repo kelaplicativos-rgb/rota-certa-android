@@ -1594,7 +1594,10 @@ function primaryEndpoint0569() {
 }
 
 let agendaChangeCursor0632 = 0;
+let agendaChangeToken0724 = "";
 let agendaChangeWatchRunning0632 = false;
+let agendaReloadPending0724 = false;
+let agendaLoadPromise0724 = null;
 
 function applyAgendaBody0569(body) {
   publicDriverDisplayName0569 = String(body?.driver?.displayName || driverUsername0569 || "").trim();
@@ -1603,21 +1606,25 @@ function applyAgendaBody0569(body) {
     agendaChangeCursor0632,
     Math.max(0, Number(body?.changeCursor0495 || 0)),
   );
+  const appliedToken0724 = String(body?.changeToken0724 || "").trim();
+  if (appliedToken0724) agendaChangeToken0724 = appliedToken0724;
   syncWhatsappFab0569();
   renderAgenda0569(body?.trips);
 }
 
 function agendaChangesEndpoint0632() {
+  let path = "";
   if (publicSlug0569) {
-    return "/v1/public/agenda/" + encodeURIComponent(publicSlug0569) +
-      "/changes?since=" + encodeURIComponent(String(agendaChangeCursor0632));
+    path = "/v1/public/agenda/" + encodeURIComponent(publicSlug0569) + "/changes";
+  } else if (driverUsername0569 && agendaToken0569.length >= 16) {
+    path = "/v1/public/drivers/" + encodeURIComponent(driverUsername0569) + "/" +
+      encodeURIComponent(agendaToken0569) + "/agenda/changes";
   }
-  if (driverUsername0569 && agendaToken0569.length >= 16) {
-    return "/v1/public/drivers/" + encodeURIComponent(driverUsername0569) + "/" +
-      encodeURIComponent(agendaToken0569) + "/agenda/changes?since=" +
-      encodeURIComponent(String(agendaChangeCursor0632));
-  }
-  return "";
+  if (!path) return "";
+  const query = new URLSearchParams();
+  query.set("since", String(agendaChangeCursor0632));
+  if (agendaChangeToken0724) query.set("sinceToken", agendaChangeToken0724);
+  return path + "?" + query.toString();
 }
 
 async function fetchAgendaChange0632(endpoint) {
@@ -1655,18 +1662,13 @@ async function watchAgendaCanonicalChanges0632() {
       if (!endpoint) return;
       try {
         const change = await fetchAgendaChange0632(endpoint);
-        agendaChangeCursor0632 = Math.max(
-          agendaChangeCursor0632,
-          Math.max(0, Number(change?.cursor || 0)),
-        );
         if (change?.changed === true) {
+          // 0.1.724: an invalidation is acknowledged only by a fresh agenda body.
           await loadAgenda0569(true);
         } else if (change?.degraded === true) {
           await delayBooking0629(1200);
         }
       } catch (_) {
-        // Long-poll is the primary path; the slower periodic refresh below is the
-        // degradation path for temporary network/proxy failures.
         await delayBooking0629(1500);
       }
     }
@@ -1676,27 +1678,60 @@ async function watchAgendaCanonicalChanges0632() {
 }
 
 async function loadAgenda0569(silent = false) {
-  if (agendaLoadInFlight0569 || !passengerAuthenticated0626) return;
+  if (!passengerAuthenticated0626) return false;
+  if (agendaLoadPromise0724) {
+    agendaReloadPending0724 = true;
+    await agendaLoadPromise0724;
+    return true;
+  }
   const endpoint = primaryEndpoint0569();
   if (!endpoint) {
     if (!silent) showPassengerAccessGate0589("Este acesso privado não está disponível.");
-    return;
+    return false;
   }
+
   agendaLoadInFlight0569 = true;
+  agendaLoadPromise0724 = (async () => {
+    let applied = false;
+    do {
+      agendaReloadPending0724 = false;
+      try {
+        const body = await fetchJson0569(endpoint, 12000, passengerAuthHeaders0626());
+        applyAgendaBody0569(body);
+        applied = true;
+      } catch (primaryError) {
+        if (primaryError?.code === "password_change_required") {
+          vipPasswordChangeRequired0651 = true;
+          showForcedPasswordChange0651();
+        } else if (primaryError?.status === 401 || primaryError?.status === 403) {
+          clearPassengerAgendaAccess0589();
+          showPassengerAccessGate0589("Entre novamente para acessar sua área VIP.");
+        } else if (!silent) {
+          showError0569(primaryError?.message || "Não foi possível carregar sua área.");
+        }
+        break;
+      }
+    } while (
+      agendaReloadPending0724 &&
+      passengerAuthenticated0626 &&
+      navigator.onLine !== false
+    );
+    return applied;
+  })();
+
   try {
-    applyAgendaBody0569(await fetchJson0569(endpoint, 12000, passengerAuthHeaders0626()));
-  } catch (primaryError) {
-    if (primaryError?.code === "password_change_required") {
-      vipPasswordChangeRequired0651 = true;
-      showForcedPasswordChange0651();
-    } else if (primaryError?.status === 401 || primaryError?.status === 403) {
-      clearPassengerAgendaAccess0589();
-      showPassengerAccessGate0589("Entre novamente para acessar sua área VIP.");
-    } else if (!silent) {
-      showError0569(primaryError?.message || "Não foi possível carregar sua área.");
-    }
+    return await agendaLoadPromise0724;
   } finally {
+    agendaLoadPromise0724 = null;
     agendaLoadInFlight0569 = false;
+    if (
+      agendaReloadPending0724 &&
+      passengerAuthenticated0626 &&
+      navigator.onLine !== false
+    ) {
+      agendaReloadPending0724 = false;
+      void loadAgenda0569(true);
+    }
   }
 }
 
