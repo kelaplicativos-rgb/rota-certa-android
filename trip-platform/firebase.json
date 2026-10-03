@@ -49,6 +49,13 @@
         }
       },
       {
+        "source": "/api/agenda/**",
+        "function": {
+          "functionId": "tripApi",
+          "region": "southamerica-east1"
+        }
+      },
+      {
         "source": "/api/v1/agenda/**",
         "function": {
           "functionId": "tripApi",
