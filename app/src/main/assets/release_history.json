@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.723",
+      "build": 6014,
+      "commit": null,
+      "branch": "agent/vip-password-integrity-0.1.723",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Torna a limpeza da senha VIP transacional, vinculada ao passengerId e ao WhatsApp canônico antes de qualquer alteração.",
+        "Registra auditoria PASSENGER_PASSWORD_CLEARED sem armazenar senha ou PIN.",
+        "Adiciona versão e timestamp autoritativos do estado da senha para invalidar sessões conhecidas anteriores ao reset."
+      ],
+      "fixed": [
+        "Impede confirmação falsa de Limpar senha: o backend só retorna sucesso após read-after-write comprovar que passwordHash e passwordSalt foram removidos.",
+        "A confirmação no Android deixa de depender da recarga remota posterior; sucesso confirmado aparece imediatamente.",
+        "Sessões criadas antes da limpeza da senha passam a ser recusadas pelo próprio backend mesmo se uma exclusão física de sessão falhar."
+      ],
+      "improved": [
+        "Mantém refresh remoto silencioso após o reset confirmado, sem sobrescrever a confirmação com erro de leitura.",
+        "Acrescenta contratos de regressão Android e Node para identidade, auditoria, read-after-write e invalidação de sessão.",
+        "Unifica nesta versão o deploy do tripApi, Hosting e a geração do APK no mesmo SHA."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Área VIP podia permanecer no estado ENTRAR após ação administrativa de limpeza sem uma prova autoritativa do estado persistido.",
+        "Confirmação visual do reset dependia de uma leitura remota subsequente e podia deixar o motorista sem saber se a escrita crítica havia concluído."
+      ],
+      "modulesAffected": [
+        "Área VIP",
+        "Passageiros",
+        "Autenticação",
+        "Sessões",
+        "Firebase tripApi",
+        "Hosting",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.722",
       "build": 6013,
       "commit": null,
