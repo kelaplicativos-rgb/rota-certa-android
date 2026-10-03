@@ -141,6 +141,7 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.trips.UniversalTripSearch0687Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PhysicalVehicleAuthority0717Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerMessageVehicle0719Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalShortcuts0656Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerPasswordRecovery0650Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalIntegrity0714Test' \
             --tests 'br.com.mapeiaia.rotacerta.FarolAddressRecovery0716Test' \
