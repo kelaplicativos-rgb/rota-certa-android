@@ -65,7 +65,7 @@ jobs:
           grep -Fq 'PASSENGER_PASSWORD_CLEARED' trip-platform/functions/index.js
           grep -Fq 'password_clear_verification_failed' trip-platform/functions/index.js
           grep -Fq 'password_reset_session_invalidated' trip-platform/functions/index.js
-          grep -Fq 'PASSENGER_PASSWORD_CLEAR_CONFIRMED_0724' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerAdminUi.kt
+          grep -Fq 'PASSENGER_PASSWORD_CLEAR_CONFIRMED_0723' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerAdminUi.kt
           grep -Fq 'response.cleared && response.verified' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerAdminUi.kt
           grep -Fq 'reloadRemote(syncDirectory = false, silentErrors = true)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerAdminUi.kt
           grep -Fq 'val verified: Boolean = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
@@ -83,7 +83,7 @@ jobs:
           set -euo pipefail
           node --check trip-platform/functions/index.js
           npm --prefix trip-platform/functions install --no-audit --no-fund
-          node --test             trip-platform/functions/test/passenger-password-integrity-0724.test.js             trip-platform/functions/test/passenger-password-recovery-0650.test.js             trip-platform/functions/test/passenger-password-recovery-e2e-0651.test.js             trip-platform/functions/test/viagem-certa-passenger-gate-0589.test.js             trip-platform/functions/test/viagem-certa-known-device-0626.test.js             | tee /tmp/backend-password-0724.log
+          node --test             trip-platform/functions/test/passenger-password-integrity-0723.test.js             trip-platform/functions/test/passenger-password-recovery-0650.test.js             trip-platform/functions/test/passenger-password-recovery-e2e-0651.test.js             trip-platform/functions/test/viagem-certa-passenger-gate-0589.test.js             trip-platform/functions/test/viagem-certa-known-device-0626.test.js             | tee /tmp/backend-password-0724.log
           node --check trip-platform/public/public-agenda-shell-0569.js
           node --test trip-platform/functions/test/agenda-public-realtime-0724.test.js | tee /tmp/public-agenda-realtime-0724.log
 
@@ -106,7 +106,7 @@ jobs:
           set -euo pipefail
           chmod +x ./gradlew
           ./gradlew :app:verifyReleaseHistory --no-daemon --stacktrace | tee /tmp/release-history.log
-          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerPasswordIntegrity0724Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerPasswordRecovery0650Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerPasswordRecoveryE2e0651Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerIdentityIntegrity0627Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalIntegrity0714Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerMessageVehicle0719Test'             --tests 'br.com.mapeiaia.rotacerta.trips.UniversalTripSearch0687Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripDetailReadiness0721Test'             --no-daemon --max-workers=2 --stacktrace             | tee /tmp/focused-android-0724.log
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerPasswordIntegrity0723Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerPasswordRecovery0650Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerPasswordRecoveryE2e0651Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerIdentityIntegrity0627Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalIntegrity0714Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerMessageVehicle0719Test'             --tests 'br.com.mapeiaia.rotacerta.trips.UniversalTripSearch0687Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripDetailReadiness0721Test'             --no-daemon --max-workers=2 --stacktrace             | tee /tmp/focused-android-0724.log
 
       - name: Compare complete Android failures with exact 0.1.723 base
         shell: bash
@@ -181,7 +181,7 @@ jobs:
 
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
           grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
-          grep -Fq 'PASSENGER_PASSWORD_CLEAR_CONFIRMED_0724' /tmp/dex-strings.txt
+          grep -Fq 'PASSENGER_PASSWORD_CLEAR_CONFIRMED_0723' /tmp/dex-strings.txt
 
           SHORT_SHA="$(git rev-parse --short=12 HEAD)"
           FINAL="rota-certa-0.1.724-6015-$SHORT_SHA.apk"
