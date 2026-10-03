@@ -40,7 +40,7 @@ test("0649 Minha área preserves driver and shared-trip context",()=>{
 });
 test("0651 package metadata preserves 0651 or newer",()=>{
   const codeMatch = /releaseVersionCode = ([0-9_]+)/.exec(gradle);
-  const versionMatch = /releaseVersionName = "0\\.1\\.([0-9]+)"/.exec(gradle);
+  const versionMatch = /releaseVersionName = "0[.]1[.]([0-9]+)"/.exec(gradle);
   assert.ok(codeMatch);
   assert.ok(versionMatch);
   assert.ok(Number(codeMatch[1].replaceAll("_", "")) >= 5942);
