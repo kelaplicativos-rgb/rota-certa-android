@@ -267,8 +267,11 @@ data class DriverPassengerResetPasswordRequest(
 @Serializable
 data class DriverPassengerResetPasswordResponse(
     val cleared: Boolean = false,
+    val verified: Boolean = false,
     val invalidatedSessions: Int = 0,
     val passengerId: String = "",
+    val passwordStateVersion0723: Long = 0L,
+    val passwordClearedAtMillis0723: Long = 0L,
 )
 
 @Serializable
