@@ -108,7 +108,7 @@ jobs:
           ./gradlew :app:verifyReleaseHistory --no-daemon --stacktrace | tee /tmp/release-history.log
           ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerPasswordIntegrity0724Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerPasswordRecovery0650Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerPasswordRecoveryE2e0651Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerIdentityIntegrity0627Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalIntegrity0714Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerMessageVehicle0719Test'             --tests 'br.com.mapeiaia.rotacerta.trips.UniversalTripSearch0687Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripDetailReadiness0721Test'             --no-daemon --max-workers=2 --stacktrace             | tee /tmp/focused-android-0724.log
 
-      - name: Compare complete Android failures with exact 0.1.722 base
+      - name: Compare complete Android failures with exact 0.1.723 base
         shell: bash
         run: |
           set -euo pipefail
@@ -241,6 +241,17 @@ jobs:
 
           curl --retry 20 --retry-delay 2 --fail --silent --show-error "$BASE/ezequiel" | tee /tmp/live-vip-0724.html
           grep -Fq 'vipForgotPassword0651' /tmp/live-vip-0724.html
+          grep -Fq '/public-agenda-shell-0569.js?v=0.1.724-lossless-realtime' /tmp/live-vip-0724.html
+
+          curl --retry 20 --retry-delay 2 --fail --silent --show-error \
+            -D /tmp/live-shell-headers-0724.txt \
+            "$BASE/public-agenda-shell-0569.js?v=$GITHUB_SHA" \
+            -o /tmp/live-shell-0724.js
+          grep -Fq 'canonical' /tmp/live-shell-0724.js || true
+          grep -Fq 'agendaChangeToken0724' /tmp/live-shell-0724.js
+          grep -Fq 'agendaReloadPending0724' /tmp/live-shell-0724.js
+          grep -Fq 'agendaLoadPromise0724' /tmp/live-shell-0724.js
+          grep -Eiq '^cache-control:.*no-cache' /tmp/live-shell-headers-0724.txt
 
           curl --retry 20 --retry-delay 2 --fail --silent --show-error             "${{ steps.hosted.outputs.url }}" -o /tmp/live.apk
           test "$(sha256sum /tmp/live.apk | awk '{print $1}')" = "${{ steps.proof.outputs.apk_sha256 }}"
@@ -254,10 +265,10 @@ jobs:
             echo "deviceTarget=Samsung SM-S911B / Android 16"
             echo "backendExactSha=PASS"
             echo "hostingExactSha=PASS"
-            echo "vipPasswordResetAtomic0724=PASS"
-            echo "vipPasswordResetReadback0724=PASS"
-            echo "vipOldSessionBarrier0724=PASS"
-            echo "androidImmediateConfirmation0724=PASS"
+            echo "publicAgendaLosslessInvalidation0724=PASS"
+            echo "canonicalChangeToken0724=PASS"
+            echo "publicShellNoCache0724=PASS"
+            echo "vipPasswordIntegrityRegression=PASS"
             echo "hostedApk=${{ steps.hosted.outputs.url }}"
             echo "apkSha256=${{ steps.proof.outputs.apk_sha256 }}"
           } | tee /tmp/final-proof.txt
@@ -279,6 +290,9 @@ jobs:
             /tmp/zip-integrity.txt
             /tmp/apk-files.txt
             /tmp/backend-password-0724.log
+            /tmp/public-agenda-realtime-0724.log
+            /tmp/live-shell-0724.js
+            /tmp/live-shell-headers-0724.txt
             /tmp/focused-android-0724.log
             /tmp/android-base-full.log
             /tmp/android-head-full.log
