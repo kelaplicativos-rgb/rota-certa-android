@@ -2,6 +2,43 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.722",
+      "build": 6013,
+      "commit": null,
+      "branch": "agent/contextual-passenger-vehicle-0.1.722",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Separa a autoridade do veículo da política de exposição nas mensagens rápidas de passageiro.",
+        "Preserva a cadeia de autoridade já validada: Carro do Dia, configuração Rota Certa e perfil BlaBlaCar verificado.",
+        "Exibe modelo, cor e placa somente em Confirmar 1 hora antes e Estou no local, quando a identificação do veículo é operacionalmente útil."
+      ],
+      "fixed": [
+        "Remove dados do carro de Confirmar agora, Confirmar amanhã e Valor da reserva.",
+        "Corrige a regressão da 0.1.719 que transformou disponibilidade de dados do veículo em obrigação de anexá-los a todas as mensagens.",
+        "Mantém o bloco do veículo dinâmico e sem valores fixos, sem alterar capacidade, Carro do Dia ou resolução de fonte."
+      ],
+      "improved": [
+        "Centraliza a decisão de exposição em shouldIncludePassengerVehicle0656 para evitar ifs divergentes por template.",
+        "Adiciona regressões positivas e negativas para garantir presença do veículo apenas nos contextos definidos.",
+        "Preserva integralmente as correções de XML e readiness das versões 0.1.720 e 0.1.721."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.719-0.1.721: todas as cinco mensagens rápidas recebiam carro, cor e placa mesmo quando a informação não tinha relação com a finalidade da mensagem."
+      ],
+      "modulesAffected": [
+        "Timeline",
+        "Central do Dia",
+        "Passageiros",
+        "Mensagens predefinidas",
+        "WhatsApp",
+        "Carro do dia",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.721",
       "build": 6012,
       "commit": null,
