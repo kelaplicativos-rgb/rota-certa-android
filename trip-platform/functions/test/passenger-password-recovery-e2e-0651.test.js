@@ -25,7 +25,7 @@ test("0651 Área VIP exposes recovery only inside the password stage", () => {
   assert.match(html, /id="vipForcedPasswordChange0651"[^>]*class="forcedPassword0651 hidden"/);
   assert.match(html, /id="vipRecoveredPassword0651"/);
   assert.match(html, /id="vipRecoveredPasswordConfirm0651"/);
-  assert.match(html, /0\.1\.651-password-recovery/);
+  assert.match(html, /public-agenda-shell-0569\.js\?v=0\.1\.724-lossless-realtime/);
 
   const login = between(shell, "async function requestPassengerAgendaAccess0589", "async function requestVipReferral0649");
   assert.match(login, /setVisible0569\("vipForgotPassword0651", vipGatePasswordCreated0649\)/);
