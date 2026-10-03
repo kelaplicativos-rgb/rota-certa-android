@@ -118,8 +118,31 @@ class PassengerOperationalShortcuts0656Test {
             vehicleColor = "cinza",
         )
         assertContains(tomorrow, "amanhã")
-        assertContains(tomorrow, "Hyundai HB20 TBJ4F74")
-        assertContains(tomorrow, "cinza")
+        assertFalse(tomorrow.contains("Hyundai HB20 TBJ4F74"))
+        assertFalse(tomorrow.contains("cinza"))
+
+        val oneHour = passengerQuickMessageText0656(
+            entry(),
+            row,
+            PassengerQuickMessageType0656.CONFIRM_ONE_HOUR,
+            vehicleMakeModel = "Hyundai HB20",
+            vehicleColor = "cinza",
+            vehiclePlate = "TBJ4F74",
+        )
+        assertContains(oneHour, "Hyundai HB20")
+        assertContains(oneHour, "cinza")
+        assertContains(oneHour, "TBJ4F74")
+
+        val atLocation = passengerQuickMessageText0656(
+            entry(),
+            row,
+            PassengerQuickMessageType0656.AT_LOCATION,
+            vehicleMakeModel = "Hyundai HB20",
+            vehicleColor = "cinza",
+            vehiclePlate = "TBJ4F74",
+        )
+        assertContains(atLocation, "Hyundai HB20")
+        assertContains(atLocation, "TBJ4F74")
 
         val fare = passengerQuickMessageText0656(
             entry(),
