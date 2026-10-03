@@ -5,9 +5,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
-const root = path.resolve(__dirname, "..", "..", "..");
-const firebase = JSON.parse(fs.readFileSync(path.join(root, "firebase.json"), "utf8"));
-const indexSource = fs.readFileSync(path.join(root, "functions", "index.js"), "utf8");
+const platformRoot = path.resolve(__dirname, "..", "..");
+const firebase = JSON.parse(fs.readFileSync(path.join(platformRoot, "firebase.json"), "utf8"));
+const indexSource = fs.readFileSync(path.join(platformRoot, "functions", "index.js"), "utf8");
 
 test("0717 keeps all public agenda aliases wired to the same tripApi", () => {
   const rewrites = firebase.hosting && Array.isArray(firebase.hosting.rewrites)
