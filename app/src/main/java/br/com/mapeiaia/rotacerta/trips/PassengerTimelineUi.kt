@@ -4078,6 +4078,16 @@ internal fun passengerOperationalAddressLabel0656(
     }
 }
 
+internal fun shouldIncludePassengerVehicle0656(type: PassengerQuickMessageType0656): Boolean = when (type) {
+    PassengerQuickMessageType0656.CONFIRM_ONE_HOUR,
+    PassengerQuickMessageType0656.AT_LOCATION,
+    -> true
+    PassengerQuickMessageType0656.CONFIRM_NOW,
+    PassengerQuickMessageType0656.CONFIRM_TOMORROW,
+    PassengerQuickMessageType0656.FARE,
+    -> false
+} // CONTEXTUAL_PASSENGER_VEHICLE_0722
+
 internal fun passengerQuickMessageText0656(
     entry: TripTimelineEntry,
     row: EnhancedPassengerCardRow,
@@ -4120,7 +4130,11 @@ internal fun passengerQuickMessageText0656(
         if (vehicleDescriptor0717.isNotBlank()) add("🚗 Carro: $vehicleDescriptor0717")
         if (normalizedPlate0717.isNotBlank()) add("Placa: $normalizedPlate0717")
     }
-    val vehicleBlock = if (vehicleBlockLines0717.isEmpty()) "" else {
+    val vehicleBlock = if (
+        !shouldIncludePassengerVehicle0656(type) || vehicleBlockLines0717.isEmpty()
+    ) {
+        ""
+    } else {
         vehicleBlockLines0717.joinToString(separator = "\n", prefix = "\n\n")
     }
 
