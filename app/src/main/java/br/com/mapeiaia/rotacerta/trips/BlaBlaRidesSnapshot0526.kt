@@ -514,6 +514,7 @@ internal data class BlaBlaRidesSnapshotObservation0526(
     val scrollHeight: Int,
     val viewportHeight: Int,
     val atBottom: Boolean,
+    val endSentinelVisible: Boolean = false,
     val loadingActive: Boolean,
     val lastMutationAgeMs: Long,
     val explicitEmptyList: Boolean,
@@ -654,7 +655,7 @@ internal class BlaBlaRidesSnapshotStabilizer0526(
             currentTripSetSha256 == lastTripSetSha256 &&
             observation.cardCount == lastCardCount &&
             observation.scrollHeight == lastHeight
-        val terminalShape = observation.atBottom &&
+        val terminalShape = (observation.atBottom || observation.endSentinelVisible) &&
             !observation.loadingActive &&
             observation.lastMutationAgeMs >= mutationQuietMillis &&
             (observation.cardCount > 0 || observation.explicitEmptyList)
@@ -704,7 +705,7 @@ internal class BlaBlaRidesSnapshotStabilizer0526(
             )
         }
 
-        return if (!observation.atBottom) {
+        return if (!observation.atBottom && !observation.endSentinelVisible) {
             scrollIterations++
             BlaBlaRidesSnapshotDecision0526(
                 BlaBlaRidesSnapshotAction0526.SCROLL,
