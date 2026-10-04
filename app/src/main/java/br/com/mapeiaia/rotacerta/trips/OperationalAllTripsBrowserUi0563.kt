@@ -411,7 +411,8 @@ internal fun OperationalAllTripsBrowserScreen0563(
                             context = context.applicationContext,
                             trip = trip0663,
                         )
-                        onRefreshLocal()
+                        // Exact-card canonical commit emits BookingRealtimeEvents0356. The local
+                        // single-flight coordinator owns the resulting snapshot.
                         UnifiedDebugEventStore.recordAlways(
                             "TRIPS_CARD_HTML_DIRECT_0663",
                             context.packageName,
@@ -656,8 +657,9 @@ internal fun OperationalAllTripsBrowserScreen0563(
                     store0654 = store0654,
                     bookings0654 = projectedTimeline0602.bookings.filter { it.tripId == canonicalTripId0654 },
                     onOperationsChanged0654 = { text0654 ->
+                        // Canonical passenger mutations emit BookingRealtimeEvents0356; this callback
+                        // owns presentation only and must not request a second local snapshot.
                         onMessage(text0654)
-                        onRefreshLocal()
                     },
                     refreshRunning0663 = refreshingTripIds0663[canonicalTripId0654] == true,
                     onRefreshCard0663 = { refreshRow0663(row) },
@@ -698,8 +700,9 @@ internal fun OperationalAllTripsBrowserScreen0563(
                         store0654 = store0654,
                         bookings0654 = projectedTimeline0602.bookings.filter { it.tripId == canonicalTripId0654 },
                         onOperationsChanged0654 = { text0654 ->
+                            // Canonical passenger mutations emit BookingRealtimeEvents0356; this callback
+                            // owns presentation only and must not request a second local snapshot.
                             onMessage(text0654)
-                            onRefreshLocal()
                         },
                         refreshRunning0663 = refreshingTripIds0663[canonicalTripId0654] == true,
                         onRefreshCard0663 = { refreshRow0663(row) },
