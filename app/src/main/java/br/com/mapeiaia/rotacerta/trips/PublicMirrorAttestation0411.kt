@@ -43,6 +43,11 @@ internal data class CanonicalPublicTripPayload0411(
     val timezoneId: String,
     val status: String,
     val capacity: Int,
+    val physicalSeatCapacity: Int = 4,
+    val vehicleDayConfigured: Boolean = false,
+    val vehicleMakeModel: String = "",
+    val vehicleColor: String = "",
+    val vehiclePlate: String = "",
     val stops: List<CanonicalPublicStop0411>,
     val segmentLoads: List<Int>,
     val segmentPassengerLoads: List<Int>,
@@ -151,6 +156,11 @@ internal fun canonicalPublicProjectionPayload0411(
         timezoneId = trip.publicTimezoneId0411.trim(),
         status = trip.status.name,
         capacity = operationalSnapshot.capacity,
+        physicalSeatCapacity = trip.physicalSeatCapacity.takeIf { it in 1..999 } ?: 4,
+        vehicleDayConfigured = trip.vehicleDayConfigured,
+        vehicleMakeModel = trip.vehicleMakeModel.trim().take(120),
+        vehicleColor = trip.vehicleColor.trim().take(60),
+        vehiclePlate = trip.vehiclePlate.trim().take(16).uppercase(),
         stops = trip.stops.sortedBy(TripStop::order).mapIndexed { index, stop ->
             CanonicalPublicStop0411(
                 id = stop.id.trim(),
@@ -393,6 +403,11 @@ internal fun evaluatePublicMirrorReadback0411(
     if (actual.timezoneId != expected.timezoneId) mismatch += "timezoneId"
     if (actual.status != expected.status) mismatch += "status"
     if (actual.capacity != expected.capacity) mismatch += "capacity"
+    if (actual.physicalSeatCapacity != expected.physicalSeatCapacity) mismatch += "physicalSeatCapacity"
+    if (actual.vehicleDayConfigured != expected.vehicleDayConfigured) mismatch += "vehicleDayConfigured"
+    if (actual.vehicleMakeModel != expected.vehicleMakeModel) mismatch += "vehicleMakeModel"
+    if (actual.vehicleColor != expected.vehicleColor) mismatch += "vehicleColor"
+    if (actual.vehiclePlate != expected.vehiclePlate) mismatch += "vehiclePlate"
     if (actual.stops != expected.stops) mismatch += "stops"
     if (actual.segmentLoads != expected.segmentLoads) mismatch += "segmentLoads"
     if (actual.segmentPassengerLoads != expected.segmentPassengerLoads) mismatch += "segmentPassengerLoads"
