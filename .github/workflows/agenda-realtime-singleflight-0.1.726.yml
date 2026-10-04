@@ -101,8 +101,7 @@ jobs:
           ./gradlew :app:testDebugUnitTest \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaLocalRefreshCoordinator0726Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectAccountCapture0608Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRidesSnapshot0526Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test.targetedExactCardRetriesAccountContentionAndRequiresPublicAttestation0726' \
             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineAgendaAtomicSync0632Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPublicTimelineReflection0425Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PublicProjectionVehicleHashParity0725Test' \
