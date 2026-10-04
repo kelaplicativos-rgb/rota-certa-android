@@ -1239,6 +1239,7 @@ internal object AgendaBackgroundSync0392 {
     private const val INPUT_COLLECTOR_TRIP_ID_0646 = "collector_trip_id_0646"
     private const val INPUT_COLLECTOR_DATES_0646 = "collector_dates_0646"
     private const val WORK_BACKOFF_SECONDS = 30L
+    internal const val TARGETED_RETRY_MAX_ATTEMPTS_0726 = 4
     internal const val ONE_SHOT_MAX_AGE_MILLIS_0435 = 10L * 60L * 1000L
     private val tenantMutexes = ConcurrentHashMap<String, Mutex>()
     private val cardDeltaMutexes0431 = ConcurrentHashMap<String, Mutex>()
@@ -4186,7 +4187,7 @@ class AgendaBackgroundSyncWorker0392(
                     cycle.projectionPending0411 == 0 &&
                     cycle.projectionDivergent0411 == 0 &&
                     cycle.projectionValidated0411 == cycle.projectionExpected0411
-            val retryPending = (cycle.failures > 0 && runAttemptCount < 5) || (targetedRetryable && runAttemptCount < 3)
+            val retryPending = (cycle.failures > 0 && runAttemptCount < 5) || (targetedRetryable && runAttemptCount < TARGETED_RETRY_MAX_ATTEMPTS_0726)
             val reportedFailures = cycle.failures + if (collectorTerminalProblem) {
                 maxOf(1, collectorState.failedAccountIds.size + collectorState.pendingAuthAccountIds.size)
             } else {
