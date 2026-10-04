@@ -2,6 +2,45 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.725",
+      "build": 6016,
+      "commit": null,
+      "branch": "agent/public-agenda-hash-parity-0.1.725",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Alinha o contrato canônico public-v2 entre Android e backend incluindo physicalSeatCapacity, vehicleDayConfigured, vehicleMakeModel, vehicleColor e vehiclePlate nos mesmos bytes serializados.",
+        "Mantém a invalidação lossless da Agenda Pública introduzida na 0.1.724 e preserva o listener Firestore de baixa latência com single-flight e dirty flag.",
+        "Adiciona regressão dedicada que prova que os campos do Carro do Dia participam do hash semântico e que publicationRevision continua fora do hash."
+      ],
+      "fixed": [
+        "Corrige falso SERVER_CANONICAL_PUBLIC_MISMATCH_0468/serverHash após HTTP 200 do backend quando a projeção pública continha dados de veículo que o Android ainda não serializava.",
+        "Impede que uma atualização já persistida no backend seja colocada em retry apenas por divergência artificial de schema entre Android e Node.",
+        "Restaura a confirmação imediata Timeline → estado canônico → Agenda Pública para alterações de capacidade física e dados do Carro do Dia."
+      ],
+      "improved": [
+        "A prova exata de build valida fonte, testes focados, regressões completas, identidade do APK, deploy do tripApi e Hosting no mesmo SHA.",
+        "A verificação de readback passa a comparar explicitamente physicalSeatCapacity, vehicleDayConfigured, vehicleMakeModel, vehicleColor e vehiclePlate.",
+        "Preserva integralmente as correções de Área VIP, senha, XML, busca, mensagens predefinidas e sincronização pública das versões anteriores."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.724: backend aceitava e persistia a projeção, mas o Android recalculava public-v2 sem os campos de veículo e marcava serverHash divergente.",
+        "Timeline podia refletir o estado novo enquanto a publicação pública permanecia em retry por divergência de hash artificial."
+      ],
+      "modulesAffected": [
+        "Timeline",
+        "Agenda Pública",
+        "Área VIP",
+        "Carro do Dia",
+        "Firebase tripApi",
+        "Firestore",
+        "Hosting",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.724",
       "build": 6015,
       "commit": null,
