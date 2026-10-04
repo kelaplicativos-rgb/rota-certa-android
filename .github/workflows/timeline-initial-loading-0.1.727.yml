@@ -3,7 +3,7 @@ name: Rota Certa 0.1.727 Timeline initial loading exact SHA
 on:
   push:
     branches:
-      - 'agent/agenda-timeline-loading-0.1.727'
+      - 'agent/timeline-initial-loading-state-0.1.727'
   workflow_dispatch:
 
 permissions:
@@ -20,7 +20,7 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
       ROTA_CERTA_GIT_SHA: ${{ github.sha }}
-      ROTA_CERTA_GIT_BRANCH: 'agent/agenda-timeline-loading-0.1.727'
+      ROTA_CERTA_GIT_BRANCH: 'agent/timeline-initial-loading-state-0.1.727'
       BASE_SHA: '8ba8f42725df2b5597184f524e1e03311a3d59a7'
       EXPECTED_VERSION_NAME: '0.1.727'
       EXPECTED_VERSION_CODE: '6018'
@@ -113,7 +113,7 @@ jobs:
             --no-daemon --max-workers=2 --stacktrace \
             | tee /tmp/focused-android-0727.log
 
-      - name: Compare complete Android failures with exact 0.1.725 base
+      - name: Compare complete Android failures with exact 0.1.726 base
         shell: bash
         run: |
           set -euo pipefail
@@ -202,8 +202,8 @@ jobs:
             echo "versionName=$EXPECTED_VERSION_NAME"
             echo "versionCode=$EXPECTED_VERSION_CODE"
             echo "deviceTarget=Samsung SM-S911B / Android 16"
-            echo "localRefreshSingleFlight0726=PASS
-            echo "timelineInitialLoading0727=PASS""
+            echo "localRefreshSingleFlight0726=PASS"
+            echo "timelineInitialLoading0727=PASS"
             echo "accountProfileHtmlArbitration0726=PASS"
             echo "scrollRootStabilization0726=PASS"
             echo "publicAttestationContract0726=PASS"
