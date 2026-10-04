@@ -724,8 +724,12 @@ internal object BlaBlaDirectAccountCapture0608 {
                             return@evaluateJavascript
                         }
                         val scroll0661 = "(function(){try{" +
-                            "var h=Math.max(document.documentElement.clientHeight||0,window.innerHeight||0,600);" +
-                            "window.scrollBy(0,Math.max(280,Math.floor(h*0.85)));" +
+                            "var root=window.__rotaCertaRidesScrollRoot0726||document.scrollingElement||document.documentElement||document.body;" +
+                            "var doc=document.scrollingElement||document.documentElement||document.body;" +
+                            "var isDoc=!root||root===doc||root===document.documentElement||root===document.body;" +
+                            "var h=isDoc?Math.max(document.documentElement.clientHeight||0,window.innerHeight||0,600):Math.max(root.clientHeight||0,600);" +
+                            "var dy=Math.max(280,Math.floor(h*0.85));" +
+                            "if(isDoc){window.scrollBy(0,dy);}else if(root.scrollBy){root.scrollBy(0,dy);}else{root.scrollTop=(root.scrollTop||0)+dy;}" +
                             "}catch(_){ } return true;})();"
                         webView.evaluateJavascript(scroll0661) {
                             handler.postDelayed(::evaluate, RETRY_MS)
@@ -815,6 +819,7 @@ internal object BlaBlaDirectAccountCapture0608 {
                                 scrollHeight = sample.scrollHeight,
                                 viewportHeight = sample.viewportHeight,
                                 atBottom = sample.atBottom,
+                                endSentinelVisible = sample.endSentinelVisible,
                                 loadingActive = sample.loadingActive,
                                 lastMutationAgeMs = sample.lastMutationAgeMs,
                                 explicitEmptyList = sample.explicitEmptyList,
@@ -852,12 +857,22 @@ internal object BlaBlaDirectAccountCapture0608 {
                             // 0.1.613: actively re-arm lazy/infinite-list observers. A transient
                             // bottom with ten visible cards is not evidence that /rides is exhausted.
                             "(function(){try{" +
-                                "var h=Math.max(document.documentElement.clientHeight||0,window.innerHeight||0,600);" +
-                                "window.scrollBy(0,-Math.max(240,Math.floor(h*0.65)));" +
-                                "setTimeout(function(){window.scrollTo(0,Math.max(document.body.scrollHeight,document.documentElement.scrollHeight));},180);" +
+                                "var root=window.__rotaCertaRidesScrollRoot0726||document.scrollingElement||document.documentElement||document.body;" +
+                                "var doc=document.scrollingElement||document.documentElement||document.body;" +
+                                "var isDoc=!root||root===doc||root===document.documentElement||root===document.body;" +
+                                "var h=isDoc?Math.max(document.documentElement.clientHeight||0,window.innerHeight||0,600):Math.max(root.clientHeight||0,600);" +
+                                "var dy=-Math.max(240,Math.floor(h*0.65));" +
+                                "if(isDoc){window.scrollBy(0,dy);}else if(root.scrollBy){root.scrollBy(0,dy);}else{root.scrollTop=Math.max(0,(root.scrollTop||0)+dy);}" +
+                                "setTimeout(function(){if(isDoc){window.scrollTo(0,Math.max(document.body.scrollHeight,document.documentElement.scrollHeight));}else if(root.scrollTo){root.scrollTo(0,root.scrollHeight||0);}else{root.scrollTop=root.scrollHeight||0;}},180);" +
                                 "}catch(_){ } return true;})();"
                         } else {
-                            "(function(){try{window.scrollTo(0,Math.max(document.body.scrollHeight,document.documentElement.scrollHeight));}catch(_){ } return true;})();"
+                            "(function(){try{" +
+                                "var root=window.__rotaCertaRidesScrollRoot0726||document.scrollingElement||document.documentElement||document.body;" +
+                                "var doc=document.scrollingElement||document.documentElement||document.body;" +
+                                "var isDoc=!root||root===doc||root===document.documentElement||root===document.body;" +
+                                "if(isDoc){window.scrollTo(0,Math.max(document.body.scrollHeight,document.documentElement.scrollHeight));}" +
+                                "else if(root.scrollTo){root.scrollTo(0,root.scrollHeight||0);}else{root.scrollTop=root.scrollHeight||0;}" +
+                                "}catch(_){ } return true;})();"
                         }
                         webView.evaluateJavascript(scrollScript) {
                             handler.postDelayed(::evaluate, RETRY_MS)
