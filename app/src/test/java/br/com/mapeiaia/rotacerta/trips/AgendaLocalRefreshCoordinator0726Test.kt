@@ -1,5 +1,6 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import java.io.File
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
@@ -65,4 +66,30 @@ class AgendaLocalRefreshCoordinator0726Test {
         assertTrue(executions[1].contains("resume"))
         job.cancelAndJoin()
     }
+    @Test
+    fun canonicalPassengerEventOwnsRefreshWithoutUiCallbackDuplicate0726() {
+        val source = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalAllTripsBrowserUi0563.kt",
+        ).readText()
+
+        val activeOperations = source.substring(
+            source.indexOf("items = activeRows"),
+            source.indexOf("if (archivedRows.isNotEmpty())"),
+        )
+        assertTrue(activeOperations.contains("onOperationsChanged0654"))
+        assertFalse(activeOperations.contains("onRefreshLocal()"))
+
+        val directRefresh = source.substring(
+            source.indexOf("OperationalTripCardRefreshMode0663.BLABLACAR_DIRECT_HTML"),
+            source.indexOf("private fun", source.indexOf("OperationalTripCardRefreshMode0663.BLABLACAR_DIRECT_HTML")).takeIf { it > 0 }
+                ?: source.length,
+        )
+        assertTrue(directRefresh.contains("CentralDayCommandBridge0552.refreshTripDirect0662"))
+        assertFalse(
+            directRefresh.substring(
+                directRefresh.indexOf("CentralDayCommandBridge0552.refreshTripDirect0662"),
+            ).contains("onRefreshLocal()"),
+        )
+    }
+
 }
