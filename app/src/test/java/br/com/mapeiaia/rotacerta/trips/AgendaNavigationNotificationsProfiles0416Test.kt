@@ -63,9 +63,9 @@ class AgendaNavigationNotificationsProfiles0416Test {
         assertTrue(messaging.contains("TripRemoteApi(online).listDriverNotifications()"))
         assertTrue(messaging.contains("private val refreshMutex = Mutex()"))
         assertTrue(activity.contains("DriverNotificationProjection0416.state.collectAsState()"))
-        assertTrue(activity.contains("BookingRealtimeEvents0356.changes"))
-        assertTrue(activity.contains(".conflate()"))
-        assertTrue(activity.contains(".collectLatest"))
+        assertTrue(activity.contains("BookingRealtimeEvents0356.changes.collect {"))
+        assertTrue(activity.contains("localRefreshCoordinator0726.request(\"booking_realtime\")"))
+        assertFalse(activity.contains(".collectLatest"))
         assertFalse(activity.contains("delay(15_000L)"))
         assertTrue(messaging.contains("BookingRealtimeEvents0356.notifyChanged()"))
 
