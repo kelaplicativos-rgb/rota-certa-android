@@ -4381,7 +4381,7 @@ internal fun externalPassengerTarget(row: EnhancedPassengerCardRow): ExternalPas
     return ExternalPassengerTarget(profileUuid = profileUuid, href = href)
 }
 
-private fun openPublicTripBlaBla(context: Context, canonicalHref: String?): Boolean {
+internal fun openPublicTripBlaBla(context: Context, canonicalHref: String?): Boolean {
     val target = canonicalHref?.trim()?.takeIf(String::isNotBlank) ?: return false
     UnifiedDebugEventStore.record(
         "BLABLACAR_PUBLIC_TRIP_OPEN_EXPLICIT",
