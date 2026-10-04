@@ -76,6 +76,21 @@ internal enum class OperationalTripSourceFilter0633 {
     BLABLACAR,
 }
 
+internal enum class OperationalTimelineLoadState0727 {
+    LOADING,
+    EMPTY,
+    CONTENT,
+}
+
+internal fun operationalTimelineLoadState0727(
+    localSnapshotLoaded: Boolean,
+    rowCount: Int,
+): OperationalTimelineLoadState0727 = when {
+    !localSnapshotLoaded -> OperationalTimelineLoadState0727.LOADING
+    rowCount <= 0 -> OperationalTimelineLoadState0727.EMPTY
+    else -> OperationalTimelineLoadState0727.CONTENT
+}
+
 internal fun operationalTripMatchesSourceFilter0633(
     nativeRotaCerta: Boolean,
     filter: OperationalTripSourceFilter0633,
@@ -134,6 +149,7 @@ internal fun operationalTripCardRefreshMode0663(
 internal fun OperationalAllTripsBrowserScreen0563(
     trips: List<Trip>,
     bookings: List<Booking>,
+    localSnapshotLoaded0727: Boolean = true,
     modifier: Modifier = Modifier,
     onMessage: (String) -> Unit = {},
     onFirstUsableFrame: (Int) -> Unit = {},
@@ -286,11 +302,29 @@ internal fun OperationalAllTripsBrowserScreen0563(
             }
     }
 
-    LaunchedEffect(filteredRows0633.size) {
-        onFirstUsableFrame(filteredRows0633.size)
+    val loadState0727 = operationalTimelineLoadState0727(
+        localSnapshotLoaded = localSnapshotLoaded0727,
+        rowCount = rows.size,
+    )
+
+    LaunchedEffect(localSnapshotLoaded0727, filteredRows0633.size) {
+        if (localSnapshotLoaded0727) {
+            onFirstUsableFrame(filteredRows0633.size)
+        }
     }
 
-    if (rows.isEmpty()) {
+    if (loadState0727 == OperationalTimelineLoadState0727.LOADING) {
+        Column(
+            modifier = modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text("Carregando viagens…")
+        }
+        return
+    }
+
+    if (loadState0727 == OperationalTimelineLoadState0727.EMPTY) {
         Column(
             modifier = modifier.fillMaxSize(),
             verticalArrangement = Arrangement.Center,
