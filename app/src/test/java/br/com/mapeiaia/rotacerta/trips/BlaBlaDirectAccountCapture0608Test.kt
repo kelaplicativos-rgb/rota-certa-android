@@ -49,6 +49,70 @@ class BlaBlaDirectAccountCapture0608Test {
     }
 
     @Test
+    fun terminalSentinelCanProveCompletionWhenWindowIsNotBottom0726() {
+        val stabilizer = directRidesStabilizer0613(startedAtMillis = 0L)
+        var decision = stabilizer.observe(
+            observation(
+                cards = 22,
+                height = 5200,
+                fingerprint = "twenty-two",
+                mutationAge = 5_000L,
+                atBottom = false,
+                endSentinelVisible = true,
+            ),
+            nowMillis = 1_000L,
+        )
+
+        repeat(6) { index ->
+            decision = stabilizer.observe(
+                observation(
+                    cards = 22,
+                    height = 5200,
+                    fingerprint = "twenty-two",
+                    mutationAge = 5_000L,
+                    atBottom = false,
+                    endSentinelVisible = true,
+                ),
+                nowMillis = 2_000L + index * 650L,
+            )
+        }
+
+        assertTrue(decision.action == BlaBlaRidesSnapshotAction0526.CAPTURE)
+    }
+
+    @Test
+    fun quietMaterializedListWithoutBottomOrSentinelStillFailsClosed0726() {
+        val stabilizer = directRidesStabilizer0613(startedAtMillis = 0L)
+        var decision = stabilizer.observe(
+            observation(
+                cards = 22,
+                height = 5200,
+                fingerprint = "twenty-two",
+                mutationAge = 45_000L,
+                atBottom = false,
+                endSentinelVisible = false,
+            ),
+            nowMillis = 1_000L,
+        )
+
+        repeat(10) { index ->
+            decision = stabilizer.observe(
+                observation(
+                    cards = 22,
+                    height = 5200,
+                    fingerprint = "twenty-two",
+                    mutationAge = 45_000L,
+                    atBottom = false,
+                    endSentinelVisible = false,
+                ),
+                nowMillis = 2_000L + index * 650L,
+            )
+        }
+
+        assertFalse(decision.action == BlaBlaRidesSnapshotAction0526.CAPTURE)
+    }
+
+    @Test
     fun accumulatedObservedInventoryMustExactlyMatchSnapshot0613() {
         val ids = (1..30).map { index ->
             "01a0${index.toString().padStart(4, '0')}-0000-7000-8000-${index.toString().padStart(12, '0')}"
@@ -94,12 +158,15 @@ class BlaBlaDirectAccountCapture0608Test {
         height: Int,
         fingerprint: String,
         mutationAge: Long,
+        atBottom: Boolean = true,
+        endSentinelVisible: Boolean = false,
     ) = BlaBlaRidesSnapshotObservation0526(
         cardCount = cards,
         scrollY = height - 600,
         scrollHeight = height,
         viewportHeight = 600,
-        atBottom = true,
+        atBottom = atBottom,
+        endSentinelVisible = endSentinelVisible,
         loadingActive = false,
         lastMutationAgeMs = mutationAge,
         explicitEmptyList = false,
