@@ -1066,13 +1066,15 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         scopedStateIsolation0662: Boolean = false,
     ): BlaBlaTargetedHtmlRefreshResult0607 {
         val app = context.applicationContext
-        BlaBlaHtmlCaptureTransaction0610.active(app)?.let { transaction ->
+        val activeGlobalTransaction0726 = BlaBlaHtmlCaptureTransaction0610.active(app)
+        if (activeGlobalTransaction0726 != null) {
             UnifiedDebugEventStore.recordAlways(
-                "TARGETED_HTML_BLOCKED_BY_GLOBAL_TRANSACTION_0610",
+                "TARGETED_HTML_GLOBAL_ARBITRATION_0726",
                 app.packageName,
-                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(transaction.captureId)} generation=${transaction.generation} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} action=FAIL_CLOSED",
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(activeGlobalTransaction0726.captureId)} " +
+                    "generation=${activeGlobalTransaction0726.generation} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} " +
+                    "action=ACCOUNT_PROFILE_LEASE globalBlanketBlock=false scopedIsolation=$scopedStateIsolation0662",
             )
-            return BlaBlaTargetedHtmlRefreshResult0607(errorCode = "HTML_GLOBAL_TRANSACTION_ACTIVE_0610")
         }
         val account = BlaBlaDynamicAccountRegistry(app).get(target.accountId)
             ?.takeIf {
@@ -1125,7 +1127,16 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         val captureId = "targeted_" + Instant.now().toString().replace(":", "-") + "_" +
             seatSyncDiagnosticKey(target.tripId).replace(Regex("[^A-Za-z0-9._-]"), "").take(20)
         val lease = acquireUnifiedFlight0605(sessionStore, account, captureId)
-            ?: return BlaBlaTargetedHtmlRefreshResult0607(errorCode = "HTML_TARGET_SINGLE_FLIGHT_BUSY")
+            ?: run {
+                UnifiedDebugEventStore.recordAlways(
+                    "TARGETED_HTML_ACCOUNT_LEASE_PENDING_0726",
+                    app.packageName,
+                    "targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} " +
+                        "accountKey=${BlaBlaRidesSnapshotStore0526(app).accountKey(account.id)} " +
+                        "retryable=true globalTransactionActive=${activeGlobalTransaction0726 != null}",
+                )
+                return BlaBlaTargetedHtmlRefreshResult0607(errorCode = "HTML_TARGET_SINGLE_FLIGHT_BUSY")
+            }
         val source = existingSource
         val ride = ParsedExternalRide0535(
             tripId = target.tripId,
