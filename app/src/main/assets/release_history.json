@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.728",
+      "build": 6019,
+      "commit": null,
+      "branch": "agent/timeline-card-shortcuts-0.1.728",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Adiciona no topo de cada card da Timeline o atalho +👤 para inclusão de passageiro por fora usando o mesmo fluxo canônico de Booking já existente.",
+        "Adiciona o atalho 🌐 para abrir exclusivamente o anúncio público canônico da BlaBlaCar associado ao card.",
+        "Mantém os dois novos atalhos apenas com símbolos visuais, preservando descrições de acessibilidade sem texto adicional na interface."
+      ],
+      "fixed": [
+        "Substitui o rótulo textual '🔗 Público' pelo atalho 🌐 solicitado.",
+        "Substitui a ordem visual 👤➕ pelo contrato exato +👤 sem criar um segundo modelo de passageiro."
+      ],
+      "improved": [
+        "Preserva a validação de capacidade por trecho e o fail-closed quando a ocupação externa ainda não foi comprovada.",
+        "Passageiros adicionados manualmente continuam entrando no mesmo Booking canônico e reaparecem na Timeline/Agenda pelos mecanismos de revisão e realtime existentes.",
+        "Preserva integralmente o estado de carregamento e as garantias de sincronização validadas na 0.1.727."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Timeline",
+        "Passageiros",
+        "BlaBlaCar",
+        "Agenda",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.727",
       "build": 6018,
       "commit": null,
