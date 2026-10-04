@@ -87,7 +87,7 @@ class AgendaBackgroundSync0392Test {
         assertTrue(reverify.contains("publicationBlocked=false"))
         assertTrue(reverify.contains("PUBLISHED_URL_PENDING"))
         assertFalse(source.contains("reason == \"trip_reverify\" ||\n            reason.startsWith(\"admin_update_now:\")"))
-        assertTrue(source.contains("val targetedRetryable = false"))
+        assertTrue(source.contains("targetedRefreshRetryable0726(targetedResult)"))
     }
     @Test
     fun timelineCardTargetCollectorRefreshIsAgendaOwnedAndNonVisual0518() {
