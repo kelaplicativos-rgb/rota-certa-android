@@ -36,9 +36,9 @@ class AgendaGlobalNotificationBubble0416Test {
 
         assertTrue(messaging.contains("BookingRealtimeEvents0356.notifyChanged()"))
         assertTrue(messaging.contains("DriverNotificationProjection0416.refresh(this@RotaCertaBookingMessagingService)"))
-        assertTrue(activity.contains("BookingRealtimeEvents0356.changes"))
-        assertTrue(activity.contains(".conflate()"))
-        assertTrue(activity.contains(".collectLatest"))
+        assertTrue(activity.contains("BookingRealtimeEvents0356.changes.collect {"))
+        assertTrue(activity.contains("localRefreshCoordinator0726.request(\"booking_realtime\")"))
+        assertFalse(activity.contains(".collectLatest"))
         assertTrue(farol.contains("BookingRealtimeEvents0356.changes.collect"))
         assertFalse(activity.contains("delay(15_000L)"))
     }
