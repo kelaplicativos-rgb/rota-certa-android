@@ -1055,6 +1055,7 @@ private fun TripApp(
                 TripScreen.TIMELINE -> OperationalAllTripsBrowserScreen0563(
                     trips = trips,
                     bookings = bookings,
+                    localSnapshotLoaded0727 = localTimelineLoaded0705,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     onMessage = { text -> message = text },
                     onCreateTrip = {
