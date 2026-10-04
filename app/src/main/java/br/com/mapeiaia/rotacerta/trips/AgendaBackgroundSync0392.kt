@@ -4187,7 +4187,7 @@ class AgendaBackgroundSyncWorker0392(
                     cycle.projectionPending0411 == 0 &&
                     cycle.projectionDivergent0411 == 0 &&
                     cycle.projectionValidated0411 == cycle.projectionExpected0411
-            val retryPending = (cycle.failures > 0 && runAttemptCount < 5) || (targetedRetryable && runAttemptCount < TARGETED_RETRY_MAX_ATTEMPTS_0726)
+            val retryPending = (cycle.failures > 0 && runAttemptCount < 5) || (targetedRetryable && runAttemptCount < AgendaBackgroundSync0392.TARGETED_RETRY_MAX_ATTEMPTS_0726)
             val reportedFailures = cycle.failures + if (collectorTerminalProblem) {
                 maxOf(1, collectorState.failedAccountIds.size + collectorState.pendingAuthAccountIds.size)
             } else {
