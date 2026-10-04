@@ -948,7 +948,7 @@ private fun OperationalTripBrowserCard0563(
                 }
             }
 
-            val canonicalTrip0667 = canonicalTrip0729
+            val canonicalTrip0667 = row.canonicalTrip0633
             if (canonicalTrip0667 != null) {
                 EnhancedPassengerTimelineSection(
                     entry = entry,
