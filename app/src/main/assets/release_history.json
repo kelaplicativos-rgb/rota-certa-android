@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.727",
+      "build": 6018,
+      "commit": null,
+      "branch": "agent/timeline-loading-state-0.1.727",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Adiciona estado explícito LOADING, EMPTY e CONTENT para a Timeline operacional.",
+        "Propaga a conclusão real do snapshot local para a superfície de Todas as viagens.",
+        "Atrasa o primeiro frame utilizável da Timeline até o carregamento local terminar."
+      ],
+      "fixed": [
+        "Remove o falso aviso 'Nenhuma viagem disponível no estado canônico' exibido antes de carregar as viagens reais.",
+        "Impede TIMELINE_STARTUP de encerrar com processed=0 enquanto o snapshot inicial ainda está em andamento."
+      ],
+      "improved": [
+        "Preserva o estado vazio verdadeiro somente quando o snapshot foi concluído e realmente não existem viagens.",
+        "Mantém toda a arquitetura de sincronização e captura HTML validada na 0.1.726 sem alterações."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.726: Timeline confundia estado ainda não carregado com estado canônico realmente vazio."
+      ],
+      "modulesAffected": [
+        "Timeline",
+        "Todas as viagens",
+        "Diagnóstico",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.726",
       "build": 6017,
       "commit": null,
