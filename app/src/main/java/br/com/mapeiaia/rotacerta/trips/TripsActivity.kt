@@ -64,8 +64,6 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.UUID
 import kotlin.math.roundToLong
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
 
 class TripsActivity : ComponentActivity() {
@@ -477,39 +475,52 @@ private fun TripApp(
             loadedTrips0705 to loadedBookings0705
         }
 
-        // Compose only receives already-decoded immutable collections. Avoid no-op global invalidations.
-        if (trips != snapshot0705.first) trips = snapshot0705.first
-        if (bookings != snapshot0705.second) bookings = snapshot0705.second
+        val tripsChanged0726 = trips != snapshot0705.first
+        val bookingsChanged0726 = bookings != snapshot0705.second
+        if (tripsChanged0726) trips = snapshot0705.first
+        if (bookingsChanged0726) bookings = snapshot0705.second
         localTimelineLoaded0705 = true
 
-        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            TripWidgetProvider.updateAll(activity)
+        if (tripsChanged0726 || bookingsChanged0726) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                TripWidgetProvider.updateAll(activity)
+            }
         }
         UnifiedDebugEventStore.record(
             "AGENDA_UI_SNAPSHOT_0705",
             activity.packageName,
-            "reason=$reason0705 trips=${snapshot0705.first.size} bookings=${snapshot0705.second.size} persistenceOnMain=false",
+            "reason=$reason0705 trips=${snapshot0705.first.size} bookings=${snapshot0705.second.size} " +
+                "changed=${tripsChanged0726 || bookingsChanged0726} widgetUpdated=${tripsChanged0726 || bookingsChanged0726} " +
+                "singleFlight0726=true persistenceOnMain=false",
         )
     }
 
+    val localRefreshCoordinator0726 = remember(store) { AgendaLocalRefreshCoordinator0726() }
+    val initialRefreshCompleted0726 = remember(store) { java.util.concurrent.atomic.AtomicBoolean(false) }
+
     androidx.compose.runtime.LaunchedEffect(store) {
-        refresh0705("initial")
+        localRefreshCoordinator0726.request("initial")
+        localRefreshCoordinator0726.run { reason0726 ->
+            refresh0705(reason0726)
+            if (reason0726.split('+').any { it == "initial" }) {
+                initialRefreshCompleted0726.set(true)
+            }
+        }
     }
 
-    // UI callbacks are intentionally non-suspending; they schedule the same off-main snapshot pipeline.
+    // All local snapshot producers are serialized by a single coordinator. No producer may call
+    // refresh0705 directly, which prevents initial/resume and realtime/UI overlap.
     val refreshUi0705: () -> Unit = {
-        shareScope.launch { refresh0705("ui_callback") }
+        localRefreshCoordinator0726.request("ui_callback")
     }
 
     // Records durable per-trip mutations only; delivery belongs to AgendaBackgroundSync0392.
     val tripMutationCoordinator = remember(activity, store) { TripMutationCoordinator0387(activity, store) }
     androidx.compose.runtime.LaunchedEffect(Unit) {
-        BookingRealtimeEvents0356.changes
-            .conflate()
-            .collectLatest {
-                refresh0705("booking_realtime")
-                refreshDriverNotifications()
-            }
+        BookingRealtimeEvents0356.changes.collect {
+            localRefreshCoordinator0726.request("booking_realtime")
+            refreshDriverNotifications()
+        }
     }
     androidx.compose.runtime.DisposableEffect(activity) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
@@ -522,8 +533,14 @@ private fun TripApp(
                             "reason=targeted_blablacar_round_trip exactCardRefreshOwnsReturn=true " +
                                 "fullSnapshotReload=false noPolling=true",
                         )
+                    } else if (!initialRefreshCompleted0726.get()) {
+                        UnifiedDebugEventStore.record(
+                            "AGENDA_LOCAL_REFRESH_COALESCED_0726",
+                            activity.packageName,
+                            "reason=resume_during_initial action=SKIP initialOwnsSnapshot=true",
+                        )
                     } else {
-                        refresh0705("resume")
+                        localRefreshCoordinator0726.request("resume")
                     }
                     refreshDriverNotifications()
                 }
