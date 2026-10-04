@@ -208,6 +208,12 @@ internal fun agendaBackgroundSyncTrigger0397(reason: String): String = when {
     else -> "EVENT_DELTA"
 }
 
+internal fun targetedRefreshRetryable0726(result: BlaBlaCommandResult0407?): Boolean =
+    result?.errorCode in setOf(
+        "HTML_TARGET_SINGLE_FLIGHT_BUSY",
+        "PUBLIC_MIRROR_NOT_ATTESTED",
+    )
+
 internal fun targetedReverifyTransportRevision0439(
     canonicalRevision: Long,
     localPublicationRevision: Long,
@@ -4165,11 +4171,7 @@ class AgendaBackgroundSyncWorker0392(
                 collectorWasRequested &&
                     collectorState.status in setOf("PARTIAL", "INTERRUPTED", "FAILED", "PENDING_AUTH")
             val collectorAuthRequired = collectorWasRequested && collectorState.status == "PENDING_AUTH"
-            val targetedRetryable =
-                targetedResult?.errorCode in setOf(
-                    "HTML_TARGET_SINGLE_FLIGHT_BUSY",
-                    "PUBLIC_MIRROR_NOT_ATTESTED",
-                )
+            val targetedRetryable = targetedRefreshRetryable0726(targetedResult)
             val targetedAuthRequired = targetedResult?.status == BlaBlaCommandStatus0407.AUTH_REQUIRED
             val targetedPublishedOnly0465 = targetedResult?.status == BlaBlaCommandStatus0407.PUBLISHED_URL_PENDING
             val targetedFailure = targetedResult != null &&
