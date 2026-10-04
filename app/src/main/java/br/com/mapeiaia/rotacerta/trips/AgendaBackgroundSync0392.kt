@@ -1836,19 +1836,34 @@ internal object AgendaBackgroundSync0392 {
                 " privateStillMissing=$remainingPrivateMissing0646" +
                 " privateFieldsPreserved=true",
         )
-        return BlaBlaCommandResult0407(
-            commandId = work.commandId,
-            target = target,
-            capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
+        val publicVerification0726 = reverifyCanonicalMirror0435(
+            context = appContext,
+            work = work,
+            nowMillis = System.currentTimeMillis(),
+        )
+        val publicState0726 = when (publicVerification0726.status) {
+            BlaBlaCommandStatus0407.VERIFIED_SUCCESS -> "PUBLIC_ATTESTED"
+            BlaBlaCommandStatus0407.PUBLISHED_URL_PENDING -> "PUBLIC_CURRENT_URL_PENDING"
+            else -> "PUBLIC_PENDING"
+        }
+        UnifiedDebugEventStore.recordAlways(
+            "TARGET_CARD_PUBLIC_SYNC_STATE_0726",
+            appContext.packageName,
+            "targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} " +
+                "canonicalRevision=${refreshed.canonicalRevision} state=$publicState0726 " +
+                "status=${publicVerification0726.status.name} error=${publicVerification0726.errorCode.take(120)} " +
+                "localCommitted=true publicAttested=${publicVerification0726.status == BlaBlaCommandStatus0407.VERIFIED_SUCCESS}",
+        )
+        return publicVerification0726.copy(
             before = "CANONICAL_REVISION_${canonicalBefore.canonicalRevision}",
-            after = "CANONICAL_REVISION_${refreshed.canonicalRevision}",
-            verification = if (remainingPrivateMissing0646) {
-                "targeted_html_canonicalized_private_enrichment_incomplete"
-            } else {
-                "targeted_html_canonicalized_private_enrichment_complete"
-            },
-            status = BlaBlaCommandStatus0407.VERIFIED_SUCCESS,
-            errorCode = "",
+            after = "CANONICAL_REVISION_${refreshed.canonicalRevision}|$publicState0726",
+            verification = (
+                if (remainingPrivateMissing0646) {
+                    "targeted_html_canonicalized_private_enrichment_incomplete"
+                } else {
+                    "targeted_html_canonicalized_private_enrichment_complete"
+                }
+            ) + "|" + publicVerification0726.verification,
             startedAtMillis = startedAt,
             finishedAtMillis = System.currentTimeMillis(),
         )
@@ -4150,7 +4165,11 @@ class AgendaBackgroundSyncWorker0392(
                 collectorWasRequested &&
                     collectorState.status in setOf("PARTIAL", "INTERRUPTED", "FAILED", "PENDING_AUTH")
             val collectorAuthRequired = collectorWasRequested && collectorState.status == "PENDING_AUTH"
-            val targetedRetryable = false
+            val targetedRetryable =
+                targetedResult?.errorCode in setOf(
+                    "HTML_TARGET_SINGLE_FLIGHT_BUSY",
+                    "PUBLIC_MIRROR_NOT_ATTESTED",
+                )
             val targetedAuthRequired = targetedResult?.status == BlaBlaCommandStatus0407.AUTH_REQUIRED
             val targetedPublishedOnly0465 = targetedResult?.status == BlaBlaCommandStatus0407.PUBLISHED_URL_PENDING
             val targetedFailure = targetedResult != null &&
