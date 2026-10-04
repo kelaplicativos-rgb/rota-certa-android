@@ -2,6 +2,39 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.727",
+      "build": 6018,
+      "commit": null,
+      "branch": "agent/timeline-initial-loading-state-0.1.727",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Adiciona estado explícito de carregamento inicial da Timeline antes da primeira leitura canônica local.",
+        "A Timeline passa a diferenciar LOADING, EMPTY e CONTENT sem confundir lista ainda não carregada com ausência real de viagens.",
+        "O primeiro frame utilizável só é atestado depois que o snapshot local inicial termina."
+      ],
+      "fixed": [
+        "Remove o falso aviso 'Nenhuma viagem disponível no estado canônico' exibido por alguns instantes ao abrir Viagens.",
+        "Impede TIMELINE_STARTUP de encerrar como operational_browser_ready com zero itens antes da carga local terminar."
+      ],
+      "improved": [
+        "Preserva integralmente o single-flight, a autoridade canônica, a sincronização pública e o pipeline HTML da 0.1.726.",
+        "Adiciona testes puros para loading inicial, vazio canônico real e conteúdo carregado."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.726: rows vazias durante o bootstrap eram renderizadas como vazio canônico definitivo.",
+        "0.1.726: onFirstUsableFrame podia ser emitido antes de localTimelineLoaded0705=true."
+      ],
+      "modulesAffected": [
+        "Timeline",
+        "Todas as viagens",
+        "Diagnóstico de startup",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.726",
       "build": 6017,
       "commit": null,
