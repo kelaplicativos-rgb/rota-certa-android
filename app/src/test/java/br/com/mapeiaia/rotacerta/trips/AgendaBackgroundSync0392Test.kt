@@ -324,5 +324,21 @@ class AgendaBackgroundSync0392Test {
         assertTrue(source.contains("PUBLISHED_URL_PENDING"))
     }
 
+    @Test
+    fun targetedExactCardRetriesAccountContentionAndRequiresPublicAttestation0726() {
+        val background = backgroundSource()
+        val capture = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt").readText()
+
+        assertTrue(background.contains("targetedRefreshRetryable0726(targetedResult)"))
+        assertTrue(background.contains("\"HTML_TARGET_SINGLE_FLIGHT_BUSY\""))
+        assertTrue(background.contains("\"PUBLIC_MIRROR_NOT_ATTESTED\""))
+        assertTrue(background.contains("TARGET_CARD_PUBLIC_SYNC_STATE_0726"))
+        assertTrue(background.contains("reverifyCanonicalMirror0435("))
+
+        assertFalse(capture.contains("TARGETED_HTML_BLOCKED_BY_GLOBAL_TRANSACTION_0610"))
+        assertTrue(capture.contains("TARGETED_HTML_GLOBAL_ARBITRATION_0726"))
+        assertTrue(capture.contains("TARGETED_HTML_ACCOUNT_LEASE_PENDING_0726"))
+    }
+
 
 }
