@@ -1075,6 +1075,7 @@ private fun TripApp(
                         screen = TripScreen.CENTRAL_DAY
                     },
                     downloadTriggerToken0616 = operationalTimelineDownloadToken0616,
+                    initialLoadComplete0727 = localTimelineLoaded0705,
                     onFirstUsableFrame = { renderedItems ->
                         AgendaTrace.reportTimelineFirstUsableFrame(
                             activity = activity,
