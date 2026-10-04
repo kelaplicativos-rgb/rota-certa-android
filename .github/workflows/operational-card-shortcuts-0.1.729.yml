@@ -119,9 +119,9 @@ jobs:
           set -euo pipefail
           chmod +x ./gradlew
           ./gradlew :app:verifyReleaseHistory --no-daemon --stacktrace | tee /tmp/release-history.log
-          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineCardShortcutGlyphs0729Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripTimelineCardActions0289Test'             --tests 'br.com.mapeiaia.rotacerta.trips.ManualPassengerCapacityGuard0295Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripQuickPassengerStage47R4Step4Test'             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTimelineLoadingState0727Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineAgendaAtomicSync0632Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPublicTimelineReflection0425Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicProjectionVehicleHashParity0725Test'             --no-daemon --max-workers=2 --stacktrace             | tee /tmp/focused-android-0729.log
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalCardShortcuts0729Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineCardShortcutGlyphs0728Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripTimelineCardActions0289Test'             --tests 'br.com.mapeiaia.rotacerta.trips.ManualPassengerCapacityGuard0295Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripQuickPassengerStage47R4Step4Test'             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTimelineLoadingState0727Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineAgendaAtomicSync0632Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPublicTimelineReflection0425Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicProjectionVehicleHashParity0725Test'             --no-daemon --max-workers=2 --stacktrace             | tee /tmp/focused-android-0729.log
 
-      - name: Compare complete Android failures with exact 0.1.727 base
+      - name: Compare complete Android failures with exact 0.1.728 base
         shell: bash
         run: |
           set -euo pipefail
