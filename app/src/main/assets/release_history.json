@@ -2,6 +2,49 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.726",
+      "build": 6017,
+      "commit": null,
+      "branch": "agent/agenda-realtime-singleflight-0.1.726",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Serializa todos os refreshes locais da Timeline/Agenda em um coordenador single-flight com coalescência de rajadas e follow-up único.",
+        "Substitui o bloqueio HTML global por arbitragem real por conta/perfil, preservando WebView Profile e lease de sessão.",
+        "Detecta e movimenta o scroll container real da lista BlaBlaCar e propaga o sentinel terminal para a prova de estabilização.",
+        "Exige atestação da Agenda Pública antes de declarar sucesso pleno do exact-card."
+      ],
+      "fixed": [
+        "Elimina a sobreposição initial + resume e booking_realtime + ui_callback que duplicava leituras e agravava jank.",
+        "Remove TARGETED_HTML_BLOCKED_BY_GLOBAL_TRANSACTION_0610 como caminho normal para contas independentes.",
+        "Corrige falha MAX_SCROLL_CYCLES causada por depender exclusivamente de window.scrollY quando a lista usa container rolável.",
+        "Impede que Timeline atualizada seja interpretada como Agenda Pública sincronizada sem readback da mesma projeção."
+      ],
+      "improved": [
+        "Atualização de widget só ocorre quando viagens ou reservas realmente mudam.",
+        "Contenção da mesma conta passa a ser retryable pelo WorkManager em vez de falha terminal.",
+        "Mantém fail-closed de tombstones, preserve_unproven_absence, staging global e scopedStateIsolation do exact-card.",
+        "Adiciona regressões para single-flight local, sentinel terminal, silêncio sem prova terminal, arbitragem por perfil e atestação pública."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.725: transação global podia bloquear refresh individual por vários minutos.",
+        "0.1.725: segundo perfil podia ficar materializado e quieto, mas falhar porque window.atBottom permanecia falso.",
+        "0.1.725: uma única mutação podia disparar refreshes locais concorrentes e atualizar widget sem mudança real.",
+        "0.1.725: exact-card retornava VERIFIED_SUCCESS após commit local sem exigir confirmação da projeção pública."
+      ],
+      "modulesAffected": [
+        "Timeline",
+        "Agenda Pública",
+        "Central do Dia",
+        "BlaBlaCar HTML",
+        "WorkManager",
+        "Widgets",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.725",
       "build": 6016,
       "commit": null,
