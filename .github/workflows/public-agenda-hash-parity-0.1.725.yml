@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.724 Public projection hash parity exact SHA
+name: Rota Certa 0.1.725 Public projection hash parity exact SHA
 
 on:
   push:
@@ -24,8 +24,8 @@ jobs:
       ROTA_CERTA_GIT_SHA: ${{ github.sha }}
       ROTA_CERTA_GIT_BRANCH: 'agent/public-agenda-hash-parity-0.1.725'
       BASE_SHA: 'ec2c30fc78cc1137c5a0767b8d80d8a57b803870'
-      EXPECTED_VERSION_NAME: '0.1.724'
-      EXPECTED_VERSION_CODE: '6015'
+      EXPECTED_VERSION_NAME: '0.1.725'
+      EXPECTED_VERSION_CODE: '6016'
       OM_TAG: '2026.08.27-18-android'
       OM_VERSION: '2026.08.27-18'
 
@@ -59,9 +59,9 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          grep -Fq 'val releaseVersionName = "0.1.724"' app/build.gradle.kts
-          grep -Fq 'val releaseVersionCode = 6_015' app/build.gradle.kts
-          grep -Fq '"version": "0.1.724"' app/src/main/assets/release_history.json
+          grep -Fq 'val releaseVersionName = "0.1.725"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 6_016' app/build.gradle.kts
+          grep -Fq '"version": "0.1.725"' app/src/main/assets/release_history.json
           grep -Fq 'val physicalSeatCapacity: Int = 4' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicMirrorAttestation0411.kt
           grep -Fq 'val vehicleDayConfigured: Boolean = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicMirrorAttestation0411.kt
           grep -Fq 'val vehicleMakeModel: String = ""' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicMirrorAttestation0411.kt
@@ -181,7 +181,7 @@ jobs:
           grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
 
           SHORT_SHA="$(git rev-parse --short=12 HEAD)"
-          FINAL="rota-certa-0.1.724-6015-hash-parity-$SHORT_SHA.apk"
+          FINAL="rota-certa-0.1.725-6016-hash-parity-$SHORT_SHA.apk"
           cp "$APK" "$FINAL"
           APK_SHA256="$(sha256sum "$FINAL" | awk '{print $1}')"
           sha256sum "$FINAL" | tee /tmp/apk-sha256.txt
