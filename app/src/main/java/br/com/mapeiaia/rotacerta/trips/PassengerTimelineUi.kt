@@ -52,6 +52,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -4244,6 +4246,9 @@ internal fun hasExternalTripActionEvidence(entry: TripTimelineEntry): Boolean =
         !entry.blablaPublicHref.isNullOrBlank() ||
         !entry.blablaProfileUuid.isNullOrBlank()
 
+internal const val TIMELINE_MANUAL_PASSENGER_SHORTCUT_0728 = "+👤"
+internal const val TIMELINE_PUBLIC_BLABLACAR_SHORTCUT_0728 = "🌐"
+
 @Composable
 internal fun TripBlaBlaTripActionRow(
     entry: TripTimelineEntry,
@@ -4271,6 +4276,7 @@ internal fun TripBlaBlaTripActionRow(
         leadingActions0549?.invoke()
         if (onAddManualPassenger != null) {
             TextButton(
+                modifier = Modifier.semantics { contentDescription = "Adicionar passageiro por fora" },
                 onClick = {
                     UnifiedDebugEventStore.record(
                         "AGENDA_CARD_MANUAL_PASSENGER_OPEN",
@@ -4280,11 +4286,12 @@ internal fun TripBlaBlaTripActionRow(
                     onAddManualPassenger()
                 },
                 contentPadding = COMPACT_ACTION_PADDING,
-            ) { Text("👤➕") }
+            ) { Text(TIMELINE_MANUAL_PASSENGER_SHORTCUT_0728) }
         }
         val canonicalPublicHref0490 = canonicalTimelineBlaBlaPublicHref0490(entry)
         if (canonicalPublicHref0490 != null) {
             TextButton(
+                modifier = Modifier.semantics { contentDescription = "Ver anúncio público na BlaBlaCar" },
                 onClick = {
                     if (!openPublicTripBlaBla(context, canonicalPublicHref0490)) {
                         Toast.makeText(
@@ -4295,7 +4302,7 @@ internal fun TripBlaBlaTripActionRow(
                     }
                 },
                 contentPadding = COMPACT_ACTION_PADDING,
-            ) { Text("🔗 Público") }
+            ) { Text(TIMELINE_PUBLIC_BLABLACAR_SHORTCUT_0728) }
         }
         if (hasExternalTripActionEvidence(entry)) {
             IconButton(
