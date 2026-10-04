@@ -334,6 +334,7 @@ class AgendaBackgroundSync0392Test {
         assertTrue(background.contains("\"PUBLIC_MIRROR_NOT_ATTESTED\""))
         assertTrue(background.contains("TARGET_CARD_PUBLIC_SYNC_STATE_0726"))
         assertTrue(background.contains("reverifyCanonicalMirror0435("))
+        assertEquals(4, AgendaBackgroundSync0392.TARGETED_RETRY_MAX_ATTEMPTS_0726)
 
         assertFalse(capture.contains("TARGETED_HTML_BLOCKED_BY_GLOBAL_TRANSACTION_0610"))
         assertTrue(capture.contains("TARGETED_HTML_GLOBAL_ARBITRATION_0726"))
