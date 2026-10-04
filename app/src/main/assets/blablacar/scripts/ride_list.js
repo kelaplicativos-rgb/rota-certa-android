@@ -191,6 +191,42 @@
   )).find((node) => isVisible(node) && archivedSentinelPattern.test(clean(node.innerText || node.textContent)));
   const endSentinelText = clean(endSentinelNode && (endSentinelNode.innerText || endSentinelNode.textContent)).slice(0, 160);
 
+  // 0.1.726: measure and drive the element that actually scrolls. BlaBlaCar may render
+  // the rides inventory inside a nested/virtualized scroll container, in which case
+  // window.scrollY is not terminal evidence.
+  const documentScrollRoot = document.scrollingElement || document.documentElement || document.body;
+  const firstRideRoot = roots.find((root) => !!candidateHref(root)) || null;
+  const scrollableAncestor = (node) => {
+    let current = node && node.parentElement;
+    while (current && current !== document.body && current !== document.documentElement) {
+      const style = window.getComputedStyle ? window.getComputedStyle(current) : null;
+      const overflowY = clean(style && style.overflowY).toLowerCase();
+      if (/^(?:auto|scroll|overlay)$/.test(overflowY) &&
+          Number(current.scrollHeight || 0) > Number(current.clientHeight || 0) + 8) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+    return null;
+  };
+  const scrollRoot = scrollableAncestor(firstRideRoot) || documentScrollRoot;
+  window.__rotaCertaRidesScrollRoot0726 = scrollRoot;
+  const scrollUsesWindow = !scrollRoot ||
+    scrollRoot === documentScrollRoot ||
+    scrollRoot === document.documentElement ||
+    scrollRoot === document.body;
+  const effectiveScrollY = scrollUsesWindow
+    ? Math.max(0, Math.round(window.scrollY || window.pageYOffset || 0))
+    : Math.max(0, Math.round(scrollRoot.scrollTop || 0));
+  const effectiveScrollHeight = scrollUsesWindow
+    ? Math.max(0, Math.round(Math.max(document.documentElement.scrollHeight || 0, document.body.scrollHeight || 0)))
+    : Math.max(0, Math.round(scrollRoot.scrollHeight || 0));
+  const effectiveViewportHeight = scrollUsesWindow
+    ? Math.max(0, Math.round(window.innerHeight || document.documentElement.clientHeight || 0))
+    : Math.max(0, Math.round(scrollRoot.clientHeight || 0));
+  const effectiveAtBottom =
+    Math.ceil(effectiveScrollY + effectiveViewportHeight) >= effectiveScrollHeight - 8;
+
   // Keep the historical small diagnostic DOM unchanged for the existing collector.
   const diagnosticClone = document.documentElement.cloneNode(true);
   diagnosticClone.querySelectorAll('script, style, noscript').forEach((node) => node.remove());
@@ -253,10 +289,10 @@
     endSentinelVisible: !!endSentinelNode,
     endSentinelText: endSentinelText,
     lastMutationAgeMs: Math.max(0, Date.now() - Number(probe.lastMutationAt || Date.now())),
-    scrollY: Math.max(0, Math.round(window.scrollY || window.pageYOffset || 0)),
-    scrollHeight: Math.max(0, Math.round(document.documentElement.scrollHeight || document.body.scrollHeight || 0)),
-    viewportHeight: Math.max(0, Math.round(window.innerHeight || document.documentElement.clientHeight || 0)),
-    atBottom: Math.ceil((window.scrollY || window.pageYOffset || 0) + (window.innerHeight || document.documentElement.clientHeight || 0)) >= Math.max(document.documentElement.scrollHeight || 0, document.body.scrollHeight || 0) - 8,
+    scrollY: effectiveScrollY,
+    scrollHeight: effectiveScrollHeight,
+    viewportHeight: effectiveViewportHeight,
+    atBottom: effectiveAtBottom,
     snapshotHtml: snapshotHtml,
     snapshotHtmlLength: fullSnapshotHtml.length,
     snapshotTruncated: snapshotTruncated,
