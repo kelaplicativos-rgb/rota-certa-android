@@ -1,1 +1,3 @@
 Rota Certa 0.1.725 public projection hash parity validation marker.
+status=PATCHING
+rootCause=ANDROID_PUBLIC_HASH_SCHEMA_MISSING_VEHICLE_FIELDS
