@@ -2,11 +2,13 @@ package br.com.mapeiaia.rotacerta.trips
 
 import android.content.Context
 import android.content.ContextWrapper
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,6 +37,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -796,6 +800,44 @@ private fun OperationalTripBrowserCard0563(
     val arrivalTime = operationalArrivalTime0568(entry, zoneId)
     val duration = operationalDurationLabel0568(entry.departureAtMillis, entry.arrivalAtMillis)
     val dateLabel = operationalDateLabel0568(date, today)
+    val context0729 = LocalContext.current
+    val canonicalTrip0729 = row.canonicalTrip0633
+    val canonicalPublicHref0729 = remember(entry.blablaPublicHref, entry.blablaTripId) {
+        canonicalTimelineBlaBlaPublicHref0490(entry)
+    }
+    var directPassengerTrip0729 by remember(entry.tripId) { mutableStateOf<Trip?>(null) }
+
+    val openManualPassenger0729: () -> Unit = {
+        val selected0729 = canonicalTrip0729
+        when {
+            archived -> onOperationsChanged0654("Viagem arquivada: inclusão de passageiro bloqueada.")
+            selected0729 == null -> onOperationsChanged0654(
+                "Não foi possível identificar a viagem canônica para adicionar passageiro.",
+            )
+            entry.canonicalBackendAuthoritative0494 -> {
+                UnifiedDebugEventStore.recordAlways(
+                    "OPERATIONAL_CARD_MANUAL_PASSENGER_OPEN_0729",
+                    context0729.packageName,
+                    "tripKey=${sha256TripPublication0387(entry.tripId).take(16)} authority=CANONICAL_BACKEND",
+                )
+                directPassengerTrip0729 = selected0729
+            }
+            else -> runCatching { prepareTimelineTripForPassenger(entry, store0654) }
+                .onSuccess { preparation0729 ->
+                    UnifiedDebugEventStore.recordAlways(
+                        "OPERATIONAL_CARD_MANUAL_PASSENGER_OPEN_0729",
+                        context0729.packageName,
+                        "tripKey=${sha256TripPublication0387(entry.tripId).take(16)} authority=LOCAL_BACKING",
+                    )
+                    directPassengerTrip0729 = preparation0729.trip
+                }
+                .onFailure { error0729 ->
+                    onOperationsChanged0654(
+                        error0729.message ?: "Não foi possível preparar este card para adicionar passageiro.",
+                    )
+                }
+        }
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -837,8 +879,52 @@ private fun OperationalTripBrowserCard0563(
                 )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(0.dp),
                 ) {
+                    if (!archived) {
+                        TextButton(
+                            enabled = canonicalTrip0729 != null,
+                            onClick = openManualPassenger0729,
+                            modifier = Modifier
+                                .width(48.dp)
+                                .semantics { contentDescription = "Adicionar passageiro por fora" },
+                            contentPadding = PaddingValues(0.dp),
+                        ) {
+                            Text(
+                                text = TIMELINE_MANUAL_PASSENGER_SHORTCUT_0728,
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                        }
+                    }
+                    if (hasExternalTripActionEvidence(entry)) {
+                        TextButton(
+                            enabled = canonicalPublicHref0729 != null,
+                            onClick = {
+                                if (!openPublicTripBlaBla(context0729, canonicalPublicHref0729)) {
+                                    Toast.makeText(
+                                        context0729,
+                                        "O anúncio público canônico desta viagem ainda não está disponível.",
+                                        Toast.LENGTH_LONG,
+                                    ).show()
+                                } else {
+                                    UnifiedDebugEventStore.recordAlways(
+                                        "OPERATIONAL_CARD_PUBLIC_BLABLACAR_OPEN_0729",
+                                        context0729.packageName,
+                                        "tripKey=${sha256TripPublication0387(entry.tripId).take(16)} canonicalPublic=true",
+                                    )
+                                }
+                            },
+                            modifier = Modifier
+                                .width(48.dp)
+                                .semantics { contentDescription = "Ver anúncio público na BlaBlaCar" },
+                            contentPadding = PaddingValues(0.dp),
+                        ) {
+                            Text(
+                                text = TIMELINE_PUBLIC_BLABLACAR_SHORTCUT_0728,
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                        }
+                    }
                     Text(
                         text = if (row.nativeRotaCerta0633) {
                             "Rota Certa"
@@ -851,6 +937,8 @@ private fun OperationalTripBrowserCard0563(
                     TextButton(
                         enabled = !refreshRunning0663,
                         onClick = onRefreshCard0663,
+                        modifier = Modifier.width(44.dp),
+                        contentPadding = PaddingValues(0.dp),
                     ) {
                         Text(
                             text = if (refreshRunning0663) "…" else "↻",
@@ -860,7 +948,7 @@ private fun OperationalTripBrowserCard0563(
                 }
             }
 
-            val canonicalTrip0667 = row.canonicalTrip0633
+            val canonicalTrip0667 = canonicalTrip0729
             if (canonicalTrip0667 != null) {
                 EnhancedPassengerTimelineSection(
                     entry = entry,
@@ -949,6 +1037,25 @@ private fun OperationalTripBrowserCard0563(
                 )
             }
         }
+    }
+
+    directPassengerTrip0729?.let { selectedTrip0729 ->
+        TimelineCardQuickPassengerDialog(
+            entry = entry,
+            trip = selectedTrip0729,
+            store = store0654,
+            onChanged = onOperationsChanged0654,
+            onTargetSync = {
+                UnifiedDebugEventStore.recordAlways(
+                    "OPERATIONAL_CARD_MANUAL_PASSENGER_SYNC_0729",
+                    context0729.packageName,
+                    "tripKey=${sha256TripPublication0387(entry.tripId).take(16)} requested=true",
+                )
+                onRefreshCard0663()
+            },
+            onDismiss = { directPassengerTrip0729 = null },
+            canonicalBookings0494 = bookings0654,
+        )
     }
 }
 
