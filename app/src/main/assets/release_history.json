@@ -2,6 +2,42 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.729",
+      "build": 6020,
+      "commit": null,
+      "branch": "agent/operational-card-shortcuts-0.1.729",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Renderiza +👤 e 🌐 diretamente no cabeçalho do card da Timeline operacional real (OperationalAllTripsBrowserUi0563), a superfície mostrada em Viagens.",
+        "Liga +👤 ao mesmo TimelineCardQuickPassengerDialog/QuickPassengerPanel canônico já usado para Booking e vagas por trecho.",
+        "Liga 🌐 exclusivamente ao blablaPublicHref canônico da viagem; quando a URL pública ainda não foi comprovada, o atalho permanece visível porém desabilitado."
+      ],
+      "fixed": [
+        "Corrige a causa raiz da 0.1.728: os atalhos tinham sido implementados em TripTimelineUi, porém a aplicação atual usa OperationalAllTripsBrowserUi0563 como substituta operacional.",
+        "Remove a falsa validação que aprovava somente a existência dos símbolos no código sem provar que a superfície ativa da Timeline realmente os renderizava.",
+        "Mantém a seção de passageiros embutida com showTripActions0549=false para evitar uma segunda barra duplicada; os dois atalhos agora pertencem ao cabeçalho do card ativo."
+      ],
+      "improved": [
+        "Adiciona rastreamento operacional específico para abertura de passageiro manual e anúncio público a partir do card real.",
+        "Preserva os atalhos individuais dos passageiros já renderizados pela EnhancedPassengerTimelineSection após a mutação canônica.",
+        "Preserva integralmente carregamento 0.1.727, sincronização pública e demais contratos da 0.1.728."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.728: build continha +👤 e 🌐, mas a tela Viagens não os mostrava porque renderizava outro composable."
+      ],
+      "modulesAffected": [
+        "Timeline operacional",
+        "Viagens",
+        "Passageiros",
+        "BlaBlaCar",
+        "Agenda",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.728",
       "build": 6019,
       "commit": null,
