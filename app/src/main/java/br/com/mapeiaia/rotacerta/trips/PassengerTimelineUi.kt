@@ -4419,7 +4419,6 @@ private fun passengerNavigationChooser0731(
     title: String,
 ): Intent {
     val navigationIntent0731 = Intent(Intent.ACTION_VIEW, passengerMapUri0513(target))
-        .addCategory(Intent.CATEGORY_BROWSABLE)
     return Intent.createChooser(navigationIntent0731, title)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 }
