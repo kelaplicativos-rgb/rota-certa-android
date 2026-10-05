@@ -57,6 +57,27 @@ jobs:
           python -m json.tool /tmp/firebase-sa.json >/dev/null
           echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
 
+      - name: Resolve Firebase Storage bucket from app config
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/firebase-apps.txt
+          APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/firebase-apps.txt | head -1)"
+          test -n "$APP_ID"
+          npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" \
+            --project "$PROJECT" \
+            --out /tmp/google-services.json
+          BUCKET="$(python - <<'PY'
+          import json
+          data=json.load(open('/tmp/google-services.json', encoding='utf-8'))
+          print(data.get('project_info', {}).get('storage_bucket', ''))
+          PY
+          )"
+          test -n "$BUCKET"
+          echo "FIREBASE_STORAGE_BUCKET=$BUCKET" >> "$GITHUB_ENV"
+          echo "firebase_storage_bucket=$BUCKET"
+
       - name: Upload APK directly to Firebase Storage
         shell: bash
         run: |
@@ -77,28 +98,14 @@ jobs:
           expected_sha = os.environ["EXPECTED_SHA256"]
 
           client = storage.Client(project=project)
-          buckets = list(client.list_buckets(project=project))
-          if not buckets:
-              raise SystemExit(f"No Cloud Storage bucket found for project {project}")
-
-          preferred = [
-              f"{project}.firebasestorage.app",
-              f"{project}.appspot.com",
-          ]
-          bucket = next((b for name in preferred for b in buckets if b.name == name), None)
-          if bucket is None:
-              bucket = next((b for b in buckets if project in b.name), buckets[0])
+          bucket_name = os.environ["FIREBASE_STORAGE_BUCKET"].strip()
+          if not bucket_name:
+              raise SystemExit("FIREBASE_STORAGE_BUCKET is empty")
+          bucket = client.bucket(bucket_name)
 
           object_name = f"apk/{apk_name}"
           blob = bucket.blob(object_name)
-
-          token = None
-          if blob.exists(client):
-              blob.reload()
-              token = (blob.metadata or {}).get("firebaseStorageDownloadTokens")
-
-          if not token:
-              token = str(uuid.uuid4())
+          token = str(uuid.uuid4())
 
           blob.metadata = {
               "firebaseStorageDownloadTokens": token,
@@ -114,12 +121,6 @@ jobs:
               content_type="application/vnd.android.package-archive",
               timeout=900,
           )
-          blob.reload()
-
-          actual_token = (blob.metadata or {}).get("firebaseStorageDownloadTokens")
-          if actual_token != token:
-              raise SystemExit("Firebase download token metadata did not persist")
-
           encoded_bucket = urllib.parse.quote(bucket.name, safe="")
           encoded_object = urllib.parse.quote(object_name, safe="")
           direct_url = (
@@ -164,15 +165,6 @@ jobs:
             echo "- Storage: `$(cat /tmp/firebase-bucket.txt)`"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Keep APK-only GitHub artifact as fallback
-        uses: actions/upload-artifact@v4
-        with:
-          name: rota-certa-0.1.731-APK-INSTALAR
-          path: |
-            ${{ github.workspace }}/${{ env.EXPECTED_APK }}
-          if-no-files-found: warn
-          retention-days: 30
-
       - name: Prepare APK-only fallback path
         if: always()
         shell: bash
@@ -181,3 +173,12 @@ jobs:
           if [ -f apk-path.txt ]; then
             cp "$(cat apk-path.txt)" "$EXPECTED_APK"
           fi
+
+      - name: Keep APK-only GitHub artifact as fallback
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.731-APK-INSTALAR
+          path: ${{ env.EXPECTED_APK }}
+          if-no-files-found: warn
+          retention-days: 30
