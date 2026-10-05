@@ -238,4 +238,43 @@ class BlaBlaStandaloneRideCoversExport0734Test {
         )
     }
 
+    @Test
+    fun recoveredCompleteCannotSilentlyLoseCoversSeenByPreviousAttempt() {
+        val previous = BlaBlaStandaloneRideCoversProfile0734(
+            displayName = "Conta teste",
+            profileUuid = "7371f028-9c55-4903-8444-308015823efd",
+            identityConfirmed = true,
+            status = RESULT_PARTIAL_0734,
+            observedCardCount = 21,
+            exportedCardCount = 21,
+            reachedEnd = false,
+            stabilized = false,
+            errorCode = "COVER_LIST_NOT_STABLE",
+            cards = (1..21).map { index ->
+                BlaBlaStandaloneRideCover0734(
+                    tripId = "trip-$index",
+                    dateIso = "2026-11-13",
+                )
+            },
+        )
+        val smallerComplete = previous.copy(
+            status = RESULT_COMPLETE_0734,
+            observedCardCount = 20,
+            exportedCardCount = 20,
+            reachedEnd = true,
+            stabilized = true,
+            errorCode = "",
+            cards = previous.cards.take(20),
+        )
+        val equalComplete = previous.copy(
+            status = RESULT_COMPLETE_0734,
+            reachedEnd = true,
+            stabilized = true,
+            errorCode = "",
+        )
+
+        assertFalse(canAcceptRecoveredComplete0735(previous, smallerComplete))
+        assertTrue(canAcceptRecoveredComplete0735(previous, equalComplete))
+    }
+
 }
