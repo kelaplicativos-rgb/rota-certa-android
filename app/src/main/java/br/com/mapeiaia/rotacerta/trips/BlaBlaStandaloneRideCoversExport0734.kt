@@ -82,6 +82,8 @@ internal data class BlaBlaStandaloneRideCoversProfile0734(
     val reachedEnd: Boolean,
     val stabilized: Boolean,
     val errorCode: String = "",
+    val collectionAttempts: Int = 1,
+    val recoveredTransiently: Boolean = false,
     val cards: List<BlaBlaStandaloneRideCover0734> = emptyList(),
 )
 
@@ -172,6 +174,9 @@ private const val INITIAL_SETTLE_MS_0734 = 650L
 private const val REQUIRED_STABLE_PASSES_0734 = 4
 private const val QUIET_MS_0734 = 750L
 private const val MAX_EVALUATION_PASSES_0734 = 120
+private const val MAX_PROFILE_ATTEMPTS_0735 = 2
+private const val PROFILE_RETRY_DELAY_MS_0735 = 900L
+private const val MAX_ARCHIVE_REWINDS_0735 = 1
 
 internal fun validateStandaloneRideCoversPayload0734(
     value: BlaBlaStandaloneRideCoversPayload0734,
@@ -198,6 +203,14 @@ internal fun validateStandaloneRideCoversPayload0734(
 
     value.profiles.forEach { profile ->
         require(profile.exportedCardCount == profile.cards.size) { "Contagem de capas do perfil inconsistente" }
+        require(profile.collectionAttempts in 1..MAX_PROFILE_ATTEMPTS_0735) {
+            "Quantidade de tentativas avulsas inconsistente"
+        }
+        if (profile.recoveredTransiently) {
+            require(profile.status == PROFILE_COMPLETE_0734 && profile.collectionAttempts > 1) {
+                "Recuperação transitória marcada sem uma coleta COMPLETE posterior"
+            }
+        }
         if (profile.identityConfirmed) {
             require(normalizeStandaloneProfileUuid0734(profile.profileUuid) == profile.profileUuid) {
                 "UUID do perfil não está canônico"
@@ -265,6 +278,44 @@ internal fun normalizeStandaloneProfileUuid0734(raw: String?): String? {
         ?.takeIf { it == candidate }
 }
 
+internal fun shouldRetryStandaloneProfile0735(
+    profile: BlaBlaStandaloneRideCoversProfile0734,
+): Boolean {
+    if (profile.status == PROFILE_COMPLETE_0734) return false
+    val code = profile.errorCode
+    return code == "COVER_LIST_NOT_STABLE" ||
+        code == "COVER_COLLECTION_TIMEOUT" ||
+        code == "COVER_SCRIPT_NOT_READABLE" ||
+        code == "RIDES_COVERS_NOT_AVAILABLE" ||
+        code == "PROFILE_BROWSER_BUSY" ||
+        code == "PROFILE_UUID_NOT_OBSERVABLE" ||
+        code.startsWith("NETWORK_ERROR_") ||
+        code.startsWith("PROFILE_NETWORK_ERROR_")
+}
+
+internal fun chooseBetterStandaloneProfile0735(
+    current: BlaBlaStandaloneRideCoversProfile0734?,
+    candidate: BlaBlaStandaloneRideCoversProfile0734,
+): BlaBlaStandaloneRideCoversProfile0734 {
+    if (current == null) return candidate
+    if (candidate.status == PROFILE_COMPLETE_0734 && current.status != PROFILE_COMPLETE_0734) {
+        return candidate
+    }
+    if (current.status == PROFILE_COMPLETE_0734 && candidate.status != PROFILE_COMPLETE_0734) {
+        return current
+    }
+    if (candidate.exportedCardCount != current.exportedCardCount) {
+        return if (candidate.exportedCardCount > current.exportedCardCount) candidate else current
+    }
+    if (candidate.observedCardCount != current.observedCardCount) {
+        return if (candidate.observedCardCount > current.observedCardCount) candidate else current
+    }
+    if (candidate.identityConfirmed != current.identityConfirmed) {
+        return if (candidate.identityConfirmed) candidate else current
+    }
+    return candidate
+}
+
 internal object BlaBlaStandaloneRideCoversExport0734 {
     suspend fun download(
         context: Context,
@@ -300,7 +351,7 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
                 "Capas avulsas • perfil " + (index + 1) + "/" + accounts.size +
                     " • " + account.displayLabel,
             )
-            profiles += collectProfile(
+            profiles += collectProfileWithRecovery(
                 context = app,
                 account = account,
                 identityScript = identityScript,
@@ -333,6 +384,49 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
         }
 
         return writeDownload(app, raw, payload)
+    }
+
+    private suspend fun collectProfileWithRecovery(
+        context: Context,
+        account: BlaBlaDynamicAccount,
+        identityScript: String,
+        coverScript: String,
+        onProgress: (String) -> Unit,
+    ): BlaBlaStandaloneRideCoversProfile0734 {
+        var best: BlaBlaStandaloneRideCoversProfile0734? = null
+        var attempts = 0
+
+        while (attempts < MAX_PROFILE_ATTEMPTS_0735) {
+            attempts++
+            if (attempts > 1) {
+                onProgress(account.displayLabel + " • repetindo a leitura avulsa")
+                delay(PROFILE_RETRY_DELAY_MS_0735)
+            }
+
+            val candidate = collectProfile(
+                context = context,
+                account = account,
+                identityScript = identityScript,
+                coverScript = coverScript,
+                onProgress = onProgress,
+            )
+            best = chooseBetterStandaloneProfile0735(best, candidate)
+
+            if (candidate.status == PROFILE_COMPLETE_0734) {
+                return candidate.copy(
+                    collectionAttempts = attempts,
+                    recoveredTransiently = attempts > 1,
+                )
+            }
+            if (!shouldRetryStandaloneProfile0735(candidate)) {
+                return candidate.copy(collectionAttempts = attempts)
+            }
+        }
+
+        return requireNotNull(best).copy(
+            collectionAttempts = attempts,
+            recoveredTransiently = false,
+        )
     }
 
     private suspend fun collectProfile(
@@ -636,6 +730,7 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
                 var passes = 0
                 var stablePasses = 0
                 var lastFingerprint = ""
+                var archiveRewinds = 0
 
                 fun finish(value: StandalonePageResult0734) {
                     if (done) return
@@ -675,6 +770,29 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
                         }
 
                         onProgress(sample.observedCardCount)
+
+                        val shouldRewindFromTerminalZero =
+                            sample.observedCardCount == 0 &&
+                                !sample.explicitEmptyList &&
+                                archiveRewinds < MAX_ARCHIVE_REWINDS_0735 &&
+                                (sample.endSentinelVisible || sample.atBottom)
+                        if (shouldRewindFromTerminalZero) {
+                            archiveRewinds++
+                            stablePasses = 0
+                            lastFingerprint = ""
+                            val rewindScript =
+                                "(function(){try{" +
+                                    "var root=window.__rotaCertaStandaloneRideCoversScrollRoot0734||document.scrollingElement||document.documentElement||document.body;" +
+                                    "var doc=document.scrollingElement||document.documentElement||document.body;" +
+                                    "var isDoc=!root||root===doc||root===document.documentElement||root===document.body;" +
+                                    "if(isDoc){window.scrollTo(0,0);}else if(root.scrollTo){root.scrollTo(0,0);}else{root.scrollTop=0;}" +
+                                    "}catch(_){ } return true;})();"
+                            webView.evaluateJavascript(rewindScript) {
+                                handler.postDelayed(::evaluate, INITIAL_SETTLE_MS_0734)
+                            }
+                            return@evaluateJavascript
+                        }
+
                         val terminalEvidence =
                             sample.explicitEmptyList || sample.endSentinelVisible || sample.atBottom
                         val materialized =
