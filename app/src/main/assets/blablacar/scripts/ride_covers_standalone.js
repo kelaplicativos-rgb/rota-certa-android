@@ -85,9 +85,9 @@
   currentCovers.forEach((cover) => {
     if (cover && cover.href) probe.coversByHref[cover.href] = cover;
   });
-  const covers = Object.keys(probe.coversByHref).sort().map((href) => probe.coversByHref[href]);
-  const observedTripHrefs = covers.map((cover) => cover.href);
-  const observedCardCount = observedTripHrefs.length;
+  let covers = Object.keys(probe.coversByHref).sort().map((href) => probe.coversByHref[href]);
+  let observedTripHrefs = covers.map((cover) => cover.href);
+  let observedCardCount = observedTripHrefs.length;
 
   const isVisible = (node) => {
     if (!node) return false;
@@ -109,6 +109,19 @@
   const archivedSentinelPattern = /viagens? arquivadas?|archived (?:rides|trips)|trajets? archiv|fahrten archiv|viajes? archiv|viaggi? archivi/i;
   const endSentinelNode = Array.from(document.querySelectorAll('h1, h2, h3, h4, [role="heading"], summary, button, a'))
     .find((node) => isVisible(node) && archivedSentinelPattern.test(clean(node.innerText || node.textContent)));
+
+  if (endSentinelNode) {
+    roots.forEach((root) => {
+      const isAfterArchivedSentinel =
+        !!(endSentinelNode.compareDocumentPosition(root) & Node.DOCUMENT_POSITION_FOLLOWING);
+      if (!isAfterArchivedSentinel) return;
+      const href = candidateHref(root);
+      if (href && probe.coversByHref[href]) delete probe.coversByHref[href];
+    });
+    covers = Object.keys(probe.coversByHref).sort().map((href) => probe.coversByHref[href]);
+    observedTripHrefs = covers.map((cover) => cover.href);
+    observedCardCount = observedTripHrefs.length;
+  }
 
   const documentScrollRoot = document.scrollingElement || document.documentElement || document.body;
   const firstRideRoot = roots.find((root) => !!candidateHref(root)) || null;
