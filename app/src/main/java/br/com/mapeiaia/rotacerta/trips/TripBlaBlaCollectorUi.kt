@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +44,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 // Compatibility markers consumed by the already-validated Step5 materializer:
 // UUID perfil 1 • UUID perfil 2 (opcional) • Mês — AAAA-MM • Buscar • rotas dinâmicas da Agenda
@@ -112,6 +114,7 @@ fun BlaBlaCollectorPanel(
     showAccountManagement: Boolean = true,
 ) {
     val context = LocalContext.current
+    val standaloneScope0734 = rememberCoroutineScope()
     val registry = remember(context) { BlaBlaDynamicAccountRegistry(context) }
     val sessionStore = remember(context) { BlaBlaDynamicSessionStore(context) }
     val manualSeatStore = remember(context) { BlaBlaManualSeatSyncRequestStore(context) }
@@ -142,6 +145,8 @@ fun BlaBlaCollectorPanel(
     var dateScopeSelectedAccountIds0449 by remember { mutableStateOf<Set<String>>(emptySet()) }
     var dateScopeSelectedScripts0449 by remember { mutableStateOf(scriptWorkspace0486.dateScopeEnabledRequests()) }
     var message by remember { mutableStateOf<String?>(null) }
+    var standaloneExporting0734 by remember { mutableStateOf(false) }
+    var standaloneMessage0734 by remember { mutableStateOf<String?>(null) }
     var showAddAccount by remember { mutableStateOf(false) }
     var newAccountLabel by remember { mutableStateOf("") }
     var showDateScopeSelector by remember { mutableStateOf(false) }
@@ -655,7 +660,7 @@ fun BlaBlaCollectorPanel(
 
             Spacer(Modifier.height(2.dp))
             Button(
-                enabled = !syncing && !archiving && !manualSeatSyncing && accounts.isNotEmpty(),
+                enabled = !syncing && !archiving && !manualSeatSyncing && !standaloneExporting0734 && accounts.isNotEmpty(),
                 onClick = {
                     targetedSyncTripId = null
                     syncDateScope = null
@@ -683,7 +688,7 @@ fun BlaBlaCollectorPanel(
                 Text("Vagas pendentes: $pendingSeatCount • isso não bloqueia as outras sincronizações.")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
-                        enabled = !syncing && !archiving && !manualSeatSyncing && accounts.isNotEmpty(),
+                        enabled = !syncing && !archiving && !manualSeatSyncing && !standaloneExporting0734 && accounts.isNotEmpty(),
                         onClick = { launchPendingSeatSync("manual_pending_button") },
                     ) { Text("Tentar vagas pendentes") }
                     TextButton(
@@ -694,7 +699,7 @@ fun BlaBlaCollectorPanel(
             }
 
             OutlinedButton(
-                enabled = !syncing && !archiving && !manualSeatSyncing && accounts.isNotEmpty(),
+                enabled = !syncing && !archiving && !manualSeatSyncing && !standaloneExporting0734 && accounts.isNotEmpty(),
                 onClick = {
                     dateScopeSelectedAccountIds0449 = accounts.map { it.id }.toSet()
                     dateScopeSelectedScripts0449 = scriptWorkspace0486.dateScopeEnabledRequests()
@@ -704,6 +709,42 @@ fun BlaBlaCollectorPanel(
             ) {
                 Text("📅 Sincronizar por data/período")
             }
+
+            OutlinedButton(
+                enabled = !syncing && !archiving && !manualSeatSyncing && !standaloneExporting0734 && accounts.isNotEmpty(),
+                onClick = {
+                    standaloneExporting0734 = true
+                    standaloneMessage0734 = "Coletando somente as capas das viagens…"
+                    standaloneScope0734.launch {
+                        try {
+                            val download0734 = BlaBlaStandaloneRideCoversExport0734.download(
+                                context = context,
+                                accounts = accounts,
+                                onProgress = { progress0734 ->
+                                    standaloneMessage0734 = progress0734
+                                },
+                            )
+                            standaloneMessage0734 =
+                                "Arquivo avulso salvo em " + download0734.relativeLocation +
+                                    " • " + download0734.totalCards + " capa(s) • " + download0734.result
+                        } catch (error0734: Throwable) {
+                            standaloneMessage0734 =
+                                "Coleta avulsa não concluída: " +
+                                    (error0734.message?.take(160) ?: error0734.javaClass.simpleName)
+                        } finally {
+                            standaloneExporting0734 = false
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (standaloneExporting0734) "Coletando capas…" else "⬇️ Baixar capas (avulso)")
+            }
+            Text(
+                "Avulso: lê somente as capas em Suas viagens e baixa um JSON. " +
+                    "Não sincroniza nem altera Timeline, Agenda, vagas, disponibilidade, estado canônico ou estado do dia.",
+            )
+            standaloneMessage0734?.let { Text(it) }
 
             Text("A leitura usa somente a interface oficial logada. Senha não é capturada nem enviada ao Railway.")
             Text("Após cada leitura, o Rota Certa guarda em área privada do app os MHTMLs necessários: /rides, resumo de cada viagem, passageiros individuais e opções de lugares. Esses arquivos podem conter dados pessoais e não são gravados em Downloads público.")
