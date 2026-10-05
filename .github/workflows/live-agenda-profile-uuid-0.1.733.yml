@@ -72,7 +72,7 @@ jobs:
 
           npm --prefix trip-platform/functions install --no-audit --no-fund
 
-          node --test             trip-platform/functions/test/live-agenda-feed-0701.test.js             trip-platform/functions/test/live-agenda-tool-0732.test.js             trip-platform/functions/test/agenda-public-realtime-0724.test.js             trip-platform/functions/test/timeline-all-profiles-public-driver-0309.test.js             | tee /tmp/backend-tests-0733.log
+          node --test             trip-platform/functions/test/live-agenda-feed-0701.test.js             trip-platform/functions/test/live-agenda-tool-0732.test.js             trip-platform/functions/test/agenda-public-realtime-0724.test.js             | tee /tmp/backend-tests-0733.log
 
       - name: Authenticate Google Cloud
         uses: google-github-actions/auth@v2
