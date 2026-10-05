@@ -52,7 +52,7 @@ jobs:
           ! grep -Fq 'stateStore.saveResponse' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt
           ! grep -Fq 'TripStore(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt
           ! grep -Fq 'PassengerIdentityStore' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt
-          ! grep -Eq 'passengers|passengerRoster|booking_href' app/src/main/assets/blablacar/scripts/ride_covers_standalone.js
+          ! grep -Eq 'extractPassengers|passengerRoster|booking_href|phone:' app/src/main/assets/blablacar/scripts/ride_covers_standalone.js
           git diff --exit-code "$BASE_SHA"...HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           git diff --check "$BASE_SHA"...HEAD
 
