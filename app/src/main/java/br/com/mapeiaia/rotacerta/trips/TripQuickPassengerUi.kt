@@ -327,10 +327,21 @@ fun QuickPassengerPanel(
                         "Backend canônico indisponível. Nada foi alterado."
                     }
                     val ack0494 = TripRemoteApi(settings).upsertDriverBooking(remoteTripId!!, plan.passenger)
+                    check(ack0494.booking.id == plan.passenger.id) {
+                        "Backend retornou identidade de reserva diferente da solicitação."
+                    }
+                    val confirmedCache0730 = plan.passenger.copy(
+                        createdAtMillis = ack0494.booking.createdAtMillis.takeIf { it > 0L }
+                            ?: plan.passenger.createdAtMillis,
+                        updatedAtMillis = ack0494.booking.updatedAtMillis.takeIf { it > 0L }
+                            ?: plan.passenger.updatedAtMillis,
+                    )
+                    store.persistRemoteConfirmedBooking0730(confirmedCache0730)
                     UnifiedDebugEventStore.record(
                         "TIMELINE_CANONICAL_PASSENGER_ADD_0494",
                         context.packageName,
-                        "canonicalTripId=${seatSyncDiagnosticKey(trip.id)} entityRevision=${ack0494.entityRevision} authority=CANONICAL_BACKEND localBusinessWrite=false collectorWrite=false",
+                        "canonicalTripId=${seatSyncDiagnosticKey(trip.id)} entityRevision=${ack0494.entityRevision} " +
+                            "authority=CANONICAL_BACKEND localBusinessWrite=false collectorWrite=false readYourWrite0730=true",
                     )
                 } else {
                     val syncOnline = settings.configured && remoteTripId != null
@@ -476,11 +487,20 @@ fun QuickPassengerPanel(
                                     check(settings0494.configured && remoteId0494 != null) {
                                         "Backend canônico indisponível. Nada foi alterado."
                                     }
-                                    TripRemoteApi(settings0494).updateDriverPassengerOperationalStatus(
+                                    val ack0494 = TripRemoteApi(settings0494).updateDriverPassengerOperationalStatus(
                                         remoteTripId = remoteId0494!!,
                                         bookingId = booking.id,
                                         selection = "CANCELLED",
                                     )
+                                    val cancelledCache0730 = booking.copy(
+                                        status = BookingStatus.CANCELLED,
+                                        operationalStatus = PassengerOperationalStatus.CANCELLED,
+                                        lastDriverSelection = "CANCELLED",
+                                        updatedAtMillis = ack0494.booking.updatedAtMillis.takeIf { it > 0L }
+                                            ?: booking.updatedAtMillis,
+                                    )
+                                    store.persistRemoteConfirmedBooking0730(cancelledCache0730)
+                                    ack0494
                                 }.onSuccess { ack0494 ->
                                     BookingRealtimeEvents0356.notifyChanged()
                                     UnifiedDebugEventStore.record(
