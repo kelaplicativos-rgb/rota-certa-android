@@ -138,9 +138,9 @@ jobs:
           test "$NORMALIZED_ETAG" = "$EXPECTED_ETAG"
 
           : > /tmp/live-tool-304-body.txt
-          STATUS="$(curl --retry 10 --retry-delay 1 --silent --show-error             -D /tmp/live-tool-304-headers-0732.txt             -o /tmp/live-tool-304-body.txt -w '%{http_code}'             -H "If-None-Match: $ETAG"             "$BASE/v1/public/live-query/ezequiel")"
+          STATUS="$(curl --retry 10 --retry-delay 1 --silent --show-error             -D /tmp/live-tool-304-headers-0732.txt             -o /tmp/live-tool-304-body.txt -w '%{http_code}'             "$BASE/v1/public/live-query/ezequiel?ifSnapshotHash=$SNAPSHOT_HASH")"
           echo "conditionalStatus=$STATUS"
-          echo '--- conditional response headers ---'
+          echo '--- hosting-safe conditional response headers ---'
           cat /tmp/live-tool-304-headers-0732.txt
           test "$STATUS" = "304"
           test ! -s /tmp/live-tool-304-body.txt
@@ -154,7 +154,7 @@ jobs:
             echo "backend_tests=PASS"
             echo "tripApi_exact_sha=PASS"
             echo "live_tool_smoke=PASS"
-            echo "etag_revalidation=PASS"
+            echo "etag_emission=PASS"\n            echo "snapshot_hash_revalidation=PASS"
             echo "collector_fail_closed=PASS"
             echo "endpoint=$BASE/v1/public/live-query/ezequiel"
           } | tee /tmp/final-proof-0732.txt
