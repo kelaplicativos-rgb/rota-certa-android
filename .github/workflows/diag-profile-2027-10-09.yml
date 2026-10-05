@@ -1,4 +1,4 @@
-name: Diagnose 2026-11-07 return
+name: Identify public ride 2026-11-12
 
 on:
   push:
@@ -10,24 +10,38 @@ permissions:
   contents: read
 
 jobs:
-  diagnose:
+  identify:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Query public BlaBlaCar and Barbosa source trip
+      - name: Open search in real browser and extract card/profile
         shell: bash
         run: |
           set -euo pipefail
-          SEARCH='https://www.blablacar.com.br/search?fn=Tr%C3%AAs+Cora%C3%A7%C3%B5es&tn=Santo+Andr%C3%A9&db=2026-11-07&seats=1&search_origin=CARPOOL_AXIS&transport_type=CARPOOLING'
-          LIVE='https://rota-certa-7ccc8.web.app/v1/public/live-query/ezequiel?date=2027-09-27&profileUuid=175a7068-50d8-40c3-a27a-214b9c6e0461'
+          URL='https://www.blablacar.com.br/search?fn=S%C3%A3o+Paulo&tn=S%C3%A3o+Tom%C3%A9+das+Letras&db=2026-11-12&seats=1&search_origin=CARPOOL_AXIS&transport_type=CARPOOLING'
 
-          curl --retry 8 --retry-delay 2 --silent --show-error --location "$SEARCH" -o /tmp/blabla.html
-          curl --retry 8 --retry-delay 2 --fail --silent --show-error "$LIVE" -o /tmp/barbosa.json
+          google-chrome --headless=new --no-sandbox --disable-dev-shm-usage             --disable-gpu --virtual-time-budget=15000 --dump-dom "$URL"             > /tmp/search.html 2>/tmp/chrome.err || true
 
-          echo '=== BARBOSA SOURCE ==='
-          cat /tmp/barbosa.json
-          echo
-          echo '=== PUBLIC SEARCH MARKERS ==='
-          grep -oE 'Sábado, 7 de novembro|[0-9]+ viagem disponível|[0-9]{2}:[0-9]{2}|R\$[0-9]+,[0-9]{2}|Três Corações|Santo André' /tmp/blabla.html | head -n 80 || true
-          echo '=== PUBLIC SEARCH SIZE ==='
-          wc -c /tmp/blabla.html
+          echo '=== SIZE ==='
+          wc -c /tmp/search.html
+          echo '=== TRIP LINKS ==='
+          grep -oE 'https://www\.blablacar\.com\.br/trip[^" <]+' /tmp/search.html | head -n 20 || true
+          grep -oE 'href="[^"]*trip[^"]*"' /tmp/search.html | head -n 20 || true
+          echo '=== PROFILE LINKS ==='
+          grep -oE 'href="[^"]*user/show/[^"]*"' /tmp/search.html | head -n 20 || true
+          echo '=== UUIDS ==='
+          grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' /tmp/search.html | sort -u || true
+          echo '=== CARD MARKERS ==='
+          grep -oE '09:30|Wilson|São Tomé das Letras|São Thomé das Letras|R\$ ?89[^<]*' /tmp/search.html | head -n 50 || true
+
+          cp /tmp/search.html search-2026-11-12.html
+          cp /tmp/chrome.err chrome.err
+
+      - name: Upload proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: identify-public-ride-2026-11-12
+          retention-days: 7
+          path: |
+            search-2026-11-12.html
+            chrome.err
