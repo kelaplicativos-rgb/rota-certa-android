@@ -2,6 +2,42 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.731",
+      "build": 6022,
+      "commit": null,
+      "branch": "agent/timeline-gps-chooser-0.1.731",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Substitui a abertura direta do Google Maps por seletor explícito de apps de navegação do Android em embarque e desembarque.",
+        "Faz passageiro adicionado por +👤 usar o próprio ponto de embarque/desembarque selecionado na viagem como alvo de navegação quando não existe endereço privado.",
+        "Faz ícone e texto de embarque/desembarque dentro dos cards seguirem o mesmo contrato de navegação."
+      ],
+      "fixed": [
+        "Corrige atalhos 📍/🏁 que forçavam com.google.android.apps.maps em vez de permitir escolha do GPS.",
+        "Corrige passageiro manual que caía no editor de endereço ao tocar em embarque/desembarque por não possuir endereço/lat-long próprio.",
+        "Remove fallback oculto de GPS para edição de endereço; ausência real de alvo agora informa indisponibilidade sem abrir editor."
+      ],
+      "improved": [
+        "Mantém Intent ACTION_VIEW com URI geo:, padrão Android para apps de mapas, encapsulado em Intent.createChooser.",
+        "Preserva endereço/coordenadas exatos quando disponíveis e usa o ponto da viagem como consulta somente quando necessário.",
+        "Preserva explicitamente a ação separada de editar endereço no menu do passageiro, sem misturá-la ao atalho de GPS."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.730: PASSENGER_DROPOFF_MAP_OPEN podia abrir Google Maps diretamente e passageiros manuais podiam abrir editor de endereço em vez de navegação."
+      ],
+      "modulesAffected": [
+        "Timeline operacional",
+        "Passageiros",
+        "Embarque",
+        "Desembarque",
+        "GPS",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.730",
       "build": 6021,
       "commit": null,
