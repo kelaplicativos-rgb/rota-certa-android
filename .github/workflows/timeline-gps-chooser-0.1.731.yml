@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: timeline-gps-chooser-0731-${{ github.ref }}
@@ -19,6 +19,9 @@ jobs:
     timeout-minutes: 150
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       ROTA_CERTA_GIT_SHA: ${{ github.sha }}
       ROTA_CERTA_GIT_BRANCH: 'agent/timeline-gps-chooser-0.1.731'
       BASE_SHA: '409d4ee655380c188e5bf76d402a87a7be53c3ee'
@@ -273,49 +276,114 @@ jobs:
             /tmp/assemble.log
             /tmp/organicmaps-sdk-build.log
 
-      - name: Publish direct-install APK and link
+      - name: Configure Firebase authentication for direct APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+          else
+            echo "Firebase service account secret is missing."
+            exit 3
+          fi
+          chmod 600 /tmp/firebase-sa.json
+          python3 -m json.tool /tmp/firebase-sa.json >/dev/null
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+
+      - name: Publish direct-install APK link
         id: direct_apk
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
           APK_FILE: ${{ steps.proof.outputs.apk }}
           APK_SHA256: ${{ steps.proof.outputs.apk_sha256 }}
         run: |
           set -euo pipefail
           test -s "$APK_FILE"
 
-          DISTRIBUTION_TAG="latest"
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          CHANNEL_ID="apk-0731-$SHORT_SHA"
           APK_NAME="$(basename "$APK_FILE")"
 
-          # Reuse the repository's existing permanent distribution release.
-          # Do not replace rota-certa-latest.apk here; add only this exact-SHA APK.
-          gh release view "$DISTRIBUTION_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
-          gh release upload "$DISTRIBUTION_TAG" "$APK_FILE" \
-            --repo "$GITHUB_REPOSITORY" \
-            --clobber
+          rm -rf .apk-hosting
+          mkdir -p .apk-hosting/public
+          cp "$APK_FILE" ".apk-hosting/public/$APK_NAME"
 
-          gh release view "$DISTRIBUTION_TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --json assets \
-            --jq '.assets[].name' \
-            | grep -Fx "$APK_NAME"
+          cat > .apk-hosting/firebase.json <<EOF
+          {
+            "hosting": {
+              "public": "public",
+              "ignore": [],
+              "headers": [
+                {
+                  "source": "**/*.apk",
+                  "headers": [
+                    {
+                      "key": "Content-Disposition",
+                      "value": "attachment; filename=\"$APK_NAME\""
+                    },
+                    {
+                      "key": "Cache-Control",
+                      "value": "public, max-age=31536000, immutable"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+          EOF
 
-          DIRECT_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${DISTRIBUTION_TAG}/${APK_NAME}"
+          (
+            cd .apk-hosting
+            npx --yes firebase-tools@14.12.0 hosting:channel:deploy "$CHANNEL_ID" \
+              --project "$PROJECT" \
+              --expires 30d \
+              --config firebase.json \
+              --non-interactive
+          ) 2>&1 | tee /tmp/firebase-apk-channel.txt
+
+          PREVIEW_URL="$(grep -Eo 'https://[A-Za-z0-9._-]+\.web\.app' /tmp/firebase-apk-channel.txt | tail -1)"
+          test -n "$PREVIEW_URL"
+          DIRECT_URL="$PREVIEW_URL/$APK_NAME"
+
           echo "url=$DIRECT_URL" >> "$GITHUB_OUTPUT"
-          echo "tag=$DISTRIBUTION_TAG" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$DIRECT_URL" | tee /tmp/direct-apk-url.txt
+
+          curl --fail --location --retry 5 --retry-delay 2 \
+            --range 0-31 \
+            --output /tmp/direct-apk-prefix.bin \
+            "$DIRECT_URL"
+          test -s /tmp/direct-apk-prefix.bin
+
+          python3 - <<'PY'
+          data = open("/tmp/direct-apk-prefix.bin", "rb").read(4)
+          if data[:2] != b"PK":
+              raise SystemExit(f"Direct download is not an APK/ZIP prefix: {data!r}")
+          PY
 
           {
             echo "## 📱 APK pronto para instalar"
             echo
             echo "[**Baixar somente o APK — Rota Certa ${EXPECTED_VERSION_NAME}**](${DIRECT_URL})"
             echo
-            echo "Download direto do APK, sem o pacote de diagnóstico do artifact."
+            echo "Download direto do arquivo .apk, sem o pacote de diagnóstico."
             echo
             echo "- VersionName: \`${EXPECTED_VERSION_NAME}\`"
             echo "- VersionCode: \`${EXPECTED_VERSION_CODE}\`"
             echo "- Commit: \`${GITHUB_SHA}\`"
             echo "- SHA-256: \`${APK_SHA256}\`"
             echo "- Arquivo: \`${APK_NAME}\`"
+            echo "- Link direto válido por 30 dias."
             echo
             echo "O artifact completo continua disponível separadamente para diagnóstico e auditoria."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload APK-only install artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-${{ env.EXPECTED_VERSION_NAME }}-APK-INSTALAR-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: ${{ steps.proof.outputs.apk }}
