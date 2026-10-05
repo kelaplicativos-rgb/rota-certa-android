@@ -303,6 +303,16 @@ internal fun shouldRetryStandaloneProfile0735(
         code.startsWith("PROFILE_NETWORK_ERROR_")
 }
 
+internal fun canAcceptRecoveredComplete0735(
+    previousEvidence: BlaBlaStandaloneRideCoversProfile0734?,
+    candidate: BlaBlaStandaloneRideCoversProfile0734,
+): Boolean {
+    if (candidate.status != PROFILE_COMPLETE_0734) return false
+    if (previousEvidence == null) return true
+    return candidate.observedCardCount >= previousEvidence.observedCardCount &&
+        candidate.exportedCardCount >= previousEvidence.exportedCardCount
+}
+
 internal fun chooseBetterStandaloneProfile0735(
     current: BlaBlaStandaloneRideCoversProfile0734?,
     candidate: BlaBlaStandaloneRideCoversProfile0734,
@@ -413,6 +423,7 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
                 delay(PROFILE_RETRY_DELAY_MS_0735)
             }
 
+            val previousEvidence = best
             val candidate = collectProfile(
                 context = context,
                 account = account,
@@ -420,16 +431,27 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
                 coverScript = coverScript,
                 onProgress = onProgress,
             )
-            best = chooseBetterStandaloneProfile0735(best, candidate)
 
             if (candidate.status == PROFILE_COMPLETE_0734) {
-                return candidate.copy(
+                if (canAcceptRecoveredComplete0735(previousEvidence, candidate)) {
+                    return candidate.copy(
+                        collectionAttempts = attempts,
+                        recoveredTransiently = attempts > 1,
+                    )
+                }
+                return requireNotNull(previousEvidence).copy(
+                    status = PROFILE_PARTIAL_0734,
+                    reachedEnd = false,
+                    stabilized = false,
+                    errorCode = "COVER_COUNT_REGRESSION_BETWEEN_ATTEMPTS",
                     collectionAttempts = attempts,
-                    recoveredTransiently = attempts > 1,
+                    recoveredTransiently = false,
                 )
             }
+
+            best = chooseBetterStandaloneProfile0735(previousEvidence, candidate)
             if (!shouldRetryStandaloneProfile0735(candidate)) {
-                return candidate.copy(collectionAttempts = attempts)
+                return best.copy(collectionAttempts = attempts)
             }
         }
 
