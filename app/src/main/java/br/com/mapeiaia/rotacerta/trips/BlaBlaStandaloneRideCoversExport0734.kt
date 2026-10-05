@@ -474,6 +474,7 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
         }
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
+        webView.settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
         webView.settings.allowFileAccess = false
         webView.settings.allowContentAccess = false
         webView.settings.loadsImagesAutomatically = false
@@ -702,6 +703,21 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
                                     sample = sample,
                                 ),
                             )
+                            return@evaluateJavascript
+                        }
+
+                        if (sample.endSentinelVisible || sample.explicitEmptyList) {
+                            passes++
+                            if (passes >= MAX_EVALUATION_PASSES_0734) {
+                                finish(
+                                    StandalonePageResult0734(
+                                        finalUrl = finalUrl,
+                                        errorCode = "COVER_LIST_NOT_STABLE",
+                                    ),
+                                )
+                            } else {
+                                handler.postDelayed(::evaluate, RETRY_MS_0734)
+                            }
                             return@evaluateJavascript
                         }
 
