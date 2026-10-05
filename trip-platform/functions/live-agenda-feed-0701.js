@@ -66,6 +66,26 @@ function normalizeDate0701(value) {
   return raw;
 }
 
+function normalizeProfileUuid0701(value) {
+  const raw = cleanText0701(value, 80).toLowerCase();
+  if (!raw) return "";
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(raw)) {
+    throw Object.assign(new Error("UUID de perfil BlaBlaCar inválido."), {
+      httpStatus: 400,
+      code: "invalid_profile_uuid",
+    });
+  }
+  return raw;
+}
+
+function documentProfileUuid0701(doc) {
+  const data = doc && typeof doc.data === "function" ? (doc.data() || {}) : {};
+  const canonical = data.canonicalPublicProjection0434 && typeof data.canonicalPublicProjection0434 === "object"
+    ? data.canonicalPublicProjection0434
+    : {};
+  return cleanText0701(data.blablaProfileUuid || canonical.blablaProfileUuid, 160).toLowerCase();
+}
+
 function findStopIndex0701(stops, query, startIndex = 0) {
   if (!query) return -1;
   for (let index = Math.max(0, startIndex); index < stops.length; index += 1) {
@@ -244,7 +264,8 @@ function serializeXml0701(feed) {
   lines.push(
     `  <consulta${xmlAttr0701("data", feed.query.date)}` +
     `${xmlAttr0701("origem", feed.query.origin)}` +
-    `${xmlAttr0701("destino", feed.query.destination)} />`,
+    `${xmlAttr0701("destino", feed.query.destination)}` +
+    `${xmlAttr0701("perfilUuid", feed.query.profileUuid)} />`,
   );
   lines.push(
     `  <viagens count="${feed.trips.length}"${xmlAttr0701("ultimaAlteracaoMillis", feed.latestChangeAtMillis)}>`,
@@ -334,6 +355,9 @@ function createLiveAgendaFeed0701({
       const date = normalizeDate0701(req && req.query && (req.query.data || req.query.date));
       const origin = cleanText0701(req && req.query && (req.query.origem || req.query.origin), 180);
       const destination = cleanText0701(req && req.query && (req.query.destino || req.query.destination), 180);
+      const profileUuid = normalizeProfileUuid0701(
+        req && req.query && (req.query.profileUuid || req.query.perfilUuid),
+      );
       const resolvedDriver = await resolveDriverUsername(usernameRequested);
       const canonicalUsername = resolvedDriver ? cleanText0701(resolvedDriver.canonicalUsername, 80) : "";
       const publicUsername = resolvedDriver
@@ -355,13 +379,14 @@ function createLiveAgendaFeed0701({
       const canonicalDocs = selectCanonicalTripDocuments0495(snapshot.docs);
       const sourceDocs = canonicalDocs
         .filter((doc) => publicAgendaTripVisibility0466(driver, doc.id, doc.data(), now).visible)
+        .filter((doc) => !profileUuid || documentProfileUuid0701(doc) === profileUuid)
         .sort((left, right) => Number(left.data().departureAtMillis || 0) - Number(right.data().departureAtMillis || 0))
         .slice(0, MAX_TRIPS_0701);
 
       const publicTrips = await Promise.all(
         sourceDocs.map((doc) => safePublicTripWithCanonicalBookings0497(doc)),
       );
-      const query = { date, origin, destination };
+      const query = { date, origin, destination, profileUuid };
       let trips = publicTrips.map((trip) => projectTrip0701(trip, query));
 
       if (date) trips = trips.filter((trip) => trip.localDate === date);
@@ -402,6 +427,8 @@ function createLiveAgendaFeed0701({
 module.exports = {
   FEED_SCHEMA_VERSION_0701,
   normalizePlace0701,
+  normalizeProfileUuid0701,
+  documentProfileUuid0701,
   placeMatches0701,
   requestedSegment0701,
   projectTrip0701,
