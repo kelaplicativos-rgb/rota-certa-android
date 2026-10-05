@@ -202,4 +202,40 @@ class BlaBlaStandaloneRideCoversExport0734Test {
         assertFalse(decoded.isolation.writesCanonicalTrips)
     }
 
+    @Test
+    fun zeroInventoryNeedsExplicitEmptyOrArchiveBoundaryNeverBottomAlone() {
+        assertFalse(
+            standaloneTerminalEvidence0735(
+                observedCardCount = 0,
+                explicitEmptyList = false,
+                endSentinelVisible = false,
+                atBottom = true,
+            ),
+        )
+        assertTrue(
+            standaloneTerminalEvidence0735(
+                observedCardCount = 0,
+                explicitEmptyList = true,
+                endSentinelVisible = false,
+                atBottom = true,
+            ),
+        )
+        assertTrue(
+            standaloneTerminalEvidence0735(
+                observedCardCount = 0,
+                explicitEmptyList = false,
+                endSentinelVisible = true,
+                atBottom = true,
+            ),
+        )
+        assertTrue(
+            standaloneTerminalEvidence0735(
+                observedCardCount = 3,
+                explicitEmptyList = false,
+                endSentinelVisible = false,
+                atBottom = true,
+            ),
+        )
+    }
+
 }
