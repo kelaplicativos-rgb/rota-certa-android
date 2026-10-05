@@ -171,6 +171,25 @@ test("matching If-None-Match returns 304 after a live read", async () => {
   assert.equal(recorded.payload, "");
 });
 
+test("matching ifSnapshotHash returns 304 through hosting-safe query semantics", async () => {
+  const feed = feedFixture();
+  const hash = snapshotHash0732(feed);
+  const fakeFeed = {
+    async getLiveAgendaFeed0701(_req, res) {
+      res.status(200).send(JSON.stringify(feed));
+    },
+  };
+  const tool = createLiveAgendaTool0732({ liveAgendaFeed0701: fakeFeed });
+  const res = responseRecorder();
+  await tool.getLiveAgendaTool0732({
+    query: { ifSnapshotHash: hash },
+    headers: {},
+  }, res, "ezequiel");
+  const recorded = res.snapshot();
+  assert.equal(recorded.statusCode, 304);
+  assert.equal(recorded.payload, "");
+});
+
 test("upstream live-feed failure is FAILED and never converted into empty agenda", async () => {
   const fakeFeed = {
     async getLiveAgendaFeed0701(_req, res) {
