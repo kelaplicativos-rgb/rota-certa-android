@@ -1,0 +1,160 @@
+name: Rota Certa Live Agenda Profile UUID 0.1.733 exact SHA
+
+on:
+  push:
+    branches:
+      - 'agent/live-agenda-profile-uuid-0.1.733'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-agenda-profile-uuid-0733-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-deploy-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: 'agent/live-agenda-profile-uuid-0.1.733'
+      BASE_SHA: '240404333395ba14baea997175e5027ff92d002c'
+      TEST_PROFILE_UUID: '11111111-1111-4111-8111-111111111111'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Prove exact source and protected FAROL
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$ROTA_CERTA_GIT_SHA" = "$GITHUB_SHA"
+          git diff --check "$BASE_SHA"...HEAD
+
+          git diff --name-only "$BASE_SHA"...HEAD | tee /tmp/changed-files.txt
+          if grep -Eq '^app/src/' /tmp/changed-files.txt; then
+            echo "Backend-only delivery unexpectedly changed app/src." >&2
+            exit 1
+          fi
+
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          git show "$BASE_SHA:$FAROL" | sha256sum | awk '{print $1}' | tee /tmp/farol-base-sha256.txt
+          sha256sum "$FAROL" | awk '{print $1}' | tee /tmp/farol-head-sha256.txt
+          test "$(cat /tmp/farol-base-sha256.txt)" = "$(cat /tmp/farol-head-sha256.txt)"
+
+          grep -Fq 'normalizeProfileUuid0701' trip-platform/functions/live-agenda-feed-0701.js
+          grep -Fq 'documentProfileUuid0701' trip-platform/functions/live-agenda-feed-0701.js
+          grep -Fq 'req.query.profileUuid' trip-platform/functions/live-agenda-feed-0701.js
+          grep -Fq 'documentProfileUuid0701(doc) === profileUuid' trip-platform/functions/live-agenda-feed-0701.js
+
+          printf '%s\n' "$GITHUB_SHA" | tee /tmp/source-sha.txt
+          printf '%s\n' "$ROTA_CERTA_GIT_BRANCH" | tee /tmp/source-branch.txt
+
+      - name: Validate backend contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/functions/live-agenda-feed-0701.js
+          node --check trip-platform/functions/live-agenda-tool-0732.js
+
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+
+          node --test             trip-platform/functions/test/live-agenda-feed-0701.test.js             trip-platform/functions/test/live-agenda-tool-0732.test.js             trip-platform/functions/test/agenda-public-realtime-0724.test.js             trip-platform/functions/test/timeline-all-profiles-public-driver-0309.test.js             | tee /tmp/backend-tests-0733.log
+
+      - name: Authenticate Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy exact-head tripApi
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          gcloud functions deploy tripApi             --gen2             --project="$PROJECT"             --region=southamerica-east1             --runtime=nodejs20             --source=trip-platform/functions             --entry-point=tripApi             --trigger-http             --allow-unauthenticated             --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$GITHUB_SHA"             --quiet | tee /tmp/backend-deploy-0733.log
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Smoke profile UUID live query
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://rota-certa-7ccc8.web.app'
+
+          curl --retry 20 --retry-delay 3 --fail --silent --show-error             "$BASE/v1/health" | tee /tmp/live-health-0733.json
+          grep -Fq '"ok":true' /tmp/live-health-0733.json
+          grep -Fq "\"backendGitSha\":\"$GITHUB_SHA\"" /tmp/live-health-0733.json
+
+          curl --retry 20 --retry-delay 2 --fail --silent --show-error             -D /tmp/live-profile-headers-0733.txt             "$BASE/v1/public/live-query/ezequiel?profileUuid=$TEST_PROFILE_UUID"             -o /tmp/live-profile-0733.json
+
+          node - <<'NODE'
+          const fs = require("fs");
+          const body = JSON.parse(fs.readFileSync("/tmp/live-profile-0733.json", "utf8"));
+          const expected = process.env.TEST_PROFILE_UUID;
+          if (body.schemaVersion !== "live-agenda-tool-v1") throw new Error("schema mismatch");
+          if (body.query?.profileUuid !== expected) throw new Error("profileUuid not preserved");
+          if (!["COMPLETE", "PARTIAL"].includes(body.validationStatus)) throw new Error("invalid validation status");
+          if (body.collectorValidationStatus !== "PENDING_UNKNOWN") throw new Error("collector state must remain independent");
+          if (body.decisionSafeForPublish !== false) throw new Error("publish gate must remain fail-closed");
+          if (!Array.isArray(body.trips)) throw new Error("trips missing");
+          console.log(JSON.stringify({
+            profileUuid: body.query.profileUuid,
+            validationStatus: body.validationStatus,
+            collectorValidationStatus: body.collectorValidationStatus,
+            count: body.count,
+          }));
+          NODE
+
+          INVALID_STATUS="$(curl --silent --show-error -o /tmp/live-invalid-profile-0733.json -w '%{http_code}'             "$BASE/v1/public/live-query/ezequiel?profileUuid=barbosa")"
+          test "$INVALID_STATUS" = "400"
+          grep -Fq '"error":"invalid_profile_uuid"' /tmp/live-invalid-profile-0733.json
+
+          {
+            echo "source_head=$GITHUB_SHA"
+            echo "source_branch=$ROTA_CERTA_GIT_BRANCH"
+            echo "base_sha=$BASE_SHA"
+            echo "android_app_src_changed=NO"
+            echo "farol_sha256=$(cat /tmp/farol-head-sha256.txt)"
+            echo "backend_tests=PASS"
+            echo "tripApi_exact_sha=PASS"
+            echo "profile_uuid_filter_smoke=PASS"
+            echo "profile_name_rejected=PASS"
+            echo "collector_independent_fail_closed=PASS"
+            echo "endpoint=$BASE/v1/public/live-query/ezequiel?profileUuid=<uuid>"
+          } | tee /tmp/final-proof-0733.txt
+
+      - name: Upload delivery proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-live-agenda-profile-uuid-0733-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            /tmp/source-sha.txt
+            /tmp/source-branch.txt
+            /tmp/changed-files.txt
+            /tmp/farol-base-sha256.txt
+            /tmp/farol-head-sha256.txt
+            /tmp/backend-tests-0733.log
+            /tmp/backend-deploy-0733.log
+            /tmp/live-health-0733.json
+            /tmp/live-profile-headers-0733.txt
+            /tmp/live-profile-0733.json
+            /tmp/live-invalid-profile-0733.json
+            /tmp/final-proof-0733.txt
