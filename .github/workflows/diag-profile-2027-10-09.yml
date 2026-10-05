@@ -1,4 +1,4 @@
-name: Diagnose 2026-11-03 both profiles
+name: Diagnose 2026-11-05 both profiles
 
 on:
   push:
@@ -14,12 +14,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Query both profiles on 2026-11-03
+      - name: Query both profiles on 2026-11-05
         shell: bash
         run: |
           set -euo pipefail
           BASE='https://rota-certa-7ccc8.web.app/v1/public/live-query/ezequiel'
-          DATE='2026-11-03'
+          DATE='2026-11-05'
           EZEQUIEL='7371f028-9c55-4903-8444-308015823efd'
           BARBOSA='175a7068-50d8-40c3-a27a-214b9c6e0461'
           for NAME_UUID in "ezequiel:$EZEQUIEL" "barbosa:$BARBOSA"; do
@@ -43,14 +43,4 @@ jobs:
             }))
           }));
           NODE
-          done | tee /tmp/nov03.jsonl
-
-      - name: Upload proof
-        uses: actions/upload-artifact@v4
-        with:
-          name: diag-2026-11-03-both-profiles
-          retention-days: 7
-          path: |
-            /tmp/nov03.jsonl
-            /tmp/ezequiel.json
-            /tmp/barbosa.json
+          done | tee /tmp/nov05.jsonl
