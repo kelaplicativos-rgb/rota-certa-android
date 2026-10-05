@@ -706,11 +706,12 @@ internal fun EnhancedPassengerTimelineSection(
     var pendingTrackingRequest0668 by remember { mutableStateOf<PassengerTrackingLinkRequest0668?>(null) }
     var trackingRevision0676 by remember { mutableIntStateOf(0) }
     var trackingStopInFlight0676 by remember { mutableStateOf<Set<String>>(emptySet()) }
-
-    fun passengerTrackingActive0676(row0676: EnhancedPassengerCardRow): Boolean {
-        trackingRevision0676
-        return liveTrackingManager0668.isPassengerShareActive(passengerTimelineRowKey0394(row0676))
+    val activePassengerTrackingKeys0730 = remember(trackingRevision0676) {
+        liveTrackingManager0668.activePassengerKeysSnapshot0730()
     }
+
+    fun passengerTrackingActive0676(row0676: EnhancedPassengerCardRow): Boolean =
+        passengerTimelineRowKey0394(row0676) in activePassengerTrackingKeys0730
 
     fun stopPassengerTracking0676(row0676: EnhancedPassengerCardRow) {
         val passengerKey0676 = passengerTimelineRowKey0394(row0676)
