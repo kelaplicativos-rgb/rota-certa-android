@@ -154,7 +154,8 @@ jobs:
             echo "backend_tests=PASS"
             echo "tripApi_exact_sha=PASS"
             echo "live_tool_smoke=PASS"
-            echo "etag_emission=PASS"\n            echo "snapshot_hash_revalidation=PASS"
+            echo "etag_emission=PASS"
+            echo "snapshot_hash_revalidation=PASS"
             echo "collector_fail_closed=PASS"
             echo "endpoint=$BASE/v1/public/live-query/ezequiel"
           } | tee /tmp/final-proof-0732.txt
