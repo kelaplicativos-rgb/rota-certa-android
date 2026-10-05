@@ -1,0 +1,96 @@
+name: TEMP validate 0.1.734 standalone BlaBlaCar covers
+
+on:
+  push:
+    branches:
+      - 'agent/blablacar-standalone-covers-0.1.734'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tmp-standalone-covers-0734-\${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-source-and-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GOOGLE_MAPS_API_KEY: \${{ secrets.GOOGLE_MAPS_API_KEY }}
+      ROTA_CERTA_GIT_SHA: \${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: 'agent/blablacar-standalone-covers-0.1.734'
+      BASE_SHA: '1b22084daed0a462c4d230b4a1cbb701f424de91'
+      OM_TAG: '2026.08.27-18-android'
+      OM_VERSION: '2026.08.27-18'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: \${{ github.sha }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Prove direct HEAD source and isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt
+          test -s app/src/main/assets/blablacar/scripts/ride_covers_standalone.js
+          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734Test.kt
+          grep -Fq 'val releaseVersionName = "0.1.734"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 6_025' app/build.gradle.kts
+          grep -Fq '"version": "0.1.734"' app/src/main/assets/release_history.json
+          grep -Fq '⬇️ Baixar capas (avulso)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          ! grep -Fq 'stateStore.saveResponse' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt
+          ! grep -Fq 'TripStore(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt
+          ! grep -Fq 'PassengerIdentityStore' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt
+          ! grep -Eq 'passengers|passengerRoster|booking_href' app/src/main/assets/blablacar/scripts/ride_covers_standalone.js
+          git diff --exit-code "$BASE_SHA"...HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          git diff --check "$BASE_SHA"...HEAD
+
+      - name: Install native prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo apt-get install -y ninja-build
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-36" \
+            "ndk;29.0.14206865" \
+            "cmake;3.22.1"
+
+      - name: Build exact Organic Maps SDK locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 128 --branch "$OM_TAG" https://github.com/organicmaps/organicmaps.git /tmp/organicmaps
+          cd /tmp/organicmaps
+          git submodule update --init --recursive --depth 1 --jobs 8
+          test "$(tools/unix/version.sh android_name)" = "$OM_VERSION"
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          cd android
+          chmod +x ./gradlew
+          ./gradlew \
+            :sdk:location:core:publishToMavenLocal \
+            :sdk:publishToMavenLocal \
+            :sdk:maps:world:publishToMavenLocal \
+            -Parm64 -Pnjobs=2 \
+            --no-daemon --max-workers=2 --stacktrace
+
+      - name: Verify release history and focused unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:verifyReleaseHistory --no-daemon --stacktrace
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaStandaloneRideCoversExport0734Test' \
+            --no-daemon --max-workers=2 --stacktrace
