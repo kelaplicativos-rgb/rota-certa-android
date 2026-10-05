@@ -2,6 +2,42 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.730",
+      "build": 6021,
+      "commit": null,
+      "branch": "agent/canonical-passenger-read-your-write-0.1.730",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Adiciona read-your-write local para reservas manuais que já receberam ACK do backend canônico.",
+        "Espelha imediatamente inclusão e cancelamento confirmados pelo backend no TripStore sem criar nova mutação de negócio.",
+        "Snapshot de chaves de acompanhamento por card evita decodificar a sessão de rastreamento para cada linha de passageiro."
+      ],
+      "fixed": [
+        "Corrige +👤 quando o backend aceitava a reserva, mas BookingRealtimeEvents relia o mesmo TripStore antigo e a Timeline permanecia sem o novo passageiro.",
+        "Corrige liberação tardia de vaga após cancelamento manual canônico pelo mesmo mecanismo de confirmação local.",
+        "Reduz trabalho síncrono repetido na main thread durante renderização dos atalhos de acompanhamento."
+      ],
+      "improved": [
+        "O cache read-your-write preserva Trip.canonicalRevision, canonicalStateHash e estado de publicação até a próxima projeção autenticada, evitando fabricar revisão local.",
+        "Mantém HTML/BlaBlaCar como autoridade dos campos externos; somente a reserva Rota Certa já confirmada remotamente é refletida localmente.",
+        "Preserva todas as correções da 0.1.729 para +👤 e 🌐 no card operacional real."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.729: TIMELINE_CANONICAL_PASSENGER_ADD_0494 podia retornar sucesso remoto enquanto AGENDA_UI_SNAPSHOT_0705 informava changed=false e o card seguia no snapshot anterior."
+      ],
+      "modulesAffected": [
+        "Timeline operacional",
+        "Passageiros",
+        "+👤",
+        "Vagas por trecho",
+        "Rastreamento",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.729",
       "build": 6020,
       "commit": null,
