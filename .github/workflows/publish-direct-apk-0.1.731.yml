@@ -29,14 +29,17 @@ jobs:
           set -euo pipefail
           mkdir -p package
           gh run download "$SOURCE_RUN_ID"             --repo "$GITHUB_REPOSITORY"             --name "$ARTIFACT_NAME"             --dir package
-          test -s "package/$EXPECTED_APK"
-          sha256sum "package/$EXPECTED_APK" | tee apk-sha256.txt
+          APK_PATH="$(find package -type f -name "$EXPECTED_APK" -print -quit)"
+          test -n "$APK_PATH"
+          test -s "$APK_PATH"
+          printf '%s\n' "$APK_PATH" | tee apk-path.txt
+          sha256sum "$APK_PATH" | tee apk-sha256.txt
 
       - name: Publish APK-only GitHub Release
         shell: bash
         run: |
           set -euo pipefail
-          APK="package/$EXPECTED_APK"
+          APK="$(cat apk-path.txt)"
 
           cat > release-notes.md <<EOF
           Rota Certa 0.1.731 — APK direto para instalação
