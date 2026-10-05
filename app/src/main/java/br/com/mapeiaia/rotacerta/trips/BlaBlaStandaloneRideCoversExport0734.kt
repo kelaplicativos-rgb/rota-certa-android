@@ -373,7 +373,7 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
             } else {
                 ""
             }
-            val dateIso = BlaBlaDomParsing.parseDate(raw.dateText)?.toString().orEmpty()
+            val dateIso = BlaBlaDomNormalizer.parseDate(raw.dateText)?.toString().orEmpty()
             BlaBlaStandaloneRideCover0734(
                 tripId = tripId,
                 administrativeHref = href,
