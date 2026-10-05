@@ -12,7 +12,8 @@ const { resolveFarolAddress0695, FarolPaidAddressError0695 } = require("./farol-
 const { resolveFarolPaidRoad0715, FarolPaidRoadError0715 } = require("./farol-paid-road-0715");
 const { learnRideApp0700, RideAppLearningError0700 } = require("./ride-app-learning-0700");
 const { CONTRACT_VERSION_0702, LEASE_MILLIS_0702, COLLECTION_0702, learningKey0702, cacheDecision0702, publicProfileResponse0702, publicProcessingResponse0702 } = require("./ride-app-learning-idempotency-0702");
-const { createLiveAgendaFeed0701 } = require("./live-agenda-feed-0701");\nconst { createLiveAgendaTool0732 } = require("./live-agenda-tool-0732");
+const { createLiveAgendaFeed0701 } = require("./live-agenda-feed-0701");
+const { createLiveAgendaTool0732 } = require("./live-agenda-tool-0732");
 const { buildProfileUpdate } = require("./public-profile-policy");
 const { cleanIdentifier, deriveRotationToken, tokenMatches } = require("./public-agenda-link-policy");
 const { createAgendaAdmin0417, safeVisibility0417 } = require("./agenda-admin-0417");
