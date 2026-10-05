@@ -2,6 +2,40 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.735",
+      "build": 6026,
+      "commit": null,
+      "branch": "agent/blablacar-standalone-covers-reliable-0.1.735",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Torna a coleta avulsa de capas repetível no mesmo aparelho sem transformar falha transitória em ausência de viagem.",
+        "A estabilidade passa a observar mudanças no inventário de capas, e não mutações irrelevantes do DOM inteiro.",
+        "Se a sessão reabrir em posição final/arquivada com zero capas atuais observadas, o coletor rebobina uma vez para o topo antes de concluir.",
+        "Falhas técnicas transitórias elegíveis ganham uma única nova tentativa com WebView nova e lease transitório; falhas de identidade não são mascaradas por retry."
+      ],
+      "fixed": [
+        "Corrige o cenário físico observado no Samsung SM-S911B em que a primeira coleta 0.1.734 retornou COMPLETE com 46 capas e a repetição imediata retornou PARTIAL apenas para Ezequiel com COVER_LIST_NOT_STABLE e zero capas.",
+        "Preserva a melhor evidência parcial entre tentativas, impedindo que uma segunda tentativa pior apague capas já observadas."
+      ],
+      "improved": [
+        "O JSON passa a informar collectionAttempts e recoveredTransiently por perfil para distinguir coleta direta de recuperação técnica.",
+        "Mantém o contrato avulso: zero escrita em Timeline, Agenda, viagens canônicas, disponibilidade, capacidade ou estado do dia; sem leitura de passageiros ou abertura de detalhes."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "COVER_LIST_NOT_STABLE em repetição imediata do coletor avulso"
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Coletor avulso",
+        "Downloads",
+        "Privacidade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.734",
       "build": 6025,
       "commit": null,
