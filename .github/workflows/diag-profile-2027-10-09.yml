@@ -1,0 +1,64 @@
+name: Diagnose profile for 2027-10-09
+
+on:
+  push:
+    branches:
+      - 'agent/diag-profile-2027-10-09'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Query both canonical BlaBla profiles
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://rota-certa-7ccc8.web.app/v1/public/live-query/ezequiel'
+          DATE='2027-10-09'
+          EZEQUIEL='7371f028-9c55-4903-8444-308015823efd'
+          BARBOSA='175a7068-50d8-40c3-a27a-214b9c6e0461'
+
+          curl --retry 10 --retry-delay 2 --fail --silent --show-error             "$BASE?date=$DATE&profileUuid=$EZEQUIEL" -o /tmp/ezequiel.json
+          curl --retry 10 --retry-delay 2 --fail --silent --show-error             "$BASE?date=$DATE&profileUuid=$BARBOSA" -o /tmp/barbosa.json
+
+          echo '=== EZEQUIEL ==='
+          cat /tmp/ezequiel.json
+          echo
+          echo '=== BARBOSA ==='
+          cat /tmp/barbosa.json
+          echo
+
+          node - <<'NODE'
+          const fs=require('fs');
+          for (const name of ['ezequiel','barbosa']) {
+            const body=JSON.parse(fs.readFileSync('/tmp/'+name+'.json','utf8'));
+            console.log(JSON.stringify({
+              profile:name,
+              validationStatus:body.validationStatus,
+              collectorValidationStatus:body.collectorValidationStatus,
+              count:body.count,
+              trips:(body.trips||[]).map(t=>({
+                id:t.id,
+                localDate:t.localDate,
+                localTime:t.localTime,
+                title:t.title,
+                status:t.status,
+                stops:(t.stops||[]).map(s=>s.name)
+              }))
+            }));
+          }
+          NODE
+
+      - name: Upload diagnostic proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: diag-profile-2027-10-09
+          retention-days: 7
+          path: |
+            /tmp/ezequiel.json
+            /tmp/barbosa.json
