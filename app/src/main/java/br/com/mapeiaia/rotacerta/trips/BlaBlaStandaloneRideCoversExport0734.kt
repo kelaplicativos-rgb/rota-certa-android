@@ -520,7 +520,11 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
         val identityComplete = cards.all { it.tripId.isNotBlank() && it.dateIso.isNotBlank() }
         val inventoryComplete =
             sample.observedCardCount == cards.size &&
-                (sample.explicitEmptyList || sample.endSentinelVisible || sample.atBottom)
+                (
+                    sample.explicitEmptyList ||
+                        sample.endSentinelVisible ||
+                        (sample.observedCardCount > 0 && sample.atBottom)
+                    )
         val complete = identityComplete && inventoryComplete
         return BlaBlaStandaloneRideCoversProfile0734(
             displayName = account.displayLabel,
@@ -794,7 +798,9 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
                         }
 
                         val terminalEvidence =
-                            sample.explicitEmptyList || sample.endSentinelVisible || sample.atBottom
+                            sample.explicitEmptyList ||
+                                sample.endSentinelVisible ||
+                                (sample.observedCardCount > 0 && sample.atBottom)
                         val materialized =
                             sample.documentReady &&
                                 !sample.loadingActive &&
