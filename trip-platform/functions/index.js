@@ -12,7 +12,7 @@ const { resolveFarolAddress0695, FarolPaidAddressError0695 } = require("./farol-
 const { resolveFarolPaidRoad0715, FarolPaidRoadError0715 } = require("./farol-paid-road-0715");
 const { learnRideApp0700, RideAppLearningError0700 } = require("./ride-app-learning-0700");
 const { CONTRACT_VERSION_0702, LEASE_MILLIS_0702, COLLECTION_0702, learningKey0702, cacheDecision0702, publicProfileResponse0702, publicProcessingResponse0702 } = require("./ride-app-learning-idempotency-0702");
-const { createLiveAgendaFeed0701 } = require("./live-agenda-feed-0701");
+const { createLiveAgendaFeed0701 } = require("./live-agenda-feed-0701");\nconst { createLiveAgendaTool0732 } = require("./live-agenda-tool-0732");
 const { buildProfileUpdate } = require("./public-profile-policy");
 const { cleanIdentifier, deriveRotationToken, tokenMatches } = require("./public-agenda-link-policy");
 const { createAgendaAdmin0417, safeVisibility0417 } = require("./agenda-admin-0417");
@@ -11529,6 +11529,7 @@ const liveAgendaFeed0701 = createLiveAgendaFeed0701({
   publicAgendaTripVisibility0466,
   safePublicTripWithCanonicalBookings0497,
 });
+const liveAgendaTool0732 = createLiveAgendaTool0732({ liveAgendaFeed0701 });
 
 const liveTracking0668 = createLiveTracking0668({ db, requireDriver });
 
@@ -11734,6 +11735,12 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     }
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "bookings" && req.method === "GET") {
       return await listDriverBookings(req, res, parts[3]);
+    }
+    if (req.method === "GET" && parts.length === 4 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "live-query") {
+      if (isReservedPublicUsername(parts[3])) {
+        return fail(res, 404, "live_agenda_tool_not_found", "Consulta ao vivo não encontrada.");
+      }
+      return await liveAgendaTool0732.getLiveAgendaTool0732(req, res, parts[3]);
     }
     const agendaFeedRoute0701 =
       (parts.length === 4 && parts[0] === "api" && parts[1] === "v1" && parts[2] === "agenda") ||
