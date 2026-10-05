@@ -1256,6 +1256,44 @@ class TripStore(context: Context) {
      * the server updatedAt value so an unchanged reservation compares equal on the
      * next pull instead of being imported again only because the local clock changed.
      */
+    /**
+     * 0.1.730 read-your-write cache for a booking that the canonical backend has
+     * already accepted. This is not a new business mutation: only the booking mirror
+     * is replaced, while Trip.canonicalRevision/hash/publication state stay untouched
+     * until the authenticated canonical projection supplies the next logical revision.
+     */
+    internal fun persistRemoteConfirmedBooking0730(
+        booking: Booking,
+    ): Booking = synchronized(CANONICAL_LOCK) {
+        val existingAll = bookings()
+        val existingById = existingAll.associateBy(Booking::id)
+        val prepared = prepareBookingForPersistence(booking, existingById[booking.id])
+        val passengerId = passengerIdentityStore.ensureLocalBookingProfilesBatch(listOf(prepared))[prepared.id]
+            ?: prepared.passengerId
+        val now = System.currentTimeMillis()
+        val normalized = prepared.copy(
+            passengerId = passengerId,
+            updatedAtMillis = prepared.updatedAtMillis.takeIf { it > 0L } ?: now,
+        )
+        val existing = existingById[normalized.id]
+        val changed = existing == null ||
+            existing.copy(updatedAtMillis = 0L) != normalized.copy(updatedAtMillis = 0L)
+        if (!changed) return@synchronized normalized
+
+        val next = mergeBookingBatch0380(existingAll, listOf(normalized))
+        require(
+            prefs.edit().putString(bookingsKey, json.encodeToString(next)).commit(),
+        ) { "Falha ao persistir confirmação remota de reserva." }
+
+        UnifiedDebugEventStore.recordAlways(
+            "CANONICAL_REMOTE_BOOKING_READ_YOUR_WRITE_0730",
+            appContext.packageName,
+            "bookingPresent=true tripRevisionPreserved=true tripHashPreserved=true " +
+                "publicationStatePreserved=true siblingsPreserved=true",
+        )
+        normalized
+    }
+
     internal fun saveBookingsBatch(
         bookingsToSave: List<Booking>,
         preserveSourceUpdatedAt: Boolean,
