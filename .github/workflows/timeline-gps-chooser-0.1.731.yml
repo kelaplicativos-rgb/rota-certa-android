@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: timeline-gps-chooser-0731-${{ github.ref }}
@@ -246,6 +246,56 @@ jobs:
             echo "fullRegressionDelta=ZERO_NEW_FAILURES"
             echo "apkSha256=$APK_SHA256"
           } | tee /tmp/final-proof.txt
+
+      - name: Publish direct-install APK and link
+        id: direct_apk
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APK_FILE: ${{ steps.proof.outputs.apk }}
+          APK_SHA256: ${{ steps.proof.outputs.apk_sha256 }}
+        run: |
+          set -euo pipefail
+          test -s "$APK_FILE"
+
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          TAG="rota-certa-v${EXPECTED_VERSION_NAME}-build-${EXPECTED_VERSION_CODE}-${SHORT_SHA}"
+          TITLE="Rota Certa ${EXPECTED_VERSION_NAME} (${SHORT_SHA})"
+          APK_NAME="$(basename "$APK_FILE")"
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APK_FILE" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" "$APK_FILE" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "$TITLE" \
+              --notes "APK instalável gerado e validado pelo workflow para o SHA exato $GITHUB_SHA. Pacote: br.com.mapeiaia.rotacerta. VersionName: $EXPECTED_VERSION_NAME. VersionCode: $EXPECTED_VERSION_CODE. SHA-256: $APK_SHA256." \
+              --prerelease
+          fi
+
+          ASSET_COUNT="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '[.assets[] | select(.name == "'"$APK_NAME"'")] | length')"
+          test "$ASSET_COUNT" = "1"
+
+          DIRECT_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${TAG}/${APK_NAME}"
+          echo "url=$DIRECT_URL" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## 📱 APK pronto para instalar"
+            echo
+            echo "[**Baixar somente o APK — Rota Certa ${EXPECTED_VERSION_NAME}**](${DIRECT_URL})"
+            echo
+            echo "Este link baixa o APK diretamente, sem o pacote de diagnóstico do artifact."
+            echo
+            echo "- VersionName: \`${EXPECTED_VERSION_NAME}\`"
+            echo "- VersionCode: \`${EXPECTED_VERSION_CODE}\`"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- SHA-256: \`${APK_SHA256}\`"
+            echo "- Release/tag: \`${TAG}\`"
+            echo
+            echo "O artifact completo continua disponível abaixo para diagnóstico e auditoria."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload exact-SHA APK and proof
         uses: actions/upload-artifact@v4
