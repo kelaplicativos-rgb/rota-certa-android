@@ -1,4 +1,4 @@
-name: Diagnose profile for 2027-10-09
+name: Diagnose continuity Oct-Nov 2026
 
 on:
   push:
@@ -14,51 +14,58 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Query both canonical BlaBla profiles
+      - name: Query physical continuity across both BlaBla profiles
         shell: bash
         run: |
           set -euo pipefail
           BASE='https://rota-certa-7ccc8.web.app/v1/public/live-query/ezequiel'
-          DATE='2027-10-09'
           EZEQUIEL='7371f028-9c55-4903-8444-308015823efd'
           BARBOSA='175a7068-50d8-40c3-a27a-214b9c6e0461'
 
-          curl --retry 10 --retry-delay 2 --fail --silent --show-error             "$BASE?date=$DATE&profileUuid=$EZEQUIEL" -o /tmp/ezequiel.json
-          curl --retry 10 --retry-delay 2 --fail --silent --show-error             "$BASE?date=$DATE&profileUuid=$BARBOSA" -o /tmp/barbosa.json
-
-          echo '=== EZEQUIEL ==='
-          cat /tmp/ezequiel.json
-          echo
-          echo '=== BARBOSA ==='
-          cat /tmp/barbosa.json
-          echo
-
-          node - <<'NODE'
+          : > /tmp/continuity.jsonl
+          for DATE in 2026-10-29 2026-10-30 2026-10-31 2026-11-01; do
+            for NAME_UUID in "ezequiel:$EZEQUIEL" "barbosa:$BARBOSA"; do
+              NAME="${NAME_UUID%%:*}"
+              UUID="${NAME_UUID#*:}"
+              OUT="/tmp/${DATE}-${NAME}.json"
+              curl --retry 10 --retry-delay 2 --fail --silent --show-error                 "$BASE?date=$DATE&profileUuid=$UUID" -o "$OUT"
+              node - "$NAME" "$UUID" "$DATE" "$OUT" <<'NODE'
           const fs=require('fs');
-          for (const name of ['ezequiel','barbosa']) {
-            const body=JSON.parse(fs.readFileSync('/tmp/'+name+'.json','utf8'));
-            console.log(JSON.stringify({
-              profile:name,
-              validationStatus:body.validationStatus,
-              collectorValidationStatus:body.collectorValidationStatus,
-              count:body.count,
-              trips:(body.trips||[]).map(t=>({
-                id:t.id,
-                localDate:t.localDate,
-                localTime:t.localTime,
-                title:t.title,
-                status:t.status,
-                stops:(t.stops||[]).map(s=>s.name)
-              }))
-            }));
-          }
+          const [name,uuid,date,file]=process.argv.slice(2);
+          const body=JSON.parse(fs.readFileSync(file,'utf8'));
+          console.log(JSON.stringify({
+            profile:name,
+            profileUuid:uuid,
+            date,
+            validationStatus:body.validationStatus,
+            collectorValidationStatus:body.collectorValidationStatus,
+            count:body.count,
+            trips:(body.trips||[]).map(t=>({
+              id:t.id,
+              localDate:t.localDate,
+              localTime:t.localTime,
+              title:t.title,
+              status:t.status,
+              departureAtMillis:t.departureAtMillis,
+              stops:(t.stops||[]).map(s=>s.name)
+            }))
+          }));
           NODE
+            done
+          done | tee /tmp/continuity.jsonl
 
       - name: Upload diagnostic proof
         uses: actions/upload-artifact@v4
         with:
-          name: diag-profile-2027-10-09
+          name: diag-continuity-oct-nov-2026
           retention-days: 7
           path: |
-            /tmp/ezequiel.json
-            /tmp/barbosa.json
+            /tmp/continuity.jsonl
+            /tmp/2026-10-29-ezequiel.json
+            /tmp/2026-10-29-barbosa.json
+            /tmp/2026-10-30-ezequiel.json
+            /tmp/2026-10-30-barbosa.json
+            /tmp/2026-10-31-ezequiel.json
+            /tmp/2026-10-31-barbosa.json
+            /tmp/2026-11-01-ezequiel.json
+            /tmp/2026-11-01-barbosa.json
