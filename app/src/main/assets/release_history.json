@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.734",
+      "build": 6025,
+      "commit": null,
+      "branch": "agent/blablacar-standalone-covers-0.1.734",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Adiciona ao coletor BlaBlaCar a ação avulsa ⬇️ Baixar capas, que lê somente a lista autenticada Suas viagens dos perfis WebView já configurados e salva um JSON em Downloads/Rota Certa.",
+        "O arquivo avulso transporta UUID canônico do perfil, tripId administrativo, data, horários, origem, destino e preço das capas, sem abrir detalhes de viagem nem coletar passageiros.",
+        "A captura percorre a lista em WebView invisível, comprova estabilidade/fim da lista e marca PARTIAL quando identidade, data, inventário ou sessão não podem ser comprovados."
+      ],
+      "fixed": [
+        "Elimina a necessidade operacional de abrir manualmente o navegador apenas para copiar as capas de Suas viagens e enviá-las para conferência externa.",
+        "Separa fisicamente o coletor avulso do pipeline que grava Agenda/Timeline: a ação não chama stateStore.saveResponse, commit canônico, sincronização de vagas, disponibilidade ou estado do dia."
+      ],
+      "improved": [
+        "O JavaScript dedicado à coleta avulsa não lê passageiros, não captura HTML completo e não navega para cards individuais.",
+        "Falha ou coleta parcial nunca é interpretada como ausência de viagem; o próprio JSON preserva status COMPLETE/PARTIAL por perfil.",
+        "Reutiliza somente a sessão isolada já autenticada de cada conta e um bloqueio técnico transitório por perfil para impedir duas WebViews simultâneas, sem criar regra de negócio ou estado persistente."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Coletor avulso",
+        "Downloads",
+        "Privacidade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.731",
       "build": 6022,
       "commit": null,
