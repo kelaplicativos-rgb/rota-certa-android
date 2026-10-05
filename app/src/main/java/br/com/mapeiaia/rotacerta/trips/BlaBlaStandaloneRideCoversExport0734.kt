@@ -451,7 +451,7 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
 
             best = chooseBetterStandaloneProfile0735(previousEvidence, candidate)
             if (!shouldRetryStandaloneProfile0735(candidate)) {
-                return best.copy(collectionAttempts = attempts)
+                return requireNotNull(best).copy(collectionAttempts = attempts)
             }
         }
 
