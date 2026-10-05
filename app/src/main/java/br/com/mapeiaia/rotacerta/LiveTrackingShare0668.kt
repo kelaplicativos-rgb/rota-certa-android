@@ -213,6 +213,27 @@ internal class LiveTrackingShareManager0668(
     fun isPassengerShareActive(passengerKey: String): Boolean =
         passengerKey.isNotBlank() && repository.passengerShare(passengerKey) != null
 
+    /**
+     * 0.1.730 UI snapshot: decode the tracking session once per visible card/revision,
+     * instead of re-reading and decoding SharedPreferences once for every passenger row.
+     */
+    fun activePassengerKeysSnapshot0730(
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Set<String> =
+        repository.session()
+            ?.takeIf(TrackingSessionLocal0668::active)
+            ?.shares
+            .orEmpty()
+            .asSequence()
+            .filter { share ->
+                share.scope == TrackingShareScope0668.PASSENGER &&
+                    share.passengerKey.isNotBlank() &&
+                    share.active &&
+                    share.expiresAtMillis > nowMillis
+            }
+            .map(TrackingShareLocal0668::passengerKey)
+            .toSet()
+
     fun recordLivePoint0681(point: WorkTrackPoint) {
         if (repository.hasActiveShares()) familyPointBuffer0681.append(point)
     }
