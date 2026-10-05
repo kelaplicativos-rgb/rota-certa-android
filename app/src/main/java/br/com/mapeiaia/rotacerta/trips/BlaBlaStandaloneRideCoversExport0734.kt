@@ -369,7 +369,7 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
         val cards = sample.covers.map { raw ->
             val tripId = BlaBlaCollectorUrlModule.tripId(raw.href).orEmpty().trim()
             val href = if (tripId.isNotBlank()) {
-                BlaBlaCollectorUrlModule.canonical(raw.href).take(800)
+                BlaBlaCollectorUrlModule.canonical(raw.href).substringBefore('?').substringBefore('#').take(800)
             } else {
                 ""
             }
