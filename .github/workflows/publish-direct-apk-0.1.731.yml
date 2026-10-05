@@ -8,7 +8,7 @@ on:
 
 permissions:
   actions: read
-  contents: write
+  contents: read
 
 jobs:
   publish-direct-apk:
@@ -20,9 +20,15 @@ jobs:
       SOURCE_SHA: '56169ae53b3763bd8d3d39b1fa50fc1821f901fb'
       ARTIFACT_NAME: 'rota-certa-timeline-gps-chooser-0731-56169ae53b3763bd8d3d39b1fa50fc1821f901fb'
       EXPECTED_APK: 'rota-certa-0.1.731-6022-timeline-gps-chooser-56169ae53b37.apk'
-      RELEASE_TAG: 'rota-certa-v0.1.731-build-6022-56169ae53b37'
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
 
     steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Download validated APK from successful run
         shell: bash
         run: |
@@ -35,49 +41,143 @@ jobs:
           printf '%s\n' "$APK_PATH" | tee apk-path.txt
           sha256sum "$APK_PATH" | tee apk-sha256.txt
 
-      - name: Publish APK-only GitHub Release
+      - name: Configure Firebase service account
         shell: bash
         run: |
           set -euo pipefail
-          APK="$(cat apk-path.txt)"
-
-          cat > release-notes.md <<EOF
-          Rota Certa 0.1.731 — APK direto para instalação
-
-          Source SHA validado: $SOURCE_SHA
-          Source workflow run: $SOURCE_RUN_ID
-          Package: br.com.mapeiaia.rotacerta
-          VersionName: 0.1.731
-          VersionCode: 6022
-
-          Este release contém somente o APK instalável. O artifact completo do workflow original continua preservado separadamente para auditoria e diagnóstico.
-          EOF
-
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "$APK" --clobber --repo "$GITHUB_REPOSITORY"
-            gh release edit "$RELEASE_TAG"               --target "$SOURCE_SHA"               --title "Rota Certa 0.1.731 — APK direto"               --notes-file release-notes.md               --prerelease               --repo "$GITHUB_REPOSITORY"
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
           else
-            gh release create "$RELEASE_TAG" "$APK"               --target "$SOURCE_SHA"               --title "Rota Certa 0.1.731 — APK direto"               --notes-file release-notes.md               --prerelease               --repo "$GITHUB_REPOSITORY"
+            echo "Firebase service account secret is missing."
+            exit 3
           fi
+          chmod 600 /tmp/firebase-sa.json
+          python -m json.tool /tmp/firebase-sa.json >/dev/null
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
 
-      - name: Verify direct APK link and write summary
+      - name: Upload APK directly to Firebase Storage
         shell: bash
         run: |
           set -euo pipefail
-          DIRECT_URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$EXPECTED_APK"
+          python -m pip install --disable-pip-version-check --quiet google-cloud-storage
+          export APK_PATH="$(cat apk-path.txt)"
+          export EXPECTED_SHA256="$(awk '{print $1}' apk-sha256.txt)"
+          python - <<'PY'
+          import os
+          import uuid
+          import urllib.parse
+          from google.cloud import storage
 
-          ASSET_COUNT="$(gh release view "$RELEASE_TAG"             --repo "$GITHUB_REPOSITORY"             --json assets             --jq '[.assets[] | select(.name == "'"$EXPECTED_APK"'")] | length')"
-          test "$ASSET_COUNT" = "1"
+          project = (os.environ.get("FIREBASE_PROJECT_ID") or "").strip() or "rota-certa-7ccc8"
+          apk_path = os.environ["APK_PATH"]
+          apk_name = os.environ["EXPECTED_APK"]
+          source_sha = os.environ["SOURCE_SHA"]
+          expected_sha = os.environ["EXPECTED_SHA256"]
+
+          client = storage.Client(project=project)
+          buckets = list(client.list_buckets(project=project))
+          if not buckets:
+              raise SystemExit(f"No Cloud Storage bucket found for project {project}")
+
+          preferred = [
+              f"{project}.firebasestorage.app",
+              f"{project}.appspot.com",
+          ]
+          bucket = next((b for name in preferred for b in buckets if b.name == name), None)
+          if bucket is None:
+              bucket = next((b for b in buckets if project in b.name), buckets[0])
+
+          object_name = f"apk/{apk_name}"
+          blob = bucket.blob(object_name)
+
+          token = None
+          if blob.exists(client):
+              blob.reload()
+              token = (blob.metadata or {}).get("firebaseStorageDownloadTokens")
+
+          if not token:
+              token = str(uuid.uuid4())
+
+          blob.metadata = {
+              "firebaseStorageDownloadTokens": token,
+              "sourceSha": source_sha,
+              "sha256": expected_sha,
+              "versionName": "0.1.731",
+              "versionCode": "6022",
+          }
+          blob.cache_control = "public, max-age=31536000, immutable"
+          blob.content_disposition = f'attachment; filename="{apk_name}"'
+          blob.upload_from_filename(
+              apk_path,
+              content_type="application/vnd.android.package-archive",
+              timeout=900,
+          )
+          blob.reload()
+
+          actual_token = (blob.metadata or {}).get("firebaseStorageDownloadTokens")
+          if actual_token != token:
+              raise SystemExit("Firebase download token metadata did not persist")
+
+          encoded_bucket = urllib.parse.quote(bucket.name, safe="")
+          encoded_object = urllib.parse.quote(object_name, safe="")
+          direct_url = (
+              f"https://firebasestorage.googleapis.com/v0/b/{encoded_bucket}/o/"
+              f"{encoded_object}?alt=media&token={urllib.parse.quote(token, safe='')}"
+          )
+
+          with open("/tmp/direct-apk-url.txt", "w", encoding="utf-8") as f:
+              f.write(direct_url + "\n")
+          with open("/tmp/firebase-bucket.txt", "w", encoding="utf-8") as f:
+              f.write(bucket.name + "\n")
+
+          print(f"firebase_bucket={bucket.name}")
+          print(f"object={object_name}")
+          print(f"direct_url={direct_url}")
+          PY
+
+      - name: Verify direct APK and write run summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIRECT_URL="$(cat /tmp/direct-apk-url.txt)"
+          curl --fail --location --retry 4 --range 0-31 --output /tmp/apk-prefix.bin "$DIRECT_URL"
+          test -s /tmp/apk-prefix.bin
+          python - <<'PY'
+          data = open("/tmp/apk-prefix.bin", "rb").read(4)
+          if data[:2] != b"PK":
+              raise SystemExit(f"Direct download is not an APK/ZIP prefix: {data!r}")
+          PY
 
           {
             echo "## 📱 APK pronto para instalar"
             echo
             echo "[**Baixar somente o APK — Rota Certa 0.1.731**]($DIRECT_URL)"
             echo
-            echo "Este link baixa diretamente o arquivo .apk, sem o pacote de diagnóstico."
+            echo "Download direto do arquivo .apk, sem o pacote de diagnóstico."
             echo
             echo "- VersionName: `0.1.731`"
             echo "- VersionCode: `6022`"
             echo "- Source SHA: `$SOURCE_SHA`"
-            echo "- Release: `$RELEASE_TAG`"
+            echo "- SHA-256: `$(awk '{print $1}' apk-sha256.txt)`"
+            echo "- Storage: `$(cat /tmp/firebase-bucket.txt)`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep APK-only GitHub artifact as fallback
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.731-APK-INSTALAR
+          path: |
+            ${{ github.workspace }}/${{ env.EXPECTED_APK }}
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Prepare APK-only fallback path
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f apk-path.txt ]; then
+            cp "$(cat apk-path.txt)" "$EXPECTED_APK"
+          fi
