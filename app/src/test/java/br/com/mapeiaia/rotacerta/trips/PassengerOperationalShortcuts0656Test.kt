@@ -4,7 +4,6 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PassengerOperationalShortcuts0656Test {
@@ -52,12 +51,18 @@ class PassengerOperationalShortcuts0656Test {
     )
 
     @Test
-    fun cityOnlyLabelIsDisplayEvidenceNotExactMapTarget() {
-        val cityOnly = row()
-        assertNull(passengerPickupMapTarget(cityOnly))
-        assertNull(passengerDropoffMapTarget(cityOnly))
-        assertContains(passengerOperationalAddressLabel0656(cityOnly, boarding = true), "definir endereço")
-        assertContains(passengerOperationalAddressLabel0656(cityOnly, boarding = false), "definir endereço")
+    fun selectedStopLabelIsNavigationQueryWithoutPretendingExactAddress() {
+        val stopOnly = row()
+        val pickup = passengerPickupMapTarget(stopOnly)
+        val dropoff = passengerDropoffMapTarget(stopOnly)
+
+        assertTrue(pickup != null)
+        assertTrue(dropoff != null)
+        assertTrue(pickup?.query == "São Paulo")
+        assertTrue(dropoff?.query == "Santo André")
+        // The label can still offer explicit address enrichment separately; GPS no longer depends on it.
+        assertContains(passengerOperationalAddressLabel0656(stopOnly, boarding = true), "definir endereço")
+        assertContains(passengerOperationalAddressLabel0656(stopOnly, boarding = false), "definir endereço")
     }
 
     @Test
