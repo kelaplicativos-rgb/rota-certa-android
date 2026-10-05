@@ -13,7 +13,7 @@ permissions:
 jobs:
   publish-direct-apk:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       GH_TOKEN: ${{ github.token }}
       SOURCE_RUN_ID: '37303150395'
@@ -25,23 +25,22 @@ jobs:
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
 
     steps:
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
       - name: Download validated APK from successful run
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p package
-          gh run download "$SOURCE_RUN_ID"             --repo "$GITHUB_REPOSITORY"             --name "$ARTIFACT_NAME"             --dir package
+          gh run download "$SOURCE_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "$ARTIFACT_NAME" \
+            --dir package
           APK_PATH="$(find package -type f -name "$EXPECTED_APK" -print -quit)"
           test -n "$APK_PATH"
           test -s "$APK_PATH"
           printf '%s\n' "$APK_PATH" | tee apk-path.txt
           sha256sum "$APK_PATH" | tee apk-sha256.txt
 
-      - name: Configure Firebase service account
+      - name: Configure Firebase authentication
         shell: bash
         run: |
           set -euo pipefail
@@ -54,98 +53,72 @@ jobs:
             exit 3
           fi
           chmod 600 /tmp/firebase-sa.json
-          python -m json.tool /tmp/firebase-sa.json >/dev/null
+          python3 -m json.tool /tmp/firebase-sa.json >/dev/null
           echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
 
-      - name: Resolve Firebase Storage bucket from app config
+      - name: Publish APK-only Firebase Hosting preview
+        id: direct
         shell: bash
         run: |
           set -euo pipefail
           PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
-          npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/firebase-apps.txt
-          APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/firebase-apps.txt | head -1)"
-          test -n "$APP_ID"
-          npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" \
-            --project "$PROJECT" \
-            --out /tmp/google-services.json
-          BUCKET="$(python - <<'PY'
-          import json
-          data=json.load(open('/tmp/google-services.json', encoding='utf-8'))
-          print(data.get('project_info', {}).get('storage_bucket', ''))
-          PY
-          )"
-          test -n "$BUCKET"
-          echo "FIREBASE_STORAGE_BUCKET=$BUCKET" >> "$GITHUB_ENV"
-          echo "firebase_storage_bucket=$BUCKET"
+          CHANNEL_ID="apk-0731-56169ae53b37"
 
-      - name: Upload APK directly to Firebase Storage
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m pip install --disable-pip-version-check --quiet google-cloud-storage
-          export APK_PATH="$(cat apk-path.txt)"
-          export EXPECTED_SHA256="$(awk '{print $1}' apk-sha256.txt)"
-          python - <<'PY'
-          import os
-          import uuid
-          import urllib.parse
-          from google.cloud import storage
+          mkdir -p .apk-hosting/public
+          cp "$(cat apk-path.txt)" ".apk-hosting/public/$EXPECTED_APK"
 
-          project = (os.environ.get("FIREBASE_PROJECT_ID") or "").strip() or "rota-certa-7ccc8"
-          apk_path = os.environ["APK_PATH"]
-          apk_name = os.environ["EXPECTED_APK"]
-          source_sha = os.environ["SOURCE_SHA"]
-          expected_sha = os.environ["EXPECTED_SHA256"]
-
-          client = storage.Client(project=project)
-          bucket_name = os.environ["FIREBASE_STORAGE_BUCKET"].strip()
-          if not bucket_name:
-              raise SystemExit("FIREBASE_STORAGE_BUCKET is empty")
-          bucket = client.bucket(bucket_name)
-
-          object_name = f"apk/{apk_name}"
-          blob = bucket.blob(object_name)
-          token = str(uuid.uuid4())
-
-          blob.metadata = {
-              "firebaseStorageDownloadTokens": token,
-              "sourceSha": source_sha,
-              "sha256": expected_sha,
-              "versionName": "0.1.731",
-              "versionCode": "6022",
+          cat > .apk-hosting/firebase.json <<EOF
+          {
+            "hosting": {
+              "public": "public",
+              "ignore": [],
+              "headers": [
+                {
+                  "source": "**/*.apk",
+                  "headers": [
+                    {
+                      "key": "Content-Disposition",
+                      "value": "attachment; filename=\"$EXPECTED_APK\""
+                    },
+                    {
+                      "key": "Cache-Control",
+                      "value": "public, max-age=31536000, immutable"
+                    }
+                  ]
+                }
+              ]
+            }
           }
-          blob.cache_control = "public, max-age=31536000, immutable"
-          blob.content_disposition = f'attachment; filename="{apk_name}"'
-          blob.upload_from_filename(
-              apk_path,
-              content_type="application/vnd.android.package-archive",
-              timeout=900,
-          )
-          encoded_bucket = urllib.parse.quote(bucket.name, safe="")
-          encoded_object = urllib.parse.quote(object_name, safe="")
-          direct_url = (
-              f"https://firebasestorage.googleapis.com/v0/b/{encoded_bucket}/o/"
-              f"{encoded_object}?alt=media&token={urllib.parse.quote(token, safe='')}"
-          )
+          EOF
 
-          with open("/tmp/direct-apk-url.txt", "w", encoding="utf-8") as f:
-              f.write(direct_url + "\n")
-          with open("/tmp/firebase-bucket.txt", "w", encoding="utf-8") as f:
-              f.write(bucket.name + "\n")
+          (
+            cd .apk-hosting
+            npx --yes firebase-tools@14.12.0 hosting:channel:deploy "$CHANNEL_ID" \
+              --project "$PROJECT" \
+              --expires 30d \
+              --config firebase.json \
+              --non-interactive
+          ) 2>&1 | tee /tmp/firebase-hosting-channel.txt
 
-          print(f"firebase_bucket={bucket.name}")
-          print(f"object={object_name}")
-          print(f"direct_url={direct_url}")
-          PY
+          PREVIEW_URL="$(grep -Eo 'https://[A-Za-z0-9._-]+\.web\.app' /tmp/firebase-hosting-channel.txt | tail -1)"
+          test -n "$PREVIEW_URL"
+          DIRECT_URL="$PREVIEW_URL/$EXPECTED_APK"
 
-      - name: Verify direct APK and write run summary
+          printf '%s\n' "$PREVIEW_URL" | tee /tmp/apk-preview-url.txt
+          printf '%s\n' "$DIRECT_URL" | tee /tmp/direct-apk-url.txt
+          echo "url=$DIRECT_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Verify direct APK download
         shell: bash
         run: |
           set -euo pipefail
           DIRECT_URL="$(cat /tmp/direct-apk-url.txt)"
-          curl --fail --location --retry 4 --range 0-31 --output /tmp/apk-prefix.bin "$DIRECT_URL"
+          curl --fail --location --retry 5 --retry-delay 2 \
+            --range 0-31 \
+            --output /tmp/apk-prefix.bin \
+            "$DIRECT_URL"
           test -s /tmp/apk-prefix.bin
-          python - <<'PY'
+          python3 - <<'PY'
           data = open("/tmp/apk-prefix.bin", "rb").read(4)
           if data[:2] != b"PK":
               raise SystemExit(f"Direct download is not an APK/ZIP prefix: {data!r}")
@@ -162,10 +135,10 @@ jobs:
             echo "- VersionCode: `6022`"
             echo "- Source SHA: `$SOURCE_SHA`"
             echo "- SHA-256: `$(awk '{print $1}' apk-sha256.txt)`"
-            echo "- Storage: `$(cat /tmp/firebase-bucket.txt)`"
+            echo "- Link direto válido por 30 dias."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Prepare APK-only fallback path
+      - name: Prepare APK-only GitHub artifact
         if: always()
         shell: bash
         run: |
