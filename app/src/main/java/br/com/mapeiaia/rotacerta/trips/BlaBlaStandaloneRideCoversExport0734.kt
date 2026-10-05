@@ -278,6 +278,16 @@ internal fun normalizeStandaloneProfileUuid0734(raw: String?): String? {
         ?.takeIf { it == candidate }
 }
 
+internal fun standaloneTerminalEvidence0735(
+    observedCardCount: Int,
+    explicitEmptyList: Boolean,
+    endSentinelVisible: Boolean,
+    atBottom: Boolean,
+): Boolean =
+    explicitEmptyList ||
+        endSentinelVisible ||
+        (observedCardCount > 0 && atBottom)
+
 internal fun shouldRetryStandaloneProfile0735(
     profile: BlaBlaStandaloneRideCoversProfile0734,
 ): Boolean {
@@ -520,11 +530,12 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
         val identityComplete = cards.all { it.tripId.isNotBlank() && it.dateIso.isNotBlank() }
         val inventoryComplete =
             sample.observedCardCount == cards.size &&
-                (
-                    sample.explicitEmptyList ||
-                        sample.endSentinelVisible ||
-                        (sample.observedCardCount > 0 && sample.atBottom)
-                    )
+                standaloneTerminalEvidence0735(
+                    observedCardCount = sample.observedCardCount,
+                    explicitEmptyList = sample.explicitEmptyList,
+                    endSentinelVisible = sample.endSentinelVisible,
+                    atBottom = sample.atBottom,
+                )
         val complete = identityComplete && inventoryComplete
         return BlaBlaStandaloneRideCoversProfile0734(
             displayName = account.displayLabel,
@@ -797,10 +808,12 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
                             return@evaluateJavascript
                         }
 
-                        val terminalEvidence =
-                            sample.explicitEmptyList ||
-                                sample.endSentinelVisible ||
-                                (sample.observedCardCount > 0 && sample.atBottom)
+                        val terminalEvidence = standaloneTerminalEvidence0735(
+                            observedCardCount = sample.observedCardCount,
+                            explicitEmptyList = sample.explicitEmptyList,
+                            endSentinelVisible = sample.endSentinelVisible,
+                            atBottom = sample.atBottom,
+                        )
                         val materialized =
                             sample.documentReady &&
                                 !sample.loadingActive &&
