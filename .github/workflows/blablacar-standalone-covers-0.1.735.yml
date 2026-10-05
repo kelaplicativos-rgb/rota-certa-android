@@ -3,7 +3,7 @@ name: Rota Certa 0.1.735 standalone covers exact SHA
 on:
   push:
     branches:
-      - 'agent/blablacar-standalone-covers-0.1.735'
+      - 'agent/blablacar-standalone-covers-reliable-0.1.735'
   workflow_dispatch:
 
 permissions:
@@ -20,7 +20,7 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
       ROTA_CERTA_GIT_SHA: ${{ github.sha }}
-      ROTA_CERTA_GIT_BRANCH: 'agent/blablacar-standalone-covers-0.1.735'
+      ROTA_CERTA_GIT_BRANCH: 'agent/blablacar-standalone-covers-reliable-0.1.735'
       BASE_SHA: '1b22084daed0a462c4d230b4a1cbb701f424de91'
       EXPECTED_VERSION_NAME: '0.1.735'
       EXPECTED_VERSION_CODE: '6026'
@@ -50,7 +50,7 @@ jobs:
           test -s app/src/main/assets/blablacar/scripts/standalone_profile_identity.js
           test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734Test.kt
           grep -Fq 'val releaseVersionName = "0.1.735"' app/build.gradle.kts
-          grep -Fq 'val releaseVersionCode = 6_025' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 6_026' app/build.gradle.kts
           grep -Fq '"version": "0.1.735"' app/src/main/assets/release_history.json
           grep -Fq '⬇️ Baixar capas (avulso)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
           grep -Fq 'writesTimeline: Boolean = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt
