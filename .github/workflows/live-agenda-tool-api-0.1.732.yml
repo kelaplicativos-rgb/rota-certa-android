@@ -121,13 +121,27 @@ jobs:
           }));
           NODE
 
-          grep -Eiq '^cache-control:.*no-store' /tmp/live-tool-headers-0732.txt
-          grep -Eiq '^etag: "[a-f0-9]{64}"' /tmp/live-tool-headers-0732.txt
-          grep -Eiq '^x-rota-certa-collector-status: PENDING_UNKNOWN' /tmp/live-tool-headers-0732.txt
+          echo '--- live tool response headers ---'
+          cat /tmp/live-tool-headers-0732.txt
 
+          grep -Eiq '^cache-control:.*no-store' /tmp/live-tool-headers-0732.txt
+          grep -Eiq '^x-rota-certa-collector-status:[[:space:]]*PENDING_UNKNOWN' /tmp/live-tool-headers-0732.txt
+
+          SNAPSHOT_HASH="$(node -e 'const fs=require("fs"); const b=JSON.parse(fs.readFileSync("/tmp/live-tool-0732.json","utf8")); process.stdout.write(b.snapshotHash || "")')"
+          test -n "$SNAPSHOT_HASH"
           ETAG="$(awk 'BEGIN{IGNORECASE=1} /^etag:/ {sub(/^[^:]+:[[:space:]]*/, ""); gsub(/\r/, ""); print; exit}' /tmp/live-tool-headers-0732.txt)"
           test -n "$ETAG"
-          STATUS="$(curl --retry 10 --retry-delay 1 --silent --show-error             -o /tmp/live-tool-304-body.txt -w '%{http_code}'             -H "If-None-Match: $ETAG"             "$BASE/v1/public/live-query/ezequiel")"
+          NORMALIZED_ETAG="${ETAG#W/}"
+          EXPECTED_ETAG="\"$SNAPSHOT_HASH\""
+          echo "snapshotHash=$SNAPSHOT_HASH"
+          echo "etag=$ETAG"
+          test "$NORMALIZED_ETAG" = "$EXPECTED_ETAG"
+
+          : > /tmp/live-tool-304-body.txt
+          STATUS="$(curl --retry 10 --retry-delay 1 --silent --show-error             -D /tmp/live-tool-304-headers-0732.txt             -o /tmp/live-tool-304-body.txt -w '%{http_code}'             -H "If-None-Match: $ETAG"             "$BASE/v1/public/live-query/ezequiel")"
+          echo "conditionalStatus=$STATUS"
+          echo '--- conditional response headers ---'
+          cat /tmp/live-tool-304-headers-0732.txt
           test "$STATUS" = "304"
           test ! -s /tmp/live-tool-304-body.txt
 
@@ -146,6 +160,7 @@ jobs:
           } | tee /tmp/final-proof-0732.txt
 
       - name: Upload delivery proof
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: rota-certa-live-agenda-tool-api-0732-${{ github.sha }}
@@ -161,5 +176,7 @@ jobs:
             /tmp/backend-deploy-0732.log
             /tmp/live-health-0732.json
             /tmp/live-tool-headers-0732.txt
+            /tmp/live-tool-304-headers-0732.txt
+            /tmp/live-tool-304-body.txt
             /tmp/live-tool-0732.json
             /tmp/final-proof-0732.txt
