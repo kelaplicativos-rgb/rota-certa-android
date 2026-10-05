@@ -1,0 +1,80 @@
+name: Publish direct APK 0.1.731
+
+on:
+  push:
+    branches:
+      - 'agent/publish-direct-apk-0.1.731'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish-direct-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_RUN_ID: '37303150395'
+      SOURCE_SHA: '56169ae53b3763bd8d3d39b1fa50fc1821f901fb'
+      ARTIFACT_NAME: 'rota-certa-timeline-gps-chooser-0731-56169ae53b3763bd8d3d39b1fa50fc1821f901fb'
+      EXPECTED_APK: 'rota-certa-0.1.731-6022-timeline-gps-chooser-56169ae53b37.apk'
+      RELEASE_TAG: 'rota-certa-v0.1.731-build-6022-56169ae53b37'
+
+    steps:
+      - name: Download validated APK from successful run
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p package
+          gh run download "$SOURCE_RUN_ID"             --repo "$GITHUB_REPOSITORY"             --name "$ARTIFACT_NAME"             --dir package
+          test -s "package/$EXPECTED_APK"
+          sha256sum "package/$EXPECTED_APK" | tee apk-sha256.txt
+
+      - name: Publish APK-only GitHub Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="package/$EXPECTED_APK"
+
+          cat > release-notes.md <<EOF
+          Rota Certa 0.1.731 — APK direto para instalação
+
+          Source SHA validado: $SOURCE_SHA
+          Source workflow run: $SOURCE_RUN_ID
+          Package: br.com.mapeiaia.rotacerta
+          VersionName: 0.1.731
+          VersionCode: 6022
+
+          Este release contém somente o APK instalável. O artifact completo do workflow original continua preservado separadamente para auditoria e diagnóstico.
+          EOF
+
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$APK" --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$RELEASE_TAG"               --target "$SOURCE_SHA"               --title "Rota Certa 0.1.731 — APK direto"               --notes-file release-notes.md               --prerelease               --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$RELEASE_TAG" "$APK"               --target "$SOURCE_SHA"               --title "Rota Certa 0.1.731 — APK direto"               --notes-file release-notes.md               --prerelease               --repo "$GITHUB_REPOSITORY"
+          fi
+
+      - name: Verify direct APK link and write summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIRECT_URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$EXPECTED_APK"
+
+          ASSET_COUNT="$(gh release view "$RELEASE_TAG"             --repo "$GITHUB_REPOSITORY"             --json assets             --jq '[.assets[] | select(.name == "'"$EXPECTED_APK"'")] | length')"
+          test "$ASSET_COUNT" = "1"
+
+          {
+            echo "## 📱 APK pronto para instalar"
+            echo
+            echo "[**Baixar somente o APK — Rota Certa 0.1.731**]($DIRECT_URL)"
+            echo
+            echo "Este link baixa diretamente o arquivo .apk, sem o pacote de diagnóstico."
+            echo
+            echo "- VersionName: `0.1.731`"
+            echo "- VersionCode: `6022`"
+            echo "- Source SHA: `$SOURCE_SHA`"
+            echo "- Release: `$RELEASE_TAG`"
+          } >> "$GITHUB_STEP_SUMMARY"
