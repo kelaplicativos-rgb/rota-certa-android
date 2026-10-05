@@ -20,7 +20,8 @@
       ],
       "improved": [
         "O JSON passa a informar collectionAttempts e recoveredTransiently por perfil para distinguir coleta direta de recuperação técnica.",
-        "Mantém o contrato avulso: zero escrita em Timeline, Agenda, viagens canônicas, disponibilidade, capacidade ou estado do dia; sem leitura de passageiros ou abertura de detalhes."
+        "Mantém o contrato avulso: zero escrita em Timeline, Agenda, viagens canônicas, disponibilidade, capacidade ou estado do dia; sem leitura de passageiros ou abertura de detalhes.",
+        "Zero capas nunca é considerado COMPLETE apenas por estar no fim do scroll; exige empty-state explícito ou fronteira de viagens arquivadas."
       ],
       "regressions": [],
       "resolvedRegressions": [
