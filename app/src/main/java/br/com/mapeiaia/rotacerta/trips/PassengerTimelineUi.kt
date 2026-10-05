@@ -713,6 +713,24 @@ internal fun EnhancedPassengerTimelineSection(
     fun passengerTrackingActive0676(row0676: EnhancedPassengerCardRow): Boolean =
         passengerTimelineRowKey0394(row0676) in activePassengerTrackingKeys0730
 
+    fun openPassengerPickupShortcut0731(row0731: EnhancedPassengerCardRow) {
+        val target0731 = passengerPickupMapTarget(row0731)
+        if (target0731 == null) {
+            onChanged("Local de embarque indisponível para navegação.")
+            return
+        }
+        openPassengerPickupMap(context, target0731)
+    }
+
+    fun openPassengerDropoffShortcut0731(row0731: EnhancedPassengerCardRow) {
+        val target0731 = passengerDropoffMapTarget(row0731)
+        if (target0731 == null) {
+            onChanged("Local de desembarque indisponível para navegação.")
+            return
+        }
+        openPassengerDropoffMap(context, target0731)
+    }
+
     fun stopPassengerTracking0676(row0676: EnhancedPassengerCardRow) {
         val passengerKey0676 = passengerTimelineRowKey0394(row0676)
         if (passengerKey0676.isBlank() || passengerKey0676 in trackingStopInFlight0676) return
@@ -1230,14 +1248,8 @@ internal fun EnhancedPassengerTimelineSection(
                     else openPassengerWhatsApp(context, phone0673)
                 },
                 onQuickMessage0673 = { quickMessageRow0656 = it },
-                onPickup0673 = { row0673 ->
-                    passengerPickupMapTarget(row0673)?.let { openPassengerPickupMap(context, it) }
-                        ?: run { boardingAddressEditRow = row0673 }
-                },
-                onDropoff0673 = { row0673 ->
-                    passengerDropoffMapTarget(row0673)?.let { openPassengerDropoffMap(context, it) }
-                        ?: run { dropoffAddressEditRow = row0673 }
-                },
+                onPickup0673 = { row0673 -> openPassengerPickupShortcut0731(row0673) },
+                onDropoff0673 = { row0673 -> openPassengerDropoffShortcut0731(row0673) },
                 onStatus0673 = { statusShortcutRow0673 = it },
             )
         }
@@ -1261,14 +1273,8 @@ internal fun EnhancedPassengerTimelineSection(
                     trackingActive0676 = passengerTrackingActive0676(row0673),
                     onTrackingStop0676 = { stopPassengerTracking0676(it) },
                     onQuickMessage0673 = { quickMessageRow0656 = it },
-                    onPickup0673 = { selected0673 ->
-                        passengerPickupMapTarget(selected0673)?.let { openPassengerPickupMap(context, it) }
-                            ?: run { boardingAddressEditRow = selected0673 }
-                    },
-                    onDropoff0673 = { selected0673 ->
-                        passengerDropoffMapTarget(selected0673)?.let { openPassengerDropoffMap(context, it) }
-                            ?: run { dropoffAddressEditRow = selected0673 }
-                    },
+                    onPickup0673 = { selected0673 -> openPassengerPickupShortcut0731(selected0673) },
+                    onDropoff0673 = { selected0673 -> openPassengerDropoffShortcut0731(selected0673) },
                     onStatus0673 = { statusShortcutRow0673 = it },
                 )
             }
@@ -1587,9 +1593,9 @@ internal fun EnhancedPassengerTimelineSection(
                     }
                 }
 
-                // 0.1.656 — the operational shortcuts are shared by Viagens and Central do Dia.
-                // Pickup/dropoff always keep a visible editable label. A city-only label is never
-                // promoted to an exact navigation target.
+                // 0.1.731 — Viagens/Central share one navigation contract:
+                // both the pin and the visible place label open Android's GPS-app chooser.
+                // Manual passengers use the itinerary stop label when no private address exists.
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1601,7 +1607,7 @@ internal fun EnhancedPassengerTimelineSection(
                                 UnifiedDebugEventStore.recordAlways(
                                     "CENTRAL_DAY_PASSENGER_SHORTCUT_0594",
                                     context.packageName,
-                                    "shortcut=PICKUP_PIN exactTarget=true",
+                                    "shortcut=PICKUP_PIN navigationTarget=true chooser=true",
                                     diagnosticContext = DiagnosticEventContext0507(
                                         parentModule = DiagnosticModule0507.CENTRAL_DAY,
                                         originModule = DiagnosticModule0507.CENTRAL_DAY,
@@ -1616,14 +1622,14 @@ internal fun EnhancedPassengerTimelineSection(
                                 )
                                 openPassengerPickupMap(context, pickupTarget0593)
                             } else {
-                                boardingAddressEditRow = passenger
+                                onChanged("Local de embarque indisponível para navegação.")
                             }
                         },
                         modifier = Modifier.size(36.dp),
                         contentPadding = ADDRESS_ICON_PADDING,
                     ) { Text("📍", maxLines = 1) }
                     TextButton(
-                        onClick = { boardingAddressEditRow = passenger },
+                        onClick = { openPassengerPickupShortcut0731(passenger) },
                         modifier = Modifier.weight(1f),
                         contentPadding = ADDRESS_PLACE_PADDING,
                     ) {
@@ -1646,7 +1652,7 @@ internal fun EnhancedPassengerTimelineSection(
                                 UnifiedDebugEventStore.recordAlways(
                                     "CENTRAL_DAY_PASSENGER_SHORTCUT_0594",
                                     context.packageName,
-                                    "shortcut=DROPOFF_PIN exactTarget=true",
+                                    "shortcut=DROPOFF_PIN navigationTarget=true chooser=true",
                                     diagnosticContext = DiagnosticEventContext0507(
                                         parentModule = DiagnosticModule0507.CENTRAL_DAY,
                                         originModule = DiagnosticModule0507.CENTRAL_DAY,
@@ -1661,14 +1667,14 @@ internal fun EnhancedPassengerTimelineSection(
                                 )
                                 openPassengerDropoffMap(context, dropoffTarget0593)
                             } else {
-                                dropoffAddressEditRow = passenger
+                                onChanged("Local de desembarque indisponível para navegação.")
                             }
                         },
                         modifier = Modifier.size(36.dp),
                         contentPadding = ADDRESS_ICON_PADDING,
                     ) { Text("🏁", maxLines = 1) }
                     TextButton(
-                        onClick = { dropoffAddressEditRow = passenger },
+                        onClick = { openPassengerDropoffShortcut0731(passenger) },
                         modifier = Modifier.weight(1f),
                         contentPadding = ADDRESS_PLACE_PADDING,
                     ) {
@@ -2217,9 +2223,7 @@ internal fun EnhancedPassengerTimelineSection(
             ) {
                 val pickupTarget = passengerPickupMapTarget(passenger)
                 TextButton(
-                    onClick = {
-                        if (pickupTarget != null) openPassengerPickupMap(context, pickupTarget)
-                    },
+                    onClick = { openPassengerPickupShortcut0731(passenger) },
                     enabled = pickupTarget != null,
                     modifier = Modifier.size(36.dp),
                     contentPadding = ADDRESS_ICON_PADDING,
@@ -2227,7 +2231,7 @@ internal fun EnhancedPassengerTimelineSection(
                     Text("📍", maxLines = 1)
                 }
                 TextButton(
-                    onClick = { boardingAddressEditRow = passenger },
+                    onClick = { openPassengerPickupShortcut0731(passenger) },
                     modifier = Modifier.weight(1f),
                     contentPadding = ADDRESS_PLACE_PADDING,
                 ) {
@@ -2240,9 +2244,7 @@ internal fun EnhancedPassengerTimelineSection(
                 Text("→")
                 val dropoffTarget = passengerDropoffMapTarget(passenger)
                 TextButton(
-                    onClick = {
-                        if (dropoffTarget != null) openPassengerDropoffMap(context, dropoffTarget)
-                    },
+                    onClick = { openPassengerDropoffShortcut0731(passenger) },
                     enabled = dropoffTarget != null,
                     modifier = Modifier.size(36.dp),
                     contentPadding = ADDRESS_ICON_PADDING,
@@ -2250,7 +2252,7 @@ internal fun EnhancedPassengerTimelineSection(
                     Text("🏁", maxLines = 1)
                 }
                 TextButton(
-                    onClick = { dropoffAddressEditRow = passenger },
+                    onClick = { openPassengerDropoffShortcut0731(passenger) },
                     modifier = Modifier.weight(1f),
                     contentPadding = ADDRESS_PLACE_PADDING,
                 ) {
@@ -2742,7 +2744,7 @@ internal fun EnhancedPassengerTimelineSection(
                         onClick = {
                             communicationShortcutRow0672 = null
                             if (pickup0673 != null) openPassengerPickupMap(context, pickup0673)
-                            else boardingAddressEditRow = row0672
+                            else onChanged("Local de embarque indisponível para navegação.")
                         },
                     ) { Text("📍 GPS embarque") }
                     OutlinedButton(
@@ -2762,7 +2764,7 @@ internal fun EnhancedPassengerTimelineSection(
                         onClick = {
                             communicationShortcutRow0672 = null
                             if (dropoff0673 != null) openPassengerDropoffMap(context, dropoff0673)
-                            else dropoffAddressEditRow = row0672
+                            else onChanged("Local de desembarque indisponível para navegação.")
                         },
                     ) { Text("🏁 GPS desembarque") }
                     OutlinedButton(
@@ -4344,21 +4346,19 @@ private fun trustedPassengerCoordinate0513(latitude: Double?, longitude: Double?
 
 internal fun passengerPickupMapTarget(row: EnhancedPassengerCardRow): PassengerPickupMapTarget? {
     val exact = row.boardingAddress.trim().takeIf(String::isNotEmpty)
-    val collected = row.boarding?.trim()?.takeIf(String::isNotEmpty)
+    val selectedStop = row.boarding?.trim()?.takeIf(String::isNotEmpty)
     val trusted = trustedPassengerCoordinate0513(row.boardingLatitude, row.boardingLongitude)
-    // 0.1.656: a city/stop label alone is display evidence, never an exact navigation target.
-    if (exact == null && !trusted) return null
-    val query = exact ?: collected ?: "${row.boardingLatitude},${row.boardingLongitude}"
+    val query = exact ?: selectedStop ?: if (trusted) "${row.boardingLatitude},${row.boardingLongitude}" else null
+        ?: return null
     return PassengerPickupMapTarget(query, row.boardingLatitude.takeIf { trusted }, row.boardingLongitude.takeIf { trusted })
 }
 
 internal fun passengerDropoffMapTarget(row: EnhancedPassengerCardRow): PassengerPickupMapTarget? {
     val exact = row.dropoffAddress.trim().takeIf(String::isNotEmpty)
-    val collected = row.dropoff?.trim()?.takeIf(String::isNotEmpty)
+    val selectedStop = row.dropoff?.trim()?.takeIf(String::isNotEmpty)
     val trusted = trustedPassengerCoordinate0513(row.dropoffLatitude, row.dropoffLongitude)
-    // 0.1.656: never send a generic destination label to Maps as if it were an exact address.
-    if (exact == null && !trusted) return null
-    val query = exact ?: collected ?: "${row.dropoffLatitude},${row.dropoffLongitude}"
+    val query = exact ?: selectedStop ?: if (trusted) "${row.dropoffLatitude},${row.dropoffLongitude}" else null
+        ?: return null
     return PassengerPickupMapTarget(query, row.dropoffLatitude.takeIf { trusted }, row.dropoffLongitude.takeIf { trusted })
 }
 
@@ -4414,44 +4414,42 @@ private fun openExternalTripBlaBla(context: Context, profileUuid: String?, href:
     return true
 }
 
+private fun passengerNavigationChooser0731(
+    target: PassengerPickupMapTarget,
+    title: String,
+): Intent {
+    val navigationIntent0731 = Intent(Intent.ACTION_VIEW, passengerMapUri0513(target))
+        .addCategory(Intent.CATEGORY_BROWSABLE)
+    return Intent.createChooser(navigationIntent0731, title)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+}
+
 private fun openPassengerPickupMap(context: Context, target: PassengerPickupMapTarget) {
-    val uri = passengerMapUri0513(target)
-    val flags = Intent.FLAG_ACTIVITY_NEW_TASK
-    val mapsIntent = Intent(Intent.ACTION_VIEW, uri)
-        .setPackage("com.google.android.apps.maps")
-        .addFlags(flags)
-    val fallbackIntent = Intent(Intent.ACTION_VIEW, uri).addFlags(flags)
     UnifiedDebugEventStore.record(
         "PASSENGER_PICKUP_MAP_OPEN",
         context.packageName,
-        "timeline=true exact_or_collected_pickup=true coordinate=" +
+        "timeline=true navigationChooser=true forcedPackage=false coordinate=" +
             trustedPassengerCoordinate0513(target.latitude, target.longitude),
     )
-    runCatching { context.startActivity(mapsIntent) }
-        .recoverCatching { context.startActivity(fallbackIntent) }
-        .onFailure {
-            Toast.makeText(context, "Não foi possível abrir o local de embarque.", Toast.LENGTH_LONG).show()
-        }
+    runCatching {
+        context.startActivity(passengerNavigationChooser0731(target, "Escolher app de navegação"))
+    }.onFailure {
+        Toast.makeText(context, "Não foi possível abrir o local de embarque.", Toast.LENGTH_LONG).show()
+    }
 }
 
 private fun openPassengerDropoffMap(context: Context, target: PassengerPickupMapTarget) {
-    val uri = passengerMapUri0513(target)
-    val flags = Intent.FLAG_ACTIVITY_NEW_TASK
-    val mapsIntent = Intent(Intent.ACTION_VIEW, uri)
-        .setPackage("com.google.android.apps.maps")
-        .addFlags(flags)
-    val fallbackIntent = Intent(Intent.ACTION_VIEW, uri).addFlags(flags)
     UnifiedDebugEventStore.record(
         "PASSENGER_DROPOFF_MAP_OPEN",
         context.packageName,
-        "timeline=true exact_or_collected_dropoff=true coordinate=" +
+        "timeline=true navigationChooser=true forcedPackage=false coordinate=" +
             trustedPassengerCoordinate0513(target.latitude, target.longitude),
     )
-    runCatching { context.startActivity(mapsIntent) }
-        .recoverCatching { context.startActivity(fallbackIntent) }
-        .onFailure {
-            Toast.makeText(context, "Não foi possível abrir o local de destino.", Toast.LENGTH_LONG).show()
-        }
+    runCatching {
+        context.startActivity(passengerNavigationChooser0731(target, "Escolher app de navegação"))
+    }.onFailure {
+        Toast.makeText(context, "Não foi possível abrir o local de destino.", Toast.LENGTH_LONG).show()
+    }
 }
 
 private fun openExternalPassengerBlaBla(context: Context, row: EnhancedPassengerCardRow): Boolean {
