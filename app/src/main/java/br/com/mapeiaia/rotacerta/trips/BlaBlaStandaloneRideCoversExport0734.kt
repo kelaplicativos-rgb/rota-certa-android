@@ -137,6 +137,18 @@ private data class StandaloneRideListEnvelope0734(
     val atBottom: Boolean = false,
 )
 
+@Serializable
+private data class StandaloneProfileIdentityEnvelope0734(
+    val documentReady: Boolean = false,
+    val currentUrl: String = "",
+    val profileUuids: List<String> = emptyList(),
+)
+
+private data class StandaloneProfileIdentityResult0734(
+    val confirmed: Boolean = false,
+    val errorCode: String = "",
+)
+
 private data class StandalonePageResult0734(
     val finalUrl: String = "",
     val sample: StandaloneRideListEnvelope0734? = null,
@@ -150,6 +162,9 @@ internal const val RESULT_PARTIAL_0734 = "PARTIAL"
 private const val PROFILE_COMPLETE_0734 = "COMPLETE"
 private const val PROFILE_PARTIAL_0734 = "PARTIAL"
 private const val RIDES_URL_0734 = "https://www.blablacar.com.br/rides"
+private const val PROFILE_URL_0734 = "https://www.blablacar.com.br/dashboard/profile/menu"
+private const val IDENTITY_TIMEOUT_MS_0734 = 20_000L
+private const val IDENTITY_MAX_PASSES_0734 = 24
 private const val MAX_EXPORT_BYTES_0734 = 2 * 1024 * 1024
 private const val PAGE_TIMEOUT_MS_0734 = 60_000L
 private const val RETRY_MS_0734 = 500L
@@ -265,12 +280,19 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
         require(accounts.isNotEmpty()) { "Nenhuma conta BlaBlaCar configurada" }
 
         val app = context.applicationContext
-        val script = withContext(Dispatchers.IO) {
-            app.assets.open("blablacar/scripts/ride_covers_standalone.js")
+        val scripts = withContext(Dispatchers.IO) {
+            val identity = app.assets.open("blablacar/scripts/standalone_profile_identity.js")
                 .bufferedReader(Charsets.UTF_8)
                 .use { it.readText() }
+            val covers = app.assets.open("blablacar/scripts/ride_covers_standalone.js")
+                .bufferedReader(Charsets.UTF_8)
+                .use { it.readText() }
+            identity to covers
         }
-        require(script.isNotBlank()) { "Leitor avulso de capas não está disponível" }
+        val identityScript = scripts.first
+        val coverScript = scripts.second
+        require(identityScript.isNotBlank()) { "Prova avulsa de identidade não está disponível" }
+        require(coverScript.isNotBlank()) { "Leitor avulso de capas não está disponível" }
 
         val profiles = mutableListOf<BlaBlaStandaloneRideCoversProfile0734>()
         accounts.forEachIndexed { index, account ->
@@ -281,7 +303,8 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
             profiles += collectProfile(
                 context = app,
                 account = account,
-                script = script,
+                identityScript = identityScript,
+                coverScript = coverScript,
                 onProgress = onProgress,
             )
         }
@@ -315,7 +338,8 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
     private suspend fun collectProfile(
         context: Context,
         account: BlaBlaDynamicAccount,
-        script: String,
+        identityScript: String,
+        coverScript: String,
         onProgress: (String) -> Unit,
     ): BlaBlaStandaloneRideCoversProfile0734 {
         val definition = account.verifiedDefinition()
@@ -334,13 +358,23 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
                 val webView = WebView(themed)
                 try {
                     configure(webView, account)
-                    loadStable(
+                    onProgress(account.displayLabel + " • confirmando UUID do perfil")
+                    val identity0734 = verifyProfileIdentity(
                         webView = webView,
-                        script = script,
-                        onProgress = { count ->
-                            onProgress(account.displayLabel + " • " + count + " capa(s) encontradas")
-                        },
+                        expectedProfileUuid = profileUuid,
+                        script = identityScript,
                     )
+                    if (!identity0734.confirmed) {
+                        StandalonePageResult0734(errorCode = identity0734.errorCode)
+                    } else {
+                        loadStable(
+                            webView = webView,
+                            script = coverScript,
+                            onProgress = { count ->
+                                onProgress(account.displayLabel + " • " + count + " capa(s) encontradas")
+                            },
+                        )
+                    }
                 } finally {
                     runCatching { webView.stopLoading() }
                     runCatching { webView.webViewClient = WebViewClient() }
@@ -461,6 +495,132 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
             if (attempt < 11) delay(200L)
         }
         return null
+    }
+
+    private suspend fun verifyProfileIdentity(
+        webView: WebView,
+        expectedProfileUuid: String,
+        script: String,
+    ): StandaloneProfileIdentityResult0734 =
+        withTimeoutOrNull(IDENTITY_TIMEOUT_MS_0734) {
+            suspendCancellableCoroutine { continuation ->
+                val handler = Handler(Looper.getMainLooper())
+                var done = false
+                var passes = 0
+
+                fun finish(value: StandaloneProfileIdentityResult0734) {
+                    if (done) return
+                    done = true
+                    handler.removeCallbacksAndMessages(null)
+                    if (continuation.isActive) continuation.resume(value)
+                }
+
+                fun evaluate() {
+                    if (done) return
+                    val currentUrl = webView.url.orEmpty()
+                    if (
+                        currentUrl.contains("/login", ignoreCase = true) ||
+                        currentUrl.contains("/connect", ignoreCase = true)
+                    ) {
+                        finish(
+                            StandaloneProfileIdentityResult0734(
+                                errorCode = "PROFILE_SESSION_AUTH_REQUIRED",
+                            ),
+                        )
+                        return
+                    }
+                    webView.evaluateJavascript(script) { raw ->
+                        if (done) return@evaluateJavascript
+                        val sample = decodeIdentityEnvelope(raw)
+                        if (sample != null && sample.documentReady) {
+                            val observed = sample.profileUuids
+                                .mapNotNull(::normalizeStandaloneProfileUuid0734)
+                                .toSet()
+                            when {
+                                expectedProfileUuid in observed -> {
+                                    finish(StandaloneProfileIdentityResult0734(confirmed = true))
+                                    return@evaluateJavascript
+                                }
+                                observed.isNotEmpty() -> {
+                                    finish(
+                                        StandaloneProfileIdentityResult0734(
+                                            errorCode = "PROFILE_UUID_MISMATCH",
+                                        ),
+                                    )
+                                    return@evaluateJavascript
+                                }
+                            }
+                        }
+                        passes++
+                        if (passes >= IDENTITY_MAX_PASSES_0734) {
+                            finish(
+                                StandaloneProfileIdentityResult0734(
+                                    errorCode = "PROFILE_UUID_NOT_OBSERVABLE",
+                                ),
+                            )
+                        } else {
+                            handler.postDelayed(::evaluate, RETRY_MS_0734)
+                        }
+                    }
+                }
+
+                webView.webViewClient = object : WebViewClient() {
+                    override fun onReceivedError(
+                        view: WebView,
+                        request: WebResourceRequest,
+                        error: WebResourceError,
+                    ) {
+                        super.onReceivedError(view, request, error)
+                        if (request.isForMainFrame) {
+                            finish(
+                                StandaloneProfileIdentityResult0734(
+                                    errorCode = "PROFILE_NETWORK_ERROR_" + error.errorCode,
+                                ),
+                            )
+                        }
+                    }
+
+                    override fun onPageFinished(view: WebView, url: String) {
+                        super.onPageFinished(view, url)
+                        if (done) return
+                        if (
+                            url.contains("/login", ignoreCase = true) ||
+                            url.contains("/connect", ignoreCase = true)
+                        ) {
+                            finish(
+                                StandaloneProfileIdentityResult0734(
+                                    errorCode = "PROFILE_SESSION_AUTH_REQUIRED",
+                                ),
+                            )
+                            return
+                        }
+                        handler.postDelayed(::evaluate, INITIAL_SETTLE_MS_0734)
+                    }
+                }
+
+                continuation.invokeOnCancellation {
+                    done = true
+                    handler.removeCallbacksAndMessages(null)
+                    runCatching { webView.stopLoading() }
+                }
+                webView.loadUrl(PROFILE_URL_0734)
+            }
+        } ?: StandaloneProfileIdentityResult0734(errorCode = "PROFILE_IDENTITY_TIMEOUT")
+
+    private fun decodeIdentityEnvelope(raw: String?): StandaloneProfileIdentityEnvelope0734? {
+        val value = raw?.trim()
+            ?.takeIf { it.isNotBlank() && it != "null" && it != "undefined" }
+            ?: return null
+        val payload = runCatching {
+            if (value.firstOrNull() == '"') {
+                standaloneWireJson0734.decodeFromString<JsonPrimitive>(value).content
+            } else {
+                value
+            }
+        }.getOrElse { return null }
+        return runCatching {
+            standaloneWireJson0734.decodeFromString<StandaloneProfileIdentityEnvelope0734>(payload)
+        }.getOrNull()
     }
 
     private suspend fun loadStable(
