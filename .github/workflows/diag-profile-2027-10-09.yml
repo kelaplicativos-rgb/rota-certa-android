@@ -1,4 +1,4 @@
-name: Diagnose all 2027 profile trips
+name: Diagnose 2026-11-03 both profiles
 
 on:
   push:
@@ -14,46 +14,43 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Query all 2027 trips by canonical BlaBla profile
+      - name: Query both profiles on 2026-11-03
         shell: bash
         run: |
           set -euo pipefail
           BASE='https://rota-certa-7ccc8.web.app/v1/public/live-query/ezequiel'
+          DATE='2026-11-03'
           EZEQUIEL='7371f028-9c55-4903-8444-308015823efd'
           BARBOSA='175a7068-50d8-40c3-a27a-214b9c6e0461'
-
           for NAME_UUID in "ezequiel:$EZEQUIEL" "barbosa:$BARBOSA"; do
             NAME="${NAME_UUID%%:*}"
             UUID="${NAME_UUID#*:}"
-            OUT="/tmp/${NAME}-all.json"
-            curl --retry 10 --retry-delay 2 --fail --silent --show-error               "$BASE?profileUuid=$UUID" -o "$OUT"
+            OUT="/tmp/${NAME}.json"
+            curl --retry 10 --retry-delay 2 --fail --silent --show-error               "$BASE?date=$DATE&profileUuid=$UUID" -o "$OUT"
             node - "$NAME" "$UUID" "$OUT" <<'NODE'
           const fs=require('fs');
           const [name,uuid,file]=process.argv.slice(2);
           const body=JSON.parse(fs.readFileSync(file,'utf8'));
-          const trips=(body.trips||[])
-            .filter(t=>String(t.localDate||'').startsWith('2027-'))
-            .map(t=>({
-              profile:name,
-              profileUuid:uuid,
-              id:t.id,
-              localDate:t.localDate,
-              localTime:t.localTime,
-              title:t.title,
-              status:t.status,
-              departureAtMillis:t.departureAtMillis,
+          console.log(JSON.stringify({
+            profile:name,
+            profileUuid:uuid,
+            validationStatus:body.validationStatus,
+            collectorValidationStatus:body.collectorValidationStatus,
+            count:body.count,
+            trips:(body.trips||[]).map(t=>({
+              id:t.id,localDate:t.localDate,localTime:t.localTime,status:t.status,
               stops:(t.stops||[]).map(s=>s.name)
-            }));
-          for (const trip of trips) console.log(JSON.stringify(trip));
+            }))
+          }));
           NODE
-          done | sort | tee /tmp/trips-2027.jsonl
+          done | tee /tmp/nov03.jsonl
 
-      - name: Upload diagnostic proof
+      - name: Upload proof
         uses: actions/upload-artifact@v4
         with:
-          name: diag-all-2027-profile-trips
+          name: diag-2026-11-03-both-profiles
           retention-days: 7
           path: |
-            /tmp/trips-2027.jsonl
-            /tmp/ezequiel-all.json
-            /tmp/barbosa-all.json
+            /tmp/nov03.jsonl
+            /tmp/ezequiel.json
+            /tmp/barbosa.json
