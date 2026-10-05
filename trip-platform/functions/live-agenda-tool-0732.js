@@ -173,7 +173,13 @@ function sendTool0732(req, res, body) {
   res.set("Content-Type", "application/json; charset=utf-8");
 
   const ifNoneMatch = cleanText0732(req && req.headers && (req.headers["if-none-match"] || req.headers["If-None-Match"]), 160);
-  if (ifNoneMatch && ifNoneMatch === etag) {
+  const ifSnapshotHash = cleanText0732(
+    req && req.query && (req.query.ifSnapshotHash || req.query.snapshotHash),
+    80,
+  ).toLowerCase();
+  const snapshotMatch = /^[a-f0-9]{64}$/.test(ifSnapshotHash) &&
+    ifSnapshotHash === String(body.snapshotHash || "").toLowerCase();
+  if ((ifNoneMatch && ifNoneMatch === etag) || snapshotMatch) {
     return res.status(304).send("");
   }
   return res.status(200).send(JSON.stringify(body));
