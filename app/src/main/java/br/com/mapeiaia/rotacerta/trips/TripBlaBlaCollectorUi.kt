@@ -747,7 +747,7 @@ fun BlaBlaCollectorPanel(
             standaloneMessage0734?.let { Text(it) }
 
             Text("A leitura usa somente a interface oficial logada. Senha não é capturada nem enviada ao Railway.")
-            Text("Após cada leitura, o Rota Certa guarda em área privada do app os MHTMLs necessários: /rides, resumo de cada viagem, passageiros individuais e opções de lugares. Esses arquivos podem conter dados pessoais e não são gravados em Downloads público.")
+            Text("Nas sincronizações normais, o Rota Certa guarda em área privada do app os MHTMLs necessários: /rides, resumo de cada viagem, passageiros individuais e opções de lugares. A coleta avulsa acima não usa esse pipeline; ela apenas baixa o JSON de capas solicitado.")
             message?.let { Text(it) }
 
             val displayResponse = currentResponse?.takeIf { it.strategy == DYNAMIC_STRATEGY }
