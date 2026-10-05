@@ -1,4 +1,4 @@
-name: Diagnose continuity Oct-Nov 2026
+name: Diagnose all 2027 profile trips
 
 on:
   push:
@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Query physical continuity across both BlaBla profiles
+      - name: Query all 2027 trips by canonical BlaBla profile
         shell: bash
         run: |
           set -euo pipefail
@@ -22,25 +22,20 @@ jobs:
           EZEQUIEL='7371f028-9c55-4903-8444-308015823efd'
           BARBOSA='175a7068-50d8-40c3-a27a-214b9c6e0461'
 
-          : > /tmp/continuity.jsonl
-          for DATE in 2026-10-29 2026-10-30 2026-10-31 2026-11-01; do
-            for NAME_UUID in "ezequiel:$EZEQUIEL" "barbosa:$BARBOSA"; do
-              NAME="${NAME_UUID%%:*}"
-              UUID="${NAME_UUID#*:}"
-              OUT="/tmp/${DATE}-${NAME}.json"
-              curl --retry 10 --retry-delay 2 --fail --silent --show-error                 "$BASE?date=$DATE&profileUuid=$UUID" -o "$OUT"
-              node - "$NAME" "$UUID" "$DATE" "$OUT" <<'NODE'
+          for NAME_UUID in "ezequiel:$EZEQUIEL" "barbosa:$BARBOSA"; do
+            NAME="${NAME_UUID%%:*}"
+            UUID="${NAME_UUID#*:}"
+            OUT="/tmp/${NAME}-all.json"
+            curl --retry 10 --retry-delay 2 --fail --silent --show-error               "$BASE?profileUuid=$UUID" -o "$OUT"
+            node - "$NAME" "$UUID" "$OUT" <<'NODE'
           const fs=require('fs');
-          const [name,uuid,date,file]=process.argv.slice(2);
+          const [name,uuid,file]=process.argv.slice(2);
           const body=JSON.parse(fs.readFileSync(file,'utf8'));
-          console.log(JSON.stringify({
-            profile:name,
-            profileUuid:uuid,
-            date,
-            validationStatus:body.validationStatus,
-            collectorValidationStatus:body.collectorValidationStatus,
-            count:body.count,
-            trips:(body.trips||[]).map(t=>({
+          const trips=(body.trips||[])
+            .filter(t=>String(t.localDate||'').startsWith('2027-'))
+            .map(t=>({
+              profile:name,
+              profileUuid:uuid,
               id:t.id,
               localDate:t.localDate,
               localTime:t.localTime,
@@ -48,24 +43,17 @@ jobs:
               status:t.status,
               departureAtMillis:t.departureAtMillis,
               stops:(t.stops||[]).map(s=>s.name)
-            }))
-          }));
+            }));
+          for (const trip of trips) console.log(JSON.stringify(trip));
           NODE
-            done
-          done | tee /tmp/continuity.jsonl
+          done | sort | tee /tmp/trips-2027.jsonl
 
       - name: Upload diagnostic proof
         uses: actions/upload-artifact@v4
         with:
-          name: diag-continuity-oct-nov-2026
+          name: diag-all-2027-profile-trips
           retention-days: 7
           path: |
-            /tmp/continuity.jsonl
-            /tmp/2026-10-29-ezequiel.json
-            /tmp/2026-10-29-barbosa.json
-            /tmp/2026-10-30-ezequiel.json
-            /tmp/2026-10-30-barbosa.json
-            /tmp/2026-10-31-ezequiel.json
-            /tmp/2026-10-31-barbosa.json
-            /tmp/2026-11-01-ezequiel.json
-            /tmp/2026-11-01-barbosa.json
+            /tmp/trips-2027.jsonl
+            /tmp/ezequiel-all.json
+            /tmp/barbosa-all.json
