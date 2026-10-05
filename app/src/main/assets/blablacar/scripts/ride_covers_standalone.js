@@ -71,14 +71,12 @@
 
   const probeKey = '__rotaCertaStandaloneRideCovers0734';
   let probe = window[probeKey];
-  if (!probe || !probe.observer) {
-    probe = { lastMutationAt: Date.now(), observer: null, coversByHref: {} };
-    probe.observer = new MutationObserver((mutations) => {
-      if (mutations.some((mutation) => mutation.type === 'childList' || mutation.type === 'characterData')) {
-        probe.lastMutationAt = Date.now();
-      }
-    });
-    probe.observer.observe(document.documentElement, { subtree: true, childList: true, characterData: true });
+  if (!probe) {
+    probe = {
+      coversByHref: {},
+      coverInventoryFingerprint: '',
+      lastCoverInventoryChangeAt: Date.now()
+    };
     window[probeKey] = probe;
   }
   if (!probe.coversByHref) probe.coversByHref = {};
@@ -155,6 +153,20 @@
     : Math.max(0, Math.round(scrollRoot.clientHeight || 0));
   const atBottom = Math.ceil(scrollY + viewportHeight) >= scrollHeight - 8;
 
+  const coverInventoryFingerprint = covers.map((cover) => [
+    cover.href,
+    cover.dateText,
+    cover.departureTime,
+    cover.arrivalTime,
+    cover.origin,
+    cover.destination,
+    cover.price
+  ].join('|')).join('\n');
+  if (probe.coverInventoryFingerprint !== coverInventoryFingerprint) {
+    probe.coverInventoryFingerprint = coverInventoryFingerprint;
+    probe.lastCoverInventoryChangeAt = Date.now();
+  }
+
   return JSON.stringify({
     covers: covers,
     observedTripHrefs: observedTripHrefs,
@@ -163,7 +175,7 @@
     documentReady: document.readyState === 'complete',
     loadingActive: loadingActive,
     endSentinelVisible: !!endSentinelNode,
-    lastMutationAgeMs: Math.max(0, Date.now() - Number(probe.lastMutationAt || Date.now())),
+    lastMutationAgeMs: Math.max(0, Date.now() - Number(probe.lastCoverInventoryChangeAt || Date.now())),
     scrollY: scrollY,
     scrollHeight: scrollHeight,
     viewportHeight: viewportHeight,
