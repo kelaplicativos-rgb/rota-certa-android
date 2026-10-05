@@ -146,7 +146,7 @@
     covers: covers,
     observedTripHrefs: observedTripHrefs,
     observedCardCount: observedCardCount,
-    explicitEmptyList: !!emptyStructure || emptyText,
+    explicitEmptyList: observedCardCount === 0 && (!!emptyStructure || emptyText),
     documentReady: document.readyState === 'complete',
     loadingActive: loadingActive,
     endSentinelVisible: !!endSentinelNode,
