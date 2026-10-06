@@ -7,15 +7,29 @@ import kotlin.test.assertTrue
 
 class FarolOneSecondVisualAuthority0711Test {
     @Test
-    fun noVisibleAddressClearsImmediately() {
+    fun noObservationPreservesConfirmedPublicResult() {
         assertEquals(
-            FarolOneSecondVisualAuthority0711.Action.CLEAR_IDLE,
+            FarolOneSecondVisualAuthority0711.Action.KEEP,
             FarolOneSecondVisualAuthority0711.decide(
                 currentAddressSignature = "ride|rua a 10",
                 observedAddressSignature = null,
                 hasPublicResult = true,
                 nowElapsedMillis = 1_000L,
                 lastConfirmedElapsedMillis = 900L,
+            ),
+        )
+    }
+
+    @Test
+    fun noObservationWithoutAnyKnownStateRemainsIdle() {
+        assertEquals(
+            FarolOneSecondVisualAuthority0711.Action.CLEAR_IDLE,
+            FarolOneSecondVisualAuthority0711.decide(
+                currentAddressSignature = null,
+                observedAddressSignature = null,
+                hasPublicResult = false,
+                nowElapsedMillis = 1_000L,
+                lastConfirmedElapsedMillis = 0L,
             ),
         )
     }
