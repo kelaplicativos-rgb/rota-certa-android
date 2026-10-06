@@ -15,6 +15,7 @@ const { CONTRACT_VERSION_0702, LEASE_MILLIS_0702, COLLECTION_0702, learningKey07
 const { createLiveAgendaFeed0701 } = require("./live-agenda-feed-0701");
 const { createLiveAgendaTool0732 } = require("./live-agenda-tool-0732");
 const { createStandaloneCoversRemote0736 } = require("./standalone-covers-remote-0736");
+const { createBlaBlaOperationalRemote0737 } = require("./blablacar-operational-remote-0737");
 const { buildProfileUpdate } = require("./public-profile-policy");
 const { cleanIdentifier, deriveRotationToken, tokenMatches } = require("./public-agenda-link-policy");
 const { createAgendaAdmin0417, safeVisibility0417 } = require("./agenda-admin-0417");
@@ -196,6 +197,10 @@ async function registerDriverPushToken(req, res) {
     standaloneCoversRemoteVersion: Math.max(
       0,
       Math.min(10, Math.floor(Number(req.body && req.body.standaloneCoversRemoteVersion || 0))),
+    ),
+    blablacarOperationalRemoteVersion: Math.max(
+      0,
+      Math.min(10, Math.floor(Number(req.body && req.body.blablacarOperationalRemoteVersion || 0))),
     ),
     createdAtMillis: now,
     updatedAtMillis: now,
@@ -11546,6 +11551,15 @@ const standaloneCoversRemote0736 = createStandaloneCoversRemote0736({
   fail,
 });
 
+const blablacarOperationalRemote0737 = createBlaBlaOperationalRemote0737({
+  db,
+  requireDriver,
+  getMessaging,
+  normalizeUsername,
+  json,
+  fail,
+});
+
 const liveTracking0668 = createLiveTracking0668({ db, requireDriver });
 
 const agendaAdmin0417 = createAgendaAdmin0417({
@@ -11698,6 +11712,56 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
       parts[4] === "latest"
     ) {
       return await standaloneCoversRemote0736.latestPublic0736(req, res, parts[3]);
+    }
+    if (
+      req.method === "GET" &&
+      parts.length === 7 &&
+      parts[0] === "v1" &&
+      parts[1] === "public" &&
+      parts[2] === "blablacar-operational" &&
+      parts[4] === "trip" &&
+      parts[6] === "refresh"
+    ) {
+      const access0737 = await standaloneCoversRemote0736.resolveAccessForExtension0737(parts[3]);
+      if (!access0737) return fail(res, 404, "operational_access_not_found", "Acesso privado não encontrado ou expirado.");
+      return await blablacarOperationalRemote0737.refreshForUsername0737(req, res, access0737.username);
+    }
+    if (
+      req.method === "GET" &&
+      parts.length === 7 &&
+      parts[0] === "v1" &&
+      parts[1] === "public" &&
+      parts[2] === "blablacar-operational" &&
+      parts[4] === "trip" &&
+      parts[6] === "latest"
+    ) {
+      const access0737 = await standaloneCoversRemote0736.resolveAccessForExtension0737(parts[3]);
+      if (!access0737) return fail(res, 404, "operational_access_not_found", "Acesso privado não encontrado ou expirado.");
+      return await blablacarOperationalRemote0737.latestForUsername0737(req, res, access0737.username);
+    }
+    if (
+      req.method === "POST" &&
+      parts.length === 8 &&
+      parts[0] === "v1" &&
+      parts[1] === "public" &&
+      parts[2] === "blablacar-operational" &&
+      parts[3] === "jobs" &&
+      parts[6] === "callback" &&
+      parts[7] === "ack"
+    ) {
+      return await blablacarOperationalRemote0737.ackPublic0737(req, res, parts[4], parts[5]);
+    }
+    if (
+      req.method === "PUT" &&
+      parts.length === 8 &&
+      parts[0] === "v1" &&
+      parts[1] === "public" &&
+      parts[2] === "blablacar-operational" &&
+      parts[3] === "jobs" &&
+      parts[6] === "callback" &&
+      parts[7] === "result"
+    ) {
+      return await blablacarOperationalRemote0737.submitPublicResult0737(req, res, parts[4], parts[5]);
     }
     if (req.method === "POST" && path === "/v1/driver/tracking/sessions") return await liveTracking0668.createSession(req, res);
     if (req.method === "POST" && path === "/v1/driver/tracking/shares") return await liveTracking0668.createShare(req, res);
