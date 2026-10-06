@@ -121,6 +121,7 @@ fun BlaBlaCollectorPanel(
     val standaloneScope0734 = rememberCoroutineScope()
     val registry = remember(context) { BlaBlaDynamicAccountRegistry(context) }
     val standaloneRemoteAccessStore0736 = remember(context) { StandaloneCoversRemoteAccessStore0736(context) }
+    val htmlRemoteAccessStore0737 = remember(context) { BlaBlaHtmlRemoteAccessStore0737(context) }
     val sessionStore = remember(context) { BlaBlaDynamicSessionStore(context) }
     val manualSeatStore = remember(context) { BlaBlaManualSeatSyncRequestStore(context) }
     val manualSeatAttemptStore = remember(context) { BlaBlaManualSeatSyncAttemptStore(context) }
@@ -153,6 +154,7 @@ fun BlaBlaCollectorPanel(
     var standaloneExporting0734 by remember { mutableStateOf(false) }
     var standaloneMessage0734 by remember { mutableStateOf<String?>(null) }
     var standaloneRemoteAccess0736 by remember { mutableStateOf(standaloneRemoteAccessStore0736.read()) }
+    var htmlRemoteAccess0737 by remember { mutableStateOf(htmlRemoteAccessStore0737.read()) }
     var showAddAccount by remember { mutableStateOf(false) }
     var newAccountLabel by remember { mutableStateOf("") }
     var showDateScopeSelector by remember { mutableStateOf(false) }
@@ -455,6 +457,7 @@ fun BlaBlaCollectorPanel(
         }.onSuccess { registered0736 ->
             if (registered0736) {
                 standaloneRemoteAccess0736 = standaloneRemoteAccessStore0736.read()
+                htmlRemoteAccess0737 = htmlRemoteAccessStore0737.read()
             }
         }
     }
@@ -763,37 +766,53 @@ fun BlaBlaCollectorPanel(
             )
             standaloneMessage0734?.let { Text(it) }
 
-            if (standaloneRemoteAccess0736.configured) {
-                Text("Coleta remota automática: pronta ✅")
+            if (standaloneRemoteAccess0736.configured || htmlRemoteAccess0737.configured) {
+                Text(
+                    if (standaloneRemoteAccess0736.configured && htmlRemoteAccess0737.configured) {
+                        "Acesso remoto do assistente: capas + HTML completo prontos ✅"
+                    } else {
+                        "Acesso remoto do assistente: provisionamento parcial ⚠️"
+                    },
+                )
                 OutlinedButton(
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         val privateAccess = buildString {
-                            append("Rota Certa — coleta remota avulsa\n")
-                            append("Solicitar: ").append(standaloneRemoteAccess0736.refreshUrl).append('\n')
-                            append("Consultar: ").append(standaloneRemoteAccess0736.latestUrl)
+                            append("Rota Certa — acesso privado do assistente\n")
+                            if (standaloneRemoteAccess0736.configured) {
+                                append("CAPAS_SOLICITAR: ").append(standaloneRemoteAccess0736.refreshUrl).append('\n')
+                                append("CAPAS_CONSULTAR: ").append(standaloneRemoteAccess0736.latestUrl).append('\n')
+                            }
+                            if (htmlRemoteAccess0737.configured) {
+                                append("HTML_VIAGEM_SOLICITAR: ")
+                                    .append(htmlRemoteAccess0737.tripRefreshUrl)
+                                    .append("?profileUuid=<UUID>&tripId=<TRIP_ID>\n")
+                                append("HTML_VIAGEM_CONSULTAR: ")
+                                    .append(htmlRemoteAccess0737.tripLatestUrl)
+                                    .append("?profileUuid=<UUID>&tripId=<TRIP_ID>")
+                            }
                         }
                         clipboard.setPrimaryClip(
-                            ClipData.newPlainText("Rota Certa — coleta remota avulsa", privateAccess),
+                            ClipData.newPlainText("Rota Certa — acesso privado do assistente", privateAccess),
                         )
                         Toast.makeText(
                             context,
-                            "Acesso privado da coleta remota copiado.",
+                            "Acesso privado do assistente copiado.",
                             Toast.LENGTH_SHORT,
                         ).show()
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("🔐 Copiar acesso privado remoto")
+                    Text("🔐 Copiar acesso privado do assistente")
                 }
                 Text(
-                    "Compartilhe este acesso somente com quem pode solicitar suas capas. " +
-                        "A coleta remota continua isolada da Agenda/Timeline e não envia cookies ou senha.",
+                    "Capas fazem a busca rápida. A consulta HTML direcionada usa o mesmo motor de Capturar HTMLs " +
+                        "para uma viagem exata e não envia cookie, senha, telefone, link privado de passageiro nem HTML bruto.",
                 )
             } else {
                 Text(
-                    "Coleta remota automática: aguardando provisionamento online. " +
-                        "O download avulso manual continua disponível como fallback.",
+                    "Acesso remoto automático: aguardando provisionamento online. " +
+                        "Baixar capas e Capturar HTMLs continuam disponíveis como fallback.",
                 )
             }
 
