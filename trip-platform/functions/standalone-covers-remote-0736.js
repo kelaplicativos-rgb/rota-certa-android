@@ -438,10 +438,39 @@ function createStandaloneCoversRemote0736({
       return json(res, 200, { state: "PENDING_UNKNOWN", jobId, result: null, errorCode: "JOB_NOT_AVAILABLE" });
     }
     const job = jobSnap.data();
+    const now = Date.now();
     let stateValue = clean0736(job.state, 32) || "PENDING_UNKNOWN";
-    if (ACTIVE_JOB_STATES_0736.has(stateValue) && Number(job.expiresAtMillis || 0) > 0 && Number(job.expiresAtMillis) <= Date.now()) {
+    let resultPayload = job.payload || null;
+    let errorCode = clean0736(job.errorCode, 120);
+    let errorMessage = clean0736(job.errorMessage, 240);
+    if (ACTIVE_JOB_STATES_0736.has(stateValue) && Number(job.expiresAtMillis || 0) > 0 && Number(job.expiresAtMillis) <= now) {
       stateValue = "EXPIRED";
-      await jobSnap.ref.set({ state: "EXPIRED", updatedAtMillis: Date.now() }, { merge: true });
+      errorCode = "JOB_EXPIRED";
+      resultPayload = null;
+      await jobSnap.ref.set({
+        state: "EXPIRED",
+        payload: null,
+        errorCode,
+        errorMessage: "",
+        updatedAtMillis: now,
+      }, { merge: true });
+    } else if (
+      TERMINAL_JOB_STATES_0736.has(stateValue) &&
+      stateValue !== "EXPIRED" &&
+      Number(job.resultExpiresAtMillis || 0) > 0 &&
+      Number(job.resultExpiresAtMillis) <= now
+    ) {
+      stateValue = "EXPIRED";
+      errorCode = "RESULT_EXPIRED";
+      errorMessage = "";
+      resultPayload = null;
+      await jobSnap.ref.set({
+        state: "EXPIRED",
+        payload: null,
+        errorCode,
+        errorMessage,
+        updatedAtMillis: now,
+      }, { merge: true });
     }
     return json(res, 200, {
       state: stateValue,
@@ -449,9 +478,9 @@ function createStandaloneCoversRemote0736({
       requestedAtMillis: Number(job.requestedAtMillis || 0),
       updatedAtMillis: Number(job.updatedAtMillis || 0),
       completedAtMillis: Number(job.completedAtMillis || 0),
-      result: job.payload || null,
-      errorCode: clean0736(job.errorCode, 120),
-      errorMessage: clean0736(job.errorMessage, 240),
+      result: resultPayload,
+      errorCode,
+      errorMessage,
       statusMeaning: stateValue === "COMPLETE"
         ? "Inventário de capas comprovado pelo aparelho."
         : "Inventário não comprovado como completo; trate como desconhecido.",
