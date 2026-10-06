@@ -2,6 +2,46 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.737",
+      "build": 6028,
+      "commit": null,
+      "branch": "agent/blablacar-remote-query-0.1.737",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Expande a coleta remota BlaBlaCar para consulta profunda direcionada por profileUuid + tripId usando o mesmo motor HTML autoritativo captureSingleTrip0607 do fluxo Capturar HTMLs.",
+        "Autoriza a consulta profunda somente quando a viagem existe de forma única no inventário de capas COMPLETE e ainda fresco; o href administrativo é obtido no backend e revalidado no aparelho.",
+        "Adiciona job remoto por FCM + WorkManager para abrir somente a viagem necessária e devolver uma projeção estruturada de passageiros, vagas, itinerário, horário, rota e preço."
+      ],
+      "fixed": [
+        "Remove a necessidade operacional de abrir manualmente cada viagem apenas para verificar se há passageiros ou outras informações antes de reconciliar a agenda.",
+        "Preserva separadamente o último ponteiro de capas COMPLETE; tentativas PARTIAL/FAILED deixam de substituir a referência da última prova boa.",
+        "Substitui a prova de APK dependente de string visual frágil por validações de fonte, símbolos técnicos, versão e SHA do próprio APK."
+      ],
+      "improved": [
+        "Consulta profunda usa scopedStateIsolation0662=true, não grava sessão combinada nem estado canônico por causa do pedido remoto.",
+        "Payload remoto nunca transporta cookies, senha, HTML bruto, evidencePath, telefone, booking_href ou href administrativo; envia somente a projeção operacional necessária.",
+        "Somente COMPLETE com operationalComplete, passengerRosterComplete, itineraryAuthoritative e publishedSeats comprovados pode ser tratado como prova; PARTIAL/FAILED/PENDING_DEVICE permanecem desconhecidos.",
+        "Acesso privado reutiliza o capability token das capas e oferece URLs por viagem para solicitar atualização e ler o resultado."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.736: workflow exact-head podia falhar na prova final por grep de texto visual no DEX mesmo após compilação e testes aprovados."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Capturar HTMLs",
+        "Coleta remota",
+        "Passageiros",
+        "FCM",
+        "WorkManager",
+        "Backend",
+        "Privacidade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.736",
       "build": 6027,
       "commit": null,
