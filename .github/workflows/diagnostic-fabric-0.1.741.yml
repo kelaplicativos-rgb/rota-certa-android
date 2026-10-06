@@ -81,9 +81,9 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          grep -Fq 'val releaseVersionName = "0.1.740"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.741"' app/build.gradle.kts
           grep -Fq 'val releaseVersionCode = 6_032' app/build.gradle.kts
-          grep -Fq '"version": "0.1.740"' app/src/main/assets/release_history.json
+          grep -Fq '"version": "0.1.741"' app/src/main/assets/release_history.json
           grep -Fq 'FAROL_ONE_SECOND_VISUAL_AUTHORITY_0711' app/src/main/java/br/com/mapeiaia/rotacerta/FarolOneSecondVisualAuthority0711.kt
           grep -Fq 'RESULT_TTL_MILLIS = 1_000L' app/src/main/java/br/com/mapeiaia/rotacerta/FarolOneSecondVisualAuthority0711.kt
           grep -Fq 'HEARTBEAT_MILLIS = 700L' app/src/main/java/br/com/mapeiaia/rotacerta/FarolOneSecondVisualAuthority0711.kt
@@ -148,7 +148,7 @@ jobs:
             --no-daemon --max-workers=1 --no-parallel --stacktrace \
             | tee /tmp/sealed-farol-regression.log
 
-      - name: Compare complete Android failures with exact 0.1.739 base
+      - name: Compare complete Android failures with exact 0.1.740 base
         shell: bash
         run: |
           set -euo pipefail
