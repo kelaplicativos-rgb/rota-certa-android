@@ -1064,6 +1064,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         target: BlaBlaTripTarget0407,
         existingSource: BlaBlaCollectorTrip?,
         scopedStateIsolation0662: Boolean = false,
+        persistPrivateMetadata0653: Boolean = true,
     ): BlaBlaTargetedHtmlRefreshResult0607 {
         val app = context.applicationContext
         val activeGlobalTransaction0726 = BlaBlaHtmlCaptureTransaction0610.active(app)
@@ -1181,6 +1182,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                         definition = definition,
                         ride = ride,
                         scripts = scripts,
+                        persistPrivateMetadata0653 = persistPrivateMetadata0653,
                     )
                 } finally {
                     runCatching { webView.stopLoading() }
@@ -1313,6 +1315,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         definition: BlaBlaAccountDefinition,
         ride: ParsedExternalRide0535,
         scripts: UnifiedDirectScripts0605,
+        persistPrivateMetadata0653: Boolean = true,
     ): UnifiedCapturedTrip0605 {
         val administrativeUrl = BlaBlaCollectorUrlModule.absolute(ride.administrativeUrl)
         val capturedAt = Instant.now().toString()
@@ -1480,6 +1483,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 passengerHrefs = detail.passengerHrefs,
                 tripStopLocations = detail.stopLocations,
                 scripts = scripts,
+                persistPrivateMetadata0653 = persistPrivateMetadata0653,
             )
         }
         val trip = passengerDepth0653?.trip ?: baseTrip
@@ -1993,6 +1997,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         passengerHrefs: List<String>,
         tripStopLocations: List<BlaBlaTripStopLocation0659>,
         scripts: UnifiedDirectScripts0605,
+        persistPrivateMetadata0653: Boolean = true,
     ): UnifiedPassengerDepthResult0653 {
         val expected = source.passengers.size
         if (expected == 0) {
@@ -2194,10 +2199,16 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         }
 
         val complete = passengerDeepCaptureComplete0653(expected, resolved)
-        if (complete) {
+        if (complete && persistPrivateMetadata0653) {
             withContext(Dispatchers.IO) {
                 pendingMetadata.forEach(identityStore::saveExternalMetadata)
             }
+        } else if (complete) {
+            UnifiedDebugEventStore.recordAlways(
+                "BLABLACAR_HTML_PASSENGER_PRIVATE_PERSIST_SKIPPED_0737",
+                webView.context.packageName,
+                "tripKey=${seatSyncDiagnosticKey(definition.uuid + "|" + ride.tripId)} remoteReadOnly=true privateMetadataWrite=false",
+            )
         }
 
         val enriched = source.copy(
