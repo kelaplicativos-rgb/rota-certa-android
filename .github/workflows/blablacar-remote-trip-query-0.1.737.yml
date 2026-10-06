@@ -1,0 +1,502 @@
+name: Rota Certa 0.1.737 remote BlaBlaCar trip query exact SHA
+
+on:
+  push:
+    branches:
+      - 'agent/blablacar-remote-trip-query-0.1.737'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blablacar-standalone-covers-remote-0736-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: 'agent/blablacar-remote-trip-query-0.1.737'
+      BASE_SHA: '2fb6b4fa634d02d8540a7fe207ce8f9b3075eb46'
+      EXPECTED_VERSION_NAME: '0.1.737'
+      EXPECTED_VERSION_CODE: '6028'
+      OM_TAG: '2026.08.27-18-android'
+      OM_VERSION: '2026.08.27-18'
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Prove direct HEAD source and isolation contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt
+          test -s app/src/main/assets/blablacar/scripts/ride_covers_standalone.js
+          test -s app/src/main/assets/blablacar/scripts/standalone_profile_identity.js
+          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734Test.kt
+          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversRemote0736.kt
+          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRemoteTripQuery0737.kt
+          test -s trip-platform/functions/standalone-covers-remote-0736.js
+          test -s trip-platform/functions/blablacar-trip-query-remote-0737.js
+          test -s trip-platform/functions/test/standalone-covers-remote-0736.test.js
+          test -s trip-platform/functions/test/blablacar-trip-query-remote-0737.test.js
+          grep -Fq 'val releaseVersionName = "0.1.737"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 6_027' app/build.gradle.kts
+          grep -Fq '"version": "0.1.737"' app/src/main/assets/release_history.json
+          grep -Fq '⬇️ Baixar capas (avulso)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'writesTimeline: Boolean = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt
+          grep -Fq 'writesAgenda: Boolean = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt
+          grep -Fq 'writesCanonicalTrips: Boolean = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt
+          grep -Fq 'readsPassengers: Boolean = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt
+          grep -Fq 'MAX_PROFILE_ATTEMPTS_0735 = 2' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt
+          grep -Fq 'shouldRewindFromTerminalZero' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt
+          grep -Fq 'lastCoverInventoryChangeAt' app/src/main/assets/blablacar/scripts/ride_covers_standalone.js
+          grep -Fq 'collectPayload0736' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt
+          grep -Fq 'STANDALONE_COVERS_REMOTE_EVENT_0736 = "standalone_covers_collect"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversRemote0736.kt
+          grep -Fq 'BLABLACAR_REMOTE_TRIP_QUERY_EVENT_0737 = "blablacar_trip_query_collect"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRemoteTripQuery0737.kt
+          grep -Fq 'if (isStandaloneCoversRemoteEvent0736(event))' app/src/main/java/br/com/mapeiaia/rotacerta/trips/RotaCertaBookingMessagingService.kt
+          grep -Fq 'if (isBlaBlaRemoteTripQueryEvent0737(event))' app/src/main/java/br/com/mapeiaia/rotacerta/trips/RotaCertaBookingMessagingService.kt
+          grep -Fq 'agendaSync=false timelineWrite=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/RotaCertaBookingMessagingService.kt
+          grep -Fq 'canonicalWrite=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/RotaCertaBookingMessagingService.kt
+          grep -Fq 'scopedStateIsolation0662 = true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRemoteTripQuery0737.kt
+          grep -Fq 'persistPrivateMetadata0653 = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRemoteTripQuery0737.kt
+          grep -Fq 'tripStandaloneCoverJobs0736' trip-platform/functions/standalone-covers-remote-0736.js
+          grep -Fq '/v1/public/standalone-covers/' trip-platform/functions/standalone-covers-remote-0736.js
+          ! grep -Eq 'saveResponse|updateTrip|saveTrip|PassengerIdentityStore' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversRemote0736.kt
+          ! grep -Fq 'stateStore.saveResponse' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt
+          ! grep -Fq 'TripStore(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt
+          ! grep -Fq 'PassengerIdentityStore' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt
+          ! grep -Eq 'extractPassengers|passengerRoster|booking_href|phone:' app/src/main/assets/blablacar/scripts/ride_covers_standalone.js
+          ! grep -Eq 'extractPassengers|passengerRoster|booking_href|phone:' app/src/main/assets/blablacar/scripts/standalone_profile_identity.js
+          git diff --exit-code "$BASE_SHA"...HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          git diff --check "$BASE_SHA"...HEAD
+          FAROL_BEFORE="$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')"
+          printf '%s\n' "$FAROL_BEFORE" | tee /tmp/farol-before-sha256.txt
+          printf '%s\n' "$GITHUB_SHA" | tee /tmp/source-sha.txt
+          printf '%s\n' "$ROTA_CERTA_GIT_BRANCH" | tee /tmp/source-branch.txt
+          {
+            echo "sourceHead=$GITHUB_SHA"
+            echo "checkoutDirectHead=PASS"
+            echo "appSource=app/src"
+            echo "historicalShaAsSource=NO"
+            echo "materializerRequired=NO"
+            echo "standaloneWritesAgenda=NO"
+            echo "standaloneWritesTimeline=NO"
+            echo "standaloneWritesCanonicalTrips=NO"
+            echo "standaloneReadsPassengers=NO"
+            echo "remoteTriggerAgendaSync=NO"
+            echo "remoteCookiesUploaded=NO"
+            echo "remoteTripQueryReadsPassengers=YES"
+            echo "remoteTripQueryWritesAgenda=NO"
+            echo "remoteTripQueryWritesTimeline=NO"
+            echo "remoteTripQueryPersistsPrivateMetadata=NO"
+          } | tee /tmp/source-contract.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate remote backend source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/standalone-covers-remote-0736.js
+          node --check trip-platform/functions/blablacar-trip-query-remote-0737.js
+          node --check trip-platform/functions/index.js
+          node --test trip-platform/functions/test/standalone-covers-remote-0736.test.js trip-platform/functions/test/blablacar-trip-query-remote-0737.test.js | tee /tmp/backend-remote-0737.log
+      - name: Install native prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo apt-get install -y ninja-build
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-36" \
+            "ndk;29.0.14206865" \
+            "cmake;3.22.1"
+
+      - name: Build exact Organic Maps SDK locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 128 --branch "$OM_TAG" https://github.com/organicmaps/organicmaps.git /tmp/organicmaps
+          cd /tmp/organicmaps
+          git submodule update --init --recursive --depth 1 --jobs 8
+          test "$(tools/unix/version.sh android_name)" = "$OM_VERSION"
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          cd android
+          chmod +x ./gradlew
+          ./gradlew \
+            :sdk:location:core:publishToMavenLocal \
+            :sdk:publishToMavenLocal \
+            :sdk:maps:world:publishToMavenLocal \
+            -Parm64 -Pnjobs=2 \
+            --no-daemon --max-workers=2 --stacktrace \
+            | tee /tmp/organicmaps-sdk-build.log
+
+      - name: Verify release history and focused regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:verifyReleaseHistory --no-daemon --stacktrace | tee /tmp/release-history.log
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaStandaloneRideCoversExport0734Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRemoteTripQuery0737Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectAccountCapture0608Test' \
+            --no-daemon --max-workers=2 --stacktrace \
+            | tee /tmp/focused-android-0737.log
+
+      - name: Compare complete Android failures with exact base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add --detach /tmp/rc-base "$BASE_SHA"
+          chmod +x /tmp/rc-base/gradlew
+          set +e
+          (cd /tmp/rc-base && ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace) > /tmp/android-base-full.log 2>&1
+          BASE_EXIT=$?
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace > /tmp/android-head-full.log 2>&1
+          HEAD_EXIT=$?
+          set -e
+          python3 - <<'PY'
+          import pathlib
+          import xml.etree.ElementTree as ET
+
+          def failures(root):
+              result=set()
+              d=pathlib.Path(root)/"app/build/test-results/testDebugUnitTest"
+              if not d.exists():
+                  return result
+              for f in d.glob("*.xml"):
+                  try:
+                      tree=ET.parse(f)
+                  except Exception:
+                      continue
+                  for case in tree.getroot().iter("testcase"):
+                      if case.find("failure") is not None or case.find("error") is not None:
+                          result.add(f"{case.attrib.get('classname','')}::{case.attrib.get('name','')}")
+              return result
+
+          base=failures("/tmp/rc-base")
+          head=failures(".")
+          new=sorted(head-base)
+          fixed=sorted(base-head)
+          pathlib.Path("/tmp/android-new-failures.txt").write_text("\n".join(new)+("\n" if new else ""))
+          pathlib.Path("/tmp/android-fixed-failures.txt").write_text("\n".join(fixed)+("\n" if fixed else ""))
+          print(f"base_failures={len(base)} head_failures={len(head)} new_failures={len(new)} fixed={len(fixed)}")
+          if new:
+              print("\n".join(new))
+              raise SystemExit(1)
+          PY
+          printf 'base_exit=%s\nhead_exit=%s\n' "$BASE_EXIT" "$HEAD_EXIT" | tee /tmp/android-regression-summary.txt
+
+      - name: Assemble exact-head APK directly from app/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/assemble.log
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Prove APK identity and FAROL immutability
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          FAROL_BEFORE="$(cat /tmp/farol-before-sha256.txt)"
+          FAROL_AFTER="$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')"
+          test "$FAROL_BEFORE" = "$FAROL_AFTER"
+          printf '%s\n' "$FAROL_AFTER" | tee /tmp/farol-after-sha256.txt
+
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/zip-integrity.txt
+          unzip -l "$APK" | tee /tmp/apk-files.txt
+          grep -Fq 'assets/blablacar/scripts/ride_covers_standalone.js' /tmp/apk-files.txt
+          grep -Fq 'assets/blablacar/scripts/standalone_profile_identity.js' /tmp/apk-files.txt
+          grep -Eq 'lib/arm64-v8a/liborganicmaps\.so' /tmp/apk-files.txt
+          grep -Eq 'assets/World\.mwm' /tmp/apk-files.txt
+          grep -Eq 'assets/WorldCoasts\.mwm' /tmp/apk-files.txt
+
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/apksigner.txt
+
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
+          grep -Fq 'BLABLACAR_RIDE_COVERS_STANDALONE' /tmp/dex-strings.txt
+          grep -Fq 'Baixar capas (avulso)' /tmp/dex-strings.txt
+          grep -Fq 'standalone_covers_collect' /tmp/dex-strings.txt
+          grep -Fq 'blablacar_trip_query_collect' /tmp/dex-strings.txt
+          grep -Fq 'BLABLACAR_TRIP_QUERY' /tmp/dex-strings.txt
+
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.737-6028-consulta-html-remota-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          APK_SHA256="$(sha256sum "$FINAL" | awk '{print $1}')"
+          sha256sum "$FINAL" | tee /tmp/apk-sha256.txt
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "source_head=$GITHUB_SHA"
+            echo "source_branch=$ROTA_CERTA_GIT_BRANCH"
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=$EXPECTED_VERSION_NAME"
+            echo "versionCode=$EXPECTED_VERSION_CODE"
+            echo "deviceTarget=Samsung SM-S911B / Android 16"
+            echo "appSource=app/src"
+            echo "checkoutDirectHead=PASS"
+            echo "historicalShaAsSource=NO"
+            echo "materializerRequired=NO"
+            echo "standaloneCoverIsolation=PASS"
+            echo "remoteTripQueryScopedIsolation=PASS"
+            echo "remoteTripQueryPrivateMetadataWrite=NO"
+            echo "farolBeforeSha256=$FAROL_BEFORE"
+            echo "farolAfterSha256=$FAROL_AFTER"
+            echo "apkSha256=$APK_SHA256"
+          } | tee /tmp/final-proof.txt
+
+      - name: Upload exact-SHA APK and proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.737-consulta-html-remota-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            /tmp/source-sha.txt
+            /tmp/source-branch.txt
+            /tmp/source-contract.txt
+            /tmp/final-proof.txt
+            /tmp/apk-sha256.txt
+            /tmp/farol-before-sha256.txt
+            /tmp/farol-after-sha256.txt
+            /tmp/aapt.txt
+            /tmp/apksigner.txt
+            /tmp/zip-integrity.txt
+            /tmp/apk-files.txt
+            /tmp/focused-android-0737.log
+            /tmp/backend-remote-0737.log
+            /tmp/android-base-full.log
+            /tmp/android-head-full.log
+            /tmp/android-new-failures.txt
+            /tmp/android-fixed-failures.txt
+            /tmp/android-regression-summary.txt
+            /tmp/release-history.log
+            /tmp/assemble.log
+            /tmp/organicmaps-sdk-build.log
+
+
+      - name: Prepare APK-only fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_FILE="${{ steps.proof.outputs.apk }}"
+          test -s "$APK_FILE"
+          cp "$APK_FILE" /tmp/rota-certa-0.1.737-APK-INSTALAR.apk
+          sha256sum /tmp/rota-certa-0.1.737-APK-INSTALAR.apk | tee /tmp/apk-only-sha256.txt
+
+      - name: Upload APK-only fallback
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.737-APK-INSTALAR
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/rota-certa-0.1.737-APK-INSTALAR.apk
+
+      - name: Configure Firebase authentication for direct APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+          else
+            echo "Firebase service account secret is missing."
+            exit 3
+          fi
+          chmod 600 /tmp/firebase-sa.json
+          python3 -m json.tool /tmp/firebase-sa.json >/dev/null
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy exact HEAD tripApi for remote covers
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          gcloud auth activate-service-account --key-file=/tmp/firebase-sa.json
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          gcloud functions deploy tripApi \
+            --gen2 \
+            --project="$PROJECT" \
+            --region=southamerica-east1 \
+            --runtime=nodejs20 \
+            --source=trip-platform/functions \
+            --entry-point=tripApi \
+            --trigger-http \
+            --allow-unauthenticated \
+            --clear-secrets \
+            --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$GITHUB_SHA" \
+            --quiet
+
+      - name: Smoke live remote-cover backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 20 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health-0737.json
+          grep -Fq '"ok":true' /tmp/live-health-0737.json
+          grep -Fq "\"backendGitSha\":\"$GITHUB_SHA\"" /tmp/live-health-0737.json
+          CODE="$(curl --silent --show-error -o /tmp/remote-unauth.json -w '%{http_code}' -X POST "$BASE/v1/driver/standalone-covers/access/ensure" -H 'Content-Type: application/json' --data '{}')"
+          test "$CODE" = "401"
+          INVALID_TOKEN='invalid_private_token_that_cannot_be_valid_0736'
+          CODE="$(curl --silent --show-error -o /tmp/remote-invalid-token.json -w '%{http_code}' "$BASE/v1/public/standalone-covers/$INVALID_TOKEN/latest")"
+          test "$CODE" = "404"
+          grep -Fq 'standalone_cover_access_not_found' /tmp/remote-invalid-token.json
+          CODE="$(curl --silent --show-error -o /tmp/remote-trip-invalid-token.json -w '%{http_code}' "$BASE/v1/public/blablacar-query/$INVALID_TOKEN/trip/7371f028-9c55-4903-8444-308015823efd/01a10f40-5046-7e0f-a0f1-084aaeb436e9/latest")"
+          test "$CODE" = "404"
+          grep -Fq 'blablacar_query_access_not_found' /tmp/remote-trip-invalid-token.json
+          {
+            echo "backend_source_head=$GITHUB_SHA"
+            echo "backend_remote_routes=PASS"
+            echo "backend_remote_trip_query_routes=PASS"
+            echo "driver_auth_guard=PASS"
+            echo "invalid_capability_guard=PASS"
+          } | tee /tmp/backend-live-proof-0737.txt
+      - name: Publish APK-only Firebase Hosting preview
+        id: direct_apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          CHANNEL_ID="apk-0737-${SHORT_SHA}"
+          APK_FILE="${{ steps.proof.outputs.apk }}"
+          APK_NAME="$(basename "$APK_FILE")"
+
+          test -s "$APK_FILE"
+          mkdir -p .apk-hosting/public
+          cp "$APK_FILE" ".apk-hosting/public/$APK_NAME"
+
+          cat > .apk-hosting/firebase.json <<EOF
+          {
+            "hosting": {
+              "public": "public",
+              "ignore": [],
+              "headers": [
+                {
+                  "source": "**/*.apk",
+                  "headers": [
+                    {
+                      "key": "Content-Disposition",
+                      "value": "attachment; filename=\"$APK_NAME\""
+                    },
+                    {
+                      "key": "Cache-Control",
+                      "value": "public, max-age=31536000, immutable"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+          EOF
+
+          (
+            cd .apk-hosting
+            npx --yes firebase-tools@14.12.0 hosting:channel:deploy "$CHANNEL_ID"               --project "$PROJECT"               --expires 30d               --config firebase.json               --non-interactive
+          ) 2>&1 | tee /tmp/firebase-hosting-channel.txt
+
+          PREVIEW_URL="$(grep -Eo 'https://[A-Za-z0-9._-]+\.web\.app' /tmp/firebase-hosting-channel.txt | tail -1)"
+          test -n "$PREVIEW_URL"
+          DIRECT_URL="$PREVIEW_URL/$APK_NAME"
+
+          printf '%s\n' "$PREVIEW_URL" | tee /tmp/apk-preview-url.txt
+          printf '%s\n' "$DIRECT_URL" | tee /tmp/direct-apk-url.txt
+          echo "url=$DIRECT_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Verify direct APK is byte-identical
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIRECT_URL="$(cat /tmp/direct-apk-url.txt)"
+          EXPECTED_SHA="${{ steps.proof.outputs.apk_sha256 }}"
+
+          curl --fail --location --retry 5 --retry-delay 2             --output /tmp/direct-download.apk             "$DIRECT_URL"
+
+          test -s /tmp/direct-download.apk
+          unzip -t /tmp/direct-download.apk | tee /tmp/direct-download-integrity.txt
+          ACTUAL_SHA="$(sha256sum /tmp/direct-download.apk | awk '{print $1}')"
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging /tmp/direct-download.apk | tee /tmp/direct-download-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/direct-download-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+
+          {
+            echo "## 📱 APK pronto para instalar"
+            echo
+            echo "[**Baixar somente o APK — Rota Certa ${EXPECTED_VERSION_NAME}**]($DIRECT_URL)"
+            echo
+            echo "Download direto do arquivo .apk, sem o pacote de diagnóstico."
+            echo
+            echo "- VersionName: \`$EXPECTED_VERSION_NAME\`"
+            echo "- VersionCode: \`$EXPECTED_VERSION_CODE\`"
+            echo "- Source SHA: \`$GITHUB_SHA\`"
+            echo "- SHA-256: \`$EXPECTED_SHA\`"
+            echo "- Dispositivo-alvo: \`Samsung SM-S911B / Android 16\`"
+            echo "- Link direto válido por 30 dias."
+            echo
+            echo "O artifact completo e o artifact APK-only continuam disponíveis como fallback."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload live remote proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.737-live-proof-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            /tmp/live-health-0737.json
+            /tmp/remote-unauth.json
+            /tmp/remote-invalid-token.json
+            /tmp/remote-trip-invalid-token.json
+            /tmp/backend-live-proof-0737.txt
+            /tmp/firebase-hosting-channel.txt
+            /tmp/apk-preview-url.txt
+            /tmp/direct-apk-url.txt
+            /tmp/direct-download-integrity.txt
+            /tmp/direct-download-aapt.txt
