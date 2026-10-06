@@ -50,6 +50,7 @@ internal fun isStandaloneCoversRemoteTerminalState0736(state: String?): Boolean 
 internal data class StandaloneCoversRemoteAccess0736(
     val refreshUrl: String = "",
     val latestUrl: String = "",
+    val tripQueryBaseUrl: String = "",
     val expiresAtMillis: Long = 0L,
 ) {
     val configured: Boolean
@@ -66,6 +67,7 @@ internal class StandaloneCoversRemoteAccessStore0736(context: Context) {
     fun read(): StandaloneCoversRemoteAccess0736 = StandaloneCoversRemoteAccess0736(
         refreshUrl = prefs.getString(scope.key(KEY_REFRESH), "").orEmpty(),
         latestUrl = prefs.getString(scope.key(KEY_LATEST), "").orEmpty(),
+        tripQueryBaseUrl = prefs.getString(scope.key(KEY_TRIP_QUERY_BASE), "").orEmpty(),
         expiresAtMillis = prefs.getLong(scope.key(KEY_EXPIRES), 0L),
     )
 
@@ -82,14 +84,20 @@ internal class StandaloneCoversRemoteAccessStore0736(context: Context) {
         require(response.latestPath.startsWith("/v1/public/standalone-covers/")) {
             "Caminho privado de leitura remota inválido"
         }
+        val tripQueryBaseUrl = response.tripQueryBasePath
+            .takeIf { it.startsWith("/v1/public/blablacar-query/") }
+            ?.let { base + it }
+            .orEmpty()
         val value = StandaloneCoversRemoteAccess0736(
             refreshUrl = base + response.refreshPath,
             latestUrl = base + response.latestPath,
+            tripQueryBaseUrl = tripQueryBaseUrl,
             expiresAtMillis = response.expiresAtMillis,
         )
         prefs.edit()
             .putString(scope.key(KEY_REFRESH), value.refreshUrl)
             .putString(scope.key(KEY_LATEST), value.latestUrl)
+            .putString(scope.key(KEY_TRIP_QUERY_BASE), value.tripQueryBaseUrl)
             .putLong(scope.key(KEY_EXPIRES), value.expiresAtMillis)
             .apply()
         return value
@@ -99,6 +107,7 @@ internal class StandaloneCoversRemoteAccessStore0736(context: Context) {
         private const val PREFS = "rota_certa_standalone_covers_remote_0736"
         private const val KEY_REFRESH = "refresh_url"
         private const val KEY_LATEST = "latest_url"
+        private const val KEY_TRIP_QUERY_BASE = "trip_query_base_url"
         private const val KEY_EXPIRES = "expires_at"
     }
 }
