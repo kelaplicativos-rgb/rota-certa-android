@@ -14,6 +14,7 @@ const { learnRideApp0700, RideAppLearningError0700 } = require("./ride-app-learn
 const { CONTRACT_VERSION_0702, LEASE_MILLIS_0702, COLLECTION_0702, learningKey0702, cacheDecision0702, publicProfileResponse0702, publicProcessingResponse0702 } = require("./ride-app-learning-idempotency-0702");
 const { createLiveAgendaFeed0701 } = require("./live-agenda-feed-0701");
 const { createLiveAgendaTool0732 } = require("./live-agenda-tool-0732");
+const { createStandaloneCoversRemote0736 } = require("./standalone-covers-remote-0736");
 const { buildProfileUpdate } = require("./public-profile-policy");
 const { cleanIdentifier, deriveRotationToken, tokenMatches } = require("./public-agenda-link-policy");
 const { createAgendaAdmin0417, safeVisibility0417 } = require("./agenda-admin-0417");
@@ -11532,6 +11533,15 @@ const liveAgendaFeed0701 = createLiveAgendaFeed0701({
 });
 const liveAgendaTool0732 = createLiveAgendaTool0732({ liveAgendaFeed0701 });
 
+const standaloneCoversRemote0736 = createStandaloneCoversRemote0736({
+  db,
+  requireDriver,
+  getMessaging,
+  normalizeUsername,
+  json,
+  fail,
+});
+
 const liveTracking0668 = createLiveTracking0668({ db, requireDriver });
 
 const agendaAdmin0417 = createAgendaAdmin0417({
@@ -11637,6 +11647,54 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     if (req.method === "POST" && path === "/v1/driver/passengers/reset-password") return await resetDriverPassengerPassword(req, res);
     if (req.method === "PUT" && path === "/v1/driver/referral-settings") return await updateDriverReferralSettings(req, res);
     if (req.method === "POST" && path === "/v1/driver/push-tokens") return await registerDriverPushToken(req, res);
+    if (req.method === "POST" && path === "/v1/driver/standalone-covers/access/ensure") {
+      return await standaloneCoversRemote0736.ensureAccess0736(req, res);
+    }
+    if (req.method === "POST" && path === "/v1/driver/standalone-covers/request") {
+      return await standaloneCoversRemote0736.requestAuthenticated0736(req, res);
+    }
+    if (
+      req.method === "POST" &&
+      parts.length === 6 &&
+      parts[0] === "v1" &&
+      parts[1] === "driver" &&
+      parts[2] === "standalone-covers" &&
+      parts[3] === "jobs" &&
+      parts[5] === "ack"
+    ) {
+      return await standaloneCoversRemote0736.ackJob0736(req, res, parts[4]);
+    }
+    if (
+      req.method === "PUT" &&
+      parts.length === 6 &&
+      parts[0] === "v1" &&
+      parts[1] === "driver" &&
+      parts[2] === "standalone-covers" &&
+      parts[3] === "jobs" &&
+      parts[5] === "result"
+    ) {
+      return await standaloneCoversRemote0736.submitResult0736(req, res, parts[4]);
+    }
+    if (
+      req.method === "GET" &&
+      parts.length === 5 &&
+      parts[0] === "v1" &&
+      parts[1] === "public" &&
+      parts[2] === "standalone-covers" &&
+      parts[4] === "refresh"
+    ) {
+      return await standaloneCoversRemote0736.refreshPublic0736(req, res, parts[3]);
+    }
+    if (
+      req.method === "GET" &&
+      parts.length === 5 &&
+      parts[0] === "v1" &&
+      parts[1] === "public" &&
+      parts[2] === "standalone-covers" &&
+      parts[4] === "latest"
+    ) {
+      return await standaloneCoversRemote0736.latestPublic0736(req, res, parts[3]);
+    }
     if (req.method === "POST" && path === "/v1/driver/tracking/sessions") return await liveTracking0668.createSession(req, res);
     if (req.method === "POST" && path === "/v1/driver/tracking/shares") return await liveTracking0668.createShare(req, res);
     if (req.method === "POST" && path === "/v1/driver/tracking/points") return await liveTracking0668.postPoints(req, res);
