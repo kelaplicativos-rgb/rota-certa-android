@@ -9177,30 +9177,70 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
     }
 
-    private fun copyAllVisibleTextFromBubble138() {
-        shortcutOverlayController.hideAll()
-        persistResourceShortcutState()
-        if (!fullScreenCopyInProgress138.compareAndSet(false, true)) {
-            toast("A cópia completa da tela já está em andamento.")
-            return
-        }
-        val accessibilityText = collectAllVisibleTextForCopy138()
-        requestFullScreenCopyOcr138(accessibilityText)
-    }
+    private data class ManualVisualTarget0742(
+        val windowId: Int?,
+        val packageName: String?,
+        val accessibilityText: String,
+    )
 
-    private fun collectAllVisibleTextForCopy138(): String {
-        val root = safeRootInActiveWindow0185() ?: return ""
+    private fun captureManualVisualTarget0742(): ManualVisualTarget0742 {
+        val applicationWindow = runCatching { windows }
+            .getOrDefault(emptyList())
+            .asSequence()
+            .filter { window -> runCatching { window.type }.getOrDefault(0) == AccessibilityWindowInfo.TYPE_APPLICATION }
+            .mapNotNull { window ->
+                val root = runCatching { window.root }.getOrNull() ?: return@mapNotNull null
+                val packageName = safeNodePackageName0185(root)
+                if (packageName == this.packageName) return@mapNotNull null
+                Triple(window, root, packageName)
+            }
+            .maxByOrNull { (window, _, _) -> runCatching { window.layer }.getOrDefault(0) }
+
+        val root = applicationWindow?.second
+            ?: safeRootInActiveWindow0185()?.takeIf { safeNodePackageName0185(it) != this.packageName }
+        val windowId = applicationWindow?.first?.let { runCatching { it.id }.getOrNull() }
+            ?: root?.let { runCatching { it.windowId }.getOrNull() }
+        val packageName = applicationWindow?.third ?: safeNodePackageName0185(root)
         val lines = mutableListOf<String>()
         collectNodeText(root, lines)
-        return lines
-            .asSequence()
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .distinct()
-            .joinToString("\n")
+        return ManualVisualTarget0742(
+            windowId = windowId?.takeIf { it >= 0 },
+            packageName = packageName,
+            accessibilityText = lines.asSequence()
+                .map(String::trim)
+                .filter(String::isNotBlank)
+                .distinct()
+                .joinToString("\n"),
+        )
     }
 
-    private fun requestFullScreenCopyOcr138(accessibilityText: String) {
+    private fun copyAllVisibleTextFromBubble138() {
+        if (!fullScreenCopyInProgress138.compareAndSet(false, true)) {
+            toast("A leitura da tela já está em andamento.")
+            return
+        }
+        val target0742 = captureManualVisualTarget0742()
+        shortcutOverlayController.hideAll()
+        persistResourceShortcutState()
+        requestFullScreenCopyOcr138(target0742.accessibilityText, target0742.windowId)
+    }
+
+    private fun collectAllVisibleTextForCopy138(): String =
+        captureManualVisualTarget0742().accessibilityText
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun takeManualVisualScreenshot0742(
+        windowId0742: Int?,
+        callback0742: TakeScreenshotCallback,
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && windowId0742 != null) {
+            takeScreenshotOfWindow(windowId0742, mainExecutor, callback0742)
+        } else {
+            takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, callback0742)
+        }
+    }
+
+    private fun requestFullScreenCopyOcr138(accessibilityText: String, windowId0742: Int?) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             fullScreenCopyInProgress138.set(false)
             if (accessibilityText.isNotBlank()) copyAllVisibleTextToClipboard138(accessibilityText)
@@ -9213,22 +9253,31 @@ class LiveRideAccessibilityService : AccessibilityService() {
             return
         }
         runCatching {
-            takeScreenshot(
-                Display.DEFAULT_DISPLAY,
-                mainExecutor,
+            takeManualVisualScreenshot0742(
+                windowId0742,
                 object : TakeScreenshotCallback {
                     override fun onSuccess(screenshot: ScreenshotResult) {
                         scope.launch {
                             var bitmap: Bitmap? = null
                             try {
                                 bitmap = screenshot.toSoftwareBitmap()
-                                val ocrText = bitmap?.let { ocrService.extractText(it) }.orEmpty()
-                                val text = sequenceOf(accessibilityText, ocrText)
-                                    .flatMap { source -> source.lineSequence() }
-                                    .map { it.trim() }
-                                    .filter { it.isNotBlank() }
-                                    .distinct()
-                                    .joinToString("\n")
+                                val result0742 = bitmap?.let {
+                                    ScreenVisualReader0742(ocrService).read(
+                                        bitmap = it,
+                                        accessibilityText = accessibilityText,
+                                        purpose = VisualReadPurpose0742.FullText,
+                                    )
+                                }
+                                val text = result0742?.text.orEmpty()
+                                FarolFlightRecorder0163.record(
+                                    stage = "MANUAL_SCREEN_TEXT_0742",
+                                    packageName = universalResolvedForegroundPackage(),
+                                    details = "marker=" + ScreenVisualFusion0742.MARKER +
+                                        "; windowCapture=" + (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && windowId0742 != null) +
+                                        "; passes=" + (result0742?.passCount ?: 0) +
+                                        "; blocks=" + (result0742?.blockCount ?: 0) +
+                                        "; recovery=" + (result0742?.usedRecovery == true),
+                                )
                                 if (text.isBlank()) {
                                     toast("Nenhum texto foi encontrado nesta tela.")
                                 } else {
@@ -9245,7 +9294,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                     override fun onFailure(errorCode: Int) {
                         screenshotInProgress.set(false)
                         fullScreenCopyInProgress138.set(false)
-                        toast("O Android não permitiu ler esta tela.")
+                        toast("O Android não permitiu ler esta tela. Código: " + errorCode)
                     }
                 },
             )
@@ -9258,9 +9307,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     private fun copyAllVisibleTextToClipboard138(text: String) {
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("Texto completo da tela", text))
-        toast("Texto completo copiado")
-        overlayView?.announceForAccessibility("Texto completo da tela copiado")
+        clipboard.setPrimaryClip(ClipData.newPlainText("Texto da tela", text))
+        toast("Texto da tela copiado")
+        overlayView?.announceForAccessibility("Texto da tela copiado")
     }
 
     private fun copyPassengerValue159() {
@@ -9683,24 +9732,17 @@ class LiveRideAccessibilityService : AccessibilityService() {
         persistResourceShortcutState()
     }
 
-    private fun collectPhoneVisibleTextChecklist11(): String {
-        val root = safeRootInActiveWindow0185() ?: return ""
-        val linesChecklist11 = mutableListOf<String>()
-        collectNodeText(root, linesChecklist11)
-        return linesChecklist11.asSequence()
-            .map(String::trim)
-            .filter(String::isNotBlank)
-            .distinct()
-            .joinToString("\n")
-    } // manual_phone_tree_read_checklist_11
+    private fun collectPhoneVisibleTextChecklist11(): String =
+        captureManualVisualTarget0742().accessibilityText // manual_phone_tree_read_checklist_11
 
     private fun capturePhoneAndOpenWhatsApp118() {
         if (!phoneCaptureInProgress118.compareAndSet(false, true)) return
         Unit /* diagnostics_off_checklist_4 */
 
-        val phoneVisibleTextChecklist11 = collectPhoneVisibleTextChecklist11()
-        val directTarget = ScreenPhoneLink.findBest(phoneVisibleTextChecklist11)
-            ?: ScreenPhoneLink.findBest(mergeRideTexts(phoneVisibleTextChecklist11, mergeRideTexts(lastAccessibilityText, lastOcrText)))
+        val target0742 = captureManualVisualTarget0742()
+        val directTarget = ScreenPhoneLink.findBest(target0742.accessibilityText)
+        shortcutOverlayController.hideAll()
+        persistResourceShortcutState()
         if (directTarget != null) {
             phoneCaptureInProgress118.set(false)
             openWhatsAppTarget118(directTarget)
@@ -9714,8 +9756,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
             return
         }
 
-        toast("Lendo o telefone da tela...")
         scope.launch {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) delay(140L)
             var acquiredScreenshot = false
             var attempts = 0
             while (!acquiredScreenshot && attempts < 6) {
@@ -9729,32 +9771,48 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 Unit /* diagnostics_off_checklist_4 */
                 return@launch
             }
-            requestPhoneScreenshot118()
+            toast("Lendo o telefone da tela...")
+            requestPhoneScreenshot118(
+                windowId0742 = target0742.windowId,
+                accessibilityText0742 = target0742.accessibilityText,
+            )
         }
     }
 
     @RequiresApi(Build.VERSION_CODES.R)
-    private fun requestPhoneScreenshot118() {
+    private fun requestPhoneScreenshot118(
+        windowId0742: Int?,
+        accessibilityText0742: String,
+    ) {
         runCatching {
-            takeScreenshot(
-                Display.DEFAULT_DISPLAY,
-                mainExecutor,
+            takeManualVisualScreenshot0742(
+                windowId0742,
                 object : TakeScreenshotCallback {
                     override fun onSuccess(screenshot: ScreenshotResult) {
                         scope.launch {
-                            val target = runCatching {
-                                val bitmap = screenshot.toSoftwareBitmap() ?: return@runCatching null
-                                try {
-                                    val ocrPhoneTextChecklist11 = ocrService.extractText(bitmap)
-                                    ScreenPhoneLink.findBest(
-                                        mergeRideTexts(collectPhoneVisibleTextChecklist11(), ocrPhoneTextChecklist11),
-                                    )
-                                } finally {
-                                    bitmap.recycle()
-                                }
+                            var bitmap: Bitmap? = null
+                            val result0742 = runCatching {
+                                bitmap = screenshot.toSoftwareBitmap() ?: return@runCatching null
+                                ScreenVisualReader0742(ocrService).read(
+                                    bitmap = requireNotNull(bitmap),
+                                    accessibilityText = accessibilityText0742,
+                                    purpose = VisualReadPurpose0742.Phone,
+                                )
                             }.getOrNull()
+                            bitmap?.recycle()
                             screenshotInProgress.set(false)
                             phoneCaptureInProgress118.set(false)
+                            FarolFlightRecorder0163.record(
+                                stage = "MANUAL_SCREEN_PHONE_0742",
+                                packageName = universalResolvedForegroundPackage(),
+                                details = "marker=" + ScreenVisualFusion0742.MARKER +
+                                    "; windowCapture=" + (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && windowId0742 != null) +
+                                    "; passes=" + (result0742?.passCount ?: 0) +
+                                    "; blocks=" + (result0742?.blockCount ?: 0) +
+                                    "; recovery=" + (result0742?.usedRecovery == true) +
+                                    "; found=" + (result0742?.phoneTarget != null),
+                            )
+                            val target = result0742?.phoneTarget
                             if (target != null) {
                                 Unit /* diagnostics_off_checklist_4 */
                                 openWhatsAppTarget118(target)
@@ -9773,7 +9831,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                     }
                 },
             )
-        }.onFailure { error ->
+        }.onFailure {
             screenshotInProgress.set(false)
             phoneCaptureInProgress118.set(false)
             toast("Nao consegui capturar o telefone da tela.")

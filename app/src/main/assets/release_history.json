@@ -2,6 +2,35 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.742",
+      "build": 6033,
+      "commit": null,
+      "branch": "agent/visual-screen-intelligence-0.1.742",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Cria o motor compartilhado Rota Visual Intelligence para os atalhos Texto Tela e WhatsApp, com OCR estruturado e recuperação multipass por recortes sobrepostos."
+      ],
+      "fixed": [
+        "No Android 14+ captura diretamente a janela do aplicativo com takeScreenshotOfWindow, evitando que a grade de acessibilidade do Rota Certa contamine o OCR.",
+        "Remove do atalho WhatsApp a reutilização de textos OCR/acessibilidade antigos, impedindo telefone obsoleto de outra tela.",
+        "Recupera texto pequeno ou estilizado com recortes ampliados e segunda leitura local antes de declarar ausência."
+      ],
+      "improved": [
+        "Funde texto visual e árvore de acessibilidade com deduplicação, preservando linhas recuperadas em passagens adicionais.",
+        "Adiciona crops guiados por âncoras como WhatsApp, telefone e contato, além de bandas sobrepostas da tela.",
+        "Registra apenas métricas de leitura e resultado, sem gravar o telefone reconhecido nos diagnósticos."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Texto da própria grade aparecendo no conteúdo copiado",
+        "Texto visual pequeno ausente na cópia da tela",
+        "Telefone visível em imagem não encontrado pelo atalho WhatsApp"
+      ],
+      "modulesAffected": ["Atalhos", "Accessibility", "OCR", "WhatsApp", "Texto Tela", "Diagnóstico", "Build"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.741",
       "build": 6032,
       "commit": null,

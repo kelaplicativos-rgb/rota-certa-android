@@ -9,7 +9,10 @@ class BubbleCopyAndReplyContract138Test {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").readText()
         assertTrue(source.contains("collectAllVisibleTextForCopy138"))
         assertTrue(source.contains("requestFullScreenCopyOcr138"))
-        assertTrue(source.contains("Texto completo copiado"))
+        assertTrue(source.contains("Texto da tela copiado"))
+        assertTrue(source.contains("takeScreenshotOfWindow"))
+        assertTrue(source.contains("ScreenVisualReader0742"))
+        assertTrue(source.contains("MANUAL_SCREEN_TEXT_0742"))
     }
 
     @Test fun `duplo toque em respostas abre editor novo`() {
