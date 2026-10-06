@@ -24,7 +24,7 @@ function sha256Hex0737(value) {
 
 function canonicalUuid0737(value) {
   const raw = clean0737(value, 80).toLowerCase();
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(raw)
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(raw)
     ? raw
     : "";
 }
