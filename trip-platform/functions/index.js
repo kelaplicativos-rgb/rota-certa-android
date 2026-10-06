@@ -11715,12 +11715,12 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     }
     if (
       req.method === "GET" &&
-      parts.length === 7 &&
+      parts.length === 6 &&
       parts[0] === "v1" &&
       parts[1] === "public" &&
       parts[2] === "blablacar-operational" &&
       parts[4] === "trip" &&
-      parts[6] === "refresh"
+      parts[5] === "refresh"
     ) {
       const access0737 = await standaloneCoversRemote0736.resolveAccessForExtension0737(parts[3]);
       if (!access0737) return fail(res, 404, "operational_access_not_found", "Acesso privado não encontrado ou expirado.");
@@ -11728,12 +11728,12 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     }
     if (
       req.method === "GET" &&
-      parts.length === 7 &&
+      parts.length === 6 &&
       parts[0] === "v1" &&
       parts[1] === "public" &&
       parts[2] === "blablacar-operational" &&
       parts[4] === "trip" &&
-      parts[6] === "latest"
+      parts[5] === "latest"
     ) {
       const access0737 = await standaloneCoversRemote0736.resolveAccessForExtension0737(parts[3]);
       if (!access0737) return fail(res, 404, "operational_access_not_found", "Acesso privado não encontrado ou expirado.");
