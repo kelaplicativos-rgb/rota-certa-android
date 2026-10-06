@@ -133,7 +133,7 @@ internal fun toBlaBlaRemoteTripSnapshot0737(
         publishedSeats = trip.published_seats?.coerceAtLeast(0),
         passengerRosterComplete = trip.passenger_roster_complete,
         itineraryAuthoritative = trip.itinerary_authoritative,
-        operationalComplete = result.operationalComplete,
+        operationalComplete = result.coreOperationalComplete0737,
         passengerCount = passengers.size,
         passengerSeatCount = passengers.sumOf { it.seats.coerceAtLeast(1) },
         passengers = passengers,
