@@ -18,16 +18,16 @@ CONTRACT = json.loads((SCRIPT.parents[1] / "app/update-baseline.json").read_text
 class SamsungUpgradeRegressionTest(unittest.TestCase):
     def setUp(self):
         self.baseline = {
-            "application_id": CONTRACT["application_id"], "version_name": "0.1.737",
-            "version_code": 6028, "signers": [CONTRACT["signer_sha256"]],
+            "application_id": CONTRACT["application_id"], "version_name": CONTRACT["version_name"],
+            "version_code": CONTRACT["version_code"], "signers": [CONTRACT["signer_sha256"]],
             "min_sdk": 26, "native_files": ["lib/arm64-v8a/liborganicmaps.so"],
             "sha256": CONTRACT["apk_sha256"], "size_bytes": 1,
         }
         self.candidate = copy.deepcopy(self.baseline)
-        self.candidate.update(version_name="0.1.738", version_code=6029)
+        self.candidate.update(version_name="0.1.739", version_code=6030)
 
     def verify(self):
-        upgrade.verify_metadata(self.baseline, self.candidate, CONTRACT, "0.1.738", 6029)
+        upgrade.verify_metadata(self.baseline, self.candidate, CONTRACT, "0.1.739", 6030)
 
     def test_next_version_keeps_package_signer_and_device_support(self):
         self.verify()
@@ -44,7 +44,7 @@ class SamsungUpgradeRegressionTest(unittest.TestCase):
             self.verify()
 
     def test_new_name_does_not_allow_same_version_code(self):
-        self.candidate["version_code"] = 6028
+        self.candidate["version_code"] = CONTRACT["version_code"]
         with self.assertRaisesRegex(ValueError, "increase versionCode"):
             self.verify()
 
@@ -64,7 +64,7 @@ class SamsungUpgradeRegressionTest(unittest.TestCase):
             self.verify()
 
     def test_wrong_baseline_version_is_rejected(self):
-        self.baseline["version_code"] = 6027
+        self.baseline["version_code"] = CONTRACT["version_code"] - 1
         with self.assertRaisesRegex(ValueError, "baseline identity"):
             self.verify()
 
@@ -84,7 +84,7 @@ class SamsungUpgradeRegressionTest(unittest.TestCase):
             self.verify()
 
     def test_renamed_apk_does_not_change_its_actual_version(self):
-        self.candidate["version_name"] = "0.1.737"
+        self.candidate["version_name"] = CONTRACT["version_name"]
         with self.assertRaisesRegex(ValueError, "intended release"):
             self.verify()
 
@@ -95,14 +95,14 @@ class SamsungUpgradeRegressionTest(unittest.TestCase):
                 archive.writestr("classes.dex", CONTRACT["source_commit"])
             with patch.object(upgrade, "inspect_apk", side_effect=[self.baseline, self.candidate]):
                 with self.assertRaisesRegex(ValueError, "validated source commit"):
-                    upgrade.verify(apk, apk, CONTRACT, Path(temp), "0.1.738", 6029, "b" * 40)
+                    upgrade.verify(apk, apk, CONTRACT, Path(temp), "0.1.739", 6030, "b" * 40)
 
     def test_failed_retry_removes_an_old_success_report(self):
         with tempfile.TemporaryDirectory() as temp:
             report = Path(temp) / "proof.json"
             report.write_text('{"update_compatible":true}')
             argv = [str(SCRIPT), "--baseline", "base.apk", "--candidate", "new.apk",
-                    "--build-tools", temp, "--version", "0.1.738", "--version-code", "6029",
+                    "--build-tools", temp, "--version", "0.1.739", "--version-code", "6030",
                     "--commit", "not-a-commit", "--report", str(report)]
             with patch("sys.argv", argv):
                 with self.assertRaisesRegex(ValueError, "full source commit"):
