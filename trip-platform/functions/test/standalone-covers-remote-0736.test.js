@@ -11,6 +11,7 @@ const {
   canonicalUuid0736,
   shouldExpireStandaloneCoverResult0736,
   standaloneCoverResultTransition0736,
+  standaloneCoverRefreshDecision0736,
   MAX_PAYLOAD_BYTES_0736,
 } = require("../standalone-covers-remote-0736");
 
@@ -174,5 +175,37 @@ test("resultado terminal remoto é idempotente e nunca regride", () => {
   assert.deepEqual(
     standaloneCoverResultTransition0736("EXPIRED", "COMPLETE"),
     { action: "REJECT", state: "EXPIRED" },
+  );
+});
+
+
+test("refresh remoto nunca mascara resultado terminal antigo como coleta fresca", () => {
+  const now = 1_000_000;
+  assert.deepEqual(
+    standaloneCoverRefreshDecision0736({
+      latestState: "RUNNING",
+      latestExpiresAtMillis: now + 60_000,
+      lastRequestedAtMillis: now - 5_000,
+      nowMillis: now,
+    }),
+    { action: "REUSE_ACTIVE", retryAfterMillis: 0 },
+  );
+  assert.deepEqual(
+    standaloneCoverRefreshDecision0736({
+      latestState: "COMPLETE",
+      latestExpiresAtMillis: now + 60_000,
+      lastRequestedAtMillis: now - 5_000,
+      nowMillis: now,
+    }),
+    { action: "THROTTLE", retryAfterMillis: 40_000 },
+  );
+  assert.deepEqual(
+    standaloneCoverRefreshDecision0736({
+      latestState: "COMPLETE",
+      latestExpiresAtMillis: now + 60_000,
+      lastRequestedAtMillis: now - 60_000,
+      nowMillis: now,
+    }),
+    { action: "CREATE", retryAfterMillis: 0 },
   );
 });
