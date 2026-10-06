@@ -2,6 +2,35 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.738",
+      "build": 6029,
+      "commit": null,
+      "branch": "codex/samsung-data-preserving-update-0.1.738",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Adiciona validação da atualização do APK contra a versão 0.1.737 instalada, incluindo pacote, certificado de assinatura e incremento de versionCode."
+      ],
+      "fixed": [
+        "Bloqueia APKs de outra assinatura ou de versão inferior antes da entrega, evitando exigir desinstalação da instalação existente."
+      ],
+      "improved": [
+        "Mantém o pacote e a chave estável de assinatura da versão 0.1.737, sem alterar a camada de armazenamento dos dados.",
+        "Valida a substituição do APK com install -r e a preservação de arquivos privados, preferências e banco de dados em emulador."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Entrega de APK incompatível com a atualização da versão instalada"
+      ],
+      "modulesAffected": [
+        "Build",
+        "Assinatura",
+        "Atualização",
+        "Histórico"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.737",
       "build": 6028,
       "commit": null,

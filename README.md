@@ -2,6 +2,26 @@
 
 APK Android para analisar chamadas de corrida e avisar se o destino final do passageiro fica dentro ou fora da area desejada pelo motorista.
 
+## Atualizacao que preserva os dados
+
+Cada nova entrega deve atualizar a instalacao existente: mesmo pacote
+`br.com.mapeiaia.rotacerta`, mesma chave estavel de assinatura e `versionCode`
+maior que o instalado. Nao use desinstalacao ou limpeza de dados como solucao.
+
+A versao 0.1.738 (6029) parte da 0.1.737 (6028). A camada de armazenamento
+permanece igual. `app/update-baseline.json` registra a identidade do APK de
+referencia; `verifyAndroidUpdateContract` bloqueia um build incompatível.
+
+Antes da entrega, `scripts/verify_apk_upgrade.py` confere os dois APKs reais,
+incluindo assinatura, pacote, versao, hash, commit e suporte ao Samsung ARM64.
+O workflow `samsung-data-preserving-update-0.1.738.yml` tambem instala a 0.1.737
+em um emulador Android 16, grava dados de teste privados e instala a 0.1.738
+com `adb install -r`, verificando que o UID, arquivos, preferencias e arquivo
+SQLite permanecem iguais. Esse teste nao substitui um teste no aparelho fisico
+do usuario e nao executa migracoes de dados, que nao mudaram nesta versao.
+
+As regras para futuras entregas estao em `AGENTS.md`.
+
 O app apenas analisa e recomenda. Ele nao clica em outros aplicativos, nao aceita corrida sozinho e nao burla plataformas.
 
 ## Objetivo principal
