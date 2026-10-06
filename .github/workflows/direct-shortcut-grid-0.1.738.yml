@@ -47,7 +47,7 @@ jobs:
           grep -Fq 'val releaseVersionName = "0.1.738"' app/build.gradle.kts
           grep -Fq 'val releaseVersionCode = 6_029' app/build.gradle.kts
           grep -Fq '"version": "0.1.738"' app/src/main/assets/release_history.json
-          grep -Fq '-> openShortcutModule0171(spec)' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq -- '-> openShortcutModule0171(spec)' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           ! grep -Fq -- '-> openHomeCollapsed0186()' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -Fq 'id = "trip_agenda"' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
           grep -Fq 'Agenda deve usar a rota por identidade sem expandir o enum do FAROL.' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
