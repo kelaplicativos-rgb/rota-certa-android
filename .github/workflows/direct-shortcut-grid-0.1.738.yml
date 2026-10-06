@@ -1,0 +1,216 @@
+name: Rota Certa 0.1.738 direct shortcut grid exact SHA
+
+on:
+  push:
+    branches:
+      - 'agent/direct-shortcut-grid-0.1.738'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: direct-shortcut-grid-0738-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: 'agent/direct-shortcut-grid-0.1.738'
+      BASE_SHA: '43672e23f0393fd7b9fbe38989932cb51cff79d4'
+      EXPECTED_VERSION_NAME: '0.1.738'
+      EXPECTED_VERSION_CODE: '6029'
+      RELEASE_TAG: 'v0.1.738-direct-shortcut-grid'
+      OM_TAG: '2026.08.27-18-android'
+      OM_VERSION: '2026.08.27-18'
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout exact source SHA
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Prove source identity and surgical shortcut diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          printf '%s\n' "$GITHUB_SHA" | tee /tmp/source-sha.txt
+          printf '%s\n' "$ROTA_CERTA_GIT_BRANCH" | tee /tmp/source-branch.txt
+
+          grep -Fq 'val releaseVersionName = "0.1.738"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 6_029' app/build.gradle.kts
+          grep -Fq '"version": "0.1.738"' app/src/main/assets/release_history.json
+          grep -Fq '-> openShortcutModule0171(spec)' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          ! grep -Fq -- '-> openHomeCollapsed0186()' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'id = "trip_agenda"' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
+          grep -Fq 'Agenda deve usar a rota por identidade sem expandir o enum do FAROL.' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
+          grep -Fq 'highlightedShortcutModule0171 == "trip_agenda"' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          grep -Fq 'TripActions.ACTION_OPEN_TRIPS' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+
+          git diff --check "$BASE_SHA"...HEAD
+
+          python3 - <<'PY'
+          import pathlib
+          import subprocess
+
+          base_sha = "43672e23f0393fd7b9fbe38989932cb51cff79d4"
+          service_path = "app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
+          base = subprocess.check_output(["git", "show", f"{base_sha}:{service_path}"], text=True)
+          head = pathlib.Path(service_path).read_text()
+
+          old = "            -> openHomeCollapsed0186()"
+          new = "            -> openShortcutModule0171(spec)"
+          if base.count(old) != 1:
+              raise SystemExit("baseline does not contain exactly one collapsed-home shortcut fallback")
+          expected = base.replace(old, new)
+          if head != expected:
+              raise SystemExit("LiveRideAccessibilityService changed outside the single approved shortcut-routing line")
+
+          allowed = {
+              "app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt",
+              "app/src/test/java/br/com/mapeiaia/rotacerta/DirectShortcutDestination0738Test.kt",
+              "app/build.gradle.kts",
+              "app/src/main/assets/release_history.json",
+              ".github/workflows/direct-shortcut-grid-0.1.738.yml",
+          }
+          changed = set(subprocess.check_output(
+              ["git", "diff", "--name-only", f"{base_sha}...HEAD"], text=True
+          ).splitlines())
+          unexpected = sorted(changed - allowed)
+          missing = sorted({
+              "app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt",
+              "app/src/test/java/br/com/mapeiaia/rotacerta/DirectShortcutDestination0738Test.kt",
+              "app/build.gradle.kts",
+              "app/src/main/assets/release_history.json",
+          } - changed)
+          if unexpected:
+              raise SystemExit("unexpected files changed: " + ", ".join(unexpected))
+          if missing:
+              raise SystemExit("expected files missing from diff: " + ", ".join(missing))
+          print("surgical_diff=PASS")
+          print("farol_runtime_outside_shortcut_line=UNCHANGED")
+          PY
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install native prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo apt-get install -y ninja-build
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"             "platforms;android-36"             "ndk;29.0.14206865"             "cmake;3.22.1"
+
+      - name: Build exact Organic Maps SDK locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 128 --branch "$OM_TAG" https://github.com/organicmaps/organicmaps.git /tmp/organicmaps
+          cd /tmp/organicmaps
+          git submodule update --init --recursive --depth 1 --jobs 8
+          test "$(tools/unix/version.sh android_name)" = "$OM_VERSION"
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          cd android
+          chmod +x ./gradlew
+          ./gradlew             :sdk:location:core:publishToMavenLocal             :sdk:publishToMavenLocal             :sdk:maps:world:publishToMavenLocal             -Parm64 -Pnjobs=2             --no-daemon --max-workers=2 --stacktrace             | tee /tmp/organicmaps-sdk-build.log
+
+      - name: Run direct shortcut regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:verifyReleaseHistory --no-daemon --stacktrace | tee /tmp/release-history.log
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.DirectShortcutDestination0738Test'             --tests 'br.com.mapeiaia.rotacerta.ShortcutDirectTapPolicy0182Test'             --tests 'br.com.mapeiaia.rotacerta.ShortcutPerEntryMenuContract0180Test'             --tests 'br.com.mapeiaia.rotacerta.HomeLaunchPolicy0186Test'             --tests 'br.com.mapeiaia.rotacerta.ShortcutActivityLaunchContract0176Test'             --tests 'br.com.mapeiaia.rotacerta.ShortcutActivityLaunchPolicy0176Test'             --no-daemon --max-workers=2 --stacktrace | tee /tmp/shortcut-tests.log
+
+      - name: Assemble exact-head APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/assemble.log
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -Fq 'Verified' /tmp/apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
+          grep -Fq 'TRIP_AGENDA_SHORTCUT_STAGE47' /tmp/dex-strings.txt
+          sha256sum "$APK" | tee /tmp/apk.sha256
+
+      - name: Package exact-SHA validation artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/0738
+          mkdir -p "$OUT"
+          SHORT_SHA="${GITHUB_SHA:0:12}"
+          FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-$EXPECTED_VERSION_CODE-$SHORT_SHA.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$FINAL_APK"
+          sha256sum "$FINAL_APK" | tee "$OUT/apk.sha256"
+          cp /tmp/source-sha.txt /tmp/source-branch.txt /tmp/release-history.log /tmp/shortcut-tests.log /tmp/assemble.log /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt "$OUT/"
+          cat > "$OUT/final-status.txt" <<EOF
+          package=br.com.mapeiaia.rotacerta
+          version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
+          source_head=$GITHUB_SHA
+          source_branch=$ROTA_CERTA_GIT_BRANCH
+          shortcut_grid_direct_destination=PASS
+          trip_agenda_direct=PASS
+          generic_collapsed_home_fallback=REMOVED_FROM_PRIMARY_MODULE_ROUTE
+          instant_actions_preserved=PASS
+          farol_runtime_outside_single_shortcut_line=UNCHANGED
+          exact_sha_embedded_in_apk=PASS
+          signature=PASS
+          physical_validation=PENDING_SAMSUNG_SM_S911B_ANDROID_16
+          EOF
+          cat "$OUT/final-status.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.738-6029-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0738
+
+      - name: Publish validated APK release
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find /tmp/0738 -maxdepth 1 -name '*.apk' -type f | head -1)"
+          HASH="$(awk '{print $1}' /tmp/0738/apk.sha256)"
+          cat > /tmp/release-notes.md <<EOF
+          Rota Certa 0.1.738 — grade de atalhos com destino direto
+
+          Commit validado: $GITHUB_SHA
+          Branch: $ROTA_CERTA_GIT_BRANCH
+          Package: br.com.mapeiaia.rotacerta
+          VersionName: $EXPECTED_VERSION_NAME
+          VersionCode: $EXPECTED_VERSION_CODE
+          SHA-256 APK: $HASH
+
+          O toque rápido de módulos deixou de cair na Home recolhida. Viagens usa a identidade trip_agenda e abre a Agenda de Viagens pela rota já existente. Ações instantâneas permanecem diretas. O arquivo LiveRideAccessibilityService foi comparado byte a byte contra a base e difere somente na única linha de roteamento autorizada.
+          EOF
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$APK" /tmp/0738/apk.sha256 /tmp/0738/final-status.txt --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$RELEASE_TAG" --target "$GITHUB_SHA" --title "Rota Certa 0.1.738 — atalhos diretos" --notes-file /tmp/release-notes.md --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$RELEASE_TAG" "$APK" /tmp/0738/apk.sha256 /tmp/0738/final-status.txt               --target "$GITHUB_SHA" --title "Rota Certa 0.1.738 — atalhos diretos" --notes-file /tmp/release-notes.md --repo "$GITHUB_REPOSITORY"
+          fi
