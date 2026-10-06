@@ -153,6 +153,7 @@ fun BlaBlaCollectorPanel(
     var standaloneExporting0734 by remember { mutableStateOf(false) }
     var standaloneMessage0734 by remember { mutableStateOf<String?>(null) }
     var standaloneRemoteAccess0736 by remember { mutableStateOf(standaloneRemoteAccessStore0736.read()) }
+    val operationalAccess0737 = operationalPublicAccessFromCovers0737(standaloneRemoteAccess0736)
     var showAddAccount by remember { mutableStateOf(false) }
     var newAccountLabel by remember { mutableStateOf("") }
     var showDateScopeSelector by remember { mutableStateOf(false) }
@@ -765,13 +766,20 @@ fun BlaBlaCollectorPanel(
 
             if (standaloneRemoteAccess0736.configured) {
                 Text("Coleta remota automática: pronta ✅")
+                if (operationalAccess0737 != null) {
+                    Text("Consulta completa remota: pronta ✅")
+                }
                 OutlinedButton(
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         val privateAccess = buildString {
-                            append("Rota Certa — coleta remota avulsa\n")
-                            append("Solicitar: ").append(standaloneRemoteAccess0736.refreshUrl).append('\n')
-                            append("Consultar: ").append(standaloneRemoteAccess0736.latestUrl)
+                            append("Rota Certa — acesso privado BlaBlaCar\n")
+                            append("CAPAS — solicitar: ").append(standaloneRemoteAccess0736.refreshUrl).append('\n')
+                            append("CAPAS — consultar: ").append(standaloneRemoteAccess0736.latestUrl)
+                            operationalAccess0737?.let { operational ->
+                                append('\n').append("DETALHE — solicitar: ").append(operational.refreshTemplate)
+                                append('\n').append("DETALHE — consultar: ").append(operational.latestTemplate)
+                            }
                         }
                         clipboard.setPrimaryClip(
                             ClipData.newPlainText("Rota Certa — coleta remota avulsa", privateAccess),
@@ -784,11 +792,11 @@ fun BlaBlaCollectorPanel(
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("🔐 Copiar acesso privado remoto")
+                    Text("🔐 Copiar acesso privado BlaBlaCar")
                 }
                 Text(
-                    "Compartilhe este acesso somente com quem pode solicitar suas capas. " +
-                        "A coleta remota continua isolada da Agenda/Timeline e não envia cookies ou senha.",
+                    "Compartilhe este acesso somente com quem pode consultar suas viagens. " +
+                        "Capas e detalhes permanecem isolados da Agenda/Timeline e não enviam cookies, senha ou HTML bruto.",
                 )
             } else {
                 Text(
