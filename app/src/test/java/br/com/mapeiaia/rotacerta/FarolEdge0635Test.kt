@@ -57,12 +57,14 @@ class FarolEdge0635Test {
     fun incomplete_ocr_frame_preserves_active_semantic_lease() {
         val live = src("LiveRideAccessibilityService.kt")
         val marker = live.indexOf("S635_TRANSIENT_NO_CANDIDATE_INFLIGHT_PRESERVED")
-        val clear = live.indexOf("Snapshot visual atual sem dois endereços semanticamente completos Stage23 e sem lease Stage44 ativa nem lease semântica em andamento.", marker)
+        val noObservation = live.indexOf("FarolOneSecondVisualAuthority0711.NO_OBSERVATION_PRESERVES_MARKER", marker)
         assertTrue(marker >= 0)
-        assertTrue(clear > marker)
-        val block = live.substring((marker - 1400).coerceAtLeast(0), (clear + 500).coerceAtMost(live.length))
+        assertTrue(noObservation > marker)
+        val block = live.substring((marker - 1400).coerceAtLeast(0), (noObservation + 700).coerceAtMost(live.length))
         assertTrue(block.contains("transientSemanticLeaseStage635"))
+        assertTrue(block.contains("reason=ocr_no_candidate"))
         assertTrue(block.contains("hardClear=false"))
+        assertFalse(block.contains("hardClearUniversalTwoAddress("))
     }
 
     @Test

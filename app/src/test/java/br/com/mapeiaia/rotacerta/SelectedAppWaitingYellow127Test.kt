@@ -29,10 +29,17 @@ class SelectedAppWaitingYellow127Test {
             "universalForegroundPackageName == selectedPackageChecklist13" in inactiveRegion,
         )
         assertTrue("Leitura inválida preservada deve ser diagnosticada", "BUBBLE_INVALID_READ_DEFERRED" in inactiveRegion)
-        assertTrue("Após confirmação, limpeza deve manter o estado amarelo", "keepWaitingYellow = true" in inactiveRegion)
-        assertTrue("Contrato deve marcar ausência confirmada", "confirmed_absence_clear_0_1_141" in inactiveRegion)
-        assertFalse("Fluxo nao pode pintar cinza antes do amarelo", "showOverlay(RadarColor.Idle" in inactiveRegion)
-        assertFalse("Fluxo não pode fazer pintura manual duplicada", "showOverlay(RadarColor.Default" in inactiveRegion)
+        assertTrue(
+            "Ausência transitória fora da janela recente também deve preservar o resultado confirmado",
+            "preserveUniversalTwoAddressOnNoObservation0740" in inactiveRegion,
+        )
+        assertTrue(
+            "Ausência temporal não pode ser promovida a ContextLost",
+            "ausência temporal não prova ContextLost" in inactiveRegion,
+        )
+        assertFalse("Fluxo transitório não pode executar hard clear", "hardClearUniversalTwoAddress(" in inactiveRegion)
+        assertFalse("Fluxo nao pode pintar cinza", "showOverlay(RadarColor.Idle" in inactiveRegion)
+        assertFalse("Fluxo não pode pintar amarelo manualmente", "showOverlay(RadarColor.Default" in inactiveRegion)
     }
 
     @Test

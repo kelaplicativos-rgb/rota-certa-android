@@ -30,6 +30,9 @@ class FarolNotificationCrashContainmentContract0170Test {
         assertTrue(containment.contains("notificationWakeGate0169.invalidate"))
         assertTrue(containment.contains("screenshotInProgress.set(false)"))
         assertTrue(containment.contains("recordDiagnostic"))
-        assertTrue(containment.contains("keepWaitingYellow = false"))
+        assertTrue(containment.contains("preserveUniversalTwoAddressOnNoObservation0740"))
+        assertTrue(containment.contains("source = \"NotificationFailure\""))
+        assertTrue(containment.contains("resultado confirmado preservado"))
+        assertTrue(!containment.contains("hardClearUniversalTwoAddress"))
     }
 }

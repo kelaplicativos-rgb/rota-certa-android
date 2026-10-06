@@ -122,11 +122,12 @@ class FarolNetworkFailureIsolation0699Test {
         val recoverable = block.indexOf("isRecoverableTransportFailure(error0172)")
         val preserve = block.indexOf("NETWORK_FAILURE_STATE_PRESERVED_MARKER")
         val earlyReturn = block.indexOf("return", preserve)
-        val hardClear = block.indexOf("hardClearUniversalTwoAddress")
+        val noObservationPreserve = block.indexOf("preserveUniversalTwoAddressOnNoObservation0740")
         assertTrue(recoverable >= 0)
         assertTrue(preserve > recoverable)
         assertTrue(earlyReturn > preserve)
-        assertTrue(hardClear > earlyReturn)
+        assertTrue(noObservationPreserve > earlyReturn)
+        assertFalse(block.contains("hardClearUniversalTwoAddress"))
     }
 
     @Test
