@@ -33,7 +33,9 @@ class ReadingProximity0545ContractTest {
         val s = source("LiveRideAccessibilityService.kt")
         assertTrue(s.contains("S44_TRANSIENT_NO_CANDIDATE_FINAL_PRESERVED"))
         assertTrue(s.contains("transientLeaseStage44.activeFinal && transientPresenceStage44.active"))
-        assertTrue(s.contains("FarolOneSecondVisualAuthority0711.NO_OBSERVATION_PRESERVES_MARKER"))\n        assertTrue(s.contains("reason=ocr_no_candidate"))\n        assertTrue(s.contains("hardClear=false"))
+        assertTrue(s.contains("FarolOneSecondVisualAuthority0711.NO_OBSERVATION_PRESERVES_MARKER"))
+        assertTrue(s.contains("reason=ocr_no_candidate"))
+        assertTrue(s.contains("hardClear=false"))
     }
 
     @Test fun routeMatrixHttpFailureIsObservableAndUsesExistingRouteFallback() {
