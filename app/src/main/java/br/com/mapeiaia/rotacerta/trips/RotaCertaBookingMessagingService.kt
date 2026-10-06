@@ -174,6 +174,30 @@ class RotaCertaBookingMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
         val event = message.data["event"].orEmpty()
+        if (isBlaBlaRemoteTripQueryEvent0737(event)) {
+            val jobId0737 = message.data["jobId"].orEmpty()
+            val profileUuid0737 = message.data["profileUuid"].orEmpty()
+            val tripId0737 = message.data["tripId"].orEmpty()
+            val tripHref0737 = message.data["tripHref"].orEmpty()
+            val enqueued0737 = BlaBlaRemoteTripQueryScheduler0737.enqueue(
+                context = this,
+                rawJobId = jobId0737,
+                rawProfileUuid = profileUuid0737,
+                rawTripId = tripId0737,
+                rawTripHref = tripHref0737,
+            )
+            UnifiedDebugEventStore.record(
+                if (enqueued0737) {
+                    "BLABLACAR_TRIP_QUERY_REMOTE_PUSH_ENQUEUED_0737"
+                } else {
+                    "BLABLACAR_TRIP_QUERY_REMOTE_PUSH_REJECTED_0737"
+                },
+                packageName,
+                "jobPresent=${jobId0737.isNotBlank()} profilePresent=${profileUuid0737.isNotBlank()} " +
+                    "tripPresent=${tripId0737.isNotBlank()} agendaSync=false timelineWrite=false",
+            )
+            return
+        }
         if (isStandaloneCoversRemoteEvent0736(event)) {
             val jobId0736 = message.data["jobId"].orEmpty()
             val enqueued0736 = StandaloneCoversRemoteScheduler0736.enqueue(
