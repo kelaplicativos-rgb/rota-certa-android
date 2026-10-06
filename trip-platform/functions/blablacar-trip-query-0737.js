@@ -41,6 +41,13 @@ function normalizeTripHref0737(raw, tripId) {
   }
 }
 
+function canonicalTripId0737(value) {
+  const raw = clean0737(value, 80).toLowerCase();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(raw)
+    ? raw
+    : "";
+}
+
 function queryStateId0737(driverUsername, profileUuid, tripId) {
   return sha256Hex0737([clean0737(driverUsername, 80), profileUuid, tripId].join("|"));
 }
@@ -68,7 +75,7 @@ function sanitizeRemoteTripQueryPayload0737(raw) {
     throw new Error("Schema direcionado inválido.");
   }
   const profileUuid = canonicalUuid0736(root.profileUuid);
-  const tripId = canonicalUuid0736(root.tripId);
+  const tripId = canonicalTripId0737(root.tripId);
   if (!profileUuid || !tripId) throw new Error("Identidade forte direcionada inválida.");
 
   const result = clean0737(root.result, 20).toUpperCase();
@@ -213,7 +220,7 @@ function createBlaBlaRemoteTripQuery0737({
       ) return;
       const cards = Array.isArray(profile.cards) ? profile.cards : [];
       cards.forEach((card) => {
-        if (canonicalUuid0736(card && card.tripId) === tripId) {
+        if (canonicalTripId0737(card && card.tripId) === tripId) {
           matches.push(card);
         }
       });
@@ -368,7 +375,7 @@ function createBlaBlaRemoteTripQuery0737({
     const access = await resolveAccess0737(tokenRaw);
     if (!access) return fail(res, 404, "trip_query_access_not_found", "Acesso privado expirado ou inválido.");
     const profileUuid = canonicalUuid0736(profileRaw);
-    const tripId = canonicalUuid0736(tripRaw);
+    const tripId = canonicalTripId0737(tripRaw);
     if (!profileUuid || !tripId) return fail(res, 400, "trip_query_identity_invalid", "UUID/tripId inválidos.");
 
     const target = await coverTarget0737(access.username, profileUuid, tripId);
@@ -399,7 +406,7 @@ function createBlaBlaRemoteTripQuery0737({
     const access = await resolveAccess0737(tokenRaw);
     if (!access) return fail(res, 404, "trip_query_access_not_found", "Acesso privado expirado ou inválido.");
     const profileUuid = canonicalUuid0736(profileRaw);
-    const tripId = canonicalUuid0736(tripRaw);
+    const tripId = canonicalTripId0737(tripRaw);
     if (!profileUuid || !tripId) return fail(res, 400, "trip_query_identity_invalid", "UUID/tripId inválidos.");
 
     const stateId = queryStateId0737(access.username, profileUuid, tripId);
@@ -543,7 +550,7 @@ function createBlaBlaRemoteTripQuery0737({
       if (
         payload.result !== requestedStatus ||
         payload.profileUuid !== canonicalUuid0736(owned.data.profileUuid) ||
-        payload.tripId !== canonicalUuid0736(owned.data.tripId)
+        payload.tripId !== canonicalTripId0737(owned.data.tripId)
       ) {
         return fail(res, 409, "trip_query_identity_result_mismatch", "Resultado diverge da identidade forte do job.");
       }
@@ -565,7 +572,7 @@ function createBlaBlaRemoteTripQuery0737({
     }, { merge: true });
 
     const stateRef = db.collection(TRIP_QUERY_STATE_COLLECTION_0737).doc(
-      queryStateId0737(owned.driver.username, canonicalUuid0736(owned.data.profileUuid), canonicalUuid0736(owned.data.tripId)),
+      queryStateId0737(owned.driver.username, canonicalUuid0736(owned.data.profileUuid), canonicalTripId0737(owned.data.tripId)),
     );
     const update = {
       latestCompletedJobId: owned.jobId,
@@ -593,6 +600,7 @@ module.exports = {
   TRIP_QUERY_STATE_COLLECTION_0737,
   TRIP_QUERY_JOB_COLLECTION_0737,
   MAX_PAYLOAD_BYTES_0737,
+  canonicalTripId0737,
   sanitizeRemoteTripQueryPayload0737,
   remoteTripQueryTransition0737,
   remoteTripQueryRefreshDecision0737,
