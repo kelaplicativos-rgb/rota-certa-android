@@ -360,6 +360,94 @@ function createBlaBlaOperationalRemote0737({ db, requireDriver, getMessaging, no
     return { jobId, state: clean0737(saved.state, 32) || "PENDING_DEVICE", reused: false, requestedAtMillis: now };
   }
 
+  async function refreshForUsername0737(req, res, usernameRaw) {
+    const username = normalizeUsername(usernameRaw);
+    if (!username) return fail(res, 404, "operational_access_not_found", "Acesso privado operacional não encontrado.");
+    const target = normalizeTarget0737(req.query && req.query.profileUuid, req.query && req.query.tripId);
+    if (!target) return fail(res, 400, "operational_target_invalid", "Informe profileUuid e tripId canônicos.");
+    const job = await createTripJob0737(username, target.profileUuid, target.tripId);
+    if (job.blocked) {
+      return fail(res, 409, "operational_complete_covers_required", "A viagem precisa estar comprovada no último inventário COMPLETE de capas.", { errorCode: job.errorCode });
+    }
+    if (job.throttled) {
+      res.set("Retry-After", String(Math.max(1, Math.ceil(job.retryAfterMillis / 1000))));
+      return fail(res, 429, "operational_refresh_throttled", "Aguarde antes de solicitar outra consulta.", { retryAfterMillis: job.retryAfterMillis });
+    }
+    return json(res, 202, {
+      ...job,
+      profileUuid: target.profileUuid,
+      tripId: target.tripId,
+      statusMeaning: "Somente COMPLETE comprova ocupação e vagas para a viagem solicitada.",
+    });
+  }
+
+  async function latestForUsername0737(req, res, usernameRaw) {
+    const username = normalizeUsername(usernameRaw);
+    if (!username) return fail(res, 404, "operational_access_not_found", "Acesso privado operacional não encontrado.");
+    const target = normalizeTarget0737(req.query && req.query.profileUuid, req.query && req.query.tripId);
+    if (!target) return fail(res, 400, "operational_target_invalid", "Informe profileUuid e tripId canônicos.");
+    const stateRef = db.collection(STATE_COLLECTION_0737).doc(targetStateId0737(username, target.profileUuid, target.tripId));
+    const stateSnap = await stateRef.get();
+    const stateData = stateSnap.exists ? stateSnap.data() : {};
+    const latestJobId = canonicalUuid0736(stateData.latestJobId);
+    const lastCompleteJobId = canonicalUuid0736(stateData.lastCompleteJobId);
+
+    async function readJob(jobId) {
+      if (!jobId) return null;
+      const snap = await db.collection(JOB_COLLECTION_0737).doc(jobId).get();
+      return snap.exists ? { id: jobId, ref: snap.ref, data: snap.data() || {} } : null;
+    }
+
+    const latest = await readJob(latestJobId);
+    const cachedComplete = lastCompleteJobId && lastCompleteJobId !== latestJobId ? await readJob(lastCompleteJobId) : null;
+    if (!latest) {
+      return json(res, 200, {
+        state: "PENDING_UNKNOWN",
+        jobId: "",
+        profileUuid: target.profileUuid,
+        tripId: target.tripId,
+        result: null,
+        lastCompleteResult: cachedComplete ? cachedComplete.data.payload || null : null,
+      });
+    }
+
+    const now = Date.now();
+    let state = clean0737(latest.data.state, 32) || "PENDING_UNKNOWN";
+    let result = latest.data.payload || null;
+    let errorCode = clean0737(latest.data.errorCode, 160);
+    let errorMessage = clean0737(latest.data.errorMessage, 240);
+    const expiresAt = ACTIVE_STATES_0737.has(state)
+      ? Number(latest.data.expiresAtMillis || 0)
+      : Number(latest.data.resultExpiresAtMillis || 0);
+    if (expiresAt > 0 && expiresAt <= now && state !== "EXPIRED") {
+      state = "EXPIRED";
+      result = null;
+      errorCode = "OPERATIONAL_RESULT_EXPIRED";
+      errorMessage = "";
+      await latest.ref.set({ state, payload: null, errorCode, errorMessage, updatedAtMillis: now }, { merge: true });
+    }
+    return json(res, 200, {
+      state,
+      jobId: latest.id,
+      profileUuid: target.profileUuid,
+      tripId: target.tripId,
+      requestedAtMillis: Number(latest.data.requestedAtMillis || 0),
+      completedAtMillis: Number(latest.data.completedAtMillis || 0),
+      result,
+      errorCode,
+      errorMessage,
+      lastCompleteJobId: state === "COMPLETE" ? latest.id : (cachedComplete ? cachedComplete.id : lastCompleteJobId || ""),
+      lastCompleteResult: state === "COMPLETE"
+        ? result
+        : cachedComplete && clean0737(cachedComplete.data.state, 32) === "COMPLETE"
+          ? cachedComplete.data.payload || null
+          : null,
+      statusMeaning: state === "COMPLETE"
+        ? "Consulta operacional comprovada para esta viagem."
+        : "A consulta mais recente não está COMPLETE; ausência de ocupação não está comprovada.",
+    });
+  }
+
   async function refreshPublic0737(req, res, tokenRaw) {
     const access = await resolveAccess0737(tokenRaw);
     if (!access) return fail(res, 404, "operational_access_not_found", "Acesso privado operacional não encontrado ou expirado.");
@@ -630,7 +718,7 @@ function createBlaBlaOperationalRemote0737({ db, requireDriver, getMessaging, no
     return json(res, 200, { accepted: true, jobId: owned.jobId, state: requestedStatus });
   }
 
-  return { ensureAccess0737, refreshPublic0737, latestPublic0737, ackPublic0737, submitPublicResult0737, ackJob0737, submitResult0737 };
+  return { ensureAccess0737, refreshPublic0737, latestPublic0737, refreshForUsername0737, latestForUsername0737, ackPublic0737, submitPublicResult0737, ackJob0737, submitResult0737 };
 }
 
 module.exports = {
