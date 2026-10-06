@@ -226,3 +226,26 @@ test("push remoto só alcança cliente que declarou suporte explícito", () => {
     false,
   );
 });
+
+
+test("PENDING_DEVICE pode tentar novamente após o backoff sem fingir frescor", () => {
+  const now = 1_000_000;
+  assert.deepEqual(
+    standaloneCoverRefreshDecision0736({
+      latestState: "PENDING_DEVICE",
+      latestExpiresAtMillis: now + 600_000,
+      lastRequestedAtMillis: now - 5_000,
+      nowMillis: now,
+    }),
+    { action: "THROTTLE", retryAfterMillis: 40_000 },
+  );
+  assert.deepEqual(
+    standaloneCoverRefreshDecision0736({
+      latestState: "PENDING_DEVICE",
+      latestExpiresAtMillis: now + 600_000,
+      lastRequestedAtMillis: now - 60_000,
+      nowMillis: now,
+    }),
+    { action: "CREATE", retryAfterMillis: 0 },
+  );
+});
