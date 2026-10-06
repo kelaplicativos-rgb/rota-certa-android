@@ -764,14 +764,20 @@ fun BlaBlaCollectorPanel(
             standaloneMessage0734?.let { Text(it) }
 
             if (standaloneRemoteAccess0736.configured) {
-                Text("Coleta remota automática: pronta ✅")
+                Text("Capas remotas: prontas ✅")
+                Text("Consulta completa por viagem: pronta ✅")
                 OutlinedButton(
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val tripQueryBase0737 = standaloneRemoteAccess0736.latestUrl.removeSuffix("/latest")
                         val privateAccess = buildString {
-                            append("Rota Certa — coleta remota avulsa\n")
-                            append("Solicitar: ").append(standaloneRemoteAccess0736.refreshUrl).append('\n')
-                            append("Consultar: ").append(standaloneRemoteAccess0736.latestUrl)
+                            append("Rota Certa — acesso privado BlaBlaCar\n")
+                            append("Capas — solicitar: ").append(standaloneRemoteAccess0736.refreshUrl).append('\n')
+                            append("Capas — consultar: ").append(standaloneRemoteAccess0736.latestUrl).append('\n')
+                            append("Viagem — solicitar: ").append(tripQueryBase0737)
+                                .append("/trip/{profileUuid}/{tripId}/refresh").append('\n')
+                            append("Viagem — consultar: ").append(tripQueryBase0737)
+                                .append("/trip/{profileUuid}/{tripId}/latest")
                         }
                         clipboard.setPrimaryClip(
                             ClipData.newPlainText("Rota Certa — coleta remota avulsa", privateAccess),
@@ -784,11 +790,11 @@ fun BlaBlaCollectorPanel(
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("🔐 Copiar acesso privado remoto")
+                    Text("🔐 Copiar acesso privado BlaBlaCar")
                 }
                 Text(
-                    "Compartilhe este acesso somente com quem pode solicitar suas capas. " +
-                        "A coleta remota continua isolada da Agenda/Timeline e não envia cookies ou senha.",
+                    "O acesso permite consultar capas e, quando necessário, aprofundar uma viagem pelo UUID + tripId. " +
+                        "Cookies, senha, HTML bruto, telefone e booking_href não saem do aparelho.",
                 )
             } else {
                 Text(
