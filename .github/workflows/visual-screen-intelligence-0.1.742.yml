@@ -154,7 +154,7 @@ jobs:
             --no-daemon --max-workers=1 --no-parallel --stacktrace \
             | tee /tmp/sealed-farol-regression.log
 
-      - name: Compare complete Android failures with exact 0.1.740 base
+      - name: Compare complete Android failures with exact 0.1.741 base
         shell: bash
         run: |
           set -euo pipefail
@@ -237,7 +237,7 @@ jobs:
           grep -Fq 'FAROL_ORGANIC_OFFLINE_RESOLVED_0711' /tmp/dex-strings.txt
           grep -Fq 'PASSENGER_TRACKING_STOP_REQUEST_0712' /tmp/dex-strings.txt
           grep -Fq 'FAROL_ROAD_KM_FINALITY_0713' /tmp/dex-strings.txt
-          grep -Fq 'RC_DIAGNOSTIC_FABRIC_0742' /tmp/dex-strings.txt
+          grep -Fq 'RC_DIAGNOSTIC_FABRIC_0741' /tmp/dex-strings.txt
           grep -Fq 'FAROL_LOCAL_KM_NEVER_PUBLIC_0713' /tmp/dex-strings.txt
           grep -Fq 'FAROL_ROAD_KM_CONFIRMED_PUBLIC_0713' /tmp/dex-strings.txt
           grep -Fq 'ROTA_VISUAL_INTELLIGENCE_0742' /tmp/dex-strings.txt
@@ -245,7 +245,7 @@ jobs:
           grep -Fq 'MANUAL_SCREEN_PHONE_0742' /tmp/dex-strings.txt
 
           SHORT_SHA="$(git rev-parse --short=12 HEAD)"
-          FINAL="rota-certa-0.1.742-6032-$SHORT_SHA.apk"
+          FINAL="rota-certa-0.1.742-6033-$SHORT_SHA.apk"
           cp "$APK" "$FINAL"
           APK_SHA256="$(sha256sum "$FINAL" | awk '{print $1}')"
           sha256sum "$FINAL" | tee /tmp/apk-sha256.txt
