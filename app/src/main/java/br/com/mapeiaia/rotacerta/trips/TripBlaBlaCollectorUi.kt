@@ -3,6 +3,10 @@ package br.com.mapeiaia.rotacerta.trips
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -116,6 +120,7 @@ fun BlaBlaCollectorPanel(
     val context = LocalContext.current
     val standaloneScope0734 = rememberCoroutineScope()
     val registry = remember(context) { BlaBlaDynamicAccountRegistry(context) }
+    val standaloneRemoteAccessStore0736 = remember(context) { StandaloneCoversRemoteAccessStore0736(context) }
     val sessionStore = remember(context) { BlaBlaDynamicSessionStore(context) }
     val manualSeatStore = remember(context) { BlaBlaManualSeatSyncRequestStore(context) }
     val manualSeatAttemptStore = remember(context) { BlaBlaManualSeatSyncAttemptStore(context) }
@@ -147,6 +152,7 @@ fun BlaBlaCollectorPanel(
     var message by remember { mutableStateOf<String?>(null) }
     var standaloneExporting0734 by remember { mutableStateOf(false) }
     var standaloneMessage0734 by remember { mutableStateOf<String?>(null) }
+    var standaloneRemoteAccess0736 by remember { mutableStateOf(standaloneRemoteAccessStore0736.read()) }
     var showAddAccount by remember { mutableStateOf(false) }
     var newAccountLabel by remember { mutableStateOf("") }
     var showDateScopeSelector by remember { mutableStateOf(false) }
@@ -439,6 +445,17 @@ fun BlaBlaCollectorPanel(
             val clean = sessionStore.combinedResponse(registry.list())
             val published = stateStore.saveResponse(clean, preserveOnPartial = false)
             onResult(published)
+        }
+
+        runCatching {
+            BookingPushRegistration0304.ensureRegistered(
+                context = context,
+                store = TripStore(context),
+            )
+        }.onSuccess { registered0736 ->
+            if (registered0736) {
+                standaloneRemoteAccess0736 = standaloneRemoteAccessStore0736.read()
+            }
         }
     }
 
@@ -745,6 +762,40 @@ fun BlaBlaCollectorPanel(
                     "Não sincroniza nem altera Timeline, Agenda, vagas, disponibilidade, estado canônico ou estado do dia.",
             )
             standaloneMessage0734?.let { Text(it) }
+
+            if (standaloneRemoteAccess0736.configured) {
+                Text("Coleta remota automática: pronta ✅")
+                OutlinedButton(
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val privateAccess = buildString {
+                            append("Rota Certa — coleta remota avulsa\n")
+                            append("Solicitar: ").append(standaloneRemoteAccess0736.refreshUrl).append('\n')
+                            append("Consultar: ").append(standaloneRemoteAccess0736.latestUrl)
+                        }
+                        clipboard.setPrimaryClip(
+                            ClipData.newPlainText("Rota Certa — coleta remota avulsa", privateAccess),
+                        )
+                        Toast.makeText(
+                            context,
+                            "Acesso privado da coleta remota copiado.",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("🔐 Copiar acesso privado remoto")
+                }
+                Text(
+                    "Compartilhe este acesso somente com quem pode solicitar suas capas. " +
+                        "A coleta remota continua isolada da Agenda/Timeline e não envia cookies ou senha.",
+                )
+            } else {
+                Text(
+                    "Coleta remota automática: aguardando provisionamento online. " +
+                        "O download avulso manual continua disponível como fallback.",
+                )
+            }
 
             Text("A leitura usa somente a interface oficial logada. Senha não é capturada nem enviada ao Railway.")
             Text("Nas sincronizações normais, o Rota Certa guarda em área privada do app os MHTMLs necessários: /rides, resumo de cada viagem, passageiros individuais e opções de lugares. A coleta avulsa acima não usa esse pipeline; ela apenas baixa o JSON de capas solicitado.")

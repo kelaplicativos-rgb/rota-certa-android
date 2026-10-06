@@ -132,6 +132,25 @@ internal object BookingPushRegistration0304 {
                 context.packageName,
                 "fcm=true appVersion=${BuildConfig.VERSION_NAME}",
             )
+            runCatching {
+                val access0736 = TripRemoteApi(settings).ensureStandaloneCoversAccess0736()
+                StandaloneCoversRemoteAccessStore0736(context.applicationContext).save(
+                    publicBaseUrl = settings.publicBaseUrl,
+                    response = access0736,
+                )
+            }.onSuccess {
+                UnifiedDebugEventStore.record(
+                    "STANDALONE_COVERS_REMOTE_ACCESS_READY_0736",
+                    context.packageName,
+                    "configured=true expiresAtMillis=${it.expiresAtMillis}",
+                )
+            }.onFailure { error ->
+                UnifiedDebugEventStore.record(
+                    "STANDALONE_COVERS_REMOTE_ACCESS_PROVISION_FAILED_0736",
+                    context.packageName,
+                    "error=${error.javaClass.simpleName.take(80)}",
+                )
+            }
         }
         response.registered
     }
@@ -155,6 +174,23 @@ class RotaCertaBookingMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
         val event = message.data["event"].orEmpty()
+        if (isStandaloneCoversRemoteEvent0736(event)) {
+            val jobId0736 = message.data["jobId"].orEmpty()
+            val enqueued0736 = StandaloneCoversRemoteScheduler0736.enqueue(
+                context = this,
+                rawJobId = jobId0736,
+            )
+            UnifiedDebugEventStore.record(
+                if (enqueued0736) {
+                    "STANDALONE_COVERS_REMOTE_PUSH_ENQUEUED_0736"
+                } else {
+                    "STANDALONE_COVERS_REMOTE_PUSH_REJECTED_0736"
+                },
+                packageName,
+                "jobPresent=${jobId0736.isNotBlank()} agendaSync=false timelineWrite=false",
+            )
+            return
+        }
         val remoteTripId = message.data["remoteTripId"].orEmpty()
         val bookingId = message.data["bookingId"].orEmpty()
         val seats = message.data["seats"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0

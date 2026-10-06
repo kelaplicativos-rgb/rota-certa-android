@@ -277,4 +277,80 @@ class BlaBlaStandaloneRideCoversExport0734Test {
         assertTrue(canAcceptRecoveredComplete0735(previous, equalComplete))
     }
 
+
+    @Test
+    fun remotePushEventIsExplicitAndNeverMatchesOtherAgendaEvents() {
+        assertTrue(isStandaloneCoversRemoteEvent0736("standalone_covers_collect"))
+        assertFalse(isStandaloneCoversRemoteEvent0736("reservation_created"))
+        assertFalse(isStandaloneCoversRemoteEvent0736("admin_update_now"))
+        assertFalse(isStandaloneCoversRemoteEvent0736(""))
+        assertFalse(isStandaloneCoversRemoteEvent0736(null))
+    }
+
+    @Test
+    fun remoteJobIdentityMustBeCanonicalUuid() {
+        val jobId = "01a087fd-fa75-41c8-b4d9-42abc7a6164b"
+        assertEquals(jobId, normalizeStandaloneCoversRemoteJobId0736(jobId))
+        assertNull(normalizeStandaloneCoversRemoteJobId0736("job-123"))
+        assertNull(normalizeStandaloneCoversRemoteJobId0736(""))
+    }
+
+    @Test
+    fun remoteResultNeverPromotesPartialInventoryToComplete() {
+        val partial = BlaBlaStandaloneRideCoversPayload0734(
+            capturedAt = "2026-10-05T23:30:00Z",
+            sourceAppVersion = "0.1.736",
+            sourceVersionCode = 6027,
+            sourceCommitSha = "remote0736",
+            sourceBranch = "agent/blablacar-standalone-covers-remote-0.1.736",
+            result = RESULT_PARTIAL_0734,
+            totalProfiles = 1,
+            totalCards = 0,
+            profiles = listOf(
+                BlaBlaStandaloneRideCoversProfile0734(
+                    displayName = "Conta teste",
+                    profileUuid = "7371f028-9c55-4903-8444-308015823efd",
+                    identityConfirmed = true,
+                    status = RESULT_PARTIAL_0734,
+                    observedCardCount = 0,
+                    exportedCardCount = 0,
+                    reachedEnd = false,
+                    stabilized = false,
+                    errorCode = "COVER_LIST_NOT_STABLE",
+                ),
+            ),
+        )
+
+        assertEquals(RESULT_PARTIAL_0734, standaloneCoversRemoteResultState0736(partial))
+        assertFalse(partial.isolation.writesTimeline)
+        assertFalse(partial.isolation.writesAgenda)
+        assertFalse(partial.isolation.writesCanonicalTrips)
+        assertFalse(partial.isolation.writesAvailability)
+        assertFalse(partial.isolation.writesCapacity)
+        assertFalse(partial.isolation.writesTodayState)
+        assertFalse(partial.isolation.readsPassengers)
+        assertFalse(partial.isolation.opensTripDetails)
+    }
+
+    @Test
+    fun remoteWorkerDoesNotRecollectTerminalJobs() {
+        assertTrue(isStandaloneCoversRemoteTerminalState0736("COMPLETE"))
+        assertTrue(isStandaloneCoversRemoteTerminalState0736("PARTIAL"))
+        assertTrue(isStandaloneCoversRemoteTerminalState0736("FAILED"))
+        assertTrue(isStandaloneCoversRemoteTerminalState0736("EXPIRED"))
+        assertFalse(isStandaloneCoversRemoteTerminalState0736("RUNNING"))
+        assertFalse(isStandaloneCoversRemoteTerminalState0736("PENDING_DEVICE"))
+        assertFalse(isStandaloneCoversRemoteTerminalState0736(null))
+    }
+    @Test
+    fun currentBuildExplicitlyAdvertisesRemoteCoverPushCapability() {
+        val request = DriverPushTokenRequest(
+            token = "x".repeat(64),
+            appVersion = "0.1.736",
+            deviceLabel = "device",
+        )
+        assertEquals(1, request.standaloneCoversRemoteVersion)
+    }
+
+
 }
