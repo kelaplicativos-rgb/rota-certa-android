@@ -46,6 +46,7 @@ class BlaBlaRemoteTripQuery0737Test {
             result = BlaBlaTargetedHtmlRefreshResult0607(
                 trip = source,
                 operationalComplete = true,
+                coreOperationalComplete0737 = true,
             ),
             expectedProfileUuid = source.profile_uuid,
             expectedTripId = source.trip_id.orEmpty(),
