@@ -300,12 +300,22 @@ internal class BlaBlaHtmlRemoteWorker0737(
             tripId = tripId,
             tripHref = tripHref,
         )
+        val existingSource0737 = withContext(Dispatchers.IO) {
+            BlaBlaCollectorStateStore(applicationContext)
+                .lastResponse()
+                ?.trips
+                ?.singleOrNull { candidate ->
+                    candidate.profile_uuid.trim().equals(profileUuid, ignoreCase = true) &&
+                        candidate.trip_id?.trim()?.equals(tripId, ignoreCase = true) == true &&
+                        !candidate.identity_conflict
+                }
+        }
 
         return try {
             val captured = BlaBlaUnifiedHtmlCapture0605.captureSingleTrip0607(
                 context = applicationContext,
                 target = target,
-                existingSource = null,
+                existingSource = existingSource0737,
                 scopedStateIsolation0662 = true,
             )
             val trip = captured.trip
