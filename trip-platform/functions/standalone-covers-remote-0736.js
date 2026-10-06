@@ -216,6 +216,30 @@ function standaloneCoverResultTransition0736(currentState, requestedState) {
   return { action: "REJECT", state: current };
 }
 
+function standaloneCoverRefreshDecision0736({
+  latestState,
+  latestExpiresAtMillis,
+  lastRequestedAtMillis,
+  nowMillis = Date.now(),
+}) {
+  const now = Number(nowMillis || 0);
+  const state = clean0736(latestState, 32).toUpperCase();
+  const activeAndFresh =
+    ACTIVE_JOB_STATES_0736.has(state) &&
+    Number(latestExpiresAtMillis || 0) > now;
+  if (activeAndFresh) return { action: "REUSE_ACTIVE", retryAfterMillis: 0 };
+
+  const requestedAt = Number(lastRequestedAtMillis || 0);
+  const elapsed = requestedAt > 0 ? Math.max(0, now - requestedAt) : MIN_REFRESH_INTERVAL_MILLIS_0736;
+  if (requestedAt > 0 && elapsed < MIN_REFRESH_INTERVAL_MILLIS_0736) {
+    return {
+      action: "THROTTLE",
+      retryAfterMillis: Math.max(1, MIN_REFRESH_INTERVAL_MILLIS_0736 - elapsed),
+    };
+  }
+  return { action: "CREATE", retryAfterMillis: 0 };
+}
+
 function createStandaloneCoversRemote0736({
   db,
   requireDriver,
@@ -365,6 +389,8 @@ function createStandaloneCoversRemote0736({
     const stateRef = db.collection(STATE_COLLECTION_0736).doc(driverUsername);
     let jobId = "";
     let reused = false;
+    let throttled = false;
+    let retryAfterMillis = 0;
     await db.runTransaction(async (transaction) => {
       const stateSnap = await transaction.get(stateRef);
       const state = stateSnap.exists ? stateSnap.data() : {};
@@ -375,13 +401,20 @@ function createStandaloneCoversRemote0736({
         const latestJobSnap = await transaction.get(latestJobRef);
         if (latestJobSnap.exists) {
           const latestJob = latestJobSnap.data();
-          const latestState = clean0736(latestJob.state, 32);
-          const latestExpiresAt = Number(latestJob.expiresAtMillis || 0);
-          const activeAndFresh = ACTIVE_JOB_STATES_0736.has(latestState) && latestExpiresAt > now;
-          const insideRefreshGuard = now - lastRequestedAtMillis < MIN_REFRESH_INTERVAL_MILLIS_0736;
-          if (activeAndFresh || insideRefreshGuard) {
+          const decision = standaloneCoverRefreshDecision0736({
+            latestState: latestJob.state,
+            latestExpiresAtMillis: latestJob.expiresAtMillis,
+            lastRequestedAtMillis,
+            nowMillis: now,
+          });
+          if (decision.action === "REUSE_ACTIVE") {
             jobId = latestJobId;
             reused = true;
+            return;
+          }
+          if (decision.action === "THROTTLE") {
+            throttled = true;
+            retryAfterMillis = decision.retryAfterMillis;
             return;
           }
         }
@@ -409,6 +442,17 @@ function createStandaloneCoversRemote0736({
       }, { merge: true });
     });
 
+    if (throttled) {
+      return {
+        jobId: "",
+        state: "THROTTLED",
+        reused: false,
+        throttled: true,
+        retryAfterMillis,
+        requestedAtMillis: now,
+        updatedAtMillis: now,
+      };
+    }
     if (!reused) await sendPush0736(driverUsername, jobId);
     const snap = await db.collection(JOB_COLLECTION_0736).doc(jobId).get();
     const data = snap.exists ? snap.data() : { state: "PENDING_DEVICE" };
@@ -426,6 +470,16 @@ function createStandaloneCoversRemote0736({
     if (!driver) return;
     if (!driver.username) return fail(res, 400, "driver_username_required", "Identidade pública do motorista não configurada.");
     const job = await createJob0736(driver.username, "driver_authenticated");
+    if (job.throttled) {
+      res.set("Retry-After", String(Math.max(1, Math.ceil(job.retryAfterMillis / 1000))));
+      return fail(
+        res,
+        429,
+        "standalone_cover_refresh_throttled",
+        "Aguarde antes de solicitar outra coleta remota.",
+        { retryAfterMillis: job.retryAfterMillis },
+      );
+    }
     return json(res, 202, job);
   }
 
@@ -433,6 +487,19 @@ function createStandaloneCoversRemote0736({
     const access = await resolveAccess0736(tokenRaw);
     if (!access) return fail(res, 404, "standalone_cover_access_not_found", "Acesso privado à coleta remota não encontrado ou expirado.");
     const job = await createJob0736(access.username, "private_capability");
+    if (job.throttled) {
+      res.set("Retry-After", String(Math.max(1, Math.ceil(job.retryAfterMillis / 1000))));
+      return fail(
+        res,
+        429,
+        "standalone_cover_refresh_throttled",
+        "Aguarde antes de solicitar outra coleta remota.",
+        {
+          retryAfterMillis: job.retryAfterMillis,
+          statusMeaning: "Nenhuma nova coleta foi iniciada; o resultado anterior não deve ser tratado como fresco.",
+        },
+      );
+    }
     return json(res, 202, {
       ...job,
       statusMeaning: "Somente COMPLETE comprova inventário completo; PARTIAL/FAILED/PENDING_DEVICE permanecem desconhecidos.",
@@ -614,5 +681,6 @@ module.exports = {
   canonicalUuid0736,
   shouldExpireStandaloneCoverResult0736,
   standaloneCoverResultTransition0736,
+  standaloneCoverRefreshDecision0736,
   createStandaloneCoversRemote0736,
 };
