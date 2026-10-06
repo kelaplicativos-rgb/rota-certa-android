@@ -4,6 +4,8 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Base64
 import java.util.Properties
+import java.security.KeyStore
+import java.security.MessageDigest
 
 plugins {
     id("com.android.application")
@@ -63,8 +65,8 @@ val buildGeneratedAt = firstNonBlank(System.getenv("ROTA_CERTA_BUILD_TIME")).ifB
 val minimumVersionCode = 5_020
 val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { maxOf(minimumVersionCode, 5_000 + it) }
 val appVersionCode = ciVersionCode ?: minimumVersionCode
-val releaseVersionCode = 6_028
-val releaseVersionName = "0.1.737"
+val releaseVersionCode = 6_029
+val releaseVersionName = "0.1.738"
 val stableDebugKeystoreSource = layout.projectDirectory.file("debug-signing/rota-certa-debug.keystore.b64").asFile
 val stableDebugKeystoreFile = rootProject.file(".gradle/rota-certa-signing/rota-certa-debug.keystore")
 if (stableDebugKeystoreSource.exists()) {
@@ -149,7 +151,36 @@ val verifyReleaseHistory by tasks.registering {
     }
 }
 
-tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(verifyReleaseHistory) }
+val updateBaselineFile = layout.projectDirectory.file("update-baseline.json").asFile
+val verifyAndroidUpdateContract by tasks.registering {
+    group = "verification"
+    description = "Rejects package, version or signing changes that break installed-app updates."
+    inputs.file(updateBaselineFile)
+    inputs.file(stableDebugKeystoreFile)
+    doLast {
+        val baseline = JsonSlurper().parse(updateBaselineFile) as Map<*, *>
+        require(android.defaultConfig.applicationId == baseline["application_id"]) {
+            "Update must preserve the installed applicationId."
+        }
+        require(releaseVersionCode > (baseline["version_code"] as Number).toInt()) {
+            "Update versionCode must be higher than the installed baseline."
+        }
+        require(android.buildTypes.getByName("debug").signingConfig?.storeFile == stableDebugKeystoreFile) {
+            "Update must use the existing stable signing key."
+        }
+        val keystore = KeyStore.getInstance(stableDebugKeystoreFile, "rotacerta".toCharArray())
+        val certificate = requireNotNull(keystore.getCertificate("rotacerta-debug"))
+        val fingerprint = MessageDigest.getInstance("SHA-256")
+            .digest(certificate.encoded).joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        require(fingerprint == baseline["signer_sha256"]) {
+            "Signing certificate differs from the installed baseline. Do not uninstall to bypass this failure."
+        }
+    }
+}
+
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn(verifyReleaseHistory, verifyAndroidUpdateContract)
+}
 
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
