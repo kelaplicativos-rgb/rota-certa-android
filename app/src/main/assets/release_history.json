@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.740",
+      "build": 6031,
+      "commit": null,
+      "branch": "agent/farol-visual-authority-0.1.740",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Separa ausência transitória de observação visual de perda comprovada de contexto no Farol."
+      ],
+      "fixed": [
+        "Preserva verde/vermelho e quilômetros confirmados quando heartbeat, Accessibility ou OCR deixam de observar temporariamente o endereço.",
+        "Impede OCR sem candidato de executar hard clear destrutivo sobre resultado confirmado."
+      ],
+      "improved": [
+        "Mantém Accessibility, screenshot/OCR, fallback OpenAI e bindings monotônicos existentes como um único pipeline.",
+        "Mantém limpeza explícita para troca comprovada de aplicativo/contexto e demais transições autoritativas."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Bolinha verde/vermelha apagada por heartbeat visual vazio",
+        "Resultado de distância destruído por OCR transitório sem candidato"
+      ],
+      "modulesAffected": [
+        "Farol",
+        "Accessibility",
+        "OCR",
+        "Estado visual",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.739",
       "build": 6030,
       "commit": null,
