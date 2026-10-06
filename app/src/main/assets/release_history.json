@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.737",
+      "build": 6028,
+      "commit": null,
+      "branch": "agent/blablacar-assistant-read-0.1.737",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Expande a coleta remota 0.1.736 com consulta HTML direcionada por UUID canônico do perfil + tripId exato, reutilizando BlaBlaUnifiedHtmlCapture0605.captureSingleTrip0607.",
+        "Permite ao assistente solicitar uma leitura profunda de uma única viagem quando capas não bastam, sem exigir download/anexo manual recorrente.",
+        "Provisiona capability privada separada para solicitar e consultar o snapshot HTML sanitizado de uma viagem."
+      ],
+      "fixed": [
+        "Corrige validação de tripId remoto para aceitar UUIDv7 usado pelas viagens BlaBlaCar.",
+        "Separa explicitamente o evento FCM de consulta HTML do fallback de sincronização da Agenda/Timeline.",
+        "Preserva o último snapshot COMPLETE por UUID+tripId quando uma leitura posterior fica PARTIAL/FAILED."
+      ],
+      "improved": [
+        "A consulta profunda usa scopedStateIsolation0662=true: não grava resposta canônica do coletor nem sincroniza Agenda/Timeline durante a leitura remota.",
+        "HTML bruto, cookies, credenciais BlaBlaCar, telefone e booking_href de passageiros permanecem no aparelho e são proibidos pelo contrato do backend.",
+        "COMPLETE exige identidade forte, roster de passageiros completo, itinerário autoritativo, vagas publicadas observadas e ausência de conflito de identidade."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.736: workflow exact-head podia compilar com sucesso e ainda falhar num bloco monolítico de prova sem identificar claramente a asserção responsável."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Capturar HTMLs",
+        "Coleta remota",
+        "FCM",
+        "WorkManager",
+        "Backend",
+        "Privacidade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.736",
       "build": 6027,
       "commit": null,
