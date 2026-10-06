@@ -166,6 +166,32 @@ internal fun buildBlaBlaOperationalPayload0737(
     )
 }
 
+internal data class BlaBlaOperationalPublicAccess0737(
+    val refreshTemplate: String,
+    val latestTemplate: String,
+)
+
+internal fun operationalPublicAccessFromCovers0737(
+    covers: StandaloneCoversRemoteAccess0736,
+): BlaBlaOperationalPublicAccess0737? {
+    if (!covers.configured) return null
+    val marker = "/v1/public/standalone-covers/"
+    val start = covers.refreshUrl.indexOf(marker)
+    if (start <= 0) return null
+    val tokenStart = start + marker.length
+    val tokenEnd = covers.refreshUrl.indexOf('/', tokenStart)
+    if (tokenEnd <= tokenStart) return null
+    val token = covers.refreshUrl.substring(tokenStart, tokenEnd)
+        .takeIf { it.matches(Regex("[A-Za-z0-9_-]{32,180}")) }
+        ?: return null
+    val base = covers.refreshUrl.substring(0, start)
+    val query = "?profileUuid=<profileUuid>&tripId=<tripId>"
+    return BlaBlaOperationalPublicAccess0737(
+        refreshTemplate = base + "/v1/public/blablacar-operational/" + token + "/trip/refresh" + query,
+        latestTemplate = base + "/v1/public/blablacar-operational/" + token + "/trip/latest" + query,
+    )
+}
+
 internal object BlaBlaOperationalRemoteScheduler0737 {
     fun enqueue(
         context: Context,
