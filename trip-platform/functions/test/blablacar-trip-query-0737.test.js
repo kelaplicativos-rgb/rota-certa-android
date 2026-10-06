@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const {
+  canonicalTripId0737,
   sanitizeRemoteTripQueryPayload0737,
   remoteTripQueryTransition0737,
   remoteTripQueryRefreshDecision0737,
@@ -43,6 +44,14 @@ function payload0737() {
     errorCode: "",
   };
 }
+
+test("tripId UUIDv7 é aceito sem afrouxar identidade do perfil", () => {
+  assert.equal(
+    canonicalTripId0737("01a0359e-de23-7a2b-ab27-43990c399a74"),
+    "01a0359e-de23-7a2b-ab27-43990c399a74",
+  );
+  assert.equal(canonicalTripId0737("Ezequiel"), "");
+});
 
 test("consulta profunda COMPLETE preserva apenas projeção operacional permitida", () => {
   const value = sanitizeRemoteTripQueryPayload0737(payload0737());
