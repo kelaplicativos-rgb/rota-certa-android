@@ -2,6 +2,74 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.735",
+      "build": 6026,
+      "commit": null,
+      "branch": "agent/blablacar-standalone-covers-reliable-0.1.735",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Torna a coleta avulsa de capas repetível no mesmo aparelho sem transformar falha transitória em ausência de viagem.",
+        "A estabilidade passa a observar mudanças no inventário de capas, e não mutações irrelevantes do DOM inteiro.",
+        "Se a sessão reabrir em posição final/arquivada com zero capas atuais observadas, o coletor rebobina uma vez para o topo antes de concluir.",
+        "Falhas técnicas transitórias elegíveis ganham uma única nova tentativa com WebView nova e lease transitório; falhas de identidade não são mascaradas por retry."
+      ],
+      "fixed": [
+        "Corrige o cenário físico observado no Samsung SM-S911B em que a primeira coleta 0.1.734 retornou COMPLETE com 46 capas e a repetição imediata retornou PARTIAL apenas para Ezequiel com COVER_LIST_NOT_STABLE e zero capas.",
+        "Preserva a melhor evidência parcial entre tentativas, impedindo que uma segunda tentativa pior apague capas já observadas."
+      ],
+      "improved": [
+        "O JSON passa a informar collectionAttempts e recoveredTransiently por perfil para distinguir coleta direta de recuperação técnica.",
+        "Mantém o contrato avulso: zero escrita em Timeline, Agenda, viagens canônicas, disponibilidade, capacidade ou estado do dia; sem leitura de passageiros ou abertura de detalhes.",
+        "Zero capas nunca é considerado COMPLETE apenas por estar no fim do scroll; exige empty-state explícito ou fronteira de viagens arquivadas.",
+        "Uma tentativa COMPLETE posterior não pode apagar capas já observadas em tentativa anterior; regressão de contagem permanece PARTIAL com código explícito."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "COVER_LIST_NOT_STABLE em repetição imediata do coletor avulso"
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Coletor avulso",
+        "Downloads",
+        "Privacidade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
+      "version": "0.1.734",
+      "build": 6025,
+      "commit": null,
+      "branch": "agent/blablacar-standalone-covers-0.1.734",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Adiciona ao coletor BlaBlaCar a ação avulsa ⬇️ Baixar capas, que lê somente a lista autenticada Suas viagens dos perfis WebView já configurados e salva um JSON em Downloads/Rota Certa.",
+        "O arquivo avulso transporta UUID canônico do perfil, tripId administrativo, data, horários, origem, destino e preço das capas, sem abrir detalhes de viagem nem coletar passageiros.",
+        "A captura percorre a lista em WebView invisível, comprova estabilidade/fim da lista e marca PARTIAL quando identidade, data, inventário ou sessão não podem ser comprovados."
+      ],
+      "fixed": [
+        "Elimina a necessidade operacional de abrir manualmente o navegador apenas para copiar as capas de Suas viagens e enviá-las para conferência externa.",
+        "Separa fisicamente o coletor avulso do pipeline que grava Agenda/Timeline: a ação não chama stateStore.saveResponse, commit canônico, sincronização de vagas, disponibilidade ou estado do dia."
+      ],
+      "improved": [
+        "O JavaScript dedicado à coleta avulsa não lê passageiros, não captura HTML completo e não navega para cards individuais.",
+        "Falha ou coleta parcial nunca é interpretada como ausência de viagem; o próprio JSON preserva status COMPLETE/PARTIAL por perfil.",
+        "Reutiliza somente a sessão isolada já autenticada de cada conta e um bloqueio técnico transitório por perfil para impedir duas WebViews simultâneas, sem criar regra de negócio ou estado persistente."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Coletor avulso",
+        "Downloads",
+        "Privacidade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.731",
       "build": 6022,
       "commit": null,
