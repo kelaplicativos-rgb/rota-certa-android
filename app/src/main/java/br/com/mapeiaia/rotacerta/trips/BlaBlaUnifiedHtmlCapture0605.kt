@@ -248,6 +248,7 @@ internal data class BlaBlaTargetedHtmlRefreshResult0607(
     val trip: BlaBlaCollectorTrip? = null,
     val errorCode: String = "",
     val operationalComplete: Boolean = false,
+    val coreOperationalComplete0737: Boolean = false,
     val evidencePath: String = "",
 )
 
@@ -1268,6 +1269,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             BlaBlaTargetedHtmlRefreshResult0607(
                 trip = trip,
                 operationalComplete = captured.operationalComplete,
+                coreOperationalComplete0737 = targetedHtmlCoreOperationalComplete0675(captured.evidence),
                 evidencePath = captured.evidence.htmlFile,
             )
         } finally {
