@@ -193,6 +193,10 @@ async function registerDriverPushToken(req, res) {
     platform: "android",
     appVersion: cleanText(req.body && req.body.appVersion, 40),
     deviceLabel: cleanText(req.body && req.body.deviceLabel, 80),
+    standaloneCoversRemoteVersion: Math.max(
+      0,
+      Math.min(10, Math.floor(Number(req.body && req.body.standaloneCoversRemoteVersion || 0))),
+    ),
     createdAtMillis: now,
     updatedAtMillis: now,
     expiresAtMillis: now + 120 * 24 * 60 * 60 * 1000,
