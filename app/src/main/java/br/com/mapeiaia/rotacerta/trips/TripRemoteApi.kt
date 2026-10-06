@@ -67,6 +67,43 @@ data class DriverPushTokenResponse(
 )
 
 @Serializable
+internal data class StandaloneCoversAccessResponse0736(
+    val enabled: Boolean = false,
+    val refreshPath: String = "",
+    val latestPath: String = "",
+    val expiresAtMillis: Long = 0L,
+)
+
+@Serializable
+internal data class StandaloneCoversJobAckRequest0736(
+    val state: String = "RUNNING",
+    val appVersion: String = "",
+    val sourceCommitSha: String = "",
+)
+
+@Serializable
+internal data class StandaloneCoversJobAckResponse0736(
+    val accepted: Boolean = false,
+    val jobId: String = "",
+    val state: String = "",
+)
+
+@Serializable
+internal data class StandaloneCoversResultRequest0736(
+    val status: String,
+    val payload: BlaBlaStandaloneRideCoversPayload0734? = null,
+    val errorCode: String = "",
+    val errorMessage: String = "",
+)
+
+@Serializable
+internal data class StandaloneCoversResultResponse0736(
+    val accepted: Boolean = false,
+    val jobId: String = "",
+    val state: String = "",
+)
+
+@Serializable
 data class DriverPublicReviewPayload(
     val author: String = "",
     val rating: String = "",
@@ -971,6 +1008,53 @@ class TripRemoteApi(
         path = "/v1/driver/push-tokens",
         body = json.encodeToString(DriverPushTokenRequest(token, appVersion, deviceLabel)),
         requireDriverToken = true,
+    )
+
+    internal suspend fun ensureStandaloneCoversAccess0736(): StandaloneCoversAccessResponse0736 = request(
+        method = "POST",
+        path = "/v1/driver/standalone-covers/access/ensure",
+        body = "{}",
+        requireDriverToken = true,
+    )
+
+    internal suspend fun ackStandaloneCoversJob0736(
+        jobId: String,
+        state: String = "RUNNING",
+    ): StandaloneCoversJobAckResponse0736 = request(
+        method = "POST",
+        path = "/v1/driver/standalone-covers/jobs/" + jobId.trim() + "/ack",
+        body = json.encodeToString(
+            StandaloneCoversJobAckRequest0736(
+                state = state.trim().uppercase(),
+                appVersion = br.com.mapeiaia.rotacerta.AppBuildInfo.versionName,
+                sourceCommitSha = br.com.mapeiaia.rotacerta.AppBuildInfo.commit,
+            ),
+        ),
+        requireDriverToken = true,
+        connectTimeoutMs = 12_000,
+        readTimeoutMs = 20_000,
+    )
+
+    internal suspend fun submitStandaloneCoversResult0736(
+        jobId: String,
+        status: String,
+        payload: BlaBlaStandaloneRideCoversPayload0734? = null,
+        errorCode: String = "",
+        errorMessage: String = "",
+    ): StandaloneCoversResultResponse0736 = request(
+        method = "PUT",
+        path = "/v1/driver/standalone-covers/jobs/" + jobId.trim() + "/result",
+        body = json.encodeToString(
+            StandaloneCoversResultRequest0736(
+                status = status.trim().uppercase(),
+                payload = payload,
+                errorCode = errorCode.trim().take(120),
+                errorMessage = errorMessage.trim().take(240),
+            ),
+        ),
+        requireDriverToken = true,
+        connectTimeoutMs = 12_000,
+        readTimeoutMs = 30_000,
     )
 
     suspend fun ensurePublicAgenda(publicAgendaToken: String): DriverAgendaEnsureResponse =
