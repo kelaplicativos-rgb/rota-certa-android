@@ -332,4 +332,15 @@ class BlaBlaStandaloneRideCoversExport0734Test {
         assertFalse(partial.isolation.opensTripDetails)
     }
 
+    @Test
+    fun remoteWorkerDoesNotRecollectTerminalJobs() {
+        assertTrue(isStandaloneCoversRemoteTerminalState0736("COMPLETE"))
+        assertTrue(isStandaloneCoversRemoteTerminalState0736("PARTIAL"))
+        assertTrue(isStandaloneCoversRemoteTerminalState0736("FAILED"))
+        assertTrue(isStandaloneCoversRemoteTerminalState0736("EXPIRED"))
+        assertFalse(isStandaloneCoversRemoteTerminalState0736("RUNNING"))
+        assertFalse(isStandaloneCoversRemoteTerminalState0736("PENDING_DEVICE"))
+        assertFalse(isStandaloneCoversRemoteTerminalState0736(null))
+    }
+
 }
