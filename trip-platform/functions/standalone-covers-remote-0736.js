@@ -240,6 +240,13 @@ function standaloneCoverRefreshDecision0736({
   return { action: "CREATE", retryAfterMillis: 0 };
 }
 
+function remoteCapablePushToken0736(data, nowMillis = Date.now()) {
+  const value = data && typeof data === "object" ? data : {};
+  return Number(value.expiresAtMillis || 0) > Number(nowMillis || 0) &&
+    clean0736(value.token, 4096).length >= 32 &&
+    Number(value.standaloneCoversRemoteVersion || 0) >= 1;
+}
+
 function createStandaloneCoversRemote0736({
   db,
   requireDriver,
@@ -333,13 +340,13 @@ function createStandaloneCoversRemote0736({
       .get();
     const now = Date.now();
     const active = snapshot.docs.filter((doc) =>
-      Number(doc.data().expiresAtMillis || 0) > now && clean0736(doc.data().token, 4096).length >= 32,
+      remoteCapablePushToken0736(doc.data(), now),
     );
     const jobRef = db.collection(JOB_COLLECTION_0736).doc(jobId);
     if (!active.length) {
       await jobRef.set({
         state: "PENDING_DEVICE",
-        errorCode: "NO_ACTIVE_DEVICE_PUSH_TOKEN",
+        errorCode: "NO_REMOTE_CAPABLE_DEVICE_PUSH_TOKEN",
         updatedAtMillis: now,
       }, { merge: true });
       return "PENDING_DEVICE";
@@ -682,5 +689,6 @@ module.exports = {
   shouldExpireStandaloneCoverResult0736,
   standaloneCoverResultTransition0736,
   standaloneCoverRefreshDecision0736,
+  remoteCapablePushToken0736,
   createStandaloneCoversRemote0736,
 };
