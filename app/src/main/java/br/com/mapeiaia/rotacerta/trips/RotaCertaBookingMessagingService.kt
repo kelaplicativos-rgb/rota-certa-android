@@ -191,6 +191,23 @@ class RotaCertaBookingMessagingService : FirebaseMessagingService() {
             )
             return
         }
+        if (isBlaBlaRemoteTripQueryEvent0737(event)) {
+            val jobId0737 = message.data["jobId"].orEmpty()
+            val enqueued0737 = BlaBlaRemoteTripQueryScheduler0737.enqueue(
+                context = this,
+                rawJobId = jobId0737,
+            )
+            UnifiedDebugEventStore.record(
+                if (enqueued0737) {
+                    "BLABLACAR_REMOTE_TRIP_QUERY_PUSH_ENQUEUED_0737"
+                } else {
+                    "BLABLACAR_REMOTE_TRIP_QUERY_PUSH_REJECTED_0737"
+                },
+                packageName,
+                "jobPresent=${jobId0737.isNotBlank()} agendaSync=false timelineWrite=false canonicalWrite=false",
+            )
+            return
+        }
         val remoteTripId = message.data["remoteTripId"].orEmpty()
         val bookingId = message.data["bookingId"].orEmpty()
         val seats = message.data["seats"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
