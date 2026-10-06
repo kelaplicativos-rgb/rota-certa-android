@@ -204,6 +204,18 @@ function shouldExpireStandaloneCoverResult0736(state, resultExpiresAtMillis, now
     expiresAt <= Number(nowMillis || 0);
 }
 
+function standaloneCoverResultTransition0736(currentState, requestedState) {
+  const current = clean0736(currentState, 32).toUpperCase();
+  const requested = clean0736(requestedState, 32).toUpperCase();
+  if (!TERMINAL_JOB_STATES_0736.has(current)) {
+    return { action: "WRITE", state: requested };
+  }
+  if (current === requested && current !== "EXPIRED") {
+    return { action: "IDEMPOTENT", state: current };
+  }
+  return { action: "REJECT", state: current };
+}
+
 function createStandaloneCoversRemote0736({
   db,
   requireDriver,
@@ -527,6 +539,25 @@ function createStandaloneCoversRemote0736({
       return fail(res, 400, "standalone_cover_result_status_invalid", "Status final da coleta remota inválido.");
     }
 
+    const transition = standaloneCoverResultTransition0736(owned.data.state, requestedStatus);
+    if (transition.action === "IDEMPOTENT") {
+      return json(res, 200, {
+        accepted: true,
+        jobId: owned.jobId,
+        state: transition.state,
+        idempotent: true,
+      });
+    }
+    if (transition.action === "REJECT") {
+      return fail(
+        res,
+        409,
+        "standalone_cover_terminal_state_conflict",
+        "A coleta remota já foi encerrada e não pode ser sobrescrita.",
+        { currentState: transition.state },
+      );
+    }
+
     let payload = null;
     if (requestedStatus === "COMPLETE" || requestedStatus === "PARTIAL") {
       try {
@@ -582,5 +613,6 @@ module.exports = {
   normalizePublicToken0736,
   canonicalUuid0736,
   shouldExpireStandaloneCoverResult0736,
+  standaloneCoverResultTransition0736,
   createStandaloneCoversRemote0736,
 };
