@@ -4,6 +4,15 @@ APK Android para analisar chamadas de corrida e avisar se o destino final do pas
 
 ## Atualizacao que preserva os dados
 
+A versao 0.1.739 (6030) atualiza a 0.1.738 (6029) com a mesma assinatura.
+Em Capturar HTMLs, os controles **Copiar acesso privado remoto** e
+**Verificar conexao remota** ficam visiveis mesmo sem acesso provisionado.
+A criacao do acesso privado nao depende do token de notificacoes; a tela
+informa separadamente se o aparelho foi registrado e permite nova tentativa.
+Registro concluido ainda nao comprova a resposta a uma consulta remota.
+O workflow `remote-access-button-0.1.739.yml` testa os controles na interface
+Android e a atualizacao sobre o APK exato da 0.1.738, preservando dados de teste.
+
 Cada nova entrega deve atualizar a instalacao existente: mesmo pacote
 `br.com.mapeiaia.rotacerta`, mesma chave estavel de assinatura e `versionCode`
 maior que o instalado. Nao use desinstalacao ou limpeza de dados como solucao.

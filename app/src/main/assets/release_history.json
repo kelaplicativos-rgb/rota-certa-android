@@ -2,6 +2,36 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.739",
+      "build": 6030,
+      "commit": null,
+      "branch": "codex/remote-access-button-0.1.739",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Disponibiliza os controles de copiar acesso privado e verificar conexão remota mesmo antes do provisionamento."
+      ],
+      "fixed": [
+        "Remove a dependência do registro FCM para criar o acesso privado remoto.",
+        "Permite nova tentativa e mostra falhas de conexão ou autenticação em vez de ocultar o botão."
+      ],
+      "improved": [
+        "Distingue acesso privado criado, registro de notificações pendente e resposta remota ainda não confirmada.",
+        "Mantém assinatura, pacote e armazenamento da versão 0.1.738 instalada."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Botão de copiar acesso privado remoto ausente"
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Capturar HTMLs",
+        "Acesso remoto",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.738",
       "build": 6029,
       "commit": null,

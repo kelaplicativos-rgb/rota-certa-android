@@ -1,9 +1,9 @@
 {
   "application_id": "br.com.mapeiaia.rotacerta",
-  "version_name": "0.1.737",
-  "version_code": 6028,
-  "source_commit": "43672e23f0393fd7b9fbe38989932cb51cff79d4",
-  "apk_sha256": "076e9dff5d9ffbcad70895b8bf6ed77dc0fe5c8a1dd11cb5e3d07db32e8298bc",
+  "version_name": "0.1.738",
+  "version_code": 6029,
+  "source_commit": "905815a2e7fd1d53a90f64778297cdc94cd5193d",
+  "apk_sha256": "0ce720c29f47ff228a48eae80b0490c5db09ebf4334184a488c1f8cfb25213ed",
   "signer_sha256": "d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd",
   "device_api": 36
 }

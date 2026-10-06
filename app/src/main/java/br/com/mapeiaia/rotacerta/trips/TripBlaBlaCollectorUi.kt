@@ -49,6 +49,9 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 // Compatibility markers consumed by the already-validated Step5 materializer:
 // UUID perfil 1 • UUID perfil 2 (opcional) • Mês — AAAA-MM • Buscar • rotas dinâmicas da Agenda
@@ -153,6 +156,65 @@ fun BlaBlaCollectorPanel(
     var standaloneExporting0734 by remember { mutableStateOf(false) }
     var standaloneMessage0734 by remember { mutableStateOf<String?>(null) }
     var standaloneRemoteAccess0736 by remember { mutableStateOf(standaloneRemoteAccessStore0736.read()) }
+    var standaloneRemoteConnecting0739 by remember { mutableStateOf(false) }
+    var standaloneRemoteMessage0739 by remember { mutableStateOf<String?>(null) }
+
+    fun copyRemoteAccess0739(access: StandaloneCoversRemoteAccess0736) {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText(
+            "Rota Certa — coleta remota avulsa", standaloneRemoteClipboardText0739(access),
+        ))
+        Toast.makeText(context, "Acesso privado da coleta remota copiado.", Toast.LENGTH_SHORT).show()
+    }
+
+    suspend fun connectRemoteAccess0739(copyWhenReady: Boolean = false) {
+        if (standaloneRemoteConnecting0739) return
+        standaloneRemoteConnecting0739 = true
+        standaloneRemoteMessage0739 = "Verificando acesso privado e registro do aparelho…"
+        try {
+            val result = withContext(Dispatchers.IO) {
+                val store = TripStore(context)
+                val settings = store.onlineSettings()
+                require(settings.configured && settings.publicBaseUrl.startsWith("https://")) {
+                    "Configure o acesso online do motorista e o endereço público em Configurações."
+                }
+                require(settings.driverUsername.isNotBlank()) {
+                    "Configure a identidade pública do motorista em Configurações."
+                }
+                provisionStandaloneRemoteAccess0739(
+                    provisionAccess = {
+                        standaloneRemoteAccessStore0736.save(
+                            settings.publicBaseUrl, TripRemoteApi(settings).ensureStandaloneCoversAccess0736(),
+                        )
+                    },
+                    registerPush = { BookingPushRegistration0304.ensureRegistered(context, store) },
+                )
+            }
+            standaloneRemoteAccess0736 = result.access
+            standaloneRemoteMessage0739 = result.message
+            if (copyWhenReady) copyRemoteAccess0739(result.access)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            // Keep private URLs and credentials out of messages and diagnostic logs.
+            standaloneRemoteAccess0736 = standaloneRemoteAccessStore0736.read()
+            standaloneRemoteMessage0739 = when (error) {
+                is IllegalArgumentException -> error.message
+                is TripRemoteApiException -> when (error.httpStatus) {
+                    401, 403 -> "O servidor recusou o acesso do motorista. Confira sua autenticação em Configurações e tente novamente."
+                    0 -> "Não foi possível conectar ao servidor. Confira a conexão com a internet e tente novamente."
+                    else -> "Não foi possível criar o acesso remoto (HTTP ${error.httpStatus}). Tente novamente."
+                }
+                else -> "Não foi possível preparar o acesso remoto. Confira sua conexão e tente novamente."
+            }
+            UnifiedDebugEventStore.record(
+                "STANDALONE_REMOTE_ACCESS_FAILED_0739", context.packageName,
+                "error=${error.javaClass.simpleName} retryAvailable=true",
+            )
+        } finally {
+            standaloneRemoteConnecting0739 = false
+        }
+    }
     var showAddAccount by remember { mutableStateOf(false) }
     var newAccountLabel by remember { mutableStateOf("") }
     var showDateScopeSelector by remember { mutableStateOf(false) }
@@ -447,16 +509,7 @@ fun BlaBlaCollectorPanel(
             onResult(published)
         }
 
-        runCatching {
-            BookingPushRegistration0304.ensureRegistered(
-                context = context,
-                store = TripStore(context),
-            )
-        }.onSuccess { registered0736 ->
-            if (registered0736) {
-                standaloneRemoteAccess0736 = standaloneRemoteAccessStore0736.read()
-            }
-        }
+        connectRemoteAccess0739()
     }
 
     LaunchedEffect(autoSyncToken, autoSyncProfileUuid, autoSyncTripId, syncing, archiving, manualSeatSyncing, accounts.size) {
@@ -763,43 +816,23 @@ fun BlaBlaCollectorPanel(
             )
             standaloneMessage0734?.let { Text(it) }
 
-            if (standaloneRemoteAccess0736.configured) {
-                Text("Coleta remota automática: pronta ✅")
-                OutlinedButton(
-                    onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val privateAccess = buildString {
-                            append("Rota Certa — coleta remota avulsa\n")
-                            append("Solicitar capas: ").append(standaloneRemoteAccess0736.refreshUrl).append('\n')
-                            append("Consultar capas: ").append(standaloneRemoteAccess0736.latestUrl)
-                            if (standaloneRemoteAccess0736.tripQueryBaseUrl.isNotBlank()) {
-                                append('\n')
-                                append("Consulta HTML por viagem: ").append(standaloneRemoteAccess0736.tripQueryBaseUrl)
-                            }
-                        }
-                        clipboard.setPrimaryClip(
-                            ClipData.newPlainText("Rota Certa — coleta remota avulsa", privateAccess),
-                        )
-                        Toast.makeText(
-                            context,
-                            "Acesso privado da coleta remota copiado.",
-                            Toast.LENGTH_SHORT,
-                        ).show()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("🔐 Copiar acesso privado remoto")
-                }
-                Text(
-                    "Compartilhe este acesso somente com quem pode consultar suas viagens. " +
-                        "Capas continuam isoladas; a consulta HTML dirigida lê uma viagem por profileUuid + tripId e não envia cookies, senha ou HTML bruto.",
-                )
-            } else {
-                Text(
-                    "Coleta remota automática: aguardando provisionamento online. " +
-                        "O download avulso manual continua disponível como fallback.",
-                )
-            }
+            StandaloneRemoteAccessActions0739(
+                connecting = standaloneRemoteConnecting0739,
+                message = standaloneRemoteMessage0739 ?: "O acesso remoto será verificado ao abrir esta tela.",
+                onCopy = {
+                    if (standaloneRemoteAccess0736.configured &&
+                        standaloneRemoteAccess0736.tripQueryBaseUrl.startsWith("https://")) {
+                        copyRemoteAccess0739(standaloneRemoteAccess0736)
+                    } else {
+                        standaloneScope0734.launch { connectRemoteAccess0739(copyWhenReady = true) }
+                    }
+                },
+                onVerify = { standaloneScope0734.launch { connectRemoteAccess0739() } },
+            )
+            Text(
+                "Compartilhe este acesso somente com quem pode consultar suas viagens. " +
+                    "Capas continuam isoladas; a consulta HTML dirigida lê uma viagem por profileUuid + tripId e não envia cookies, senha ou HTML bruto.",
+            )
 
             Text("A leitura usa somente a interface oficial logada. Senha não é capturada nem enviada ao Railway.")
             Text("Nas sincronizações normais, o Rota Certa guarda em área privada do app os MHTMLs necessários: /rides, resumo de cada viagem, passageiros individuais e opções de lugares. A coleta avulsa acima não usa esse pipeline; ela apenas baixa o JSON de capas solicitado.")
