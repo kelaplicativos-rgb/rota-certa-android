@@ -131,7 +131,7 @@ object RcDiagnosticFabric0741 {
     }
 
     fun snapshot(module: String? = null, limit: Int = 250): List<RcDiagnosticEvent> = synchronized(lock) {
-        events.asSequence().filter { module == null || it.module == safe(module) }.takeLast(limit.coerceIn(1, 1000)).toList()
+        events.filter { module == null || it.module == safe(module) }.takeLast(limit.coerceIn(1, 1000))
     }
 
     fun incidentSnapshot(): List<RcIncident> = synchronized(lock) { incidents.toList() }
