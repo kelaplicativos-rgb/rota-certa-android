@@ -3,15 +3,15 @@ package br.com.mapeiaia.rotacerta
 /**
  * 0.1.711 — a tela visível precisa renovar a autoridade do FAROL continuamente.
  *
- * O resultado não é persistente por ausência de eventos. Verde/vermelho + km possuem
- * um lease curto, revalidado pela tela atual. Se a tela não comprovar um endereço
- * válido dentro do TTL, o conteúdo público é limpo sem destruir/recriar a View.
+ * Verde/vermelho + km pertencem ao último endereço confirmado. Uma leitura vazia é
+ * NO_OBSERVATION: não prova que o card/contexto terminou e nunca deve apagar o resultado.
+ * Limpeza fica reservada a transições de contexto comprovadas pelo serviço.
  */
 object FarolOneSecondVisualAuthority0711 {
     const val CONTRACT_MARKER = "FAROL_ONE_SECOND_VISUAL_AUTHORITY_0711"
     const val RESULT_TTL_MILLIS = 1_000L
     const val HEARTBEAT_MILLIS = 700L
-    const val NO_ADDRESS_CLEARS_IMMEDIATELY_MARKER = "FAROL_NO_ADDRESS_CLEARS_IMMEDIATELY_0711"
+    const val NO_OBSERVATION_PRESERVES_MARKER = "FAROL_NO_OBSERVATION_PRESERVES_0740"
     const val SAME_ADDRESS_RENEWS_LEASE_MARKER = "FAROL_SAME_ADDRESS_RENEWS_LEASE_0711"
     const val CHANGED_ADDRESS_REVOKES_OLD_RESULT_MARKER = "FAROL_CHANGED_ADDRESS_REVOKES_OLD_RESULT_0711"
 
@@ -34,7 +34,9 @@ object FarolOneSecondVisualAuthority0711 {
         nowElapsedMillis: Long,
         lastConfirmedElapsedMillis: Long,
     ): Action {
-        if (observedAddressSignature.isNullOrBlank()) return Action.CLEAR_IDLE
+        if (observedAddressSignature.isNullOrBlank()) {
+            return if (!currentAddressSignature.isNullOrBlank() || hasPublicResult) Action.KEEP else Action.CLEAR_IDLE
+        }
         if (currentAddressSignature.isNullOrBlank()) return Action.PROCESS
         if (currentAddressSignature != observedAddressSignature) return Action.CLEAR_THEN_PROCESS
         if (hasPublicResult && !expired(nowElapsedMillis, lastConfirmedElapsedMillis)) return Action.KEEP
