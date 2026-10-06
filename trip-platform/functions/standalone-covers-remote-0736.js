@@ -226,6 +226,7 @@ function standaloneCoverRefreshDecision0736({
   const state = clean0736(latestState, 32).toUpperCase();
   const activeAndFresh =
     ACTIVE_JOB_STATES_0736.has(state) &&
+    state !== "PENDING_DEVICE" &&
     Number(latestExpiresAtMillis || 0) > now;
   if (activeAndFresh) return { action: "REUSE_ACTIVE", retryAfterMillis: 0 };
 
