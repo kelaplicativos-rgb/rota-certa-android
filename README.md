@@ -148,7 +148,7 @@ O projeto possui workflow do GitHub Actions para gerar o APK debug automaticamen
 3. Toque em `Build Debug APK`.
 4. Abra a execucao mais recente.
 5. Aguarde ficar verde.
-6. Baixe o artefato `rota-certa-debug-apk`.
+6. Baixe o artefato `rota-certa-debug-apk-<commit>` da execucao correspondente ao codigo desejado.
 7. Extraia o ZIP baixado.
 8. Instale o `app-debug.apk` no Android.
 
@@ -167,6 +167,26 @@ Para rodar os testes unitarios antes do APK:
 ```bash
 sh ./gradlew testDebugUnitTest
 ```
+
+Para gerar um APK validado com a mesma verificacao usada no GitHub Actions:
+
+```bash
+python3 -B -m unittest discover -s scripts/tests -v
+python3 -B scripts/build_validated_apk.py
+```
+
+Configure `ANDROID_HOME` ou `ANDROID_SDK_ROOT` e instale a plataforma Android 35
+e `build-tools;35.0.0`. O codigo precisa estar commitado, sem alteracoes locais.
+O fluxo executa `clean`, testes unitarios, lint e build em uma unica chamada ao
+Gradle, preservando os relatorios. A chave Google Maps e opcional, como no app.
+
+O resultado fica em `app/build/validated-apk/app-debug.apk`, acompanhado de
+`validation.json`, commit, SHA-256, metadados de pacote/versao, verificacao de
+assinatura e log. O fluxo rejeita um checkout diferente do commit esperado,
+alteracoes de codigo durante o build, testes/lint com falhas e APK com versao
+divergente. No Actions, o commit do PR ou da execucao e usado diretamente,
+sem substituir o codigo por uma branch fixa. O workflow disponibiliza o
+artefato validado, sem sobrescrever releases de versoes antigas.
 
 O APK fica em:
 
