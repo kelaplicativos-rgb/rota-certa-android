@@ -10,6 +10,7 @@ const {
   normalizePublicToken0736,
   canonicalUuid0736,
   shouldExpireStandaloneCoverResult0736,
+  standaloneCoverResultTransition0736,
   MAX_PAYLOAD_BYTES_0736,
 } = require("../standalone-covers-remote-0736");
 
@@ -146,4 +147,32 @@ test("resultado remoto é temporário e expira sem virar inventário válido", (
   assert.equal(shouldExpireStandaloneCoverResult0736("COMPLETE", now + 1, now), false);
   assert.equal(shouldExpireStandaloneCoverResult0736("RUNNING", now - 1, now), false);
   assert.equal(shouldExpireStandaloneCoverResult0736("EXPIRED", now - 1, now), false);
+});
+
+
+test("resultado terminal remoto é idempotente e nunca regride", () => {
+  assert.deepEqual(
+    standaloneCoverResultTransition0736("RUNNING", "COMPLETE"),
+    { action: "WRITE", state: "COMPLETE" },
+  );
+  assert.deepEqual(
+    standaloneCoverResultTransition0736("COMPLETE", "COMPLETE"),
+    { action: "IDEMPOTENT", state: "COMPLETE" },
+  );
+  assert.deepEqual(
+    standaloneCoverResultTransition0736("PARTIAL", "PARTIAL"),
+    { action: "IDEMPOTENT", state: "PARTIAL" },
+  );
+  assert.deepEqual(
+    standaloneCoverResultTransition0736("COMPLETE", "PARTIAL"),
+    { action: "REJECT", state: "COMPLETE" },
+  );
+  assert.deepEqual(
+    standaloneCoverResultTransition0736("FAILED", "COMPLETE"),
+    { action: "REJECT", state: "FAILED" },
+  );
+  assert.deepEqual(
+    standaloneCoverResultTransition0736("EXPIRED", "COMPLETE"),
+    { action: "REJECT", state: "EXPIRED" },
+  );
 });
