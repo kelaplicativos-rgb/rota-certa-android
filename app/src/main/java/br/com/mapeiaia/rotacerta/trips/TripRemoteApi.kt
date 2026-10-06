@@ -60,6 +60,7 @@ data class DriverPushTokenRequest(
     val appVersion: String = "",
     val deviceLabel: String = "",
     val standaloneCoversRemoteVersion: Int = 1,
+    val blablacarHtmlRemoteVersion: Int = 1,
 )
 
 @Serializable
@@ -1047,6 +1048,53 @@ class TripRemoteApi(
         path = "/v1/driver/standalone-covers/jobs/" + jobId.trim() + "/result",
         body = json.encodeToString(
             StandaloneCoversResultRequest0736(
+                status = status.trim().uppercase(),
+                payload = payload,
+                errorCode = errorCode.trim().take(120),
+                errorMessage = errorMessage.trim().take(240),
+            ),
+        ),
+        requireDriverToken = true,
+        connectTimeoutMs = 12_000,
+        readTimeoutMs = 30_000,
+    )
+
+    internal suspend fun ensureBlaBlaHtmlRemoteAccess0737(): BlaBlaHtmlRemoteAccessResponse0737 = request(
+        method = "POST",
+        path = "/v1/driver/blablacar-html/access/ensure",
+        body = "{}",
+        requireDriverToken = true,
+    )
+
+    internal suspend fun ackBlaBlaHtmlRemoteJob0737(
+        jobId: String,
+        state: String = "RUNNING",
+    ): BlaBlaHtmlRemoteJobAckResponse0737 = request(
+        method = "POST",
+        path = "/v1/driver/blablacar-html/jobs/" + jobId.trim() + "/ack",
+        body = json.encodeToString(
+            BlaBlaHtmlRemoteJobAckRequest0737(
+                state = state.trim().uppercase(),
+                appVersion = br.com.mapeiaia.rotacerta.AppBuildInfo.versionName,
+                sourceCommitSha = br.com.mapeiaia.rotacerta.AppBuildInfo.commit,
+            ),
+        ),
+        requireDriverToken = true,
+        connectTimeoutMs = 12_000,
+        readTimeoutMs = 20_000,
+    )
+
+    internal suspend fun submitBlaBlaHtmlRemoteResult0737(
+        jobId: String,
+        status: String,
+        payload: BlaBlaHtmlRemotePayload0737? = null,
+        errorCode: String = "",
+        errorMessage: String = "",
+    ): BlaBlaHtmlRemoteResultResponse0737 = request(
+        method = "PUT",
+        path = "/v1/driver/blablacar-html/jobs/" + jobId.trim() + "/result",
+        body = json.encodeToString(
+            BlaBlaHtmlRemoteResultRequest0737(
                 status = status.trim().uppercase(),
                 payload = payload,
                 errorCode = errorCode.trim().take(120),
