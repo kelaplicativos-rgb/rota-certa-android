@@ -2,6 +2,40 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.738",
+      "build": 6029,
+      "commit": null,
+      "branch": "agent/direct-shortcut-grid-0.1.738",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A grade de atalhos passa a abrir diretamente o destino real dos módulos, reutilizando o roteador openShortcutModule0171 já existente.",
+        "Mantém ações instantâneas como Print, Capturar, Fala, Cena, WhatsApp, copiar e limpar executadas no próprio toque, sem tela intermediária."
+      ],
+      "fixed": [
+        "Corrige o atalho Viagens, que antes caía em OpenSettings e abria a Home recolhida em vez de abrir a Agenda de Viagens.",
+        "Corrige o mesmo fallback genérico para Rota, Destino, Alertas, Locais, Radares, Aparência, Permissões, Backup e Relatórios."
+      ],
+      "improved": [
+        "Preserva o contrato de no máximo dois toques a partir da bolinha principal até o recurso solicitado.",
+        "Mantém trip_agenda usando OpenSettings por identidade, sem expandir o enum compartilhado com o FAROL.",
+        "Adiciona regressão automatizada que proíbe atalhos de módulo de voltarem a usar openHomeCollapsed0186 como destino primário."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Grade de atalhos funcionando como acesso indireto à Home",
+        "Viagens exigindo um toque extra no card Agenda de Viagens"
+      ],
+      "modulesAffected": [
+        "Grade de atalhos",
+        "Navegação",
+        "Agenda de Viagens",
+        "Home",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.737",
       "build": 6028,
       "commit": null,
