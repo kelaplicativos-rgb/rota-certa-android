@@ -268,7 +268,7 @@ function createBlaBlaOperationalRemote0737({ db, requireDriver, getMessaging, no
     return { driver, jobId, ref, data: snap.data() };
   }
 
-  async function sendPush0737(driverUsername, job) {
+  async function sendPush0737(driverUsername, job, callbackToken) {
     const snapshot = await db.collection("tripDriverPushTokens").where("driverUsername", "==", driverUsername).limit(20).get();
     const active = snapshot.docs.filter((doc) => operationalRemoteCapable0737(doc.data()));
     const ref = db.collection(JOB_COLLECTION_0737).doc(job.jobId);
@@ -285,6 +285,7 @@ function createBlaBlaOperationalRemote0737({ db, requireDriver, getMessaging, no
           profileUuid: job.profileUuid,
           tripId: job.tripId,
           tripHref: job.tripHref,
+          callbackToken,
         },
         android: { priority: "high", ttl: JOB_TTL_MILLIS_0737 },
       });
@@ -331,6 +332,7 @@ function createBlaBlaOperationalRemote0737({ db, requireDriver, getMessaging, no
     if (!cover.href) return { blocked: true, errorCode: cover.errorCode || "COMPLETE_COVERS_REQUIRED" };
 
     const jobId = crypto.randomUUID();
+    const callbackToken = makeAccessToken0737();
     const job = {
       jobId,
       driverUsername,
@@ -346,12 +348,13 @@ function createBlaBlaOperationalRemote0737({ db, requireDriver, getMessaging, no
       payload: null,
       errorCode: "",
       errorMessage: "",
+      callbackTokenHash: sha256Hex0737(callbackToken),
     };
     const batch = db.batch();
     batch.set(db.collection(JOB_COLLECTION_0737).doc(jobId), job);
     batch.set(stateRef, { driverUsername, profileUuid, tripId, latestJobId: jobId, lastRequestedAtMillis: now, updatedAtMillis: now }, { merge: true });
     await batch.commit();
-    await sendPush0737(driverUsername, job);
+    await sendPush0737(driverUsername, job, callbackToken);
     const after = await db.collection(JOB_COLLECTION_0737).doc(jobId).get();
     const saved = after.exists ? after.data() : job;
     return { jobId, state: clean0737(saved.state, 32) || "PENDING_DEVICE", reused: false, requestedAtMillis: now };
@@ -445,6 +448,114 @@ function createBlaBlaOperationalRemote0737({ db, requireDriver, getMessaging, no
     });
   }
 
+  async function requireCallbackJob0737(res, jobIdRaw, tokenRaw) {
+    const jobId = canonicalUuid0736(jobIdRaw);
+    const token = normalizeAccessToken0737(tokenRaw);
+    if (!jobId || !token) {
+      fail(res, 404, "operational_callback_not_found", "Consulta operacional não encontrada.");
+      return null;
+    }
+    const ref = db.collection(JOB_COLLECTION_0737).doc(jobId);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      fail(res, 404, "operational_callback_not_found", "Consulta operacional não encontrada.");
+      return null;
+    }
+    const data = snap.data() || {};
+    if (clean0737(data.callbackTokenHash, 80) !== sha256Hex0737(token)) {
+      fail(res, 404, "operational_callback_not_found", "Consulta operacional não encontrada.");
+      return null;
+    }
+    return { jobId, ref, data };
+  }
+
+  async function ackPublic0737(req, res, jobIdRaw, tokenRaw) {
+    const owned = await requireCallbackJob0737(res, jobIdRaw, tokenRaw);
+    if (!owned) return;
+    const current = clean0737(owned.data.state, 32).toUpperCase();
+    if (TERMINAL_STATES_0737.has(current)) {
+      return json(res, 200, { accepted: true, jobId: owned.jobId, state: current });
+    }
+    const now = Date.now();
+    if (Number(owned.data.expiresAtMillis || 0) > 0 && Number(owned.data.expiresAtMillis) <= now) {
+      await owned.ref.set({ state: "EXPIRED", updatedAtMillis: now }, { merge: true });
+      return fail(res, 409, "operational_job_expired", "A consulta expirou antes da execução.");
+    }
+    await owned.ref.set({
+      state: "RUNNING",
+      deviceAppVersion: clean0737(req.body && req.body.appVersion, 40),
+      deviceSourceCommitSha: clean0737(req.body && req.body.sourceCommitSha, 80),
+      startedAtMillis: Number(owned.data.startedAtMillis || 0) || now,
+      updatedAtMillis: now,
+      errorCode: "",
+      errorMessage: "",
+    }, { merge: true });
+    return json(res, 200, { accepted: true, jobId: owned.jobId, state: "RUNNING" });
+  }
+
+  async function submitPublicResult0737(req, res, jobIdRaw, tokenRaw) {
+    const owned = await requireCallbackJob0737(res, jobIdRaw, tokenRaw);
+    if (!owned) return;
+    const current = clean0737(owned.data.state, 32).toUpperCase();
+    const requestedStatus = clean0737(req.body && req.body.status, 20).toUpperCase();
+    if (!RESULT_STATES_0737.has(requestedStatus)) {
+      return fail(res, 400, "operational_result_status_invalid", "Status final inválido.");
+    }
+    if (TERMINAL_STATES_0737.has(current)) {
+      if (current === requestedStatus && current !== "EXPIRED") {
+        return json(res, 200, { accepted: true, jobId: owned.jobId, state: current, idempotent: true });
+      }
+      return fail(res, 409, "operational_terminal_state_conflict", "A consulta já foi encerrada.", { currentState: current });
+    }
+
+    let payload = null;
+    if (requestedStatus === "COMPLETE" || requestedStatus === "PARTIAL") {
+      try {
+        payload = sanitizeOperationalPayload0737(req.body && req.body.payload);
+      } catch (error) {
+        return fail(res, 400, "operational_payload_invalid", clean0737(error && error.message, 240) || "Payload inválido.");
+      }
+      if (payload.result !== requestedStatus) {
+        return fail(res, 400, "operational_result_mismatch", "Status diverge do payload.");
+      }
+      if (payload.profileUuid !== owned.data.profileUuid || payload.tripId !== owned.data.tripId) {
+        return fail(res, 409, "operational_identity_mismatch", "Resultado diverge da identidade solicitada.");
+      }
+    } else if (req.body && req.body.payload != null) {
+      return fail(res, 400, "operational_failed_payload_forbidden", "FAILED não pode transportar resultado.");
+    }
+
+    const now = Date.now();
+    await owned.ref.set({
+      state: requestedStatus,
+      payload,
+      errorCode: requestedStatus === "FAILED"
+        ? clean0737(req.body && req.body.errorCode, 160) || "OPERATIONAL_DEVICE_COLLECTION_FAILED"
+        : "",
+      errorMessage: "",
+      completedAtMillis: now,
+      updatedAtMillis: now,
+      resultExpiresAtMillis: now + RESULT_TTL_MILLIS_0737,
+    }, { merge: true });
+
+    const username = normalizeUsername(owned.data.driverUsername);
+    const stateRef = db.collection(STATE_COLLECTION_0737).doc(
+      targetStateId0737(username, owned.data.profileUuid, owned.data.tripId),
+    );
+    const update = {
+      latestCompletedJobId: owned.jobId,
+      latestCompletedState: requestedStatus,
+      latestCompletedAtMillis: now,
+      updatedAtMillis: now,
+    };
+    if (requestedStatus === "COMPLETE") {
+      update.lastCompleteJobId = owned.jobId;
+      update.lastCompleteAtMillis = now;
+    }
+    await stateRef.set(update, { merge: true });
+    return json(res, 200, { accepted: true, jobId: owned.jobId, state: requestedStatus });
+  }
+
   async function ackJob0737(req, res, jobIdRaw) {
     const owned = await requireOwnedJob0737(req, res, jobIdRaw);
     if (!owned) return;
@@ -519,7 +630,7 @@ function createBlaBlaOperationalRemote0737({ db, requireDriver, getMessaging, no
     return json(res, 200, { accepted: true, jobId: owned.jobId, state: requestedStatus });
   }
 
-  return { ensureAccess0737, refreshPublic0737, latestPublic0737, ackJob0737, submitResult0737 };
+  return { ensureAccess0737, refreshPublic0737, latestPublic0737, ackPublic0737, submitPublicResult0737, ackJob0737, submitResult0737 };
 }
 
 module.exports = {
