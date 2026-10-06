@@ -15,6 +15,7 @@ const { CONTRACT_VERSION_0702, LEASE_MILLIS_0702, COLLECTION_0702, learningKey07
 const { createLiveAgendaFeed0701 } = require("./live-agenda-feed-0701");
 const { createLiveAgendaTool0732 } = require("./live-agenda-tool-0732");
 const { createStandaloneCoversRemote0736 } = require("./standalone-covers-remote-0736");
+const { createBlaBlaHtmlRemote0737 } = require("./blablacar-html-remote-0737");
 const { buildProfileUpdate } = require("./public-profile-policy");
 const { cleanIdentifier, deriveRotationToken, tokenMatches } = require("./public-agenda-link-policy");
 const { createAgendaAdmin0417, safeVisibility0417 } = require("./agenda-admin-0417");
@@ -196,6 +197,10 @@ async function registerDriverPushToken(req, res) {
     standaloneCoversRemoteVersion: Math.max(
       0,
       Math.min(10, Math.floor(Number(req.body && req.body.standaloneCoversRemoteVersion || 0))),
+    ),
+    blablacarHtmlRemoteVersion: Math.max(
+      0,
+      Math.min(10, Math.floor(Number(req.body && req.body.blablacarHtmlRemoteVersion || 0))),
     ),
     createdAtMillis: now,
     updatedAtMillis: now,
@@ -11546,6 +11551,15 @@ const standaloneCoversRemote0736 = createStandaloneCoversRemote0736({
   fail,
 });
 
+const blaBlaHtmlRemote0737 = createBlaBlaHtmlRemote0737({
+  db,
+  requireDriver,
+  getMessaging,
+  normalizeUsername,
+  json,
+  fail,
+});
+
 const liveTracking0668 = createLiveTracking0668({ db, requireDriver });
 
 const agendaAdmin0417 = createAgendaAdmin0417({
@@ -11657,6 +11671,34 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     if (req.method === "POST" && path === "/v1/driver/standalone-covers/request") {
       return await standaloneCoversRemote0736.requestAuthenticated0736(req, res);
     }
+    if (req.method === "POST" && path === "/v1/driver/blablacar-html/access/ensure") {
+      return await blaBlaHtmlRemote0737.ensureAccess0737(req, res);
+    }
+    if (req.method === "POST" && path === "/v1/driver/blablacar-html/request") {
+      return await blaBlaHtmlRemote0737.requestAuthenticated0737(req, res);
+    }
+    if (
+      req.method === "POST" &&
+      parts.length === 6 &&
+      parts[0] === "v1" &&
+      parts[1] === "driver" &&
+      parts[2] === "blablacar-html" &&
+      parts[3] === "jobs" &&
+      parts[5] === "ack"
+    ) {
+      return await blaBlaHtmlRemote0737.ackJob0737(req, res, parts[4]);
+    }
+    if (
+      req.method === "PUT" &&
+      parts.length === 6 &&
+      parts[0] === "v1" &&
+      parts[1] === "driver" &&
+      parts[2] === "blablacar-html" &&
+      parts[3] === "jobs" &&
+      parts[5] === "result"
+    ) {
+      return await blaBlaHtmlRemote0737.submitResult0737(req, res, parts[4]);
+    }
     if (
       req.method === "POST" &&
       parts.length === 6 &&
@@ -11698,6 +11740,28 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
       parts[4] === "latest"
     ) {
       return await standaloneCoversRemote0736.latestPublic0736(req, res, parts[3]);
+    }
+    if (
+      req.method === "GET" &&
+      parts.length === 6 &&
+      parts[0] === "v1" &&
+      parts[1] === "public" &&
+      parts[2] === "blablacar-html" &&
+      parts[4] === "trip" &&
+      parts[5] === "refresh"
+    ) {
+      return await blaBlaHtmlRemote0737.refreshPublic0737(req, res, parts[3]);
+    }
+    if (
+      req.method === "GET" &&
+      parts.length === 6 &&
+      parts[0] === "v1" &&
+      parts[1] === "public" &&
+      parts[2] === "blablacar-html" &&
+      parts[4] === "trip" &&
+      parts[5] === "latest"
+    ) {
+      return await blaBlaHtmlRemote0737.latestPublic0737(req, res, parts[3]);
     }
     if (req.method === "POST" && path === "/v1/driver/tracking/sessions") return await liveTracking0668.createSession(req, res);
     if (req.method === "POST" && path === "/v1/driver/tracking/shares") return await liveTracking0668.createShare(req, res);
