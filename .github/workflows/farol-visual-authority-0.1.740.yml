@@ -82,7 +82,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           grep -Fq 'val releaseVersionName = "0.1.740"' app/build.gradle.kts
-          grep -Fq 'val releaseVersionCode = 6_004' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 6_031' app/build.gradle.kts
           grep -Fq '"version": "0.1.740"' app/src/main/assets/release_history.json
           grep -Fq 'FAROL_ONE_SECOND_VISUAL_AUTHORITY_0711' app/src/main/java/br/com/mapeiaia/rotacerta/FarolOneSecondVisualAuthority0711.kt
           grep -Fq 'RESULT_TTL_MILLIS = 1_000L' app/src/main/java/br/com/mapeiaia/rotacerta/FarolOneSecondVisualAuthority0711.kt
@@ -91,9 +91,9 @@ jobs:
           grep -Fq 'FULL_LOCALITY_PRESERVED_TO_OFFLINE_GEOCODER_0711' app/src/main/java/br/com/mapeiaia/rotacerta/FarolCausalCorrectionStage21.kt
           grep -Fq 'FAROL_ORGANIC_OFFLINE_RESOLVED_0711' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
           grep -Fq 'verifyCurrentVisualAuthority0711' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-          grep -Fq 'FAROL_ROAD_KM_FINALITY_0740' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRoadKmFinality0740.kt
-          grep -Fq 'FAROL_LOCAL_KM_NEVER_PUBLIC_0740' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRoadKmFinality0740.kt
-          grep -Fq 'FAROL_ROAD_KM_CONFIRMED_PUBLIC_0740' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRoadKmFinality0740.kt
+          grep -Fq 'FAROL_ROAD_KM_FINALITY_0713' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRoadKmFinality0713.kt
+          grep -Fq 'FAROL_LOCAL_KM_NEVER_PUBLIC_0713' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRoadKmFinality0713.kt
+          grep -Fq 'FAROL_ROAD_KM_CONFIRMED_PUBLIC_0713' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRoadKmFinality0713.kt
           ! grep -Fq 'Lease visual de 1 segundo expirou sem nova confirmação do endereço atual.' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -Fq 'OrganicMapsEmbeddedRuntime0711.COMPATIBLE_DATA_VERSION_FOLDER' app/src/main/java/br/com/mapeiaia/rotacerta/OfflineMapStore0708.kt
           PASSENGERS='app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt'
@@ -118,13 +118,14 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:verifyReleaseHistory --no-daemon --stacktrace | tee /tmp/release-history.log
+          ./gradlew :app:verifyReleaseHistory :app:verifyAndroidUpdateContract --no-daemon --stacktrace | tee /tmp/release-history.log
           ./gradlew :app:testDebugUnitTest \
-            --tests 'br.com.mapeiaia.rotacerta.FarolRoadKmFinality0740Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolRoadKmFinality0713Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTouchIsolation0712Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTrackingControl0706Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.TimelinePerformance0705ContractTest' \
             --tests 'br.com.mapeiaia.rotacerta.FarolOneSecondVisualAuthority0711Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolVisualAuthority0740ContractTest' \
             --tests 'br.com.mapeiaia.rotacerta.FarolFullLocalityPreservation0711Test' \
             --tests 'br.com.mapeiaia.rotacerta.GpsOfflineGridShortcut0710Test' \
             --tests 'br.com.mapeiaia.rotacerta.OrganicMapsOfflineBridge0709Test' \
@@ -146,7 +147,7 @@ jobs:
             --no-daemon --max-workers=1 --no-parallel --stacktrace \
             | tee /tmp/sealed-farol-regression.log
 
-      - name: Compare complete Android failures with exact 0.1.712 base
+      - name: Compare complete Android failures with exact 0.1.739 base
         shell: bash
         run: |
           set -euo pipefail
@@ -221,17 +222,19 @@ jobs:
           grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
           grep -Fq 'FAROL_ONE_SECOND_VISUAL_AUTHORITY_0711' /tmp/dex-strings.txt
           grep -Fq 'FAROL_NO_OBSERVATION_PRESERVES_0740' /tmp/dex-strings.txt
+          grep -Fq 'FAROL_REFERENCE_CHANGED_RECALCULATE_0740' /tmp/dex-strings.txt
+          grep -Fq 'FAROL_PAID_AI_STALE_DROPPED_0740' /tmp/dex-strings.txt
           grep -Fq 'FAROL_CHANGED_ADDRESS_REVOKES_OLD_RESULT_0711' /tmp/dex-strings.txt
           grep -Fq 'ORGANIC_MAPS_EMBEDDED_RUNTIME_0711' /tmp/dex-strings.txt
           grep -Fq 'FULL_LOCALITY_PRESERVED_TO_OFFLINE_GEOCODER_0711' /tmp/dex-strings.txt
           grep -Fq 'FAROL_ORGANIC_OFFLINE_RESOLVED_0711' /tmp/dex-strings.txt
           grep -Fq 'PASSENGER_TRACKING_STOP_REQUEST_0712' /tmp/dex-strings.txt
-          grep -Fq 'FAROL_ROAD_KM_FINALITY_0740' /tmp/dex-strings.txt
-          grep -Fq 'FAROL_LOCAL_KM_NEVER_PUBLIC_0740' /tmp/dex-strings.txt
-          grep -Fq 'FAROL_ROAD_KM_CONFIRMED_PUBLIC_0740' /tmp/dex-strings.txt
+          grep -Fq 'FAROL_ROAD_KM_FINALITY_0713' /tmp/dex-strings.txt
+          grep -Fq 'FAROL_LOCAL_KM_NEVER_PUBLIC_0713' /tmp/dex-strings.txt
+          grep -Fq 'FAROL_ROAD_KM_CONFIRMED_PUBLIC_0713' /tmp/dex-strings.txt
 
           SHORT_SHA="$(git rev-parse --short=12 HEAD)"
-          FINAL="rota-certa-0.1.740-6004-$SHORT_SHA.apk"
+          FINAL="rota-certa-0.1.740-6031-$SHORT_SHA.apk"
           cp "$APK" "$FINAL"
           APK_SHA256="$(sha256sum "$FINAL" | awk '{print $1}')"
           sha256sum "$FINAL" | tee /tmp/apk-sha256.txt
@@ -252,6 +255,9 @@ jobs:
             echo "visualResultTtlMs=1000"
             echo "visualHeartbeatMs=700"
             echo "noObservationPreservesConfirmedResult=true"
+            echo "referenceChangedRecalculatesLastObservedA=true"
+            echo "stalePaidAiGenerationDropped=true"
+            echo "verifyAndroidUpdateContract=PASS"
             echo "changedAddressRevokesOldResult=true"
             echo "offlineGeocoderFirst=true"
             echo "passengerCardTouchIsolated=true"
