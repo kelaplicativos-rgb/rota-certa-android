@@ -666,6 +666,10 @@ function createStandaloneCoversRemote0736({
     return json(res, 200, { accepted: true, jobId: owned.jobId, state: requestedStatus });
   }
 
+  async function resolveAccessForExtension0737(tokenRaw) {
+    return resolveAccess0736(tokenRaw);
+  }
+
   return {
     ensureAccess0736,
     requestAuthenticated0736,
@@ -673,6 +677,7 @@ function createStandaloneCoversRemote0736({
     latestPublic0736,
     ackJob0736,
     submitResult0736,
+    resolveAccessForExtension0737,
   };
 }
 
