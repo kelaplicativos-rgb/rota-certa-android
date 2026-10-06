@@ -3547,9 +3547,12 @@ class LiveRideAccessibilityService : AccessibilityService() {
                                             details = "color=${transientLeaseStage44.color}; distance=${transientLeaseStage44.distanceKm ?: -1.0}; signature=${universalActiveAddressSignature.orEmpty()}; surface=${surfaceTokenStage46.packageName.orEmpty()}; active=${transientPresenceStage44.active}; hardClear=false",
                                         )
                                     } else {
-                                        hardClearUniversalTwoAddress(
-                                            reason = "Snapshot visual atual sem dois endereços semanticamente completos Stage23 e sem lease Stage44 ativa nem lease semântica em andamento.",
-                                            keepWaitingYellow = true,
+                                        FarolMaximumForensicsStage38.record(
+                                            SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(),
+                                            FarolOneSecondVisualAuthority0711.NO_OBSERVATION_PRESERVES_MARKER,
+                                            eventPackageStage19,
+                                            cycleId = cycleIdStage20, operationId = "ocr-$serialStage19",
+                                            details = "reason=ocr_no_candidate; color=$currentRadarColor; distance=${currentDistanceKm ?: -1.0}; binding=${universalActiveAddressSignature.orEmpty()}; hardClear=false",
                                         )
                                     }
                                 }
@@ -4716,18 +4719,20 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val root0711 = visible0711.rootHandle
         val package0711 = normalizePackageName(root0711?.packageName)
         if (root0711 == null || package0711 == null || package0711 !in selected0711) {
-            hardClearUniversalTwoAddress(
-                reason = "Heartbeat visual: nenhum aplicativo de corrida selecionado com endereço atual.",
-                keepWaitingYellow = false,
+            UnifiedDebugEventStore.record(
+                FarolOneSecondVisualAuthority0711.NO_OBSERVATION_PRESERVES_MARKER,
+                package0711,
+                "reason=authorized_root_not_observed; color=$currentRadarColor; distance=$currentDistanceKm; binding=${universalActiveAddressSignature.orEmpty()}",
             )
             return
         }
 
         val text0711 = collectImmediateVisibleTextChecklist13(root0711.node)
         if (text0711.isBlank()) {
-            hardClearUniversalTwoAddress(
-                reason = "Heartbeat visual: tela atual sem texto/endereço de corrida.",
-                keepWaitingYellow = false,
+            UnifiedDebugEventStore.record(
+                FarolOneSecondVisualAuthority0711.NO_OBSERVATION_PRESERVES_MARKER,
+                package0711,
+                "reason=visible_text_empty; color=$currentRadarColor; distance=$currentDistanceKm; binding=${universalActiveAddressSignature.orEmpty()}",
             )
             scheduleScreenshotFallback127(package0711)
             return
@@ -4754,9 +4759,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
             FarolUniversalVisualPipelineStage19.evaluate(listOf(block0711))
         }
         if (evaluation0711 == null) {
-            hardClearUniversalTwoAddress(
-                reason = "Heartbeat visual: nenhum endereço válido permanece no card atual.",
-                keepWaitingYellow = false,
+            UnifiedDebugEventStore.record(
+                FarolOneSecondVisualAuthority0711.NO_OBSERVATION_PRESERVES_MARKER,
+                package0711,
+                "reason=no_valid_address_observed; color=$currentRadarColor; distance=$currentDistanceKm; binding=${universalActiveAddressSignature.orEmpty()}",
             )
             scheduleScreenshotFallback127(package0711)
             return
@@ -4805,11 +4811,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
         val sanitized0711 = FarolRouteAddressSanitizer0684.sanitize(evaluation0711.destination)
         if (!sanitized0711.accepted || sanitized0711.sanitized.isNullOrBlank()) {
-            hardClearUniversalTwoAddress(
-                reason = "Heartbeat visual: endereço atual existe, mas ainda não é inequívoco.",
-                keepWaitingYellow = true,
+            UnifiedDebugEventStore.record(
+                FarolOneSecondVisualAuthority0711.NO_OBSERVATION_PRESERVES_MARKER,
+                package0711,
+                "reason=address_ambiguous; sanitizer=${sanitized0711.reason}; color=$currentRadarColor; distance=$currentDistanceKm; binding=${universalActiveAddressSignature.orEmpty()}",
             )
-            farolLastConfirmedAddressAtElapsed0711 = now0711
             scheduleScreenshotFallback127(package0711)
             return
         }
