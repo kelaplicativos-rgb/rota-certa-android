@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: blablacar-standalone-covers-remote-0736-${{ github.ref }}
+  group: blablacar-remote-trip-query-0737-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -59,7 +59,7 @@ jobs:
           test -s trip-platform/functions/test/standalone-covers-remote-0736.test.js
           test -s trip-platform/functions/test/blablacar-trip-query-remote-0737.test.js
           grep -Fq 'val releaseVersionName = "0.1.737"' app/build.gradle.kts
-          grep -Fq 'val releaseVersionCode = 6_027' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 6_028' app/build.gradle.kts
           grep -Fq '"version": "0.1.737"' app/src/main/assets/release_history.json
           grep -Fq '⬇️ Baixar capas (avulso)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
           grep -Fq 'writesTimeline: Boolean = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt
@@ -80,6 +80,8 @@ jobs:
           grep -Fq 'persistPrivateMetadata0653 = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRemoteTripQuery0737.kt
           grep -Fq 'tripStandaloneCoverJobs0736' trip-platform/functions/standalone-covers-remote-0736.js
           grep -Fq '/v1/public/standalone-covers/' trip-platform/functions/standalone-covers-remote-0736.js
+          grep -Fq 'tripBlaBlaQueryJobs0737' trip-platform/functions/blablacar-trip-query-remote-0737.js
+          grep -Fq 'blablacarTripQueryRemote0737.refreshPublic0737' trip-platform/functions/index.js
           ! grep -Eq 'saveResponse|updateTrip|saveTrip|PassengerIdentityStore' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversRemote0736.kt
           ! grep -Fq 'stateStore.saveResponse' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt
           ! grep -Fq 'TripStore(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt
