@@ -26,6 +26,9 @@ jobs:
       EXPECTED_VERSION_CODE: '6026'
       OM_TAG: '2026.08.27-18-android'
       OM_VERSION: '2026.08.27-18'
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
 
     steps:
       - uses: actions/checkout@v4
@@ -265,3 +268,127 @@ jobs:
             /tmp/release-history.log
             /tmp/assemble.log
             /tmp/organicmaps-sdk-build.log
+
+
+      - name: Prepare APK-only fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_FILE="${{ steps.proof.outputs.apk }}"
+          test -s "$APK_FILE"
+          cp "$APK_FILE" /tmp/rota-certa-0.1.735-APK-INSTALAR.apk
+          sha256sum /tmp/rota-certa-0.1.735-APK-INSTALAR.apk | tee /tmp/apk-only-sha256.txt
+
+      - name: Upload APK-only fallback
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.735-APK-INSTALAR
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/rota-certa-0.1.735-APK-INSTALAR.apk
+
+      - name: Configure Firebase authentication for direct APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+          else
+            echo "Firebase service account secret is missing."
+            exit 3
+          fi
+          chmod 600 /tmp/firebase-sa.json
+          python3 -m json.tool /tmp/firebase-sa.json >/dev/null
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+
+      - name: Publish APK-only Firebase Hosting preview
+        id: direct_apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          CHANNEL_ID="apk-0735-${SHORT_SHA}"
+          APK_FILE="${{ steps.proof.outputs.apk }}"
+          APK_NAME="$(basename "$APK_FILE")"
+
+          test -s "$APK_FILE"
+          mkdir -p .apk-hosting/public
+          cp "$APK_FILE" ".apk-hosting/public/$APK_NAME"
+
+          cat > .apk-hosting/firebase.json <<EOF
+          {
+            "hosting": {
+              "public": "public",
+              "ignore": [],
+              "headers": [
+                {
+                  "source": "**/*.apk",
+                  "headers": [
+                    {
+                      "key": "Content-Disposition",
+                      "value": "attachment; filename=\"$APK_NAME\""
+                    },
+                    {
+                      "key": "Cache-Control",
+                      "value": "public, max-age=31536000, immutable"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+          EOF
+
+          (
+            cd .apk-hosting
+            npx --yes firebase-tools@14.12.0 hosting:channel:deploy "$CHANNEL_ID"               --project "$PROJECT"               --expires 30d               --config firebase.json               --non-interactive
+          ) 2>&1 | tee /tmp/firebase-hosting-channel.txt
+
+          PREVIEW_URL="$(grep -Eo 'https://[A-Za-z0-9._-]+\.web\.app' /tmp/firebase-hosting-channel.txt | tail -1)"
+          test -n "$PREVIEW_URL"
+          DIRECT_URL="$PREVIEW_URL/$APK_NAME"
+
+          printf '%s\n' "$PREVIEW_URL" | tee /tmp/apk-preview-url.txt
+          printf '%s\n' "$DIRECT_URL" | tee /tmp/direct-apk-url.txt
+          echo "url=$DIRECT_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Verify direct APK is byte-identical
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIRECT_URL="$(cat /tmp/direct-apk-url.txt)"
+          EXPECTED_SHA="${{ steps.proof.outputs.apk_sha256 }}"
+
+          curl --fail --location --retry 5 --retry-delay 2             --output /tmp/direct-download.apk             "$DIRECT_URL"
+
+          test -s /tmp/direct-download.apk
+          unzip -t /tmp/direct-download.apk | tee /tmp/direct-download-integrity.txt
+          ACTUAL_SHA="$(sha256sum /tmp/direct-download.apk | awk '{print $1}')"
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging /tmp/direct-download.apk | tee /tmp/direct-download-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/direct-download-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+
+          {
+            echo "## 📱 APK pronto para instalar"
+            echo
+            echo "[**Baixar somente o APK — Rota Certa ${EXPECTED_VERSION_NAME}**]($DIRECT_URL)"
+            echo
+            echo "Download direto do arquivo .apk, sem o pacote de diagnóstico."
+            echo
+            echo "- VersionName: \`$EXPECTED_VERSION_NAME\`"
+            echo "- VersionCode: \`$EXPECTED_VERSION_CODE\`"
+            echo "- Source SHA: \`$GITHUB_SHA\`"
+            echo "- SHA-256: \`$EXPECTED_SHA\`"
+            echo "- Dispositivo-alvo: \`Samsung SM-S911B / Android 16\`"
+            echo "- Link direto válido por 30 dias."
+            echo
+            echo "O artifact completo e o artifact APK-only continuam disponíveis como fallback."
+          } >> "$GITHUB_STEP_SUMMARY"
