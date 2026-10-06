@@ -657,12 +657,20 @@ function createStandaloneCoversRemote0736({
       updatedAtMillis: now,
       resultExpiresAtMillis: now + RESULT_TTL_MILLIS_0736,
     }, { merge: true });
-    await db.collection(STATE_COLLECTION_0736).doc(owned.driver.username).set({
+    const stateUpdate0737 = {
       latestCompletedJobId: owned.jobId,
       latestCompletedState: requestedStatus,
       latestCompletedAtMillis: now,
       updatedAtMillis: now,
-    }, { merge: true });
+    };
+    if (requestedStatus === "COMPLETE") {
+      stateUpdate0737.latestCompleteJobId = owned.jobId;
+      stateUpdate0737.latestCompleteAtMillis = now;
+    }
+    await db.collection(STATE_COLLECTION_0736).doc(owned.driver.username).set(
+      stateUpdate0737,
+      { merge: true },
+    );
     return json(res, 200, { accepted: true, jobId: owned.jobId, state: requestedStatus });
   }
 
