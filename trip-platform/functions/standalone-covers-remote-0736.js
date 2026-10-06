@@ -195,6 +195,15 @@ function normalizePublicToken0736(value) {
   return /^[A-Za-z0-9_-]{40,100}$/.test(token) ? token : "";
 }
 
+function shouldExpireStandaloneCoverResult0736(state, resultExpiresAtMillis, nowMillis = Date.now()) {
+  const normalized = clean0736(state, 32);
+  const expiresAt = Number(resultExpiresAtMillis || 0);
+  return TERMINAL_JOB_STATES_0736.has(normalized) &&
+    normalized !== "EXPIRED" &&
+    expiresAt > 0 &&
+    expiresAt <= Number(nowMillis || 0);
+}
+
 function createStandaloneCoversRemote0736({
   db,
   requireDriver,
@@ -454,12 +463,11 @@ function createStandaloneCoversRemote0736({
         errorMessage: "",
         updatedAtMillis: now,
       }, { merge: true });
-    } else if (
-      TERMINAL_JOB_STATES_0736.has(stateValue) &&
-      stateValue !== "EXPIRED" &&
-      Number(job.resultExpiresAtMillis || 0) > 0 &&
-      Number(job.resultExpiresAtMillis) <= now
-    ) {
+    } else if (shouldExpireStandaloneCoverResult0736(
+      stateValue,
+      job.resultExpiresAtMillis,
+      now,
+    )) {
       stateValue = "EXPIRED";
       errorCode = "RESULT_EXPIRED";
       errorMessage = "";
@@ -573,5 +581,6 @@ module.exports = {
   publicAccessToken0736,
   normalizePublicToken0736,
   canonicalUuid0736,
+  shouldExpireStandaloneCoverResult0736,
   createStandaloneCoversRemote0736,
 };
