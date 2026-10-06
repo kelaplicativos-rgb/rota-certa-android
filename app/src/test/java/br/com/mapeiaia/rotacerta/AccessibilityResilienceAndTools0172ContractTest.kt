@@ -55,10 +55,13 @@ class AccessibilityResilienceAndTools0172ContractTest {
     }
 
     @Test
-    fun longCopyAlwaysRequestsOneManualOcrFrame() {
+    fun longCopyAlwaysRequestsFreshWindowAwareVisualRead() {
         val copyMethod = service.substringAfter("private fun copyAllVisibleTextFromBubble138").substringBefore("private fun collectAllVisibleTextForCopy138")
-        assertTrue(copyMethod.contains("requestFullScreenCopyOcr138(accessibilityText)"))
+        assertTrue(copyMethod.contains("captureManualVisualTarget0742()"))
+        assertTrue(copyMethod.contains("requestFullScreenCopyOcr138(target0742.accessibilityText, target0742.windowId)"))
         assertFalse(copyMethod.contains("if (accessibilityText.isNotBlank())"))
+        assertTrue(service.contains("takeScreenshotOfWindow(windowId0742"))
+        assertTrue(service.contains("ScreenVisualReader0742(ocrService).read"))
     }
 
     @Test
