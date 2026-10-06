@@ -8786,7 +8786,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             BubbleShortcutAction.OpenBackup,
             BubbleShortcutAction.OpenReports,
             BubbleShortcutAction.OpenSettings,
-            -> openHomeCollapsed0186()
+            -> openShortcutModule0171(spec)
 
             BubbleShortcutAction.OpenScreenWhatsApp -> capturePhoneAndOpenWhatsApp118()
             BubbleShortcutAction.ClearClipboard -> clearClipboardFromBubble()
