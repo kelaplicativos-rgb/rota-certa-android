@@ -39,6 +39,14 @@ internal fun standaloneCoversRemoteResultState0736(
     else -> RESULT_PARTIAL_0734
 }
 
+internal fun isStandaloneCoversRemoteTerminalState0736(state: String?): Boolean =
+    state?.trim()?.uppercase() in setOf(
+        RESULT_COMPLETE_0734,
+        RESULT_PARTIAL_0734,
+        "FAILED",
+        "EXPIRED",
+    )
+
 internal data class StandaloneCoversRemoteAccess0736(
     val refreshUrl: String = "",
     val latestUrl: String = "",
@@ -143,7 +151,7 @@ internal class StandaloneCoversRemoteWorker0736(
         val api = TripRemoteApi(settings)
         val cache = cacheFile0736(jobId)
 
-        try {
+        val ack = try {
             api.ackStandaloneCoversJob0736(jobId = jobId, state = "RUNNING")
         } catch (error: Throwable) {
             UnifiedDebugEventStore.record(
@@ -152,6 +160,15 @@ internal class StandaloneCoversRemoteWorker0736(
                 "jobPresent=true error=${error.javaClass.simpleName.take(80)}",
             )
             return if (runAttemptCount < 3) Result.retry() else Result.failure()
+        }
+        if (isStandaloneCoversRemoteTerminalState0736(ack.state)) {
+            runCatching { cache.delete() }
+            UnifiedDebugEventStore.record(
+                "STANDALONE_COVERS_REMOTE_ALREADY_TERMINAL_0736",
+                applicationContext.packageName,
+                "jobPresent=true state=${ack.state.take(20)} recollect=false",
+            )
+            return Result.success()
         }
 
         val cached = readCachedPayload0736(cache)
