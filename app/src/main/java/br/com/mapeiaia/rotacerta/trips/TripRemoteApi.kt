@@ -59,6 +59,7 @@ data class DriverPushTokenRequest(
     val token: String,
     val appVersion: String = "",
     val deviceLabel: String = "",
+    val standaloneCoversRemoteVersion: Int = 1,
 )
 
 @Serializable
