@@ -134,7 +134,7 @@ internal object BookingPushRegistration0304 {
             )
             runCatching {
                 val access0736 = TripRemoteApi(settings).ensureStandaloneCoversAccess0736()
-                StandaloneCoversRemoteAccessStore0736(appContext).save(
+                StandaloneCoversRemoteAccessStore0736(context.applicationContext).save(
                     publicBaseUrl = settings.publicBaseUrl,
                     response = access0736,
                 )
