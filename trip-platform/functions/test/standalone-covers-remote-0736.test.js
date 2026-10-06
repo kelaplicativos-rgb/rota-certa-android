@@ -9,6 +9,7 @@ const {
   publicAccessToken0736,
   normalizePublicToken0736,
   canonicalUuid0736,
+  shouldExpireStandaloneCoverResult0736,
   MAX_PAYLOAD_BYTES_0736,
 } = require("../standalone-covers-remote-0736");
 
@@ -134,4 +135,15 @@ test("roteamento remoto fica separado das rotas de Agenda", () => {
   assert.match(source, /standaloneCoversRemote0736\.latestPublic0736/);
   assert.match(source, /standaloneCoversRemote0736\.ackJob0736/);
   assert.match(source, /standaloneCoversRemote0736\.submitResult0736/);
+});
+
+
+test("resultado remoto é temporário e expira sem virar inventário válido", () => {
+  const now = 1_000_000;
+  assert.equal(shouldExpireStandaloneCoverResult0736("COMPLETE", now - 1, now), true);
+  assert.equal(shouldExpireStandaloneCoverResult0736("PARTIAL", now, now), true);
+  assert.equal(shouldExpireStandaloneCoverResult0736("FAILED", now - 10, now), true);
+  assert.equal(shouldExpireStandaloneCoverResult0736("COMPLETE", now + 1, now), false);
+  assert.equal(shouldExpireStandaloneCoverResult0736("RUNNING", now - 1, now), false);
+  assert.equal(shouldExpireStandaloneCoverResult0736("EXPIRED", now - 1, now), false);
 });
