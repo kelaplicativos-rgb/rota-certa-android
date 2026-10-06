@@ -2,6 +2,45 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.737",
+      "build": 6028,
+      "commit": null,
+      "branch": "agent/blablacar-operational-query-0.1.737",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Expande a coleta remota BlaBlaCar para consulta operacional direcionada por profileUuid + tripId usando o mesmo motor HTML direto captureSingleTrip0607 já existente.",
+        "Reutiliza o acesso privado remoto provisionado pelas capas 0.1.736; o mesmo acesso passa a oferecer índice de capas e consulta profunda da viagem sem novo segredo permanente.",
+        "A consulta profunda roda no Samsung por WorkManager após push FCM e devolve somente fatos operacionais agregados: data, horário, rota, vagas, ocupação, itinerário e ocupação por trecho."
+      ],
+      "fixed": [
+        "Elimina a necessidade de abrir manualmente a viagem e informar ao ChatGPT se existem passageiros quando a decisão depende dessa evidência.",
+        "Remove o acoplamento da nova consulta ao cliente administrativo central: o retorno usa capability efêmera específica do job, sem transportar credencial administrativa no fluxo da coleta.",
+        "Mantém falha fechada: PARTIAL, FAILED, timeout ou roster incompleto nunca são convertidos em ausência de passageiros."
+      ],
+      "improved": [
+        "Não envia HTML bruto, cookies, sessão BlaBlaCar, telefone, booking href ou identidade nominal dos passageiros ao backend da consulta operacional.",
+        "Agrega reservas por trecho e preserva passengerRosterComplete, itineraryAuthoritative, publishedSeats e identityConflict como provas explícitas.",
+        "O evento remoto operacional é interceptado antes do fluxo normal de notificações/Agenda, com agendaSync=false e timelineWrite=false."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Intervenção manual para consultar passageiros/detalhes de uma viagem BlaBlaCar específica",
+        "Duplicação desnecessária de canal de autenticação para a consulta operacional"
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Capturar HTMLs",
+        "Coleta remota",
+        "FCM",
+        "WorkManager",
+        "Backend",
+        "Privacidade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.736",
       "build": 6027,
       "commit": null,
