@@ -349,10 +349,21 @@ function createStandaloneCoversRemote0736({
       const state = stateSnap.exists ? stateSnap.data() : {};
       const latestJobId = canonicalUuid0736(state.latestJobId);
       const lastRequestedAtMillis = Number(state.lastRequestedAtMillis || 0);
-      if (latestJobId && now - lastRequestedAtMillis < MIN_REFRESH_INTERVAL_MILLIS_0736) {
-        jobId = latestJobId;
-        reused = true;
-        return;
+      if (latestJobId) {
+        const latestJobRef = db.collection(JOB_COLLECTION_0736).doc(latestJobId);
+        const latestJobSnap = await transaction.get(latestJobRef);
+        if (latestJobSnap.exists) {
+          const latestJob = latestJobSnap.data();
+          const latestState = clean0736(latestJob.state, 32);
+          const latestExpiresAt = Number(latestJob.expiresAtMillis || 0);
+          const activeAndFresh = ACTIVE_JOB_STATES_0736.has(latestState) && latestExpiresAt > now;
+          const insideRefreshGuard = now - lastRequestedAtMillis < MIN_REFRESH_INTERVAL_MILLIS_0736;
+          if (activeAndFresh || insideRefreshGuard) {
+            jobId = latestJobId;
+            reused = true;
+            return;
+          }
+        }
       }
       jobId = crypto.randomUUID();
       const jobRef = db.collection(JOB_COLLECTION_0736).doc(jobId);
@@ -504,7 +515,6 @@ function createStandaloneCoversRemote0736({
       resultExpiresAtMillis: now + RESULT_TTL_MILLIS_0736,
     }, { merge: true });
     await db.collection(STATE_COLLECTION_0736).doc(owned.driver.username).set({
-      latestJobId: owned.jobId,
       latestCompletedJobId: owned.jobId,
       latestCompletedState: requestedStatus,
       latestCompletedAtMillis: now,
