@@ -2,6 +2,42 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.736",
+      "build": 6027,
+      "commit": null,
+      "branch": "agent/blablacar-standalone-covers-remote-0.1.736",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Adiciona coleta remota avulsa das capas BlaBlaCar usando o mesmo motor 0.1.735 já validado fisicamente, sem exigir toque no botão de download em cada consulta.",
+        "Recebe uma solicitação remota por FCM, agenda um WorkManager isolado no aparelho, confirma UUID de cada perfil e envia somente o payload de capas ao backend temporário.",
+        "Provisiona um acesso privado por capability token para solicitar uma coleta e consultar o resultado mais recente sem expor cookies, senha ou sessão BlaBlaCar."
+      ],
+      "fixed": [
+        "Remove a dependência operacional de baixar o JSON manualmente e anexá-lo ao chat para cada nova conferência.",
+        "Impede que o novo evento FCM de coleta avulsa caia no fallback de sincronização da Agenda: o evento é interceptado e retorna antes de qualquer AgendaBackgroundSync."
+      ],
+      "improved": [
+        "Mantém o contrato estrito download-only/read-only: nenhuma escrita em Timeline, Agenda, viagens canônicas, disponibilidade, capacidade ou estado do dia e nenhuma leitura de passageiros/detalhes.",
+        "Estados remotos distinguem REQUESTED, PUSH_SENT, PENDING_DEVICE, RUNNING, COMPLETE, PARTIAL, FAILED e EXPIRED; falha técnica nunca equivale a ausência de viagem.",
+        "Resultado já coletado é mantido em cache temporário privado do app durante retries de upload, evitando repetir a navegação BlaBlaCar por simples falha de transporte.",
+        "Backend valida schema, UUIDs, totais, inventário, isolamento e campos permitidos antes de aceitar um resultado remoto."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Coletor avulso",
+        "Coleta remota",
+        "FCM",
+        "WorkManager",
+        "Backend",
+        "Privacidade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.735",
       "build": 6026,
       "commit": null,
