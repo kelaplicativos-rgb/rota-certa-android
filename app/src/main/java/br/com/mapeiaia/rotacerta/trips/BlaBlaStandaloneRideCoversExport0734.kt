@@ -337,13 +337,13 @@ internal fun chooseBetterStandaloneProfile0735(
 }
 
 internal object BlaBlaStandaloneRideCoversExport0734 {
-    suspend fun download(
+    suspend fun collectPayload0736(
         context: Context,
         accounts: List<BlaBlaDynamicAccount>,
         onProgress: (String) -> Unit = {},
-    ): BlaBlaStandaloneRideCoversDownloadResult0734 {
+    ): BlaBlaStandaloneRideCoversPayload0734 {
         require(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            "Download avulso requer Android 10 ou superior"
+            "Coleta avulsa requer Android 10 ou superior"
         }
         require(WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
             "Perfis isolados do WebView não estão disponíveis neste aparelho"
@@ -385,7 +385,7 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
         } else {
             RESULT_PARTIAL_0734
         }
-        val payload = validateStandaloneRideCoversPayload0734(
+        return validateStandaloneRideCoversPayload0734(
             BlaBlaStandaloneRideCoversPayload0734(
                 capturedAt = Instant.now().toString(),
                 sourceAppVersion = AppBuildInfo.versionName,
@@ -398,12 +398,23 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
                 profiles = profiles,
             ),
         )
+    }
+
+    suspend fun download(
+        context: Context,
+        accounts: List<BlaBlaDynamicAccount>,
+        onProgress: (String) -> Unit = {},
+    ): BlaBlaStandaloneRideCoversDownloadResult0734 {
+        val payload = collectPayload0736(
+            context = context,
+            accounts = accounts,
+            onProgress = onProgress,
+        )
         val raw = encodeStandaloneRideCoversPayload0734(payload)
         require(decodeStandaloneRideCoversPayload0734(raw) == payload) {
             "O Rota Certa não conseguiu reler o arquivo avulso gerado"
         }
-
-        return writeDownload(app, raw, payload)
+        return writeDownload(context.applicationContext, raw, payload)
     }
 
     private suspend fun collectProfileWithRecovery(
