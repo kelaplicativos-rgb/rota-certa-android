@@ -770,8 +770,12 @@ fun BlaBlaCollectorPanel(
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         val privateAccess = buildString {
                             append("Rota Certa — coleta remota avulsa\n")
-                            append("Solicitar: ").append(standaloneRemoteAccess0736.refreshUrl).append('\n')
-                            append("Consultar: ").append(standaloneRemoteAccess0736.latestUrl)
+                            append("Solicitar capas: ").append(standaloneRemoteAccess0736.refreshUrl).append('\n')
+                            append("Consultar capas: ").append(standaloneRemoteAccess0736.latestUrl)
+                            if (standaloneRemoteAccess0736.tripQueryBaseUrl.isNotBlank()) {
+                                append('\n')
+                                append("Consulta HTML por viagem: ").append(standaloneRemoteAccess0736.tripQueryBaseUrl)
+                            }
                         }
                         clipboard.setPrimaryClip(
                             ClipData.newPlainText("Rota Certa — coleta remota avulsa", privateAccess),
@@ -787,8 +791,8 @@ fun BlaBlaCollectorPanel(
                     Text("🔐 Copiar acesso privado remoto")
                 }
                 Text(
-                    "Compartilhe este acesso somente com quem pode solicitar suas capas. " +
-                        "A coleta remota continua isolada da Agenda/Timeline e não envia cookies ou senha.",
+                    "Compartilhe este acesso somente com quem pode consultar suas viagens. " +
+                        "Capas continuam isoladas; a consulta HTML dirigida lê uma viagem por profileUuid + tripId e não envia cookies, senha ou HTML bruto.",
                 )
             } else {
                 Text(
