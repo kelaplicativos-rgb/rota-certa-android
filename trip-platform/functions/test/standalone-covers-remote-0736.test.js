@@ -12,6 +12,7 @@ const {
   shouldExpireStandaloneCoverResult0736,
   standaloneCoverResultTransition0736,
   standaloneCoverRefreshDecision0736,
+  remoteCapablePushToken0736,
   MAX_PAYLOAD_BYTES_0736,
 } = require("../standalone-covers-remote-0736");
 
@@ -207,5 +208,21 @@ test("refresh remoto nunca mascara resultado terminal antigo como coleta fresca"
       nowMillis: now,
     }),
     { action: "CREATE", retryAfterMillis: 0 },
+  );
+});
+
+
+test("push remoto só alcança cliente que declarou suporte explícito", () => {
+  const now = 1_000_000;
+  const base = {
+    token: "x".repeat(64),
+    expiresAtMillis: now + 60_000,
+  };
+  assert.equal(remoteCapablePushToken0736(base, now), false);
+  assert.equal(remoteCapablePushToken0736({ ...base, standaloneCoversRemoteVersion: 0 }, now), false);
+  assert.equal(remoteCapablePushToken0736({ ...base, standaloneCoversRemoteVersion: 1 }, now), true);
+  assert.equal(
+    remoteCapablePushToken0736({ ...base, standaloneCoversRemoteVersion: 1, expiresAtMillis: now }, now),
+    false,
   );
 });
