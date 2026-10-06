@@ -60,6 +60,7 @@ data class DriverPushTokenRequest(
     val appVersion: String = "",
     val deviceLabel: String = "",
     val standaloneCoversRemoteVersion: Int = 1,
+    val blablacarTripQueryRemoteVersion: Int = 1,
 )
 
 @Serializable
@@ -72,6 +73,7 @@ internal data class StandaloneCoversAccessResponse0736(
     val enabled: Boolean = false,
     val refreshPath: String = "",
     val latestPath: String = "",
+    val tripQueryBasePath: String = "",
     val expiresAtMillis: Long = 0L,
 )
 
@@ -99,6 +101,37 @@ internal data class StandaloneCoversResultRequest0736(
 
 @Serializable
 internal data class StandaloneCoversResultResponse0736(
+    val accepted: Boolean = false,
+    val jobId: String = "",
+    val state: String = "",
+)
+
+@Serializable
+internal data class BlaBlaRemoteTripQueryAckResponse0737(
+    val accepted: Boolean = false,
+    val jobId: String = "",
+    val state: String = "",
+    val profileUuid: String = "",
+    val tripId: String = "",
+    val administrativeHref: String = "",
+    val dateIso: String = "",
+    val departureTime: String = "",
+    val arrivalTime: String = "",
+    val origin: String = "",
+    val destination: String = "",
+    val price: String = "",
+)
+
+@Serializable
+internal data class BlaBlaRemoteTripQueryResultRequest0737(
+    val status: String,
+    val payload: BlaBlaRemoteTripSnapshot0737? = null,
+    val errorCode: String = "",
+    val errorMessage: String = "",
+)
+
+@Serializable
+internal data class BlaBlaRemoteTripQueryResultResponse0737(
     val accepted: Boolean = false,
     val jobId: String = "",
     val state: String = "",
@@ -1047,6 +1080,39 @@ class TripRemoteApi(
         path = "/v1/driver/standalone-covers/jobs/" + jobId.trim() + "/result",
         body = json.encodeToString(
             StandaloneCoversResultRequest0736(
+                status = status.trim().uppercase(),
+                payload = payload,
+                errorCode = errorCode.trim().take(120),
+                errorMessage = errorMessage.trim().take(240),
+            ),
+        ),
+        requireDriverToken = true,
+        connectTimeoutMs = 12_000,
+        readTimeoutMs = 30_000,
+    )
+
+    internal suspend fun ackBlaBlaRemoteTripQueryJob0737(
+        jobId: String,
+    ): BlaBlaRemoteTripQueryAckResponse0737 = request(
+        method = "POST",
+        path = "/v1/driver/blablacar-query/jobs/" + jobId.trim() + "/ack",
+        body = "{}",
+        requireDriverToken = true,
+        connectTimeoutMs = 12_000,
+        readTimeoutMs = 20_000,
+    )
+
+    internal suspend fun submitBlaBlaRemoteTripQueryResult0737(
+        jobId: String,
+        status: String,
+        payload: BlaBlaRemoteTripSnapshot0737? = null,
+        errorCode: String = "",
+        errorMessage: String = "",
+    ): BlaBlaRemoteTripQueryResultResponse0737 = request(
+        method = "PUT",
+        path = "/v1/driver/blablacar-query/jobs/" + jobId.trim() + "/result",
+        body = json.encodeToString(
+            BlaBlaRemoteTripQueryResultRequest0737(
                 status = status.trim().uppercase(),
                 payload = payload,
                 errorCode = errorCode.trim().take(120),
