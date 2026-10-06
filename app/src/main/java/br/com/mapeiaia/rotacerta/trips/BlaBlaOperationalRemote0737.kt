@@ -14,11 +14,15 @@ import br.com.mapeiaia.rotacerta.BuildConfig
 import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 internal const val BLABLACAR_OPERATIONAL_REMOTE_EVENT_0737 = "blablacar_operational_trip_collect"
@@ -26,6 +30,7 @@ private const val OPERATIONAL_REMOTE_JOB_ID_0737 = "operational_job_id_0737"
 private const val OPERATIONAL_REMOTE_PROFILE_UUID_0737 = "operational_profile_uuid_0737"
 private const val OPERATIONAL_REMOTE_TRIP_ID_0737 = "operational_trip_id_0737"
 private const val OPERATIONAL_REMOTE_TRIP_HREF_0737 = "operational_trip_href_0737"
+private const val OPERATIONAL_REMOTE_CALLBACK_TOKEN_0737 = "operational_callback_token_0737"
 private const val OPERATIONAL_REMOTE_CACHE_DIR_0737 = "blablacar-operational-remote-0737"
 
 internal fun isBlaBlaOperationalRemoteEvent0737(event: String?): Boolean =
@@ -37,6 +42,11 @@ internal fun normalizeOperationalRemoteUuid0737(raw: String?): String? {
         .getOrNull()
         ?.takeIf { it == value }
 }
+
+internal fun normalizeOperationalCallbackToken0737(raw: String?): String? =
+    raw?.trim()
+        ?.takeIf { it.length in 32..180 }
+        ?.takeIf { it.matches(Regex("[A-Za-z0-9_-]+")) }
 
 @Serializable
 internal data class BlaBlaOperationalIsolation0737(
@@ -156,58 +166,6 @@ internal fun buildBlaBlaOperationalPayload0737(
     )
 }
 
-internal data class BlaBlaOperationalRemoteAccess0737(
-    val refreshUrl: String = "",
-    val latestUrl: String = "",
-    val expiresAtMillis: Long = 0L,
-) {
-    val configured: Boolean
-        get() = refreshUrl.startsWith("https://") &&
-            latestUrl.startsWith("https://") &&
-            expiresAtMillis > System.currentTimeMillis()
-}
-
-internal class BlaBlaOperationalRemoteAccessStore0737(context: Context) {
-    private val app = context.applicationContext
-    private val scope = RotaCertaTenantRegistry(app).activeScope()
-    private val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-
-    fun read(): BlaBlaOperationalRemoteAccess0737 = BlaBlaOperationalRemoteAccess0737(
-        refreshUrl = prefs.getString(scope.key(KEY_REFRESH), "").orEmpty(),
-        latestUrl = prefs.getString(scope.key(KEY_LATEST), "").orEmpty(),
-        expiresAtMillis = prefs.getLong(scope.key(KEY_EXPIRES), 0L),
-    )
-
-    fun save(
-        publicBaseUrl: String,
-        response: BlaBlaOperationalAccessResponse0737,
-    ): BlaBlaOperationalRemoteAccess0737 {
-        val base = publicBaseUrl.trim().trimEnd('/')
-        require(base.startsWith("https://"))
-        require(response.enabled)
-        require(response.refreshPath.startsWith("/v1/public/blablacar-operational/"))
-        require(response.latestPath.startsWith("/v1/public/blablacar-operational/"))
-        val value = BlaBlaOperationalRemoteAccess0737(
-            refreshUrl = base + response.refreshPath,
-            latestUrl = base + response.latestPath,
-            expiresAtMillis = response.expiresAtMillis,
-        )
-        prefs.edit()
-            .putString(scope.key(KEY_REFRESH), value.refreshUrl)
-            .putString(scope.key(KEY_LATEST), value.latestUrl)
-            .putLong(scope.key(KEY_EXPIRES), value.expiresAtMillis)
-            .apply()
-        return value
-    }
-
-    companion object {
-        private const val PREFS = "rota_certa_blablacar_operational_remote_0737"
-        private const val KEY_REFRESH = "refresh_url"
-        private const val KEY_LATEST = "latest_url"
-        private const val KEY_EXPIRES = "expires_at"
-    }
-}
-
 internal object BlaBlaOperationalRemoteScheduler0737 {
     fun enqueue(
         context: Context,
@@ -215,11 +173,13 @@ internal object BlaBlaOperationalRemoteScheduler0737 {
         rawProfileUuid: String?,
         rawTripId: String?,
         rawTripHref: String?,
+        rawCallbackToken: String?,
     ): Boolean {
         val jobId = normalizeOperationalRemoteUuid0737(rawJobId) ?: return false
         val profileUuid = normalizeOperationalRemoteUuid0737(rawProfileUuid) ?: return false
         val tripId = normalizeOperationalRemoteUuid0737(rawTripId) ?: return false
         val tripHref = rawTripHref?.trim()?.takeIf(String::isNotBlank) ?: return false
+        val callbackToken = normalizeOperationalCallbackToken0737(rawCallbackToken) ?: return false
         if (BlaBlaCollectorUrlModule.tripId(tripHref) != tripId) return false
         val request = OneTimeWorkRequestBuilder<BlaBlaOperationalRemoteWorker0737>()
             .setInputData(
@@ -228,6 +188,7 @@ internal object BlaBlaOperationalRemoteScheduler0737 {
                     .putString(OPERATIONAL_REMOTE_PROFILE_UUID_0737, profileUuid)
                     .putString(OPERATIONAL_REMOTE_TRIP_ID_0737, tripId)
                     .putString(OPERATIONAL_REMOTE_TRIP_HREF_0737, tripHref)
+                    .putString(OPERATIONAL_REMOTE_CALLBACK_TOKEN_0737, callbackToken)
                     .build(),
             )
             .setConstraints(
@@ -260,15 +221,22 @@ internal class BlaBlaOperationalRemoteWorker0737(
         val tripId = normalizeOperationalRemoteUuid0737(inputData.getString(OPERATIONAL_REMOTE_TRIP_ID_0737))
             ?: return Result.failure()
         val tripHref = inputData.getString(OPERATIONAL_REMOTE_TRIP_HREF_0737)?.trim().orEmpty()
+        val callbackToken = normalizeOperationalCallbackToken0737(
+            inputData.getString(OPERATIONAL_REMOTE_CALLBACK_TOKEN_0737),
+        ) ?: return Result.failure()
         if (tripHref.isBlank() || BlaBlaCollectorUrlModule.tripId(tripHref) != tripId) return Result.failure()
 
         val store = TripStore(applicationContext)
         val settings = withContext(Dispatchers.IO) { store.onlineSettings() }
-        if (!settings.configured || settings.driverUsername.isBlank()) return Result.failure()
-        val api = TripRemoteApi(settings)
+        if (!settings.apiBaseUrl.startsWith("https://")) return Result.failure()
+        val api = BlaBlaOperationalCallbackClient0737(
+            apiBaseUrl = settings.apiBaseUrl,
+            jobId = jobId,
+            callbackToken = callbackToken,
+        )
         val cache = cacheFile0737(jobId)
 
-        val ack = runCatching { api.ackBlaBlaOperationalJob0737(jobId) }.getOrElse {
+        val ack = runCatching { api.ack() }.getOrElse {
             return if (runAttemptCount < 3) Result.retry() else Result.failure()
         }
         if (ack.state.trim().uppercase() in setOf("COMPLETE", "PARTIAL", "FAILED", "EXPIRED")) {
@@ -360,13 +328,12 @@ internal class BlaBlaOperationalRemoteWorker0737(
     }
 
     private suspend fun submitPayload0737(
-        api: TripRemoteApi,
+        api: BlaBlaOperationalCallbackClient0737,
         jobId: String,
         payload: BlaBlaOperationalPayload0737,
         cache: File,
     ): Result = runCatching {
-        val response = api.submitBlaBlaOperationalResult0737(
-            jobId = jobId,
+        val response = api.submit(
             status = payload.result,
             payload = payload,
         )
@@ -386,12 +353,11 @@ internal class BlaBlaOperationalRemoteWorker0737(
     }
 
     private suspend fun reportFailure0737(
-        api: TripRemoteApi,
+        api: BlaBlaOperationalCallbackClient0737,
         jobId: String,
         code: String,
     ): Boolean = runCatching {
-        api.submitBlaBlaOperationalResult0737(
-            jobId = jobId,
+        api.submit(
             status = "FAILED",
             payload = null,
             errorCode = code,
@@ -424,5 +390,92 @@ internal class BlaBlaOperationalRemoteWorker0737(
         require(bytes.isNotEmpty() && bytes.size <= 384 * 1024)
         file.parentFile?.mkdirs()
         file.writeBytes(bytes)
+    }
+}
+
+
+@Serializable
+private data class BlaBlaOperationalCallbackAck0737(
+    val appVersion: String = BuildConfig.VERSION_NAME,
+    val sourceCommitSha: String = BuildConfig.BUILD_GIT_SHA,
+)
+
+@Serializable
+private data class BlaBlaOperationalCallbackResult0737(
+    val status: String,
+    val payload: BlaBlaOperationalPayload0737? = null,
+    val errorCode: String = "",
+)
+
+@Serializable
+private data class BlaBlaOperationalCallbackResponse0737(
+    val accepted: Boolean = false,
+    val jobId: String = "",
+    val state: String = "",
+)
+
+private class BlaBlaOperationalCallbackClient0737(
+    apiBaseUrl: String,
+    private val jobId: String,
+    private val callbackToken: String,
+) {
+    private val base = apiBaseUrl.trim().trimEnd('/')
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
+    suspend fun ack(): BlaBlaOperationalCallbackResponse0737 =
+        request(
+            method = "POST",
+            suffix = "ack",
+            body = json.encodeToString(BlaBlaOperationalCallbackAck0737()),
+        )
+
+    suspend fun submit(
+        status: String,
+        payload: BlaBlaOperationalPayload0737?,
+        errorCode: String = "",
+    ): BlaBlaOperationalCallbackResponse0737 =
+        request(
+            method = "PUT",
+            suffix = "result",
+            body = json.encodeToString(
+                BlaBlaOperationalCallbackResult0737(
+                    status = status.trim().uppercase(),
+                    payload = payload,
+                    errorCode = errorCode.trim().take(160),
+                ),
+            ),
+        )
+
+    private suspend fun request(
+        method: String,
+        suffix: String,
+        body: String,
+    ): BlaBlaOperationalCallbackResponse0737 = withContext(Dispatchers.IO) {
+        check(base.startsWith("https://"))
+        check(jobId == normalizeOperationalRemoteUuid0737(jobId))
+        check(callbackToken == normalizeOperationalCallbackToken0737(callbackToken))
+        val path = "/v1/public/blablacar-operational/jobs/" +
+            jobId + "/" + callbackToken + "/callback/" + suffix
+        val connection = URL(base + path).openConnection() as HttpURLConnection
+        try {
+            connection.requestMethod = method
+            connection.connectTimeout = 12_000
+            connection.readTimeout = 30_000
+            connection.setRequestProperty("Accept", "application/json")
+            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            connection.doOutput = true
+            connection.outputStream.use { output ->
+                output.write(body.toByteArray(Charsets.UTF_8))
+            }
+            val statusCode = connection.responseCode
+            val responseText = (if (statusCode in 200..299) connection.inputStream else connection.errorStream)
+                ?.bufferedReader(Charsets.UTF_8)
+                ?.use { it.readText() }
+                .orEmpty()
+            check(statusCode in 200..299) { "HTTP_" + statusCode }
+            json.decodeFromString<BlaBlaOperationalCallbackResponse0737>(responseText)
+        } finally {
+            connection.disconnect()
+        }
     }
 }
