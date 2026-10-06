@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "releases": [
+  "releases": [\n    {\n      "version": "0.1.741",\n      "build": 6032,\n      "commit": null,\n      "branch": "agent/diagnostic-fabric-0.1.741",\n      "generatedAt": null,\n      "status": "EM_VALIDACAO",\n      "implemented": ["Adiciona núcleo unificado de observabilidade semântica com eventos, traces, módulos, invariantes, incidentes e caixa-preta circular em memória."],\n      "fixed": [],\n      "improved": ["Redige segredos antes do armazenamento e preserva evidências de violações de invariantes.", "Instrumenta automaticamente o ciclo de vida de Activities sem polling periódico e sem rede."],\n      "regressions": [],\n      "resolvedRegressions": [],\n      "modulesAffected": ["Central de Saúde", "Diagnóstico", "Observabilidade", "Build"],\n      "detailsComplete": true\n    },
     {
       "version": "0.1.740",
       "build": 6031,
