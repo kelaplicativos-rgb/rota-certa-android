@@ -342,5 +342,15 @@ class BlaBlaStandaloneRideCoversExport0734Test {
         assertFalse(isStandaloneCoversRemoteTerminalState0736("PENDING_DEVICE"))
         assertFalse(isStandaloneCoversRemoteTerminalState0736(null))
     }
+    @Test
+    fun currentBuildExplicitlyAdvertisesRemoteCoverPushCapability() {
+        val request = DriverPushTokenRequest(
+            token = "x".repeat(64),
+            appVersion = "0.1.736",
+            deviceLabel = "device",
+        )
+        assertEquals(1, request.standaloneCoversRemoteVersion)
+    }
+
 
 }
