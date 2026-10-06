@@ -118,7 +118,7 @@ object RcDiagnosticFabric0741 {
         if (ok) return null
         event(module, "INVARIANT_VIOLATION", traceId, RcDiagnosticSeverity.ERROR,
             mapOf("invariant" to name, "expected" to expected, "actual" to actual))
-        val evidence = synchronized(lock) { events.takeLast(INCIDENT_WINDOW) }
+        val evidence = synchronized(lock) { events.toList().takeLast(INCIDENT_WINDOW) }
         val incident = RcIncident(
             "INC-" + System.currentTimeMillis().toString(36).uppercase(),
             System.currentTimeMillis(), safe(module), safe(name), safe(traceId), evidence
@@ -131,7 +131,7 @@ object RcDiagnosticFabric0741 {
     }
 
     fun snapshot(module: String? = null, limit: Int = 250): List<RcDiagnosticEvent> = synchronized(lock) {
-        events.filter { module == null || it.module == safe(module) }.takeLast(limit.coerceIn(1, 1000))
+        events.toList().filter { module == null || it.module == safe(module) }.takeLast(limit.coerceIn(1, 1000))
     }
 
     fun incidentSnapshot(): List<RcIncident> = synchronized(lock) { incidents.toList() }
@@ -139,7 +139,7 @@ object RcDiagnosticFabric0741 {
 
     fun diagnosticDigest(): String {
         val payload = synchronized(lock) {
-            events.takeLast(256).joinToString("\n") { e ->
+            events.toList().takeLast(256).joinToString("\n") { e ->
                 "${e.wallMs}|${e.module}|${e.action}|${e.traceId}|${e.severity}|${e.details}"
             }
         }
