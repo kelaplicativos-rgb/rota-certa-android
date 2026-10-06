@@ -2,6 +2,47 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.737",
+      "build": 6028,
+      "commit": null,
+      "branch": "agent/blablacar-remote-trip-query-0.1.737",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Expande a coleta remota 0.1.736 para consulta HTML profunda e direcionada de uma viagem específica, reutilizando BlaBlaUnifiedHtmlCapture0605.captureSingleTrip0607.",
+        "A consulta remota parte obrigatoriamente de profileUuid + tripId comprovados no último inventário de capas COMPLETE e o backend fornece ao aparelho somente o alvo já vinculado.",
+        "Publica um snapshot estruturado da viagem com ocupação, passageiros, trechos, itinerário e vagas publicadas, sem enviar cookie, senha, sessão ou HTML bruto ao backend."
+      ],
+      "fixed": [
+        "Remove a necessidade operacional de abrir manualmente uma viagem apenas para conferir se existem passageiros antes de reorganizar a agenda.",
+        "Preserva um ponteiro explícito para o último inventário de capas COMPLETE, impedindo que PARTIAL ou FAILED sejam confundidos com uma base válida para aprofundamento.",
+        "Isola a captura dirigida da Timeline e Agenda e desliga persistência de metadados privados de passageiros quando o disparo veio da consulta remota."
+      ],
+      "improved": [
+        "O mesmo capability token privado das capas passa a expor uma base de consulta detalhada por profileUuid + tripId.",
+        "Resultados COMPLETE exigem identidade forte, roster completo, itinerário autoritativo e estado operacional completo; PARTIAL e FAILED permanecem não decisivos.",
+        "O snapshot remoto omite telefone, booking href e HTML bruto por padrão, mantendo no servidor apenas os campos necessários ao planejamento operacional.",
+        "O workflow valida source HEAD exato, regressões Android e backend, FAROL imutável, assinatura, versão e SHA-256 do APK antes da publicação direta."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Intermediação manual para consultar passageiros de uma viagem específica",
+        "Perda da referência do último inventário COMPLETE após tentativa remota incompleta"
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Capturar HTMLs",
+        "Coleta remota",
+        "Passageiros",
+        "FCM",
+        "WorkManager",
+        "Backend",
+        "Privacidade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.736",
       "build": 6027,
       "commit": null,
