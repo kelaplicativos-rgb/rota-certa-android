@@ -151,6 +151,26 @@ internal object BookingPushRegistration0304 {
                     "error=${error.javaClass.simpleName.take(80)}",
                 )
             }
+
+            runCatching {
+                val access0737 = TripRemoteApi(settings).ensureBlaBlaHtmlRemoteAccess0737()
+                BlaBlaHtmlRemoteAccessStore0737(context.applicationContext).save(
+                    publicBaseUrl = settings.publicBaseUrl,
+                    response = access0737,
+                )
+            }.onSuccess {
+                UnifiedDebugEventStore.record(
+                    "BLABLACAR_HTML_REMOTE_ACCESS_READY_0737",
+                    context.packageName,
+                    "configured=true expiresAtMillis=${it.expiresAtMillis}",
+                )
+            }.onFailure { error ->
+                UnifiedDebugEventStore.record(
+                    "BLABLACAR_HTML_REMOTE_ACCESS_PROVISION_FAILED_0737",
+                    context.packageName,
+                    "error=${error.javaClass.simpleName.take(80)}",
+                )
+            }
         }
         response.registered
     }
@@ -174,6 +194,27 @@ class RotaCertaBookingMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
         val event = message.data["event"].orEmpty()
+        if (isBlaBlaHtmlRemoteEvent0737(event)) {
+            val jobId0737 = message.data["jobId"].orEmpty()
+            val profileUuid0737 = message.data["profileUuid"].orEmpty()
+            val tripId0737 = message.data["tripId"].orEmpty()
+            val enqueued0737 = BlaBlaHtmlRemoteScheduler0737.enqueue(
+                context = this,
+                rawJobId = jobId0737,
+                rawProfileUuid = profileUuid0737,
+                rawTripId = tripId0737,
+            )
+            UnifiedDebugEventStore.record(
+                if (enqueued0737) {
+                    "BLABLACAR_HTML_REMOTE_PUSH_ENQUEUED_0737"
+                } else {
+                    "BLABLACAR_HTML_REMOTE_PUSH_REJECTED_0737"
+                },
+                packageName,
+                "jobPresent=${jobId0737.isNotBlank()} profileUuidPresent=${profileUuid0737.isNotBlank()} tripIdPresent=${tripId0737.isNotBlank()} agendaSync=false timelineWrite=false",
+            )
+            return
+        }
         if (isStandaloneCoversRemoteEvent0736(event)) {
             val jobId0736 = message.data["jobId"].orEmpty()
             val enqueued0736 = StandaloneCoversRemoteScheduler0736.enqueue(
