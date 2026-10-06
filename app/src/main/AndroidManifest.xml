@@ -89,6 +89,11 @@
             android:name=".FinancialActivity"
             android:exported="false"
             android:label="Controle financeiro" />
+        <provider
+            android:name=".diagnostics.RcDiagnosticFabricInitializer0741"
+            android:authorities="${applicationId}.diagnostic.fabric.0741"
+            android:exported="false"
+            android:initOrder="120" />
         <activity
             android:name=".monitoring.OperationalHealthActivity"
             android:exported="false"
