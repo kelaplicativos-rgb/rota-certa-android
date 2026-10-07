@@ -73,7 +73,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           grep -Fq 'val releaseVersionName = "0.1.750"' app/build.gradle.kts
-          grep -Fq 'val releaseVersionCode = 6_040' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 6_041' app/build.gradle.kts
           grep -Fq '"version": "0.1.750"' app/src/main/assets/release_history.json
           grep -Fq 'FAROL_ORGANIC_OFFLINE_ROAD_PRIMARY_0749' app/src/main/java/br/com/mapeiaia/rotacerta/OrganicMapsOfflineRoadRouter0749.kt
           grep -Fq 'FAROL_ORGANIC_ROAD_CACHE_HIT_0749' app/src/main/java/br/com/mapeiaia/rotacerta/OrganicMapsOfflineRoadRouter0749.kt
