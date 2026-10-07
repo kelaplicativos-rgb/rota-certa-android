@@ -16,6 +16,7 @@ const { createLiveAgendaFeed0701 } = require("./live-agenda-feed-0701");
 const { createLiveAgendaTool0732 } = require("./live-agenda-tool-0732");
 const { createStandaloneCoversRemote0736 } = require("./standalone-covers-remote-0736");
 const { createBlaBlaTripQueryRemote0737 } = require("./blablacar-trip-query-remote-0737");
+const { createRemoteHealth0747 } = require("./remote-health-0747");
 const { buildProfileUpdate } = require("./public-profile-policy");
 const { cleanIdentifier, deriveRotationToken, tokenMatches } = require("./public-agenda-link-policy");
 const { createAgendaAdmin0417, safeVisibility0417 } = require("./agenda-admin-0417");
@@ -201,6 +202,10 @@ async function registerDriverPushToken(req, res) {
     blablacarTripQueryRemoteVersion: Math.max(
       0,
       Math.min(10, Math.floor(Number(req.body && req.body.blablacarTripQueryRemoteVersion || 0))),
+    ),
+    remoteHealthVersion: Math.max(
+      0,
+      Math.min(10, Math.floor(Number(req.body && req.body.remoteHealthVersion || 0))),
     ),
     createdAtMillis: now,
     updatedAtMillis: now,
@@ -11560,6 +11565,15 @@ const blablacarTripQueryRemote0737 = createBlaBlaTripQueryRemote0737({
   fail,
 });
 
+const remoteHealth0747 = createRemoteHealth0747({
+  db,
+  requireDriver,
+  getMessaging,
+  normalizeUsername,
+  json,
+  fail,
+});
+
 const liveTracking0668 = createLiveTracking0668({ db, requireDriver });
 
 const agendaAdmin0417 = createAgendaAdmin0417({
@@ -11712,6 +11726,48 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
       parts[4] === "latest"
     ) {
       return await standaloneCoversRemote0736.latestPublic0736(req, res, parts[3]);
+    }
+    if (
+      req.method === "POST" &&
+      parts.length === 6 &&
+      parts[0] === "v1" &&
+      parts[1] === "driver" &&
+      parts[2] === "remote-health" &&
+      parts[3] === "jobs" &&
+      parts[5] === "ack"
+    ) {
+      return await remoteHealth0747.ackJob0747(req, res, parts[4]);
+    }
+    if (
+      req.method === "PUT" &&
+      parts.length === 6 &&
+      parts[0] === "v1" &&
+      parts[1] === "driver" &&
+      parts[2] === "remote-health" &&
+      parts[3] === "jobs" &&
+      parts[5] === "result"
+    ) {
+      return await remoteHealth0747.submitResult0747(req, res, parts[4]);
+    }
+    if (
+      req.method === "GET" &&
+      parts.length === 5 &&
+      parts[0] === "v1" &&
+      parts[1] === "public" &&
+      parts[2] === "remote-health" &&
+      parts[4] === "refresh"
+    ) {
+      return await remoteHealth0747.refreshPublic0747(req, res, parts[3]);
+    }
+    if (
+      req.method === "GET" &&
+      parts.length === 5 &&
+      parts[0] === "v1" &&
+      parts[1] === "public" &&
+      parts[2] === "remote-health" &&
+      parts[4] === "latest"
+    ) {
+      return await remoteHealth0747.latestPublic0747(req, res, parts[3]);
     }
     if (
       req.method === "POST" &&
