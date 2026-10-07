@@ -6,6 +6,7 @@ on:
       - agent/vip-share-copy-hotfix-20261007
     paths:
       - 'trip-platform/public/index.html'
+      - 'trip-platform/public/public-agenda-shell-0569.js'
       - '.github/workflows/vip-share-preview-hotfix-20261007.yml'
   workflow_dispatch:
 
@@ -40,11 +41,14 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          grep -Fq '<title>Você recebeu um acesso exclusivo à minha agenda de viagens. Reserve sua vaga por aqui:</title>' trip-platform/public/index.html
-          grep -Fq '<meta property="og:title" content="Você recebeu um acesso exclusivo à minha agenda de viagens. Reserve sua vaga por aqui:">' trip-platform/public/index.html
+          grep -Fq '<title>Você recebeu um acesso exclusivo à minha agenda de viagens.</title>' trip-platform/public/index.html
+          grep -Fq '<meta property="og:title" content="Você recebeu um acesso exclusivo à minha agenda de viagens.">' trip-platform/public/index.html
           grep -Fq '<meta name="description" content="">' trip-platform/public/index.html
           grep -Fq '<meta property="og:description" content="">' trip-platform/public/index.html
           ! grep -Fq 'Espaço exclusivo para membros convidados.' trip-platform/public/index.html
+          node --check trip-platform/public/public-agenda-shell-0569.js
+          ! grep -Fq 'Você recebeu um convite para uma área privada.' trip-platform/public/public-agenda-shell-0569.js
+          grep -Fq 'const shareData = { url };' trip-platform/public/public-agenda-shell-0569.js
           git diff --check
 
       - name: Configure Firebase authentication
@@ -86,9 +90,12 @@ jobs:
           set -euo pipefail
           BASE='https://rota-certa-7ccc8.web.app/ezequiel'
           curl --retry 10 --retry-delay 2 --fail --silent --show-error "$BASE?share_preview=$GITHUB_SHA" > /tmp/live-index.html
-          grep -Fq '<title>Você recebeu um acesso exclusivo à minha agenda de viagens. Reserve sua vaga por aqui:</title>' /tmp/live-index.html
-          grep -Fq '<meta property="og:title" content="Você recebeu um acesso exclusivo à minha agenda de viagens. Reserve sua vaga por aqui:">' /tmp/live-index.html
+          grep -Fq '<title>Você recebeu um acesso exclusivo à minha agenda de viagens.</title>' /tmp/live-index.html
+          grep -Fq '<meta property="og:title" content="Você recebeu um acesso exclusivo à minha agenda de viagens.">' /tmp/live-index.html
           grep -Fq '<meta name="description" content="">' /tmp/live-index.html
           grep -Fq '<meta property="og:description" content="">' /tmp/live-index.html
           ! grep -Fq 'Espaço exclusivo para membros convidados.' /tmp/live-index.html
+          curl --retry 10 --retry-delay 2 --fail --silent --show-error "https://rota-certa-7ccc8.web.app/public-agenda-shell-0569.js?share_preview=$GITHUB_SHA" > /tmp/live-shell.js
+          ! grep -Fq 'Você recebeu um convite para uma área privada.' /tmp/live-shell.js
+          grep -Fq 'const shareData = { url };' /tmp/live-shell.js
           echo "VIP_SHARE_PREVIEW_LIVE=PASS"
