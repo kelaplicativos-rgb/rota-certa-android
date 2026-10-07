@@ -103,10 +103,38 @@ internal object DriverNotificationProjection0416 {
 
 internal object BookingPushRegistration0304 {
     suspend fun ensureRegistered(context: Context, store: TripStore): Boolean = withContext(Dispatchers.IO) {
+        val appContext = context.applicationContext
         val settings = store.onlineSettings()
-        if (!settings.configured || settings.driverUsername.isBlank()) return@withContext false
-        val token = runCatching { FirebaseMessaging.getInstance().token.await() }.getOrNull()?.trim().orEmpty()
-        if (token.length < 32) return@withContext false
+        if (!settings.configured || settings.driverUsername.isBlank()) {
+            RemoteSupportAttention0743.markPending(
+                appContext,
+                reasonCode = "DRIVER_ONLINE_CONFIGURATION_MISSING",
+                message = "A conexão remota precisa da configuração online do motorista.",
+            )
+            UnifiedDebugEventStore.recordAlways(
+                "REMOTE_SUPPORT_CONFIGURATION_MISSING_0743",
+                context.packageName,
+                "configured=${settings.configured} driverUsernamePresent=${settings.driverUsername.isNotBlank()}",
+            )
+            return@withContext false
+        }
+
+        val tokenResult = runCatching { FirebaseMessaging.getInstance().token.await() }
+        val token = tokenResult.getOrNull()?.trim().orEmpty()
+        if (token.length < 32) {
+            RemoteSupportAttention0743.markPending(
+                appContext,
+                reasonCode = if (tokenResult.isFailure) "FCM_TOKEN_FAILED" else "FCM_TOKEN_UNAVAILABLE",
+                message = "O aparelho ainda não conseguiu obter o registro de notificações. Toque em Verificar conexão remota.",
+            )
+            UnifiedDebugEventStore.recordAlways(
+                "REMOTE_SUPPORT_FCM_TOKEN_UNAVAILABLE_0743",
+                context.packageName,
+                "tokenPresent=false errorClass=${tokenResult.exceptionOrNull()?.javaClass?.simpleName.orEmpty()}",
+            )
+            return@withContext false
+        }
+
         val response = runCatching {
             TripRemoteApi(settings).registerPushToken(
                 token = token,
@@ -114,7 +142,12 @@ internal object BookingPushRegistration0304 {
                 deviceLabel = "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
             )
         }.getOrElse { error ->
-            UnifiedDebugEventStore.record(
+            RemoteSupportAttention0743.markPending(
+                appContext,
+                reasonCode = "PUSH_REGISTER_FAILED",
+                message = "Não foi possível registrar este aparelho para consultas remotas. Abra as notificações e tente novamente.",
+            )
+            UnifiedDebugEventStore.recordAlways(
                 "PUBLIC_BOOKING_PUSH_REGISTER_FAILED",
                 context.packageName,
                 AgendaFailureEvidence.describe(
@@ -126,31 +159,52 @@ internal object BookingPushRegistration0304 {
             )
             return@withContext false
         }
-        if (response.registered) {
-            UnifiedDebugEventStore.record(
-                "PUBLIC_BOOKING_PUSH_REGISTERED",
-                context.packageName,
-                "fcm=true appVersion=${BuildConfig.VERSION_NAME}",
+
+        if (!response.registered) {
+            RemoteSupportAttention0743.markPending(
+                appContext,
+                reasonCode = "PUSH_REGISTER_REJECTED",
+                message = "O servidor não confirmou o registro deste aparelho para consultas remotas.",
             )
-            runCatching {
-                val access0736 = TripRemoteApi(settings).ensureStandaloneCoversAccess0736()
-                StandaloneCoversRemoteAccessStore0736(context.applicationContext).save(
-                    publicBaseUrl = settings.publicBaseUrl,
-                    response = access0736,
-                )
-            }.onSuccess {
-                UnifiedDebugEventStore.record(
-                    "STANDALONE_COVERS_REMOTE_ACCESS_READY_0736",
-                    context.packageName,
-                    "configured=true expiresAtMillis=${it.expiresAtMillis}",
-                )
-            }.onFailure { error ->
-                UnifiedDebugEventStore.record(
-                    "STANDALONE_COVERS_REMOTE_ACCESS_PROVISION_FAILED_0736",
-                    context.packageName,
-                    "error=${error.javaClass.simpleName.take(80)}",
-                )
-            }
+            UnifiedDebugEventStore.recordAlways(
+                "REMOTE_SUPPORT_PUSH_REGISTER_REJECTED_0743",
+                context.packageName,
+                "registered=false",
+            )
+            return@withContext false
+        }
+
+        UnifiedDebugEventStore.recordAlways(
+            "PUBLIC_BOOKING_PUSH_REGISTERED",
+            context.packageName,
+            "fcm=true appVersion=${BuildConfig.VERSION_NAME}",
+        )
+
+        val accessResult = runCatching {
+            val access0736 = TripRemoteApi(settings).ensureStandaloneCoversAccess0736()
+            StandaloneCoversRemoteAccessStore0736(appContext).save(
+                publicBaseUrl = settings.publicBaseUrl,
+                response = access0736,
+            )
+        }
+        accessResult.onSuccess {
+            RemoteSupportAttention0743.markReady(appContext)
+            UnifiedDebugEventStore.recordAlways(
+                "STANDALONE_COVERS_REMOTE_ACCESS_READY_0736",
+                context.packageName,
+                "configured=true expiresAtMillis=${it.expiresAtMillis}",
+            )
+        }.onFailure { error ->
+            RemoteSupportAttention0743.markPending(
+                appContext,
+                reasonCode = "REMOTE_ACCESS_PROVISION_FAILED",
+                message = "As notificações foram registradas, mas o acesso privado remoto ainda não pôde ser confirmado.",
+            )
+            UnifiedDebugEventStore.recordAlways(
+                "STANDALONE_COVERS_REMOTE_ACCESS_PROVISION_FAILED_0736",
+                context.packageName,
+                "error=${error.javaClass.simpleName.take(80)}",
+            )
         }
         response.registered
     }
