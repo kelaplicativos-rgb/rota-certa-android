@@ -18,17 +18,17 @@ class RemoteSupportNotification0744ContractTest {
     }
 
     @Test
-    fun notificationOpensNotificationCenterWithoutExposingSensitiveIds() {
+    fun notificationOffersOnlyExplicitConsentActions() {
         val notification = source("RemoteSupportNotification0744.kt")
-        val entry = source("TripAndroidEntryPoints.kt")
-        val activity = source("TripsActivity.kt")
-        assertTrue(notification.contains("TripActions.ACTION_OPEN_NOTIFICATIONS"))
-        assertTrue(entry.contains("ACTION_OPEN_NOTIFICATIONS"))
-        assertTrue(activity.contains("openNotifications -> TripScreen.NOTIFICATIONS"))
+        assertTrue(notification.contains("\"ACEITAR\""))
+        assertTrue(notification.contains("\"RECUSAR\""))
+        assertTrue(notification.contains("RemoteSupportConsentReceiver0746.ACTION_ACCEPT"))
+        assertTrue(notification.contains("RemoteSupportConsentReceiver0746.ACTION_DECLINE"))
         assertTrue(notification.contains("VISIBILITY_PRIVATE"))
+        assertFalse(notification.contains("TripActions.ACTION_OPEN_NOTIFICATIONS"))
+        assertFalse(notification.contains("setContentIntent"))
         assertFalse(notification.contains("putExtra(TripActions.EXTRA_BOOKING_ID"))
         assertFalse(notification.contains("putExtra(TripActions.EXTRA_REMOTE_TRIP_ID"))
-        assertFalse(notification.contains("jobId"))
     }
 
     @Test
