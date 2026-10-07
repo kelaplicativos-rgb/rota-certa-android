@@ -2,6 +2,35 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.743",
+      "build": 6034,
+      "commit": null,
+      "branch": "agent/remote-support-attention-0.1.743",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Transforma o sino global em ponto único de suporte remoto: quando o aparelho não está confirmado, exibe um círculo laranja pulsante e leva diretamente às ações de recuperação.",
+        "Adiciona estado local persistente e multi-tenant da prontidão remota, alimentado pelo registro FCM, provisionamento da capability privada e verificação manual.",
+        "Central de Notificações passa a oferecer Verificar conexão remota, Gerar e compartilhar diagnóstico sanitizado e Abrir Central de Saúde sem percurso longo pela interface."
+      ],
+      "fixed": [
+        "Falhas para obter token FCM, registrar o aparelho ou provisionar o acesso remoto deixam de ficar escondidas apenas dentro da tela BlaBlaCar.",
+        "Reaplica a convergência final da malha diagnóstica 0.1.741 ao UnifiedDebugEventStore, evitando um silo de eventos na linha 0.1.742."
+      ],
+      "improved": [
+        "A capability privada permanece armazenada no Rota Certa e nunca é inserida nos logs ou no pacote técnico.",
+        "O pacote técnico continua passando pela sanitização existente antes do compartilhamento explícito do usuário.",
+        "A verificação é tentada automaticamente ao abrir a Agenda; sucesso apaga o alerta laranja e falha mantém uma ação direta na Central de Notificações."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Percurso manual longo para localizar a recuperação da conexão remota.",
+        "Registro remoto pendente sem indicação global acionável."
+      ],
+      "modulesAffected": ["Notificações", "BlaBlaCar", "Central de Saúde", "Diagnóstico", "Conexão remota", "Build"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.742",
       "build": 6033,
       "commit": null,
