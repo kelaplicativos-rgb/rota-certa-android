@@ -54,10 +54,12 @@ class AgendaNavigationNotificationsProfiles0416Test {
         val messaging = source("RotaCertaBookingMessagingService.kt")
 
         assertTrue(header.contains("Icons.Filled.Notifications"))
-        assertTrue(header.contains("if (unread > 0)"))
-        assertTrue(header.contains("Badge {"))
+        assertTrue(header.contains("remoteAttentionNeeded0743"))
+        assertTrue(header.contains("if (unread > 0 || remoteAttentionNeeded0743)"))
+        assertTrue(header.contains("Color(0xFFFF9800)"))
         assertTrue(header.contains("\"Notificações, \$unread não lidas\""))
-        assertTrue(header.contains("else {\n                \"Notificações\""))
+        assertTrue(header.contains("\"Notificações; atenção: conexão remota pendente\""))
+        assertTrue(header.contains("else -> \"Notificações\""))
         assertFalse(header.contains("🔔"))
 
         assertTrue(messaging.contains("TripRemoteApi(online).listDriverNotifications()"))
