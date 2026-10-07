@@ -30,6 +30,7 @@ internal object RemoteSupportNotification0744 {
         val normalizedJobId = when (event) {
             "standalone_covers_collect" -> normalizeStandaloneCoversRemoteJobId0736(jobId)
             "blablacar_trip_query_collect" -> normalizeBlaBlaRemoteTripQueryJobId0737(jobId)
+            "remote_health_collect" -> normalizeRemoteHealthJobId0747(jobId)
             else -> null
         } ?: return
 
