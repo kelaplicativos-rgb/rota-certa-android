@@ -147,6 +147,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private val stage23OcrGate = FarolVisualIdentityStage23.OcrDemandGate()
     private val stage32SemanticGate = FarolSemanticCardStage32.SemanticGate()
     private val stage32ScreenshotRateGate = FarolSemanticCardStage32.ScreenshotRateGate()
+    private val stage748InstantAddressPresence = FarolInstantAddressPresence0748.Gate()
     private val printInProgressStage32 = AtomicBoolean(false)
     // FAROL_SEMANTIC_CARD_GENERATION_STAGE32 — raw Accessibility churn cannot cancel useful OCR without semantic proof.
     // FAROL_FORENSIC_CARD_BLACK_BOX_STAGE32 — CASE provenance/outcome is diagnostic only, never visual authority.
@@ -1882,6 +1883,31 @@ class LiveRideAccessibilityService : AccessibilityService() {
             eventWindowIdStage20,
             eventStage26,
         )
+        // FAROL_INSTANT_ADDRESS_PRESENCE_0748 / NEGATIVE_OBSERVATION_CANNOT_REVOKE_POSITIVE_PRESENCE_0748
+        val instantEvaluation0748 = FarolInstantAddressPresence0748.detect(
+            text = cheapSignalStage26.sourceText,
+            windowId = eventWindowIdStage20,
+        )
+        val instantPresence0748 = stage748InstantAddressPresence.observe(instantEvaluation0748, eventWindowIdStage20)
+        if (instantPresence0748.observedNow) {
+            FarolMaximumForensicsStage38.record(
+                SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(),
+                "S748_ADDRESS_PRESENT_OBSERVED", eventPackageStage19,
+                details = "arm=${instantPresence0748.armPipeline}; count=${instantPresence0748.addressCount}; signature=${instantPresence0748.addressSignature.orEmpty()}; reason=${instantPresence0748.reason}; source=event_cheap_signal",
+            )
+        }
+        if (instantPresence0748.armPipeline) {
+            UnifiedDebugEventStore.record(
+                "S748_ADDRESS_PRESENT_ARMED", eventPackageStage19,
+                "window=$eventWindowIdStage20; count=${instantPresence0748.addressCount}; signature=${instantPresence0748.addressSignature.orEmpty()}; eventToArmUs=${(SystemClock.elapsedRealtimeNanos() - eventStartedNsStage26).coerceAtLeast(0L) / 1000L}",
+            )
+            FarolCausalLatencyStage28.Metrics.increment("stage748AddressPresenceArmed")
+            FarolCausalLatencyStage28.Metrics.sample("eventToAddressPresenceArm0748", SystemClock.elapsedRealtimeNanos() - eventStartedNsStage26)
+            if ((currentRadarColor != RadarColor.Green && currentRadarColor != RadarColor.Red) || currentDistanceKm == null) {
+                rememberBubbleReason("stage748_address_present", "Endereço detectado na tela; análise completa disparada imediatamente.")
+                if (currentRadarColor != RadarColor.Default || currentDistanceKm != null) showOverlay(RadarColor.Default, distanceKm = null)
+            }
+        }
         val admissionStage26 = stage26PreCollectGate.admit(true, cheapSignalStage26)
         val replacementProofStage46R8 = if (
             admissionStage26.reason == "stage40_address_evidence_changed" &&
@@ -1956,7 +1982,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             "eventToMutationDetected",
             mutationDetectedNsStage26 - eventStartedNsStage26,
         )
-        if (!admissionStage26.heavyCollect) {
+        if (!admissionStage26.heavyCollect && !instantPresence0748.armPipeline) {
             FarolCausalLatencyStage28.Metrics.increment("preCollectDuplicateSkipped")
             FarolCausalLatencyStage28.Metrics.increment("eventsCoalesced")
             FarolCausalLatencyStage28.Metrics.increment("visualIdentityRepeated")
@@ -2117,7 +2143,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             return true
         }
 
-        if (!visualDecisionStage23.process) {
+        if (!visualDecisionStage23.process && !instantPresence0748.armPipeline) {
             // Stage44: exact raw duplicate proves that the structural event did not change this visual frame.
             // Never turn a valid Green/Red into Yellow before this branch.
             FarolMaximumForensicsStage38.record(
@@ -2406,6 +2432,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (::stage36RuntimeAuthority.isInitialized) stage36RuntimeAuthority.markExplicitOff("stage26_apply_reading_off")
         stage32SemanticGate.markReadingOff()
         stage32ScreenshotRateGate.reset()
+        stage748InstantAddressPresence.clear()
         FarolForensicCardBlackBoxStage32.markReadingOff(SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis())
         FarolForensicCaseStoreStage32.persistIfIntensive(applicationContext)
         stage28RouteGate.invalidateExcept(-1L, -1L)
@@ -5597,6 +5624,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         universalActiveRidePackageName = null
         universalActiveAddressSignature = null
         universalActiveCardIdentity0683 = null
+        stage748InstantAddressPresence.clear()
         stage684AccessibilityRouteAddress = null
         stage684AccessibilityRouteCardIdentity = null
         lastSnapshotHash = null
