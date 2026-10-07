@@ -2,6 +2,43 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.748",
+      "build": 6039,
+      "commit": null,
+      "branch": "agent/farol-instant-address-0.1.748",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Adiciona gate event-driven de presença de endereço antes da coalescência e da coleta visual pesada do FAROL.",
+        "Um único endereço positivo já arma imediatamente o pipeline completo, sem aguardar par origem/destino ou heartbeat.",
+        "Reaproveita o fallback de IA já protegido pelo backend somente como árbitro após OCR local ambíguo com indício de endereço."
+      ],
+      "fixed": [
+        "Endereço válido podia existir no evento de Acessibilidade e ainda assim esperar a coleta pesada ou ser atrasado por uma decisão de duplicidade.",
+        "OCR local sem candidato encerrava a tentativa mesmo quando havia texto com formato de endereço que justificava arbitragem remota.",
+        "Observação negativa isolada deixa de ter autoridade para revogar a presença positiva já confirmada na mesma sessão visual."
+      ],
+      "improved": [
+        "Registra eventToAddressPresenceArm0748 e marcadores forenses S748 para medir a latência real do primeiro disparo.",
+        "Mantém o heartbeat de 700 ms apenas como watchdog/lease, fora do caminho rápido de detecção.",
+        "Preserva geocodificação local, Organic Maps, autoridade de cor local, road-km final e proteções de freshness já existentes."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Sensação de atraso entre um endereço aparecer na tela e o FAROL começar a processá-lo.",
+        "Leitura OCR negativa posterior podia competir conceitualmente com evidência local positiva mais forte."
+      ],
+      "modulesAffected": [
+        "FAROL",
+        "Acessibilidade",
+        "OCR",
+        "IA fallback",
+        "Diagnóstico",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.747",
       "build": 6038,
       "commit": null,
@@ -27,7 +64,15 @@
         "Central de Saúde disponível apenas por compartilhamento manual.",
         "Impossibilidade de provar remotamente que RECUSAR interrompe a coleta antes dos logs."
       ],
-      "modulesAffected": ["Central de Saúde", "Diagnóstico", "Consentimento remoto", "Notificações", "Backend", "FCM", "Build"],
+      "modulesAffected": [
+        "Central de Saúde",
+        "Diagnóstico",
+        "Consentimento remoto",
+        "Notificações",
+        "Backend",
+        "FCM",
+        "Build"
+      ],
       "detailsComplete": true
     },
     {
@@ -56,7 +101,15 @@
         "Coleta remota iniciada automaticamente antes de consentimento explícito.",
         "Fluxo remoto com telas e ações extras além de aceitar ou recusar."
       ],
-      "modulesAffected": ["Notificações", "Bolinha", "BlaBlaCar", "Coleta remota", "Consentimento", "Diagnóstico", "Build"],
+      "modulesAffected": [
+        "Notificações",
+        "Bolinha",
+        "BlaBlaCar",
+        "Coleta remota",
+        "Consentimento",
+        "Diagnóstico",
+        "Build"
+      ],
       "detailsComplete": true
     },
     {
@@ -83,7 +136,14 @@
       "resolvedRegressions": [
         "Bolinha normal enquanto existia uma solicitação remota pendente."
       ],
-      "modulesAffected": ["FAROL", "Bolinha", "Notificações", "Suporte remoto", "Diagnóstico", "Build"],
+      "modulesAffected": [
+        "FAROL",
+        "Bolinha",
+        "Notificações",
+        "Suporte remoto",
+        "Diagnóstico",
+        "Build"
+      ],
       "detailsComplete": true
     },
     {
@@ -112,7 +172,14 @@
         "Push remoto recebido sem notificação visível no Samsung.",
         "Caminho longo até a área de suporte remoto."
       ],
-      "modulesAffected": ["Notificações", "BlaBlaCar", "Suporte remoto", "Central de Saúde", "Diagnóstico", "Build"],
+      "modulesAffected": [
+        "Notificações",
+        "BlaBlaCar",
+        "Suporte remoto",
+        "Central de Saúde",
+        "Diagnóstico",
+        "Build"
+      ],
       "detailsComplete": true
     },
     {
@@ -141,7 +208,14 @@
         "Percurso manual longo para localizar a recuperação da conexão remota.",
         "Registro remoto pendente sem indicação global acionável."
       ],
-      "modulesAffected": ["Notificações", "BlaBlaCar", "Central de Saúde", "Diagnóstico", "Conexão remota", "Build"],
+      "modulesAffected": [
+        "Notificações",
+        "BlaBlaCar",
+        "Central de Saúde",
+        "Diagnóstico",
+        "Conexão remota",
+        "Build"
+      ],
       "detailsComplete": true
     },
     {
@@ -170,7 +244,15 @@
         "Texto visual pequeno ausente na cópia da tela",
         "Telefone visível em imagem não encontrado pelo atalho WhatsApp"
       ],
-      "modulesAffected": ["Atalhos", "Accessibility", "OCR", "WhatsApp", "Texto Tela", "Diagnóstico", "Build"],
+      "modulesAffected": [
+        "Atalhos",
+        "Accessibility",
+        "OCR",
+        "WhatsApp",
+        "Texto Tela",
+        "Diagnóstico",
+        "Build"
+      ],
       "detailsComplete": true
     },
     {
@@ -180,12 +262,22 @@
       "branch": "agent/diagnostic-fabric-0.1.741",
       "generatedAt": null,
       "status": "EM_VALIDACAO",
-      "implemented": ["Adiciona núcleo unificado de observabilidade semântica com eventos, traces, módulos, invariantes, incidentes e caixa-preta circular em memória."],
+      "implemented": [
+        "Adiciona núcleo unificado de observabilidade semântica com eventos, traces, módulos, invariantes, incidentes e caixa-preta circular em memória."
+      ],
       "fixed": [],
-      "improved": ["Redige segredos antes do armazenamento e preserva evidências de violações de invariantes.", "Instrumenta automaticamente o ciclo de vida de Activities sem polling periódico e sem rede."],
+      "improved": [
+        "Redige segredos antes do armazenamento e preserva evidências de violações de invariantes.",
+        "Instrumenta automaticamente o ciclo de vida de Activities sem polling periódico e sem rede."
+      ],
       "regressions": [],
       "resolvedRegressions": [],
-      "modulesAffected": ["Central de Saúde", "Diagnóstico", "Observabilidade", "Build"],
+      "modulesAffected": [
+        "Central de Saúde",
+        "Diagnóstico",
+        "Observabilidade",
+        "Build"
+      ],
       "detailsComplete": true
     },
     {
