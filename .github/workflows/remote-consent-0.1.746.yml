@@ -29,6 +29,7 @@ jobs:
       EXPECTED_VERSION_CODE: '6037'
       OM_TAG: '2026.08.27-18-android'
       OM_VERSION: '2026.08.27-18'
+      OM_SOURCE_SHA: '3ef379196cca434cf17f4ee684f16aa99fd8985e'
 
     steps:
       - uses: actions/checkout@v4
@@ -43,38 +44,31 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Install native prerequisites
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update -y
-          sudo apt-get install -y ninja-build
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            "platforms;android-36" \
-            "ndk;29.0.14206865" \
-            "cmake;3.22.1"
+      - name: Restore pinned Organic Maps SDK cache
+        id: om-sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/app/organicmaps/sdk
+          key: organicmaps-sdk-${{ runner.os }}-${{ env.OM_SOURCE_SHA }}-android36-ndk29-arm64
 
-      - name: Build exact Organic Maps SDK locally
+      - name: Build exact pinned Organic Maps SDK on cache miss
+        if: steps.om-sdk-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: bash tools/ci/build-organicmaps-sdk.sh
+
+      - name: Verify pinned Organic Maps SDK dependency
         shell: bash
         run: |
           set -euo pipefail
-          git clone --depth 128 --branch "$OM_TAG" https://github.com/organicmaps/organicmaps.git /tmp/organicmaps
-          cd /tmp/organicmaps
-          git submodule update --init --recursive --depth 1 --jobs 8
-          test "$(tools/unix/version.sh android_name)" = "$OM_VERSION"
-          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
-          cd android
-          chmod +x ./gradlew
-          ./gradlew \
-            :sdk:location:core:publishToMavenLocal \
-            :sdk:publishToMavenLocal \
-            :sdk:maps:world:publishToMavenLocal \
-            -Parm64 -Pnjobs=2 \
-            --no-daemon --max-workers=2 --stacktrace \
-            | tee /tmp/organicmaps-sdk-build.log
-          test -f "$HOME/.m2/repository/app/organicmaps/sdk/location-core/$OM_VERSION/location-core-$OM_VERSION.pom"
-          test -f "$HOME/.m2/repository/app/organicmaps/sdk/sdk/$OM_VERSION/sdk-$OM_VERSION.pom"
-          test -f "$HOME/.m2/repository/app/organicmaps/sdk/maps-world/$OM_VERSION/maps-world-$OM_VERSION.pom"
+          test -s "$HOME/.m2/repository/app/organicmaps/sdk/location-core/$OM_VERSION/location-core-$OM_VERSION.pom"
+          test -s "$HOME/.m2/repository/app/organicmaps/sdk/sdk/$OM_VERSION/sdk-$OM_VERSION.pom"
+          test -s "$HOME/.m2/repository/app/organicmaps/sdk/maps-world/$OM_VERSION/maps-world-$OM_VERSION.pom"
+          {
+            echo "## Organic Maps dependency"
+            echo "- ✅ version: `$OM_VERSION`"
+            echo "- ✅ pinned source: `$OM_SOURCE_SHA`"
+            echo "- cache hit: `${{ steps.om-sdk-cache.outputs.cache-hit }}`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Prove exact source scope
         shell: bash
