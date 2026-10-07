@@ -102,6 +102,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
     } // quick_reply_receiver_checklist_3
     private val screenshotInProgress = AtomicBoolean(false)
+    private val universalAddressVisualInProgress0752 = AtomicBoolean(false)
+    @Volatile private var lastUniversalAddressVisualRequestAt0752: Long = 0L
     private val notificationWakeGate0169 = FarolNotificationWakeGate0169()
     private var notificationWakeJob0169: Job? = null
     private val notificationFailureCircuit0170 = FarolNotificationFailureCircuit0170()
@@ -714,6 +716,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 candidatePackage,
                 "reason=${rootAdmission0187.reason}; effect=$rejectionEffect0187Phase3; eventPackage=${eventPackage ?: "none"}; rootPackage=${rootPackage ?: "none"}; eventWindow=$eventWindowId0187; rootWindow=${rootHandle0187?.windowId ?: 0}",
             )
+            scheduleUniversalAddressVisual0752(
+                reason0752 = "root_snapshot_rejected:${rootAdmission0187.reason}",
+                packageHint0752 = candidatePackage ?: eventPackage,
+            )
             when (rejectionEffect0187Phase3) {
                 FarolRejectedSnapshotEffect0187Phase3.DISCARD_WITHOUT_EFFECT -> {
                     UnifiedDebugEventStore.record(
@@ -812,6 +818,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 "BUBBLE_PACKAGE_BLOCKED",
                 resolvedPackage,
                 "selecionado=${resolvedPackage in savedPackages}; shouldScan=${shouldScanPackage(resolvedPackage)}; motivo=${scanBlockReason(resolvedPackage)}",
+            )
+            scheduleUniversalAddressVisual0752(
+                reason0752 = "package_not_selected_or_scan_blocked",
+                packageHint0752 = resolvedPackage,
             )
             universalForegroundPackageName = resolvedPackage
             activePackageName = resolvedPackage
@@ -3441,13 +3451,21 @@ class LiveRideAccessibilityService : AccessibilityService() {
                                     ocrStartedNsStage20, System.currentTimeMillis(), "S38_OCR_EXTRACT_START", eventPackageStage19, cycleId = cycleIdStage20, operationId = "ocr-$serialStage19",
                                     details = "screenshotHash=$screenshotHashStage32",
                                 )
-                                val structuredStage19 = withContext(Dispatchers.Default) {
-                                    ocrService.extractStructuredText(bitmapStage19)
+                                val sharedVisual0752 = withContext(Dispatchers.Default) {
+                                    ScreenVisualReader0742(ocrService).read(
+                                        bitmap = requireNotNull(bitmapStage19),
+                                        accessibilityText = "",
+                                        purpose = VisualReadPurpose0742.Address,
+                                    )
                                 }
+                                val structuredStage19 = OcrStructuredText0188(
+                                    text = sharedVisual0752.text,
+                                    blocks = sharedVisual0752.blocks,
+                                )
                                 val extractEndedNsStage20 = SystemClock.elapsedRealtimeNanos()
                                 FarolMaximumForensicsStage38.record(
                                     extractEndedNsStage20, System.currentTimeMillis(), "S38_OCR_EXTRACT_END", eventPackageStage19, cycleId = cycleIdStage20, operationId = "ocr-$serialStage19",
-                                    details = "duration_ns=${(extractEndedNsStage20 - ocrStartedNsStage20).coerceAtLeast(0L)}; blocks=${structuredStage19.blocks.size}; text_len=${structuredStage19.text.length}; text_hash=${structuredStage19.text.hashCode()}; fullText=${structuredStage19.text.take(1300)}",
+                                    details = "duration_ns=${(extractEndedNsStage20 - ocrStartedNsStage20).coerceAtLeast(0L)}; blocks=${structuredStage19.blocks.size}; text_len=${structuredStage19.text.length}; text_hash=${structuredStage19.text.hashCode()}; passes=${sharedVisual0752.passCount}; recovery=${sharedVisual0752.usedRecovery}; addresses=${sharedVisual0752.addressCandidates.size}; sharedVisual0752=true; fullText=${structuredStage19.text.take(1300)}",
                                 )
                                 structuredStage19.blocks.forEachIndexed { index38, block38 ->
                                     FarolMaximumForensicsStage38.record(
@@ -3754,6 +3772,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         cycleIdStage20: Long? = null,
         ownershipTextStage47: String = evaluationStage19.analysisText,
         ownershipPackageStage47: String? = null,
+        universalAddressPair0752: Boolean = false,
     ) {
         if (!serviceReady || !WorkModePolicy0162.isEnabled(currentSettings)) return
         if (!stage36RuntimeAuthority.snapshot().enabled) return
@@ -3766,7 +3785,20 @@ class LiveRideAccessibilityService : AccessibilityService() {
             text = ownershipTextStage47,
             locationCount = evaluationStage19.addresses.size,
         )
-        if (!ownershipStage47.owned) {
+        val universalPairOwned0752 = universalAddressPair0752 &&
+            FarolUniversalAddressPairAuthority0752.authorize(
+                addresses = evaluationStage19.addresses,
+                packageName = packageStage47,
+                ownPackageName = packageName,
+            )
+        if (universalPairOwned0752) {
+            UnifiedDebugEventStore.record(
+                FarolUniversalAddressPairAuthority0752.ANY_APP_PAIR_MARKER,
+                packageStage47,
+                "window=${evaluationStage19.windowId}; addresses=${evaluationStage19.addresses.size}; destination=${evaluationStage19.destination.take(220)}; selectedAppRequired=false",
+            )
+        }
+        if (!ownershipStage47.owned && !universalPairOwned0752) {
             FarolMaximumForensicsStage38.record(
                 SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S47_ROUTE_BLOCKED_NOT_RIDE_CARD",
                 packageStage47, cycleId = cycleIdStage20,
@@ -3951,7 +3983,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
             packageName = packageStage47,
             details = "source=$sourceStage19; sanitized=${routeDestination0684.take(500)}; changed=${routeSanitization0684.changed}; accessibilityPriority=$accessibilityPriorityApplied0684",
         )
-        val candidatePackageStage46R3 = observePackageForWindowIdStage46R3(evaluationStage19.windowId)
+        val candidatePackageStage46R3 = packageStage47
+            ?: observePackageForWindowIdStage46R3(evaluationStage19.windowId)
         bindCandidateTargetSurfaceStage46(
             candidatePackageStage46R3,
             evaluationStage19.windowId,
@@ -4195,9 +4228,15 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val tokenStage36 = stage36BindingWorkToken[keyStage46] ?: return false
         val surfaceStage46 = stage46BindingSurfaceToken[keyStage46] ?: return false
         val runtimeFreshStage46 = stage36RuntimeAuthority.isFresh(tokenStage36)
-        val currentTargetWindowStage46 = observeTargetWindowIdStage46(surfaceStage46.packageName)
+        val visualTarget0752 = captureManualVisualTarget0742()
+        val currentPackage0752 = currentRootPackageName() ?: visualTarget0752.packageName
+        val currentTargetWindowStage46 = observeTargetWindowIdStage46(surfaceStage46.packageName).takeIf { it > 0 }
+            ?: visualTarget0752.windowId?.takeIf {
+                surfaceStage46.packageName == null || visualTarget0752.packageName == surfaceStage46.packageName
+            }
+            ?: 0
         val surfaceFreshStage46 = FarolTargetSurfaceStage46R2.surfaceFresh(
-            surfaceStage46, currentRootPackageName(), currentTargetWindowStage46, stage46VisualEpoch,
+            surfaceStage46, currentPackage0752, currentTargetWindowStage46, stage46VisualEpoch,
         )
         if (runtimeFreshStage46 && !surfaceFreshStage46) {
             FarolMaximumForensicsStage38.record(
@@ -4901,6 +4940,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 FarolOneSecondVisualAuthority0711.NO_OBSERVATION_PRESERVES_MARKER,
                 package0711,
                 "reason=authorized_root_not_observed; color=$currentRadarColor; distance=$currentDistanceKm; binding=${universalActiveAddressSignature.orEmpty()}",
+            )
+            scheduleUniversalAddressVisual0752(
+                reason0752 = "authorized_root_not_observed",
+                packageHint0752 = package0711 ?: universalResolvedForegroundPackage(),
             )
             return
         }

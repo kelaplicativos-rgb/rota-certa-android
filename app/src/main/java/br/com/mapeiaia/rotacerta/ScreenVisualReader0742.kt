@@ -6,11 +6,14 @@ import kotlin.math.roundToInt
 enum class VisualReadPurpose0742 {
     FullText,
     Phone,
+    Address,
 }
 
 data class VisualReadResult0742(
     val text: String,
     val phoneTarget: ScreenPhoneTarget?,
+    val addressCandidates: List<String>,
+    val blocks: List<OcrTextBlock0188>,
     val passCount: Int,
     val blockCount: Int,
     val usedRecovery: Boolean,
@@ -29,6 +32,21 @@ class ScreenVisualReader0742(
             .getOrElse { OcrStructuredText0188(text = "", blocks = emptyList()) }
         passes += primary
 
+        if (purpose == VisualReadPurpose0742.Address) {
+            val addresses0752 = ScreenAddressVisualAuthority0752.orderedAddresses(
+                accessibilityText = accessibilityText,
+                passes = passes,
+            )
+            if (addresses0752.size >= 2) {
+                return result(
+                    accessibilityText = accessibilityText,
+                    passes = passes,
+                    phoneTarget = null,
+                    usedRecovery = false,
+                )
+            }
+        }
+
         if (purpose == VisualReadPurpose0742.Phone) {
             ScreenVisualFusion0742.findPhone(accessibilityText, passes)?.let { target ->
                 return result(accessibilityText, passes, target, usedRecovery = false)
@@ -46,6 +64,21 @@ class ScreenVisualReader0742(
             val pass = recognizeCrop(bitmap, spec) ?: continue
             usedRecovery = true
             passes += pass
+
+            if (purpose == VisualReadPurpose0742.Address) {
+                val addresses0752 = ScreenAddressVisualAuthority0752.orderedAddresses(
+                    accessibilityText = accessibilityText,
+                    passes = passes,
+                )
+                if (addresses0752.size >= 2) {
+                    return result(
+                        accessibilityText = accessibilityText,
+                        passes = passes,
+                        phoneTarget = null,
+                        usedRecovery = true,
+                    )
+                }
+            }
 
             if (purpose == VisualReadPurpose0742.Phone) {
                 ScreenVisualFusion0742.findPhone(accessibilityText, passes)?.let { target ->
@@ -94,7 +127,21 @@ class ScreenVisualReader0742(
                     crop.recycle()
                 }
             }
-            return runCatching { ocrService.extractStructuredText(working) }.getOrNull()
+            val recognized = runCatching { ocrService.extractStructuredText(working) }.getOrNull()
+                ?: return null
+            return OcrStructuredText0188(
+                text = recognized.text,
+                blocks = recognized.blocks.mapIndexed { index, block ->
+                    OcrTextBlock0188(
+                        id = "visual-${spec.id}-$index",
+                        text = block.text,
+                        left = left + (block.left / factor).roundToInt(),
+                        top = top + (block.top / factor).roundToInt(),
+                        right = left + (block.right / factor).roundToInt(),
+                        bottom = top + (block.bottom / factor).roundToInt(),
+                    )
+                },
+            )
         } finally {
             if (!working.isRecycled) working.recycle()
         }
@@ -105,11 +152,20 @@ class ScreenVisualReader0742(
         passes: List<OcrStructuredText0188>,
         phoneTarget: ScreenPhoneTarget?,
         usedRecovery: Boolean,
-    ): VisualReadResult0742 = VisualReadResult0742(
-        text = ScreenVisualFusion0742.mergeText(accessibilityText, passes),
-        phoneTarget = phoneTarget,
-        passCount = passes.size,
-        blockCount = passes.sumOf { it.blocks.size },
-        usedRecovery = usedRecovery,
-    )
+    ): VisualReadResult0742 {
+        val text0742 = ScreenVisualFusion0742.mergeText(accessibilityText, passes)
+        val blocks0742 = ScreenAddressVisualAuthority0752.deduplicatedBlocks(passes)
+        return VisualReadResult0742(
+            text = text0742,
+            phoneTarget = phoneTarget,
+            addressCandidates = ScreenAddressVisualAuthority0752.orderedAddresses(
+                accessibilityText = accessibilityText,
+                passes = passes,
+            ),
+            blocks = blocks0742,
+            passCount = passes.size,
+            blockCount = passes.sumOf { it.blocks.size },
+            usedRecovery = usedRecovery,
+        )
+    }
 }
