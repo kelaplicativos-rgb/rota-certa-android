@@ -52,6 +52,7 @@ import br.com.mapeiaia.rotacerta.MainActivity
 import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import br.com.mapeiaia.rotacerta.SettingsRepository
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
+import br.com.mapeiaia.rotacerta.monitoring.OperationalHealthActivity
 import br.com.mapeiaia.rotacerta.date.RotaCertaDateSelection
 import br.com.mapeiaia.rotacerta.date.RotaCertaDateSelectionMode
 import br.com.mapeiaia.rotacerta.ui.RotaCertaDatePickerDialog
@@ -344,6 +345,14 @@ private fun TripApp(
         0
     }
     val shareScope = rememberCoroutineScope()
+    val remoteSupportAttention0743 by RemoteSupportAttention0743.state(activity).collectAsState()
+    var remoteSupportBusy0743 by remember { mutableStateOf(false) }
+    var remoteSupportActionMessage0743 by remember { mutableStateOf<String?>(null) }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        RemoteSupportAttention0743.markChecking(activity)
+        BookingPushRegistration0304.ensureRegistered(activity, store)
+    }
 
     androidx.compose.runtime.LaunchedEffect(screen) {
         val currentScreenName0689 = screen.name
@@ -867,6 +876,7 @@ private fun TripApp(
                     navigationEnabled0689 = navigationCanGoBack0689,
                     overflowActions = headerActions0396,
                     notificationUnreadCount = driverUnreadCount,
+                    remoteAttentionNeeded0743 = remoteSupportAttention0743.needsAttention,
                     onNotificationsClick = openNotifications0396,
                     onUniversalSearchClick0687 = if (headerIsRoot0396) {
                         {
@@ -1137,8 +1147,73 @@ private fun TripApp(
                             }) { Text("Marcar todas como lidas") }
                         }
                     }
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("Suporte remoto", style = MaterialTheme.typography.titleMedium)
+                                Text(if (remoteSupportAttention0743.ready) "✅ pronto" else "🟠 atenção")
+                            }
+                            Text(
+                                remoteSupportAttention0743.message,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Button(
+                                onClick = {
+                                    shareScope.launch {
+                                        remoteSupportBusy0743 = true
+                                        RemoteSupportAttention0743.markChecking(activity)
+                                        BookingPushRegistration0304.ensureRegistered(activity, store)
+                                        remoteSupportActionMessage0743 =
+                                            RemoteSupportAttention0743.current(activity).message
+                                        remoteSupportBusy0743 = false
+                                    }
+                                },
+                                enabled = !remoteSupportBusy0743,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(if (remoteSupportBusy0743) "Verificando…" else "Verificar conexão remota")
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    shareScope.launch {
+                                        remoteSupportBusy0743 = true
+                                        remoteSupportActionMessage0743 = "Gerando diagnóstico sanitizado…"
+                                        val result0743 = RemoteSupportDiagnostics0743.generateAndShare(activity)
+                                        remoteSupportActionMessage0743 = result0743.fold(
+                                            onSuccess = { "Diagnóstico pronto: $it" },
+                                            onFailure = { "Falha ao gerar diagnóstico: ${it.javaClass.simpleName}" },
+                                        )
+                                        remoteSupportBusy0743 = false
+                                    }
+                                },
+                                enabled = !remoteSupportBusy0743,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("Gerar e compartilhar diagnóstico")
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    activity.startActivity(Intent(activity, OperationalHealthActivity::class.java))
+                                },
+                                enabled = !remoteSupportBusy0743,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("Abrir Central de Saúde")
+                            }
+                            remoteSupportActionMessage0743?.let {
+                                Text(it, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
                     if (driverNotifications.isEmpty()) {
-                        Text("Nenhuma notificação.", style = MaterialTheme.typography.bodySmall)
+                        Text("Nenhuma outra notificação.", style = MaterialTheme.typography.bodySmall)
                     } else {
                         driverNotifications.take(20).forEach { item ->
                             TextButton(
