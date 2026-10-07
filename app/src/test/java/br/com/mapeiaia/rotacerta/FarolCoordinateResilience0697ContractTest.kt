@@ -45,19 +45,31 @@ class FarolCoordinateResilience0697ContractTest {
     }
 
     @Test
-    fun coordinateProvidersAreOrderedAndGloballyBounded() {
+    fun coordinateProvidersAreOfflineFirstThenHedgedAndGloballyBounded0751() {
         val maps = src("GoogleMapsService.kt")
+        val capture = src("FarolCaptureFabric0751.kt")
         val start = maps.indexOf("suspend fun resolveFarolCoordinateResilient0697(")
         val end = maps.indexOf("suspend fun drivingDistanceKm", start)
         assertTrue(start >= 0 && end > start)
         val block = maps.substring(start, end)
-        val platform = block.indexOf("resolvePlatformOrigin0697")
-        val osm = block.indexOf("resolveFreeOrigin0697")
-        val google = block.indexOf("resolveGoogleOrigin0697")
-        assertTrue(block.contains("withTimeoutOrNull(FarolCoordinateResolution0697.GLOBAL_DEADLINE_MS)"))
-        assertTrue(platform >= 0)
-        assertTrue(osm > platform)
-        assertTrue(google > osm)
+
+        val organic = block.indexOf("organicMapsOfflineResolver0711?.resolve")
+        val hedge = block.indexOf("GEOCODE_HEDGE_STARTED_MARKER")
+        val platform = block.indexOf("\"android\" to async")
+        val google = block.indexOf("\"google\" to async")
+        val osm = block.indexOf("\"osm\" to async")
+
+        assertTrue(organic >= 0)
+        assertTrue(hedge > organic)
+        assertTrue(platform > hedge)
+        assertTrue(google > platform)
+        assertTrue(osm > google)
+        assertTrue(block.contains("withTimeoutOrNull(FarolCaptureFabric0751.OFFLINE_GEOCODE_BUDGET_MS)"))
+        assertTrue(block.contains("withTimeoutOrNull(FarolCaptureFabric0751.HEDGED_GEOCODE_DEADLINE_MS)"))
+        assertTrue(block.contains("if (apiKey.isNotBlank())"))
+        assertTrue(block.contains("else {\n                providers0751 += \"osm\""))
+        assertTrue(capture.contains("const val OFFLINE_GEOCODE_BUDGET_MS = 180L"))
+        assertTrue(capture.contains("const val HEDGED_GEOCODE_DEADLINE_MS = 1_250L"))
     }
 
     @Test
