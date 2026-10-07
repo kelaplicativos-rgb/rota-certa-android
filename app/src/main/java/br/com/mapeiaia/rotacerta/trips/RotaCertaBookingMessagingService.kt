@@ -256,6 +256,20 @@ class RotaCertaBookingMessagingService : FirebaseMessagingService() {
             )
             return
         }
+        if (event == "remote_health_collect") {
+            val jobId0747 = message.data["jobId"].orEmpty()
+            RemoteSupportNotification0744.show(
+                context = this,
+                event = event,
+                jobId = jobId0747,
+            )
+            UnifiedDebugEventStore.recordAlways(
+                "REMOTE_HEALTH_CONSENT_REQUIRED_0747",
+                packageName,
+                "jobPresent=${jobId0747.isNotBlank()} collectionStarted=false",
+            )
+            return
+        }
         val remoteTripId = message.data["remoteTripId"].orEmpty()
         val bookingId = message.data["bookingId"].orEmpty()
         val seats = message.data["seats"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
