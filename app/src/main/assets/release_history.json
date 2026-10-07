@@ -2,6 +2,35 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.746",
+      "build": 6037,
+      "commit": null,
+      "branch": "agent/remote-consent-0.1.746",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Toda solicitação remota passa a exigir consentimento explícito no Samsung antes de qualquer coleta ou consulta.",
+        "A notificação de acesso remoto exibe somente ACEITAR e RECUSAR.",
+        "ACEITAR inicia exclusivamente o job remoto correspondente; RECUSAR encerra o job no backend como recusado sem iniciar coleta."
+      ],
+      "fixed": [
+        "Remove o enfileiramento automático do coletor ao receber o push remoto.",
+        "Impede que uma solicitação remota execute antes da decisão do motorista."
+      ],
+      "improved": [
+        "A notificação permanece privada e não expõe token, tripId, jobId ou dados de passageiro.",
+        "A bolinha continua usando apenas o anel laranja enquanto existe consentimento remoto pendente.",
+        "O estado remoto é limpo após ACEITAR ou RECUSAR, preservando alertas de Agenda independentes."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Coleta remota iniciada automaticamente antes de consentimento explícito.",
+        "Fluxo remoto com telas e ações extras além de aceitar ou recusar."
+      ],
+      "modulesAffected": ["Notificações", "Bolinha", "BlaBlaCar", "Coleta remota", "Consentimento", "Diagnóstico", "Build"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.745",
       "build": 6036,
       "commit": null,
