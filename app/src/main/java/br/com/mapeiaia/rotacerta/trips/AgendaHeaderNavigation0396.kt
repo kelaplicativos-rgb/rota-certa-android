@@ -1,6 +1,11 @@
 package br.com.mapeiaia.rotacerta.trips
 
 import android.content.Intent
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,6 +42,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -158,6 +165,7 @@ internal fun AgendaModuleHeader0396(
     navigationEnabled0689: Boolean = true,
     overflowActions: List<AgendaHeaderAction0396>,
     notificationUnreadCount: Int = 0,
+    remoteAttentionNeeded0743: Boolean = false,
     onNotificationsClick: (() -> Unit)? = null,
     onUniversalSearchClick0687: (() -> Unit)? = null,
     globalHtmlRefreshState0679: BlaBlaGlobalHtmlRefreshState0679 = BlaBlaGlobalHtmlRefreshState0679(),
@@ -303,10 +311,25 @@ internal fun AgendaModuleHeader0396(
                 }
             }
             val unread = notificationUnreadCount.coerceAtLeast(0)
-            val notificationsDescription = if (unread > 0) {
-                "Notificações, $unread não lidas"
-            } else {
-                "Notificações"
+            val remoteAttentionTransition0743 = rememberInfiniteTransition(
+                label = "remote-support-attention-0743",
+            )
+            val remoteAttentionAlpha0743 by remoteAttentionTransition0743.animateFloat(
+                initialValue = 0.28f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 650),
+                    repeatMode = RepeatMode.Reverse,
+                ),
+                label = "remote-support-orange-pulse-0743",
+            )
+            val notificationsDescription = when {
+                remoteAttentionNeeded0743 && unread > 0 ->
+                    "Notificações, $unread não lidas; atenção: conexão remota pendente"
+                remoteAttentionNeeded0743 ->
+                    "Notificações; atenção: conexão remota pendente"
+                unread > 0 -> "Notificações, $unread não lidas"
+                else -> "Notificações"
             }
             IconButton(
                 onClick = { onNotificationsClick?.invoke() },
@@ -315,9 +338,20 @@ internal fun AgendaModuleHeader0396(
             ) {
                 BadgedBox(
                     badge = {
-                        if (unread > 0) {
-                            Badge {
-                                Text(if (unread > 99) "99+" else unread.toString())
+                        if (unread > 0 || remoteAttentionNeeded0743) {
+                            Badge(
+                                containerColor = if (remoteAttentionNeeded0743) {
+                                    Color(0xFFFF9800)
+                                } else {
+                                    MaterialTheme.colorScheme.error
+                                },
+                                modifier = Modifier.graphicsLayer(
+                                    alpha = if (remoteAttentionNeeded0743) remoteAttentionAlpha0743 else 1f,
+                                ),
+                            ) {
+                                if (unread > 0) {
+                                    Text(if (unread > 99) "99+" else unread.toString())
+                                }
                             }
                         }
                     },
