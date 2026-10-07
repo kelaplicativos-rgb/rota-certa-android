@@ -100,7 +100,7 @@ class FarolStage44SemanticFinalLeaseTest {
 
     @Test fun unchangedRawSnapshotReturnsWithoutRevokingFinal() {
         val s = source("LiveRideAccessibilityService.kt")
-        val a = s.indexOf("if (!visualDecisionStage23.process) {")
+        val a = s.indexOf("if (!visualDecisionStage23.process && !instantPresence0748.armPipeline) {")
         val b = s.indexOf("val evaluateStartedNsStage26", a)
         val block = s.substring(a, b)
         assertTrue(block.contains("S44_RAW_DUPLICATE_FINAL_PRESERVED"))
