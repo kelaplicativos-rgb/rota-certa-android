@@ -100,10 +100,13 @@ class FarolTrustedRoute0682Test {
         val block = live.substring(analyzeStart, analyzeEnd)
         val localIndex = block.indexOf("localDistancesFromAddressKm(")
         val localCommitIndex = block.indexOf("applyUniversalPreliminaryColorStage637(")
-        val remoteIndex = block.indexOf("trustedDirectDrivingDistancesFromAddressKm0682(")
+        val remoteIndex = block.indexOf("offlineFirstDrivingDistancesFromAddressKm0749(")
         assertTrue(localIndex >= 0)
         assertTrue(localCommitIndex > localIndex)
         assertTrue(remoteIndex > localCommitIndex)
         assertTrue(block.contains("FarolLocalDecisionAuthority0696.REMOTE_STARTED_MARKER"))
+        val offlineRouter = source("OrganicMapsOfflineRoadRouter0749.kt")
+        assertTrue(offlineRouter.contains("TOTAL_OFFLINE_BUDGET_MS = 350L"))
+        assertTrue(offlineRouter.contains("FAROL_GOOGLE_ROAD_FALLBACK_0749"))
     }
 }

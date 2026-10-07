@@ -94,8 +94,8 @@ class FarolEdge0637Test {
         assertTrue(live.contains("DistanceAuthority.LOCAL_HAVERSINE"))
         assertTrue(live.contains("DistanceAuthority.ROAD_CONFIRMED"))
         assertFalse(live.contains("Lease visual de 1 segundo expirou sem nova confirmação do endereço atual."))
-        assertTrue(live.contains("cachedTrafficAwareDrivingDistancesFromAddressKm"))
-        assertTrue(live.contains("trafficAwareDrivingDistancesFromAddressKm"))
+        assertTrue(live.contains("cachedOfflineFirstDrivingDistancesFromAddressKm0749"))
+        assertTrue(live.contains("offlineFirstDrivingDistancesFromAddressKm0749"))
         val maps = src("GoogleMapsService.kt")
         assertTrue(maps.contains("\"routingPreference\": \"TRAFFIC_AWARE\""))
         assertTrue(maps.contains("PERSISTENT_TRAFFIC_ADDRESS_ROUTE_PREFIX"))
@@ -109,8 +109,10 @@ class FarolEdge0637Test {
         assertTrue(start >= 0 && end > start)
         val helper = live.substring(start, end)
         assertTrue(helper.contains("recommendation = preliminaryStage637.recommendation"))
-        assertTrue(helper.contains("?: preliminaryStage637.pickupToHomeKm"))
-        assertTrue(helper.contains("?: preliminaryStage637.pickupToAlternativeKm"))
+        assertTrue(helper.contains("pickupToHomeKm = exactHomeStage637"))
+        assertFalse(helper.contains("?: preliminaryStage637.pickupToHomeKm"))
+        assertTrue(helper.contains("pickupToAlternativeKm = exactPinStage637"))
+        assertFalse(helper.contains("?: preliminaryStage637.pickupToAlternativeKm"))
         assertFalse(helper.contains("decisionEngine.decideWorkRegion"))
     }
 

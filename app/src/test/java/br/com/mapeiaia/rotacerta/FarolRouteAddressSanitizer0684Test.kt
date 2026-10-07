@@ -107,8 +107,8 @@ class FarolRouteAddressSanitizer0684Test {
         assertTrue(live.contains("accessibilityPriorityApplied0684"))
         assertTrue(live.contains("FarolRouteAddressSanitizer0684.sanitize(originAddress)"))
         val fields = live.indexOf("destination = routeDestination0684")
-        val cache = live.indexOf("googleMapsService.cachedTrafficAwareDrivingDistancesFromAddressKm(", fields)
-        val trusted = live.indexOf("trustedDirectDrivingDistancesFromAddressKm0682(", fields)
+        val cache = live.indexOf("googleMapsService.cachedOfflineFirstDrivingDistancesFromAddressKm0749(", fields)
+        val trusted = live.indexOf("offlineFirstDrivingDistancesFromAddressKm0749(", fields)
         assertTrue(fields >= 0 && cache > fields && trusted > fields)
     }
 }

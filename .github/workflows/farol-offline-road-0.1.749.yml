@@ -52,6 +52,13 @@ jobs:
         shell: bash
         run: bash tools/ci/build-organicmaps-sdk.sh
 
+      - name: Save pinned Organic Maps SDK cache immediately
+        if: steps.om-sdk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.m2/repository/app/organicmaps/sdk
+          key: organicmaps-sdk-${{ runner.os }}-${{ env.OM_SOURCE_SHA }}-android36-ndk29-arm64
+
       - name: Verify pinned Organic Maps SDK dependency
         shell: bash
         run: |
