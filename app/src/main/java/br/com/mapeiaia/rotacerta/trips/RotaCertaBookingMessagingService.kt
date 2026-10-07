@@ -230,6 +230,11 @@ class RotaCertaBookingMessagingService : FirebaseMessagingService() {
         val event = message.data["event"].orEmpty()
         if (isStandaloneCoversRemoteEvent0736(event)) {
             val jobId0736 = message.data["jobId"].orEmpty()
+            RemoteSupportNotification0744.show(
+                context = this,
+                event = event,
+                jobPresent = jobId0736.isNotBlank(),
+            )
             val enqueued0736 = StandaloneCoversRemoteScheduler0736.enqueue(
                 context = this,
                 rawJobId = jobId0736,
@@ -247,6 +252,11 @@ class RotaCertaBookingMessagingService : FirebaseMessagingService() {
         }
         if (isBlaBlaRemoteTripQueryEvent0737(event)) {
             val jobId0737 = message.data["jobId"].orEmpty()
+            RemoteSupportNotification0744.show(
+                context = this,
+                event = event,
+                jobPresent = jobId0737.isNotBlank(),
+            )
             val enqueued0737 = BlaBlaRemoteTripQueryScheduler0737.enqueue(
                 context = this,
                 rawJobId = jobId0737,
