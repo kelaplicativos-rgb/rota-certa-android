@@ -1,0 +1,94 @@
+name: VIP share preview hotfix 2026-10-07
+
+on:
+  push:
+    branches:
+      - agent/vip-share-copy-hotfix-20261007
+    paths:
+      - 'trip-platform/public/index.html'
+      - '.github/workflows/vip-share-preview-hotfix-20261007.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vip-share-preview-hotfix-20261007
+  cancel-in-progress: true
+
+jobs:
+  deploy-hosting:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate exact share copy
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq '<title>Você recebeu um acesso exclusivo à minha agenda de viagens. Reserve sua vaga por aqui:</title>' trip-platform/public/index.html
+          grep -Fq '<meta property="og:title" content="Você recebeu um acesso exclusivo à minha agenda de viagens. Reserve sua vaga por aqui:">' trip-platform/public/index.html
+          grep -Fq '<meta name="description" content="">' trip-platform/public/index.html
+          grep -Fq '<meta property="og:description" content="">' trip-platform/public/index.html
+          ! grep -Fq 'Espaço exclusivo para membros convidados.' trip-platform/public/index.html
+          git diff --check
+
+      - name: Configure Firebase authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
+          else
+            echo "Firebase credential is missing." >&2
+            exit 3
+          fi
+
+      - name: Deploy hosting only
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@14.12.0 deploy --project "$PROJECT" --only hosting --non-interactive --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@14.12.0 deploy --project "$PROJECT" --only hosting --non-interactive
+          fi
+
+      - name: Smoke live share preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://rota-certa-7ccc8.web.app/ezequiel'
+          curl --retry 10 --retry-delay 2 --fail --silent --show-error "$BASE?share_preview=$GITHUB_SHA" > /tmp/live-index.html
+          grep -Fq '<title>Você recebeu um acesso exclusivo à minha agenda de viagens. Reserve sua vaga por aqui:</title>' /tmp/live-index.html
+          grep -Fq '<meta property="og:title" content="Você recebeu um acesso exclusivo à minha agenda de viagens. Reserve sua vaga por aqui:">' /tmp/live-index.html
+          grep -Fq '<meta name="description" content="">' /tmp/live-index.html
+          grep -Fq '<meta property="og:description" content="">' /tmp/live-index.html
+          ! grep -Fq 'Espaço exclusivo para membros convidados.' /tmp/live-index.html
+          echo "VIP_SHARE_PREVIEW_LIVE=PASS"
