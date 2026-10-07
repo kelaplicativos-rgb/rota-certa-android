@@ -2,6 +2,47 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.751",
+      "build": 6042,
+      "commit": null,
+      "branch": "agent/farol-capture-fabric-0.1.751",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Capture Fabric: Accessibility vazia em aplicativo selecionado dispara OCR imediatamente.",
+        "Android 14+ usa captura da janela concreta do aplicativo para OCR quando o windowId está disponível.",
+        "Accessibility inclui views marcadas como não importantes e recupera a janela selecionada pela lista completa de janelas.",
+        "Geocodificação crítica usa cache, Organic Maps com orçamento curto e corrida Android/Google; Nominatim público sai do hot path quando Google está disponível.",
+        "Download direto de mapas pode usar dados móveis após ação explícita do usuário."
+      ],
+      "fixed": [
+        "Reduz leituras sem texto em aplicativos de corrida que terminavam sem KM e sem cor.",
+        "Reduz endereços detectados que ficavam vários segundos presos na geocodificação antes do fallback.",
+        "Preserva o cancelamento de rota na troca confirmada entre aplicativos para impedir publicação de resultado obsoleto."
+      ],
+      "improved": [
+        "Orçamento offline de geocodificação de 180 ms e hedge de até 1250 ms.",
+        "Telemetria diferencia OCR por árvore vazia, captura por janela, recuperação de janela e vencedor do hedge.",
+        "Mantém Organic Maps como primeira autoridade rodoviária, Google como fallback, proteção A/B e Haversine privado."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Falha silenciosa de aquisição quando a árvore de Accessibility estava vazia.",
+        "Espera sequencial de múltiplos geocodificadores no caminho crítico."
+      ],
+      "modulesAffected": [
+        "FAROL",
+        "Accessibility",
+        "OCR",
+        "Geocodificação",
+        "Organic Maps",
+        "Google Maps fallback",
+        "GPS Offline",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.750",
       "build": 6041,
       "commit": null,

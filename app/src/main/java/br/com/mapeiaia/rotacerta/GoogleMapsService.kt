@@ -4,6 +4,9 @@ import android.content.Context
 import android.os.SystemClock
 import android.content.SharedPreferences
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
@@ -173,87 +176,108 @@ class GoogleMapsService(context: Context? = null) {
             FarolFlightRecorder0163.record(
                 stage = FarolCoordinateResolution0697.RESOLVED_MARKER,
                 packageName = null,
-                details = "provider=cache; elapsed_ms=0",
+                details = "provider=cache; elapsed_ms=0; captureFabric0751=true",
             )
             return coordinate
         }
 
-        val started = SystemClock.elapsedRealtime()
+        val started0751 = SystemClock.elapsedRealtime()
         FarolFlightRecorder0163.record(
             stage = FarolCoordinateResolution0697.STARTED_MARKER,
             packageName = null,
-            details = "globalDeadlineMs=${FarolCoordinateResolution0697.GLOBAL_DEADLINE_MS}; offlineFirst=organicmaps0711",
+            details = "offlineBudgetMs=${FarolCaptureFabric0751.OFFLINE_GEOCODE_BUDGET_MS}; hedgeDeadlineMs=${FarolCaptureFabric0751.HEDGED_GEOCODE_DEADLINE_MS}; offlineFirst=organicmaps0711; nominatimHotPath=false",
         )
 
-        organicMapsOfflineResolver0711?.resolve(originAddress)?.let { coordinate ->
-            learnOfflineAtlas642(originAddress, coordinate)
+        val organic0751 = withTimeoutOrNull(FarolCaptureFabric0751.OFFLINE_GEOCODE_BUDGET_MS) {
+            organicMapsOfflineResolver0711?.resolve(originAddress)
+        }
+        if (organic0751 != null) {
+            learnOfflineAtlas642(originAddress, organic0751)
             FarolFlightRecorder0163.record(
                 stage = "FAROL_ORGANIC_OFFLINE_RESOLVED_0711",
                 packageName = null,
-                details = "provider=organicmaps_embedded; network=false; elapsed_ms=${SystemClock.elapsedRealtime() - started}",
+                details = "provider=organicmaps_embedded; network=false; elapsed_ms=${SystemClock.elapsedRealtime() - started0751}; budget0751=true",
             )
-            return coordinate
+            return organic0751
         }
 
         FarolFlightRecorder0163.record(
             stage = "FAROL_ORGANIC_OFFLINE_MISS_0711",
             packageName = null,
-            details = "fallback=legacy_resolvers; elapsed_ms=${SystemClock.elapsedRealtime() - started}; sdkFailure=${OrganicMapsEmbeddedRuntime0711.failureReason().orEmpty()}",
+            details = "fallback=hedged_resolvers_0751; elapsed_ms=${SystemClock.elapsedRealtime() - started0751}; sdkFailure=${OrganicMapsEmbeddedRuntime0711.failureReason().orEmpty()}",
+        )
+        FarolFlightRecorder0163.record(
+            stage = FarolCaptureFabric0751.GEOCODE_HEDGE_STARTED_MARKER,
+            packageName = null,
+            details = "android=true; google=${apiKey.isNotBlank()}; osmOnlyWithoutGoogle=${apiKey.isBlank()}; deadlineMs=${FarolCaptureFabric0751.HEDGED_GEOCODE_DEADLINE_MS}",
         )
 
-        val result = withTimeoutOrNull(FarolCoordinateResolution0697.GLOBAL_DEADLINE_MS) {
-            resolvePlatformOrigin0697(originAddress)?.let { coordinate ->
-                learnOfflineAtlas642(originAddress, coordinate)
-                FarolFlightRecorder0163.record(
-                    stage = FarolCoordinateResolution0697.RESOLVED_MARKER,
-                    packageName = null,
-                    details = "provider=android; elapsed_ms=${SystemClock.elapsedRealtime() - started}",
-                )
-                return@withTimeoutOrNull coordinate
+        val hedged0751 = coroutineScope {
+            val providers0751 = mutableListOf<Pair<String, kotlinx.coroutines.Deferred<Coordinate?>>>()
+            providers0751 += "android" to async(Dispatchers.IO) {
+                resolvePlatformOrigin0697(originAddress)
             }
-
-            FarolFlightRecorder0163.record(
-                stage = FarolCoordinateResolution0697.FALLBACK_MARKER,
-                packageName = null,
-                details = "from=android; to=osm",
-            )
-            resolveFreeOrigin0697(originAddress, targetHints)?.let { coordinate ->
-                learnOfflineAtlas642(originAddress, coordinate)
-                FarolFlightRecorder0163.record(
-                    stage = FarolCoordinateResolution0697.RESOLVED_MARKER,
-                    packageName = null,
-                    details = "provider=osm; elapsed_ms=${SystemClock.elapsedRealtime() - started}",
-                )
-                return@withTimeoutOrNull coordinate
-            }
-
             if (apiKey.isNotBlank()) {
-                FarolFlightRecorder0163.record(
-                    stage = FarolCoordinateResolution0697.FALLBACK_MARKER,
-                    packageName = null,
-                    details = "from=osm; to=google",
-                )
-                resolveGoogleOrigin0697(originAddress, targetHints, apiKey, requestContext0699)?.let { coordinate ->
-                    learnOfflineAtlas642(originAddress, coordinate)
-                    FarolFlightRecorder0163.record(
-                        stage = FarolCoordinateResolution0697.RESOLVED_MARKER,
-                        packageName = null,
-                        details = "provider=google; elapsed_ms=${SystemClock.elapsedRealtime() - started}",
-                    )
-                    return@withTimeoutOrNull coordinate
+                providers0751 += "google" to async(Dispatchers.IO) {
+                    resolveGoogleOrigin0697(originAddress, targetHints, apiKey, requestContext0699)
+                }
+            } else {
+                providers0751 += "osm" to async(Dispatchers.IO) {
+                    resolveFreeOrigin0697(originAddress, targetHints)
                 }
             }
-            null
+
+            val pending0751 = providers0751.toMutableList()
+            val winner0751 = withTimeoutOrNull(FarolCaptureFabric0751.HEDGED_GEOCODE_DEADLINE_MS) {
+                var accepted0751: Pair<String, Coordinate>? = null
+                while (pending0751.isNotEmpty() && accepted0751 == null) {
+                    val completed0751 = select<Pair<String, Coordinate?>> {
+                        pending0751.forEach { (provider0751, deferred0751) ->
+                            deferred0751.onAwait { coordinate0751 -> provider0751 to coordinate0751 }
+                        }
+                    }
+                    pending0751.removeAll { it.first == completed0751.first }
+                    if (completed0751.second != null) {
+                        accepted0751 = completed0751.first to completed0751.second!!
+                    }
+                }
+                accepted0751
+            }
+            providers0751.forEach { (_, deferred0751) ->
+                if (deferred0751.isActive) deferred0751.cancel()
+            }
+            winner0751
         }
 
-        if (result == null) {
+        if (hedged0751 != null) {
+            val (provider0751, coordinate0751) = hedged0751
+            if (provider0751 != "google") {
+                learnOfflineAtlas642(originAddress, coordinate0751)
+            }
             FarolFlightRecorder0163.record(
-                stage = FarolCoordinateResolution0697.ALL_FAILED_MARKER,
+                stage = FarolCaptureFabric0751.GEOCODE_HEDGE_WON_MARKER,
                 packageName = null,
-                details = "elapsed_ms=${SystemClock.elapsedRealtime() - started}; deadline_ms=${FarolCoordinateResolution0697.GLOBAL_DEADLINE_MS}",
+                details = "provider=$provider0751; elapsed_ms=${SystemClock.elapsedRealtime() - started0751}; googleStarted=${apiKey.isNotBlank()}",
             )
+            FarolFlightRecorder0163.record(
+                stage = FarolCoordinateResolution0697.RESOLVED_MARKER,
+                packageName = null,
+                details = "provider=$provider0751; elapsed_ms=${SystemClock.elapsedRealtime() - started0751}; hedged0751=true",
+            )
+            return coordinate0751
         }
-        return result
+
+        FarolFlightRecorder0163.record(
+            stage = FarolCaptureFabric0751.GEOCODE_HEDGE_FAILED_MARKER,
+            packageName = null,
+            details = "elapsed_ms=${SystemClock.elapsedRealtime() - started0751}; deadline_ms=${FarolCaptureFabric0751.HEDGED_GEOCODE_DEADLINE_MS}",
+        )
+        FarolFlightRecorder0163.record(
+            stage = FarolCoordinateResolution0697.ALL_FAILED_MARKER,
+            packageName = null,
+            details = "elapsed_ms=${SystemClock.elapsedRealtime() - started0751}; deadline_ms=${FarolCaptureFabric0751.OFFLINE_GEOCODE_BUDGET_MS + FarolCaptureFabric0751.HEDGED_GEOCODE_DEADLINE_MS}; captureFabric0751=true",
+        )
+        return null
     }
 
     suspend fun drivingDistanceKm(origin: Coordinate, destination: Coordinate, apiKey: String): Double? =

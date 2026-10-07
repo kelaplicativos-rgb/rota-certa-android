@@ -160,6 +160,16 @@ class OrganicMapsDirectMapDownloader0750(context: Context) {
 
     private fun startTargetOnMain(item: CountryItem): ActionResult {
         rememberTarget(item)
+        runCatching {
+            if (!MapManager.nativeIsDownloadOn3gEnabled()) {
+                MapManager.nativeEnableDownloadOn3g()
+                FarolFlightRecorder0163.record(
+                    stage = MOBILE_DATA_ENABLED_MARKER,
+                    packageName = null,
+                    details = "userRequestedDirectDownload=true; target=${item.id}; cellularAllowed=true",
+                )
+            }
+        }
         val status = runCatching { MapManager.nativeGetStatus(item.id) }.getOrDefault(item.status)
 
         if (status == CountryItem.STATUS_DONE) {
@@ -329,6 +339,7 @@ class OrganicMapsDirectMapDownloader0750(context: Context) {
         const val BRAZIL_MARKER = "ORGANIC_MAPS_BRAZIL_DIRECT_0750"
         const val REGION_MARKER = "ORGANIC_MAPS_REGION_DIRECT_0750"
         const val STATUS_MARKER = "ORGANIC_MAPS_DOWNLOAD_STATUS_0750"
+        const val MOBILE_DATA_ENABLED_MARKER = "ORGANIC_MAPS_MOBILE_DATA_DOWNLOAD_ENABLED_0751"
 
         private const val PREFS = "organic_maps_direct_download_0750"
         private const val KEY_BRAZIL_TARGET_ID = "brazil_target_id"

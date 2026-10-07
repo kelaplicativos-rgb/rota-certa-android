@@ -1886,6 +1886,19 @@ class LiveRideAccessibilityService : AccessibilityService() {
             eventWindowIdStage20,
             eventStage26,
         )
+        val emptySelectedAccessibility0751 =
+            cheapSignalStage26.sourceText.isBlank() &&
+                eventPackageStage19 != null &&
+                eventPackageStage19 in activationStage26.selectedPackages
+        if (emptySelectedAccessibility0751) {
+            stage19VisualVerificationPending = true
+            FarolFlightRecorder0163.record(
+                stage = FarolCaptureFabric0751.EMPTY_ACCESSIBILITY_OCR_MARKER,
+                packageName = eventPackageStage19,
+                details = "window=$eventWindowIdStage20; immediateWindowOcr=true; sourceTextEmpty=true",
+            )
+            requestUniversalScreenshotStage19(eventPackageStage19, null)
+        }
         // FAROL_INSTANT_ADDRESS_PRESENCE_0748 / NEGATIVE_OBSERVATION_CANNOT_REVOKE_POSITIVE_PRESENCE_0748
         val instantEvaluation0748 = FarolInstantAddressPresence0748.detect(
             text = cheapSignalStage26.sourceText,
@@ -3372,9 +3385,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S38_SCREENSHOT_REQUEST", eventPackageStage19, cycleId = cycleIdStage20, operationId = "ocr-$serialStage19",
                 details = "display=${Display.DEFAULT_DISPLAY}; visualGeneration=${demandStage23.visualGeneration}; snapshotHash=${demandStage23.snapshotHash}",
             )
-            takeScreenshot(
-                Display.DEFAULT_DISPLAY,
-                mainExecutor,
+            takeFarolScreenshot0751(
+                surfaceTokenStage46.windowId,
                 object : TakeScreenshotCallback {
                     override fun onSuccess(screenshot: ScreenshotResult) {
                         FarolMaximumForensicsStage38.record(
@@ -5447,9 +5459,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
 
         runCatching {
-            takeScreenshot(
-                Display.DEFAULT_DISPLAY,
-                mainExecutor,
+            takeFarolScreenshot0751(
+                windowId0161,
                 object : TakeScreenshotCallback {
                     override fun onSuccess(screenshot: ScreenshotResult) {
                         scope.launch {
@@ -5929,9 +5940,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
 
         val started642 = runCatching {
-            takeScreenshot(
-                Display.DEFAULT_DISPLAY,
-                mainExecutor,
+            takeFarolScreenshot0751(
+                rootWindow642,
                 object : TakeScreenshotCallback {
                     override fun onSuccess(screenshot: ScreenshotResult) {
                         scope.launch {
@@ -8178,11 +8188,71 @@ class LiveRideAccessibilityService : AccessibilityService() {
         stage16AcceptedGateAuthorization = null
     }
 
+    private fun takeFarolScreenshot0751(
+        targetWindowId0751: Int?,
+        callback0751: TakeScreenshotCallback,
+    ) {
+        val windowId0751 = targetWindowId0751?.takeIf { it > 0 }
+        val useWindowApi0751 = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+            windowId0751 != null
+        FarolFlightRecorder0163.record(
+            stage = FarolCaptureFabric0751.SCREENSHOT_DISPATCH_MARKER,
+            packageName = universalResolvedForegroundPackage(),
+            details = "mode=" + if (useWindowApi0751) "window" else "display" +
+                "; window=" + (windowId0751 ?: 0),
+        )
+        runCatching {
+            if (useWindowApi0751) {
+                takeScreenshotOfWindow(windowId0751!!, mainExecutor, callback0751)
+            } else {
+                takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, callback0751)
+            }
+        }.onFailure { error0751 ->
+            FarolFlightRecorder0163.record(
+                stage = FarolCaptureFabric0751.SCREENSHOT_DISPATCH_FAILED_MARKER,
+                packageName = universalResolvedForegroundPackage(),
+                details = "mode=" + if (useWindowApi0751) "window" else "display" +
+                    "; window=" + (windowId0751 ?: 0) +
+                    "; type=" + error0751::class.java.simpleName,
+            )
+            callback0751.onFailure(-1)
+        }
+    }
+
     private fun captureRootHandle0187(): FarolRootHandle0187? {
-        val root0187 = runCatching { rootInActiveWindow }.getOrNull() ?: return null
-        val package0187 = safeNodePackageName0185(root0187)
-        val window0187 = runCatching { root0187.windowId }.getOrNull()?.takeIf { it >= 0 }
-        return FarolRootHandle0187(root0187, package0187, window0187)
+        val selected0751 = SelectedRideAppStore.read(applicationContext)
+        val activeRoot0751 = runCatching { rootInActiveWindow }.getOrNull()
+        val activePackage0751 = safeNodePackageName0185(activeRoot0751)
+        if (activeRoot0751 != null &&
+            (activePackage0751 == packageName || activePackage0751 in selected0751)
+        ) {
+            val activeWindow0751 = runCatching { activeRoot0751.windowId }.getOrNull()?.takeIf { it >= 0 }
+            return FarolRootHandle0187(activeRoot0751, activePackage0751, activeWindow0751)
+        }
+
+        val selectedVisible0751 = runCatching { windows }.getOrDefault(emptyList())
+            .sortedByDescending { runCatching { it.layer }.getOrDefault(Int.MIN_VALUE) }
+            .mapNotNull { window0751 ->
+                val root0751 = runCatching { window0751.root }.getOrNull() ?: return@mapNotNull null
+                val package0751 = safeNodePackageName0185(root0751)
+                if (package0751 !in selected0751) return@mapNotNull null
+                val windowId0751 = runCatching { window0751.id }.getOrDefault(-1).takeIf { it >= 0 }
+                FarolRootHandle0187(root0751, package0751, windowId0751)
+            }
+            .firstOrNull()
+        if (selectedVisible0751 != null) {
+            FarolFlightRecorder0163.record(
+                stage = FarolCaptureFabric0751.SELECTED_WINDOW_RECOVERED_MARKER,
+                packageName = selectedVisible0751.packageName,
+                details = "window=${selectedVisible0751.windowId ?: 0}; activePackage=${activePackage0751.orEmpty()}",
+            )
+            return selectedVisible0751
+        }
+
+        val fallback0751 = activeRoot0751 ?: return null
+        val package0751 = safeNodePackageName0185(fallback0751)
+        val window0751 = runCatching { fallback0751.windowId }.getOrNull()?.takeIf { it >= 0 }
+        return FarolRootHandle0187(fallback0751, package0751, window0751)
     }
 
     private fun safeRootInActiveWindow0185(): AccessibilityNodeInfo? =
