@@ -61,6 +61,7 @@ data class DriverPushTokenRequest(
     val deviceLabel: String = "",
     val standaloneCoversRemoteVersion: Int = 1,
     val blablacarTripQueryRemoteVersion: Int = 1,
+    val remoteHealthVersion: Int = 1,
 )
 
 @Serializable
@@ -132,6 +133,28 @@ internal data class BlaBlaRemoteTripQueryResultRequest0737(
 
 @Serializable
 internal data class BlaBlaRemoteTripQueryResultResponse0737(
+    val accepted: Boolean = false,
+    val jobId: String = "",
+    val state: String = "",
+)
+
+@Serializable
+internal data class RemoteHealthJobAckResponse0747(
+    val accepted: Boolean = false,
+    val jobId: String = "",
+    val state: String = "",
+)
+
+@Serializable
+internal data class RemoteHealthResultRequest0747(
+    val status: String,
+    val payload: RemoteHealthPayload0747? = null,
+    val errorCode: String = "",
+    val errorMessage: String = "",
+)
+
+@Serializable
+internal data class RemoteHealthResultResponse0747(
     val accepted: Boolean = false,
     val jobId: String = "",
     val state: String = "",
@@ -1113,6 +1136,45 @@ class TripRemoteApi(
         path = "/v1/driver/blablacar-query/jobs/" + jobId.trim() + "/result",
         body = json.encodeToString(
             BlaBlaRemoteTripQueryResultRequest0737(
+                status = status.trim().uppercase(),
+                payload = payload,
+                errorCode = errorCode.trim().take(120),
+                errorMessage = errorMessage.trim().take(240),
+            ),
+        ),
+        requireDriverToken = true,
+        connectTimeoutMs = 12_000,
+        readTimeoutMs = 30_000,
+    )
+
+    internal suspend fun ackRemoteHealthJob0747(
+        jobId: String,
+    ): RemoteHealthJobAckResponse0747 = request(
+        method = "POST",
+        path = "/v1/driver/remote-health/jobs/" + jobId.trim() + "/ack",
+        body = json.encodeToString(
+            StandaloneCoversJobAckRequest0736(
+                state = "RUNNING",
+                appVersion = br.com.mapeiaia.rotacerta.AppBuildInfo.versionName,
+                sourceCommitSha = br.com.mapeiaia.rotacerta.AppBuildInfo.commit,
+            ),
+        ),
+        requireDriverToken = true,
+        connectTimeoutMs = 12_000,
+        readTimeoutMs = 20_000,
+    )
+
+    internal suspend fun submitRemoteHealthResult0747(
+        jobId: String,
+        status: String,
+        payload: RemoteHealthPayload0747? = null,
+        errorCode: String = "",
+        errorMessage: String = "",
+    ): RemoteHealthResultResponse0747 = request(
+        method = "PUT",
+        path = "/v1/driver/remote-health/jobs/" + jobId.trim() + "/result",
+        body = json.encodeToString(
+            RemoteHealthResultRequest0747(
                 status = status.trim().uppercase(),
                 payload = payload,
                 errorCode = errorCode.trim().take(120),
