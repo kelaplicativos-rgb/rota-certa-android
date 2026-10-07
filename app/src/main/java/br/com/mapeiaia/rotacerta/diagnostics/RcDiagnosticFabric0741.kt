@@ -181,11 +181,13 @@ object RcDiagnosticFabric0741 {
     }
 
     private fun module0507(module: String): DiagnosticModule0507 = when (module) {
-        "AGENDA" -> DiagnosticModule0507.AGENDA
-        "TIMELINE" -> DiagnosticModule0507.TIMELINE
-        "FAROL" -> DiagnosticModule0507.FAROL
+        "AGENDA" -> DiagnosticModule0507.PUBLIC_AGENDA
+        "TIMELINE" -> DiagnosticModule0507.ALL_TRIPS
         "BLABLACAR" -> DiagnosticModule0507.BLABLACAR
-        else -> DiagnosticModule0507.APP
+        "PASSENGERS" -> DiagnosticModule0507.PASSENGERS
+        "FAROL", "TRACKING", "NETWORK", "DATABASE", "BACKGROUND", "BUILD", "HEALTH", "VIP", "APP" ->
+            DiagnosticModule0507.INTEGRATIONS
+        else -> DiagnosticModule0507.UNKNOWN
     }
 
     private fun severity0507(severity: RcDiagnosticSeverity): DiagnosticSeverity0507 = when (severity) {
