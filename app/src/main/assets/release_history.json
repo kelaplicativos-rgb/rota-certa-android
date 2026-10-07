@@ -2,6 +2,35 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.744",
+      "build": 6035,
+      "commit": null,
+      "branch": "agent/ui-notification-0.1.744",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Transforma os pushes remotos standalone_covers_collect e blablacar_trip_query_collect em notificações visíveis de alta prioridade no Samsung.",
+        "Ao tocar na notificação remota, abre diretamente a Central de Notificações do Rota Certa, onde ficam as ações de Suporte remoto e diagnóstico.",
+        "Registra estado REQUESTED para manter o indicador laranja até a conexão remota ser revalidada."
+      ],
+      "fixed": [
+        "A solicitação remota deixa de acontecer silenciosamente em segundo plano sem aviso claro ao motorista.",
+        "Elimina a necessidade operacional de usar copiar/colar token como caminho principal para saber que existe uma consulta remota pendente."
+      ],
+      "improved": [
+        "A notificação não expõe token, jobId ou conteúdo sensível na tela bloqueada.",
+        "O evento continua usando os coletores remotos existentes e preserva isolamento da Agenda, Timeline e FAROL.",
+        "Quando a permissão de notificação não estiver disponível, o motivo é registrado no UnifiedDebugEventStore para diagnóstico."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Push remoto recebido sem notificação visível no Samsung.",
+        "Caminho longo até a área de suporte remoto."
+      ],
+      "modulesAffected": ["Notificações", "BlaBlaCar", "Suporte remoto", "Central de Saúde", "Diagnóstico", "Build"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.743",
       "build": 6034,
       "commit": null,
