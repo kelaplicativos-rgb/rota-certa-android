@@ -9388,6 +9388,157 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
     }
 
+    private fun scheduleUniversalAddressVisual0752(
+        reason0752: String,
+        packageHint0752: String? = null,
+    ) {
+        if (!serviceReady || !WorkModePolicy0162.isEnabled(currentSettings)) return
+        if (!::stage36RuntimeAuthority.isInitialized || !stage36RuntimeAuthority.snapshot().enabled) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        if (!universalAddressVisualInProgress0752.compareAndSet(false, true)) return
+
+        scope.launch {
+            val now0752 = SystemClock.uptimeMillis()
+            val minInterval0752 = FarolSemanticCardStage32.ANDROID_SCREENSHOT_MIN_INTERVAL_MS + 1L
+            val wait0752 = (lastUniversalAddressVisualRequestAt0752 + minInterval0752 - now0752).coerceAtLeast(0L)
+            if (wait0752 > 0L) delay(wait0752)
+
+            var acquired0752 = false
+            var attempts0752 = 0
+            while (!acquired0752 && attempts0752 < 5) {
+                acquired0752 = screenshotInProgress.compareAndSet(false, true)
+                if (!acquired0752) delay(70L)
+                attempts0752 += 1
+            }
+            if (!acquired0752) {
+                universalAddressVisualInProgress0752.set(false)
+                UnifiedDebugEventStore.record(
+                    FarolUniversalAddressPairAuthority0752.VISUAL_RECOVERY_FAILED_MARKER,
+                    packageHint0752,
+                    "reason=$reason0752; failure=screenshot_busy; attempts=$attempts0752",
+                )
+                return@launch
+            }
+
+            val target0752 = captureManualVisualTarget0742()
+            val package0752 = target0752.packageName ?: packageHint0752
+            val window0752 = target0752.windowId
+            if (window0752 == null ||
+                !FarolUniversalAddressPairAuthority0752.isEligibleExternalSurface(package0752, packageName)
+            ) {
+                screenshotInProgress.set(false)
+                universalAddressVisualInProgress0752.set(false)
+                UnifiedDebugEventStore.record(
+                    FarolUniversalAddressPairAuthority0752.VISUAL_RECOVERY_FAILED_MARKER,
+                    package0752,
+                    "reason=$reason0752; failure=no_external_application_window; window=${window0752 ?: -1}",
+                )
+                return@launch
+            }
+
+            lastUniversalAddressVisualRequestAt0752 = SystemClock.uptimeMillis()
+            UnifiedDebugEventStore.record(
+                FarolUniversalAddressPairAuthority0752.VISUAL_RECOVERY_REQUESTED_MARKER,
+                package0752,
+                "reason=$reason0752; window=$window0752; sharedModule=ScreenVisualReader0742; purpose=Address",
+            )
+            FarolFlightRecorder0163.record(
+                stage = FarolUniversalAddressPairAuthority0752.VISUAL_RECOVERY_REQUESTED_MARKER,
+                packageName = package0752,
+                details = "reason=$reason0752; window=$window0752; layer=${target0752.windowLayer}",
+            )
+
+            runCatching {
+                takeManualVisualScreenshot0742(
+                    window0752,
+                    object : TakeScreenshotCallback {
+                        override fun onSuccess(screenshot0752: ScreenshotResult) {
+                            scope.launch {
+                                var bitmap0752: Bitmap? = null
+                                try {
+                                    bitmap0752 = screenshot0752.toSoftwareBitmap() ?: return@launch
+                                    val result0752 = ScreenVisualReader0742(ocrService).read(
+                                        bitmap = requireNotNull(bitmap0752),
+                                        accessibilityText = target0752.accessibilityText,
+                                        purpose = VisualReadPurpose0742.Address,
+                                    )
+                                    val addresses0752 = result0752.addressCandidates
+                                    UnifiedDebugEventStore.record(
+                                        FarolUniversalAddressPairAuthority0752.VISUAL_RECOVERY_RESULT_MARKER,
+                                        package0752,
+                                        "reason=$reason0752; window=$window0752; passes=${result0752.passCount}; blocks=${result0752.blockCount}; recovery=${result0752.usedRecovery}; addresses=${addresses0752.size}; destination=${addresses0752.lastOrNull().orEmpty().take(220)}",
+                                    )
+                                    if (!FarolUniversalAddressPairAuthority0752.authorize(
+                                            addresses0752,
+                                            package0752,
+                                            packageName,
+                                        )
+                                    ) return@launch
+
+                                    val evaluation0752 = FarolUniversalAddressPairAuthority0752.evaluation(
+                                        windowId = window0752,
+                                        addresses = addresses0752,
+                                    ) ?: return@launch
+
+                                    if (package0752 != null) {
+                                        universalForegroundPackageName = package0752
+                                        activePackageName = package0752
+                                        lastExternalWindowPackageName = package0752
+                                    }
+                                    bindCandidateTargetSurfaceStage46(
+                                        package0752,
+                                        window0752,
+                                        "shared_visual_reader_pair_0752",
+                                    )
+                                    UnifiedDebugEventStore.record(
+                                        FarolUniversalAddressPairAuthority0752.LAST_ADDRESS_ROUTE_MARKER,
+                                        package0752,
+                                        "window=$window0752; count=${addresses0752.size}; destination=${evaluation0752.destination.take(220)}; trigger=immediate",
+                                    )
+                                    processUniversalVisualStage19(
+                                        evaluationStage19 = evaluation0752,
+                                        sourceStage19 = "SharedVisualReader0752",
+                                        ownershipTextStage47 = result0752.text,
+                                        ownershipPackageStage47 = package0752,
+                                        universalAddressPair0752 = true,
+                                    )
+                                } catch (error0752: Throwable) {
+                                    UnifiedDebugEventStore.record(
+                                        FarolUniversalAddressPairAuthority0752.VISUAL_RECOVERY_FAILED_MARKER,
+                                        package0752,
+                                        "reason=$reason0752; failure=${error0752::class.java.simpleName}",
+                                    )
+                                } finally {
+                                    bitmap0752?.takeUnless(Bitmap::isRecycled)?.recycle()
+                                    screenshotInProgress.set(false)
+                                    universalAddressVisualInProgress0752.set(false)
+                                }
+                            }
+                        }
+
+                        override fun onFailure(errorCode0752: Int) {
+                            screenshotInProgress.set(false)
+                            universalAddressVisualInProgress0752.set(false)
+                            UnifiedDebugEventStore.record(
+                                FarolUniversalAddressPairAuthority0752.VISUAL_RECOVERY_FAILED_MARKER,
+                                package0752,
+                                "reason=$reason0752; failure=screenshot_error; code=$errorCode0752; window=$window0752",
+                            )
+                        }
+                    },
+                )
+            }.onFailure { error0752 ->
+                screenshotInProgress.set(false)
+                universalAddressVisualInProgress0752.set(false)
+                UnifiedDebugEventStore.record(
+                    FarolUniversalAddressPairAuthority0752.VISUAL_RECOVERY_FAILED_MARKER,
+                    package0752,
+                    "reason=$reason0752; failure=${error0752::class.java.simpleName}; window=$window0752",
+                )
+            }
+        }
+    }
+
     private data class ManualVisualTarget0742(
         val windowId: Int?,
         val packageName: String?,
