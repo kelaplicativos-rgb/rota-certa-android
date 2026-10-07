@@ -3629,6 +3629,30 @@ class LiveRideAccessibilityService : AccessibilityService() {
                                 } else {
                                     FarolForensicCardBlackBoxStage32.markOcrNoCandidate(SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis())
                                     FarolForensicCaseStoreStage32.persistIfIntensive(applicationContext)
+                                    // OPENAI_ONLY_AFTER_LOCAL_AMBIGUITY_0748
+                                    // The existing protected backend is an arbiter, never the first detector.
+                                    val ocrAmbiguousText0748 = structuredStage19.text.take(6000)
+                                    val ocrHasAddressHint0748 =
+                                        FarolVisualIdentityStage23.countAddressLeads(ocrAmbiguousText0748) > 0 ||
+                                            blocksStage19.any { FarolVisualIdentityStage23.countAddressLeads(it.text) > 0 }
+                                    if (
+                                        ocrHasAddressHint0748 &&
+                                        eventPackageStage19 != null &&
+                                        !ocrAmbiguousText0748.contains(FarolPaidAiGate0695.RESULT_MARKER)
+                                    ) {
+                                        FarolMaximumForensicsStage38.record(
+                                            SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(),
+                                            "S748_LOCAL_AMBIGUITY_OPENAI_ARBITER_REQUESTED", eventPackageStage19,
+                                            cycleId = cycleIdStage20, operationId = "ocr-$serialStage19",
+                                            details = "textLen=${ocrAmbiguousText0748.length}; blocks=${blocksStage19.size}; localCandidate=false; firstDetector=false",
+                                        )
+                                        schedulePaidAiAddressFallback0695(
+                                            packageName0695 = eventPackageStage19,
+                                            rawText0695 = ocrAmbiguousText0748,
+                                            windowId0695 = surfaceTokenStage46.windowId,
+                                            reason0695 = "ocr_no_candidate_openai_arbiter_0748",
+                                        )
+                                    }
                                     FarolForensicTraceStage20.ocrStage(SystemClock.elapsedRealtimeNanos(), serialStage19, "NO_CANDIDATE", cycleIdStage20)
                                     val transientLeaseStage44 = FarolSemanticFinalLeaseStage44.capture(
                                         currentRadarColor.name,
