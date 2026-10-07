@@ -26,6 +26,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -66,8 +67,14 @@ private fun OfflineNavigationScreen0709(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val store = remember { OfflineMapStore0708(context) }
+    val directDownloader0750 = remember { OrganicMapsDirectMapDownloader0750(context) }
+    val locationService0750 = remember { DeviceLocationService(context) }
     val scope = rememberCoroutineScope()
     var maps by remember { mutableStateOf(store.listMaps()) }
+    var directDownloadSnapshot0750 by remember {
+        mutableStateOf(OrganicMapsDirectMapDownloader0750.Snapshot(ready = false, message = "Preparando catálogo oficial do Organic Maps..."))
+    }
+    var directDownloadStatus0750 by remember { mutableStateOf("") }
     var status by remember {
         mutableStateOf(
             if (maps.isEmpty()) "Nenhum mapa regional importado."
@@ -82,6 +89,19 @@ private fun OfflineNavigationScreen0709(
 
     LaunchedEffect(focusDestination0710) {
         if (focusDestination0710) destinationFocus0710.requestFocus()
+    }
+
+    LaunchedEffect(directDownloader0750) {
+        directDownloader0750.attach { snapshot0750 ->
+            directDownloadSnapshot0750 = snapshot0750
+            if (snapshot0750.downloadedRegionalMaps > 0) {
+                maps = store.listMaps()
+            }
+        }
+    }
+
+    DisposableEffect(directDownloader0750) {
+        onDispose { directDownloader0750.detach() }
     }
 
     fun refresh() {
@@ -287,22 +307,90 @@ private fun OfflineNavigationScreen0709(
             ) {
                 Text("Mapas do próprio Rota Certa", fontWeight = FontWeight.Bold)
                 Text(
+                    "Download direto pela fonte oficial do Organic Maps, usando o downloader nativo incorporado. Não abre navegador e não exige procurar arquivo .mwm.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    directDownloadSnapshot0750.message.ifBlank {
+                        directDownloadSnapshot0750.downloadedRegionalMaps.toString() + " mapa(s) regional(is) disponível(is) no motor offline."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                directDownloadSnapshot0750.totalBytes?.let { bytes0750 ->
+                    Text(
+                        "Tamanho previsto do pacote selecionado: " + formatOfflineBytes0708(bytes0750),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Button(
+                    onClick = {
+                        scope.launch {
+                            directDownloadStatus0750 = "Localizando o pacote Brasil no catálogo oficial..."
+                            val result0750 = directDownloader0750.startBrazilDownload()
+                            directDownloadStatus0750 = result0750.message
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = directDownloadSnapshot0750.ready && !directDownloadSnapshot0750.isBusy,
+                ) {
+                    Text("⬇️ Baixar mapa do Brasil")
+                }
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            directDownloadStatus0750 = "Identificando sua região pelo GPS..."
+                            val coordinate0750 = locationService0750.currentCoordinate()
+                            if (coordinate0750 == null) {
+                                directDownloadStatus0750 = "Não consegui obter a posição atual. Você pode usar o botão Brasil ou liberar a localização do Rota Certa."
+                            } else {
+                                val result0750 = directDownloader0750.startCurrentRegionDownload(coordinate0750)
+                                directDownloadStatus0750 = result0750.message
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = directDownloadSnapshot0750.ready && !directDownloadSnapshot0750.isBusy,
+                ) {
+                    Text("⬇️ Baixar mapa da minha região")
+                }
+                if (directDownloadSnapshot0750.isBusy) {
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                val result0750 = directDownloader0750.cancelActiveDownload()
+                                directDownloadStatus0750 = result0750.message
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Cancelar download")
+                    }
+                }
+                if (directDownloadStatus0750.isNotBlank()) {
+                    Text(
+                        directDownloadStatus0750,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                Text(
                     if (maps.isEmpty()) {
-                        "Aguardando mapas regionais .mwm. Você pode importá-los quando encontrar os arquivos."
+                        "Você ainda pode importar manualmente arquivos .mwm, mas isso agora é apenas uma alternativa."
                     } else {
-                        maps.size.toString() + " mapa(s) importado(s), " +
+                        maps.size.toString() + " arquivo(s) .mwm no armazenamento privado, " +
                             formatOfflineBytes0708(maps.sumOf { it.sizeBytes }) + " no total."
                     },
                     style = MaterialTheme.typography.bodySmall,
                 )
-                Button(
+                OutlinedButton(
                     onClick = { mapPicker.launch(arrayOf("*/*")) },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Importar mapas (.mwm)")
+                    Text("Importar .mwm manualmente")
                 }
                 Text(
-                    "Os arquivos são copiados para o armazenamento privado do Rota Certa; o original não é apagado.",
+                    "O download direto e a importação manual usam o armazenamento privado compatível com o motor Organic Maps incorporado.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 if (status.isNotBlank()) {
@@ -318,11 +406,11 @@ private fun OfflineNavigationScreen0709(
             ) {
                 Text("Autoridade do FAROL", fontWeight = FontWeight.Bold)
                 Text(
-                    "Fail-closed: esta versão não substitui o cálculo do FAROL por uma rota externa. A ponte Organic Maps é isolada até existir retorno de distância validado pelo motor incorporado.",
+                    "Com mapa regional instalado, o FAROL tenta primeiro a rota rodoviária do Organic Maps incorporado. Se o motor offline não responder com segurança dentro do orçamento, o Google continua como fallback.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Text(
-                    "Isso impede que uma integração incompleta passe a pintar verde/vermelho ou publicar quilômetros incorretos.",
+                    "Haversine continua privado e nunca vira quilometragem pública. A cor e o KM respeitam o binding do destino atual para impedir resultado de endereço antigo ou parcial.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }

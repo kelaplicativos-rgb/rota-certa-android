@@ -2,6 +2,42 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.750",
+      "build": 6041,
+      "commit": null,
+      "branch": "agent/offline-map-direct-download-0.1.750",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Adiciona download direto de mapas pelo downloader nativo incorporado do Organic Maps, sem navegador, sem URL manual e sem seleção externa de arquivo.",
+        "Adiciona botão para baixar o pacote Brasil inteiro diretamente do catálogo oficial compatível com a versão do motor Organic Maps incorporado.",
+        "Adiciona botão para baixar apenas a região atual, identificada por GPS e pelo próprio catálogo do Organic Maps."
+      ],
+      "fixed": [
+        "Elimina a dependência de procurar e importar manualmente arquivos .mwm para habilitar o roteamento offline real do FAROL.",
+        "Mantém verificação de espaço, retomada de download falho, atualização de pacote e cancelamento usando as APIs nativas do Organic Maps."
+      ],
+      "improved": [
+        "Exibe progresso e quantidade de mapas regionais instalados diretamente na tela GPS Offline.",
+        "Mantém importação manual .mwm apenas como alternativa, no mesmo armazenamento privado compatível com o motor incorporado.",
+        "Atualiza a orientação da tela para deixar explícito que Organic Maps é a primeira autoridade de rota rodoviária quando o mapa regional está instalado e Google permanece fallback."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "downloadedMaps=0 por ausência de caminho interno simples para obter os mapas regionais necessários ao roteador offline."
+      ],
+      "modulesAffected": [
+        "GPS Offline",
+        "Organic Maps",
+        "Downloader",
+        "Mapas regionais",
+        "FAROL",
+        "Configurações",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.749",
       "build": 6040,
       "commit": null,

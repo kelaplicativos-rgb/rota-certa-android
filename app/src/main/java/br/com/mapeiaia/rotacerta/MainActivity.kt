@@ -2557,9 +2557,9 @@ private fun SystemControlCard(settings: AppSettings, onChange: (AppSettings) -> 
             Text("🗺️ Navegação offline e mapas")
         }
         Text(
-            "Importe arquivos regionais .mwm agora ou depois. Eles ficam armazenados dentro do Rota Certa e não alteram o FAROL até o motor offline ser validado.",
+            "Baixe o Brasil ou a região atual diretamente pelo motor Organic Maps incorporado. A importação manual de .mwm continua disponível como alternativa.",
             style = MaterialTheme.typography.bodySmall,
-        ) // offline_navigation_entry_0_1_708
+        ) // offline_navigation_direct_download_0_1_750
         SettingsSwitchRow(
             label = "Leitura do Farol",
             checked = WorkModePolicy0162.isEnabled(settings),
