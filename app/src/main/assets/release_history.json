@@ -2,6 +2,33 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.745",
+      "build": 6036,
+      "commit": null,
+      "branch": "agent/remote-bubble-attention-0.1.745",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Unifica o alerta visual da bolinha para solicitações da Agenda e solicitações remotas de suporte/consulta.",
+        "A bolinha passa a observar RemoteSupportAttention0743 e recebe anel laranja sempre que existir atenção remota pendente.",
+        "O preenchimento do FAROL continua sendo a autoridade visual da leitura; o alerta remoto usa somente o contorno."
+      ],
+      "fixed": [
+        "Solicitação remota podia gerar notificação Android sem reproduzir o mesmo estado de atenção na bolinha flutuante.",
+        "Evita dois conceitos visuais diferentes para reserva pendente e consulta remota pendente."
+      ],
+      "improved": [
+        "Descrição de acessibilidade diferencia reserva, solicitação remota e os dois estados simultâneos.",
+        "Mudanças do estado remoto são registradas no UnifiedDebugEventStore sem token, jobId ou conteúdo sensível."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Bolinha normal enquanto existia uma solicitação remota pendente."
+      ],
+      "modulesAffected": ["FAROL", "Bolinha", "Notificações", "Suporte remoto", "Diagnóstico", "Build"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.744",
       "build": 6035,
       "commit": null,
