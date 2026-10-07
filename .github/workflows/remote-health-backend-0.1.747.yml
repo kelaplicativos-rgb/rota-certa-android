@@ -1,0 +1,131 @@
+name: Rota Certa 0.1.747 Remote Health Backend exact SHA
+
+on:
+  push:
+    branches:
+      - 'agent/remote-health-consent-0.1.747'
+    paths:
+      - '.github/workflows/remote-health-backend-0.1.747.yml'
+      - 'trip-platform/functions/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: remote-health-backend-0747-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+    steps:
+      - name: Checkout exact triggering HEAD
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Prove exact remote health source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'val releaseVersionCode = 6_038' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.747"' app/build.gradle.kts
+          grep -Fq 'createRemoteHealth0747' trip-platform/functions/index.js
+          grep -Fq 'remoteHealthVersion' trip-platform/functions/index.js
+          grep -Fq 'remote_health_collect' trip-platform/functions/remote-health-0747.js
+          grep -Fq 'REMOTE_ACCESS_DECLINED_BY_USER' app/src/main/java/br/com/mapeiaia/rotacerta/trips/RemoteSupportConsent0746.kt
+          printf '%s\n' "$GITHUB_SHA" | tee /tmp/backend-source-head.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate remote health and existing remote collector contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/functions/remote-health-0747.js
+          node --test \
+            trip-platform/functions/test/remote-health-0747.test.js \
+            trip-platform/functions/test/standalone-covers-remote-0736.test.js \
+            trip-platform/functions/test/blablacar-trip-query-remote-0737.test.js \
+            | tee /tmp/remote-health-backend-tests-0747.log
+
+      - name: Install Functions dependencies
+        shell: bash
+        run: npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Authenticate Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy exact HEAD tripApi
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          gcloud functions deploy tripApi \
+            --gen2 \
+            --project="$PROJECT" \
+            --region=southamerica-east1 \
+            --runtime=nodejs20 \
+            --source=trip-platform/functions \
+            --entry-point=tripApi \
+            --trigger-http \
+            --allow-unauthenticated \
+            --clear-secrets \
+            --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$GITHUB_SHA" \
+            --quiet
+
+      - name: Smoke live remote health endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 20 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health-0747.json
+          grep -Fq '"ok":true' /tmp/live-health-0747.json
+          grep -Fq "\"backendGitSha\":\"$GITHUB_SHA\"" /tmp/live-health-0747.json
+
+          INVALID_TOKEN='invalid_remote_health_capability_token_000000000000000'
+          CODE="$(curl --silent --show-error -o /tmp/remote-health-invalid-0747.json -w '%{http_code}' \
+            "$BASE/v1/public/remote-health/$INVALID_TOKEN/latest")"
+          test "$CODE" = "404"
+          grep -Fq 'remote_health_access_not_found' /tmp/remote-health-invalid-0747.json
+
+          {
+            echo "## Remote Health backend 0.1.747"
+            echo "- ✅ exact SHA deployed: `$GITHUB_SHA`"
+            echo "- ✅ /v1/health reports exact backend SHA"
+            echo "- ✅ remote-health route is live"
+            echo "- ✅ invalid capability is rejected"
+            echo "- ✅ no user health logs were requested during deploy smoke"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload backend evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-remote-health-backend-0.1.747-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            /tmp/backend-source-head.txt
+            /tmp/remote-health-backend-tests-0747.log
+            /tmp/live-health-0747.json
+            /tmp/remote-health-invalid-0747.json
