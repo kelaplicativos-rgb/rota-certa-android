@@ -1025,11 +1025,7 @@ async function shareVipInvite0649() {
     const code = String(body?.referralCode || "");
     if (!code) throw new Error("Convite indisponível.");
     const url = vipReferralUrl0649(code);
-    const shareData = {
-      title: "Área VIP",
-      text: "Você recebeu um convite para uma área privada.",
-      url,
-    };
+    const shareData = { url };
     if (navigator.share) await navigator.share(shareData);
     else {
       await navigator.clipboard.writeText(url);
