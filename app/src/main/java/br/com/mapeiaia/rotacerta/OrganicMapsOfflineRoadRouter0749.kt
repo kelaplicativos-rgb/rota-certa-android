@@ -1,6 +1,8 @@
 package br.com.mapeiaia.rotacerta
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import app.organicmaps.sdk.Router
 import app.organicmaps.sdk.bookmarks.data.MapObject
@@ -151,11 +153,16 @@ class OrganicMapsOfflineRoadRouter0749(context: Context) {
                 val roadKm = controller.cachedRoutingInfo?.distToTarget?.let(::distanceToKm)
                     ?.takeIf(::isUsableRoadKm)
                     ?.takeIf { plausibleAgainstStraightLine(straightKm, it) }
-                if (!answer.isCompleted) {
-                    answer.complete(
-                        if (roadKm != null) Attempt(roadKm)
-                        else Attempt(null, "built_route_without_plausible_distance"),
-                    )
+                // RoutingController invokes onBuiltRoute before onCommonBuildError for NEED_MORE_MAPS.
+                // Defer success by one main-loop turn so the missing-map callback can win and force
+                // the Google fallback instead of publishing a potentially partial offline route.
+                Handler(Looper.getMainLooper()).post {
+                    if (!answer.isCompleted) {
+                        answer.complete(
+                            if (roadKm != null) Attempt(roadKm)
+                            else Attempt(null, "built_route_without_plausible_distance"),
+                        )
+                    }
                 }
             }
 
