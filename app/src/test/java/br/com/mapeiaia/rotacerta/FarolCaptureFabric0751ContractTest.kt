@@ -21,11 +21,11 @@ class FarolCaptureFabric0751ContractTest {
     @Test
     fun empty_accessibility_escalates_to_exact_window_ocr_on_android_14_plus() {
         val live = source("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
-        assertTrue(live.contains("FAROL_EMPTY_ACCESSIBILITY_WINDOW_OCR_0751"))
+        assertTrue(live.contains("FarolCaptureFabric0751.EMPTY_ACCESSIBILITY_OCR_MARKER"))
         assertTrue(live.contains("takeFarolScreenshot0751"))
         assertTrue(live.contains("takeScreenshotOfWindow"))
         assertTrue(live.contains("surfaceTokenStage46.windowId"))
-        assertTrue(live.contains("FAROL_SELECTED_WINDOW_RECOVERED_0751"))
+        assertTrue(live.contains("FarolCaptureFabric0751.SELECTED_WINDOW_RECOVERED_MARKER"))
     }
 
     @Test
