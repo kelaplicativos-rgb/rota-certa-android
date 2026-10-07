@@ -39,10 +39,15 @@ internal object RemoteSupportConsentStore0746 {
             .isEmpty()
 
     private fun key(event: String, jobId: String): String? {
-        if (event != "standalone_covers_collect" && event != "blablacar_trip_query_collect") return null
+        if (
+            event != "standalone_covers_collect" &&
+            event != "blablacar_trip_query_collect" &&
+            event != "remote_health_collect"
+        ) return null
         val normalized = when (event) {
             "standalone_covers_collect" -> normalizeStandaloneCoversRemoteJobId0736(jobId)
             "blablacar_trip_query_collect" -> normalizeBlaBlaRemoteTripQueryJobId0737(jobId)
+            "remote_health_collect" -> normalizeRemoteHealthJobId0747(jobId)
             else -> null
         } ?: return null
         return "$event|$normalized"
@@ -59,6 +64,7 @@ class RemoteSupportConsentReceiver0746 : BroadcastReceiver() {
         val jobId = when (event) {
             "standalone_covers_collect" -> normalizeStandaloneCoversRemoteJobId0736(rawJobId)
             "blablacar_trip_query_collect" -> normalizeBlaBlaRemoteTripQueryJobId0737(rawJobId)
+            "remote_health_collect" -> normalizeRemoteHealthJobId0747(rawJobId)
             else -> null
         } ?: return
 
@@ -99,6 +105,8 @@ class RemoteSupportConsentReceiver0746 : BroadcastReceiver() {
                 StandaloneCoversRemoteScheduler0736.enqueue(context, jobId)
             "blablacar_trip_query_collect" ->
                 BlaBlaRemoteTripQueryScheduler0737.enqueue(context, jobId)
+            "remote_health_collect" ->
+                RemoteHealthScheduler0747.enqueue(context, jobId)
             else -> false
         }
         UnifiedDebugEventStore.recordAlways(
@@ -122,6 +130,13 @@ class RemoteSupportConsentReceiver0746 : BroadcastReceiver() {
                         errorMessage = "Solicitação de acesso remoto recusada pelo motorista.",
                     ).accepted
                     "blablacar_trip_query_collect" -> api.submitBlaBlaRemoteTripQueryResult0737(
+                        jobId = jobId,
+                        status = "FAILED",
+                        payload = null,
+                        errorCode = "REMOTE_ACCESS_DECLINED_BY_USER",
+                        errorMessage = "Solicitação de acesso remoto recusada pelo motorista.",
+                    ).accepted
+                    "remote_health_collect" -> api.submitRemoteHealthResult0747(
                         jobId = jobId,
                         status = "FAILED",
                         payload = null,
