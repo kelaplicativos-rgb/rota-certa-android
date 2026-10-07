@@ -9392,36 +9392,64 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val windowId: Int?,
         val packageName: String?,
         val accessibilityText: String,
+        val windowLayer: Int = 0,
+    )
+
+    private data class ApplicationWindowCandidate0752(
+        val window: AccessibilityWindowInfo,
+        val root: AccessibilityNodeInfo?,
+        val packageName: String?,
+        val active: Boolean,
+        val focused: Boolean,
+        val layer: Int,
     )
 
     private fun captureManualVisualTarget0742(): ManualVisualTarget0742 {
-        val applicationWindow = runCatching { windows }
+        val candidates0752 = runCatching { windows }
             .getOrDefault(emptyList())
             .asSequence()
-            .filter { window -> runCatching { window.type }.getOrDefault(0) == AccessibilityWindowInfo.TYPE_APPLICATION }
-            .mapNotNull { window ->
-                val root = runCatching { window.root }.getOrNull() ?: return@mapNotNull null
-                val packageName = safeNodePackageName0185(root)
-                if (packageName == this.packageName) return@mapNotNull null
-                Triple(window, root, packageName)
+            .filter { window ->
+                runCatching { window.type }.getOrDefault(0) == AccessibilityWindowInfo.TYPE_APPLICATION
             }
-            .maxByOrNull { (window, _, _) -> runCatching { window.layer }.getOrDefault(0) }
+            .map { window ->
+                val root0752 = runCatching { window.root }.getOrNull()
+                ApplicationWindowCandidate0752(
+                    window = window,
+                    root = root0752,
+                    packageName = safeNodePackageName0185(root0752),
+                    active = runCatching { window.isActive }.getOrDefault(false),
+                    focused = runCatching { window.isFocused }.getOrDefault(false),
+                    layer = runCatching { window.layer }.getOrDefault(Int.MIN_VALUE),
+                )
+            }
+            .filter { candidate0752 -> candidate0752.packageName != this.packageName }
+            .sortedWith(
+                compareByDescending<ApplicationWindowCandidate0752> { it.active }
+                    .thenByDescending { it.focused }
+                    .thenByDescending { it.layer },
+            )
+            .toList()
 
-        val root = applicationWindow?.second
-            ?: safeRootInActiveWindow0185()?.takeIf { safeNodePackageName0185(it) != this.packageName }
-        val windowId = applicationWindow?.first?.let { runCatching { it.id }.getOrNull() }
-            ?: root?.let { runCatching { it.windowId }.getOrNull() }
-        val packageName = applicationWindow?.third ?: safeNodePackageName0185(root)
-        val lines = mutableListOf<String>()
-        collectNodeText(root, lines)
+        val applicationWindow0752 = candidates0752.firstOrNull()
+        val fallbackRoot0752 = safeRootInActiveWindow0185()
+            ?.takeIf { safeNodePackageName0185(it) != this.packageName }
+        val root0752 = applicationWindow0752?.root ?: fallbackRoot0752
+        val windowId0752 = applicationWindow0752?.window?.let { runCatching { it.id }.getOrNull() }
+            ?: root0752?.let { runCatching { it.windowId }.getOrNull() }
+        val package0752 = applicationWindow0752?.packageName
+            ?: safeNodePackageName0185(root0752)
+            ?: universalResolvedForegroundPackage()?.takeIf { it != this.packageName }
+        val lines0752 = mutableListOf<String>()
+        collectNodeText(root0752, lines0752)
         return ManualVisualTarget0742(
-            windowId = windowId?.takeIf { it >= 0 },
-            packageName = packageName,
-            accessibilityText = lines.asSequence()
+            windowId = windowId0752?.takeIf { it >= 0 },
+            packageName = package0752,
+            accessibilityText = lines0752.asSequence()
                 .map(String::trim)
                 .filter(String::isNotBlank)
                 .distinct()
                 .joinToString("\n"),
+            windowLayer = applicationWindow0752?.layer ?: 0,
         )
     }
 
