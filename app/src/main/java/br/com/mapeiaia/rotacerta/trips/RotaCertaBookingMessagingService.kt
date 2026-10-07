@@ -233,20 +233,12 @@ class RotaCertaBookingMessagingService : FirebaseMessagingService() {
             RemoteSupportNotification0744.show(
                 context = this,
                 event = event,
-                jobPresent = jobId0736.isNotBlank(),
+                jobId = jobId0736,
             )
-            val enqueued0736 = StandaloneCoversRemoteScheduler0736.enqueue(
-                context = this,
-                rawJobId = jobId0736,
-            )
-            UnifiedDebugEventStore.record(
-                if (enqueued0736) {
-                    "STANDALONE_COVERS_REMOTE_PUSH_ENQUEUED_0736"
-                } else {
-                    "STANDALONE_COVERS_REMOTE_PUSH_REJECTED_0736"
-                },
+            UnifiedDebugEventStore.recordAlways(
+                "STANDALONE_COVERS_REMOTE_CONSENT_REQUIRED_0746",
                 packageName,
-                "jobPresent=${jobId0736.isNotBlank()} agendaSync=false timelineWrite=false",
+                "jobPresent=${jobId0736.isNotBlank()} collectionStarted=false",
             )
             return
         }
@@ -255,20 +247,12 @@ class RotaCertaBookingMessagingService : FirebaseMessagingService() {
             RemoteSupportNotification0744.show(
                 context = this,
                 event = event,
-                jobPresent = jobId0737.isNotBlank(),
+                jobId = jobId0737,
             )
-            val enqueued0737 = BlaBlaRemoteTripQueryScheduler0737.enqueue(
-                context = this,
-                rawJobId = jobId0737,
-            )
-            UnifiedDebugEventStore.record(
-                if (enqueued0737) {
-                    "BLABLACAR_REMOTE_TRIP_QUERY_PUSH_ENQUEUED_0737"
-                } else {
-                    "BLABLACAR_REMOTE_TRIP_QUERY_PUSH_REJECTED_0737"
-                },
+            UnifiedDebugEventStore.recordAlways(
+                "BLABLACAR_REMOTE_TRIP_QUERY_CONSENT_REQUIRED_0746",
                 packageName,
-                "jobPresent=${jobId0737.isNotBlank()} agendaSync=false timelineWrite=false canonicalWrite=false",
+                "jobPresent=${jobId0737.isNotBlank()} collectionStarted=false",
             )
             return
         }
