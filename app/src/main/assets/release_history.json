@@ -2,6 +2,47 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.752",
+      "build": 6043,
+      "commit": null,
+      "branch": "agent/farol-unified-visual-reader-0.1.752",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Reutiliza no FAROL automático o mesmo ScreenVisualReader0742 já usado pelos atalhos Leitura da tela e WhatsApp da tela.",
+        "Adiciona o propósito Address ao leitor visual: OCR primário, recuperação por recortes ampliados e preservação da ordem espacial dos blocos.",
+        "Quando dois ou mais endereços positivos aparecem na mesma janela externa, o último endereço visual passa a ser a autoridade de destino, independentemente do aplicativo estar na lista de motoristas.",
+        "Quando a raiz autorizada não é observada, o FAROL procura diretamente a janela TYPE_APPLICATION visível e captura essa janela por windowId."
+      ],
+      "fixed": [
+        "Elimina a dependência exclusiva da árvore de Accessibility no caso authorized_root_not_observed.",
+        "Unifica o OCR do FAROL com o motor visual que já funciona para telefone e leitura de texto, evitando dois mecanismos de captura divergentes.",
+        "Permite que uma tela de aplicativo externo com par ou sequência de endereços dispare o cálculo usando o último endereço."
+      ],
+      "improved": [
+        "Fast path encerra o OCR visual após a primeira passagem quando já existem dois endereços, evitando recortes desnecessários.",
+        "Recortes de recuperação convertem as coordenadas OCR de volta para a geometria original da tela, preservando a ordem visual.",
+        "Telemetria registra pedido, resultado, falha, quantidade de endereços e o último endereço escolhido pelo leitor compartilhado."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Centenas de ciclos authorized_root_not_observed sem acionar um leitor visual independente.",
+        "FAROL automático não aproveitava integralmente o mesmo leitor visual comprovado pelos atalhos manuais."
+      ],
+      "modulesAffected": [
+        "FAROL",
+        "Leitura da tela",
+        "WhatsApp da tela",
+        "Accessibility",
+        "OCR",
+        "Grade de atalhos",
+        "Geocodificação",
+        "Roteamento",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.751",
       "build": 6042,
       "commit": null,
