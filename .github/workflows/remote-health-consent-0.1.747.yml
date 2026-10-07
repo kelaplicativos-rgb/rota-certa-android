@@ -1,0 +1,415 @@
+name: Rota Certa 0.1.747 Consent-Gated Remote Health exact SHA
+
+on:
+  push:
+    branches:
+      - 'agent/remote-health-consent-0.1.747'
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: 'agent/remote-health-consent-0.1.747'
+      BASE_SHA: '4b4876faf01981b3a9a8c5f8a4741e76887f27e2'
+      EXPECTED_VERSION_NAME: '0.1.747'
+      EXPECTED_VERSION_CODE: '6038'
+      OM_TAG: '2026.08.27-18-android'
+      OM_VERSION: '2026.08.27-18'
+      OM_SOURCE_SHA: '3ef379196cca434cf17f4ee684f16aa99fd8985e'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore pinned Organic Maps SDK cache
+        id: om-sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/app/organicmaps/sdk
+          key: organicmaps-sdk-${{ runner.os }}-${{ env.OM_SOURCE_SHA }}-android36-ndk29-arm64
+
+      - name: Build exact pinned Organic Maps SDK on cache miss
+        if: steps.om-sdk-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: bash tools/ci/build-organicmaps-sdk.sh
+
+      - name: Verify pinned Organic Maps SDK dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$HOME/.m2/repository/app/organicmaps/sdk/location-core/$OM_VERSION/location-core-$OM_VERSION.pom"
+          test -s "$HOME/.m2/repository/app/organicmaps/sdk/sdk/$OM_VERSION/sdk-$OM_VERSION.pom"
+          test -s "$HOME/.m2/repository/app/organicmaps/sdk/maps-world/$OM_VERSION/maps-world-$OM_VERSION.pom"
+          {
+            echo "## Organic Maps dependency"
+            echo "- ✅ version: `$OM_VERSION`"
+            echo "- ✅ pinned source: `$OM_SOURCE_SHA`"
+            echo "- cache hit: `${{ steps.om-sdk-cache.outputs.cache-hit }}`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Prove exact source scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'val releaseVersionName = "0.1.747"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 6_038' app/build.gradle.kts
+          grep -Fq '"version": "0.1.747"' app/src/main/assets/release_history.json
+          grep -Fq 'FAROL_ONE_SECOND_VISUAL_AUTHORITY_0711' app/src/main/java/br/com/mapeiaia/rotacerta/FarolOneSecondVisualAuthority0711.kt
+          grep -Fq 'RESULT_TTL_MILLIS = 1_000L' app/src/main/java/br/com/mapeiaia/rotacerta/FarolOneSecondVisualAuthority0711.kt
+          grep -Fq 'HEARTBEAT_MILLIS = 700L' app/src/main/java/br/com/mapeiaia/rotacerta/FarolOneSecondVisualAuthority0711.kt
+          grep -Fq 'ORGANIC_MAPS_EMBEDDED_RUNTIME_0711' app/src/main/java/br/com/mapeiaia/rotacerta/OrganicMapsEmbedded0711.kt
+          grep -Fq 'FULL_LOCALITY_PRESERVED_TO_OFFLINE_GEOCODER_0711' app/src/main/java/br/com/mapeiaia/rotacerta/FarolCausalCorrectionStage21.kt
+          grep -Fq 'FAROL_ORGANIC_OFFLINE_RESOLVED_0711' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
+          grep -Fq 'verifyCurrentVisualAuthority0711' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'FAROL_ROAD_KM_FINALITY_0713' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRoadKmFinality0713.kt
+          grep -Fq 'RC_DIAGNOSTIC_FABRIC_0741' app/src/main/java/br/com/mapeiaia/rotacerta/diagnostics/RcDiagnosticFabric0741.kt
+          grep -Fq 'REMOTE_SUPPORT_ATTENTION_0743' app/src/main/java/br/com/mapeiaia/rotacerta/trips/RemoteSupportAttention0743.kt
+          grep -Fq 'REMOTE_SUPPORT_NOTIFICATION_0744' app/src/main/java/br/com/mapeiaia/rotacerta/trips/RemoteSupportNotification0744.kt
+          grep -Fq 'REMOTE_SUPPORT_CONSENT_0746' app/src/main/java/br/com/mapeiaia/rotacerta/trips/RemoteSupportConsent0746.kt
+          grep -Fq 'REMOTE_HEALTH_0747' app/src/main/java/br/com/mapeiaia/rotacerta/trips/RemoteHealthDiagnostic0747.kt
+          grep -Fq 'remote_health_collect' app/src/main/java/br/com/mapeiaia/rotacerta/trips/RotaCertaBookingMessagingService.kt
+          grep -Fq 'remoteHealthVersion: Int = 1' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          grep -Fq 'RemoteHealthScheduler0747.enqueue(context, jobId)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/RemoteSupportConsent0746.kt
+          grep -Fq 'REMOTE_ACCESS_DECLINED_BY_USER' app/src/main/java/br/com/mapeiaia/rotacerta/trips/RemoteSupportConsent0746.kt
+          grep -Fq 'createRemoteHealth0747' trip-platform/functions/index.js
+          grep -Fq 'remoteHealthVersion' trip-platform/functions/index.js
+          grep -Fq 'ROTA_CERTA_REMOTE_HEALTH' trip-platform/functions/remote-health-0747.js
+          grep -Fq '"ACEITAR"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/RemoteSupportNotification0744.kt
+          grep -Fq '"RECUSAR"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/RemoteSupportNotification0744.kt
+          grep -Fq 'RemoteSupportConsentReceiver0746' app/src/main/AndroidManifest.xml
+          grep -Fq 'collectionStarted=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/RotaCertaBookingMessagingService.kt
+          grep -Fq 'remoteSupportAttention0745' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'RemoteSupportAttention0743.state(applicationContext).collect' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'val hasAttention = unread > 0 || remoteAttention' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'ACTION_OPEN_NOTIFICATIONS' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripAndroidEntryPoints.kt
+          grep -Fq 'openNotifications -> TripScreen.NOTIFICATIONS' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'Color(0xFFFF9800)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt
+          grep -Fq 'Gerar e compartilhar diagnóstico' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'UnifiedDebugEventStore.recordAlways' app/src/main/java/br/com/mapeiaia/rotacerta/diagnostics/RcDiagnosticFabric0741.kt
+          git diff --exit-code "$BASE_SHA"...HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'FAROL_LOCAL_KM_NEVER_PUBLIC_0713' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRoadKmFinality0713.kt
+          grep -Fq 'FAROL_ROAD_KM_CONFIRMED_PUBLIC_0713' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRoadKmFinality0713.kt
+          grep -Fq 'ROTA_VISUAL_INTELLIGENCE_0742' app/src/main/java/br/com/mapeiaia/rotacerta/ScreenVisualFusion0742.kt
+          grep -Fq 'takeScreenshotOfWindow' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          ! grep -Fq 'mergeRideTexts(phoneVisibleTextChecklist11, mergeRideTexts(lastAccessibilityText, lastOcrText))' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          ! grep -Fq 'Lease visual de 1 segundo expirou sem nova confirmação do endereço atual.' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'OrganicMapsEmbeddedRuntime0711.COMPATIBLE_DATA_VERSION_FOLDER' app/src/main/java/br/com/mapeiaia/rotacerta/OfflineMapStore0708.kt
+          PASSENGERS='app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt'
+          OPERATIONAL='app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalAllTripsBrowserUi0563.kt'
+          TIMELINE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt'
+          TRACKING='app/src/main/java/br/com/mapeiaia/rotacerta/LiveTrackingShare0668.kt'
+          grep -Fq 'PASSENGER_TRACKING_STOP_REQUEST_0712' "$PASSENGERS"
+          grep -Fq '.combinedClickable(' "$PASSENGERS"
+          grep -Fq 'ACTION_ENSURE_LOCATION_CORE_0681' "$PASSENGERS"
+          grep -Fq 'ACTION_RECONCILE_LOCATION_CORE_0681' "$PASSENGERS"
+          ! grep -Fq 'awaitFirstDown(requireUnconsumed = false)' "$PASSENGERS"
+          grep -Fq 'OPERATIONAL_CARD_OPEN_SURFACE_0712' "$OPERATIONAL"
+          ! grep -Fq '.clickable(enabled = manageable0633, onClick = onOpen)' "$OPERATIONAL"
+          grep -Fq 'TIMELINE_CARD_OPEN_SURFACE_0712' "$TIMELINE"
+          grep -Fq 'val response = TrackingRemoteClient0668(settings).closeShare' "$TRACKING"
+          git diff --check "$BASE_SHA"...HEAD
+          printf '%s\n' "$GITHUB_SHA" | tee /tmp/source-sha.txt
+          printf '%s\n' "$ROTA_CERTA_GIT_BRANCH" | tee /tmp/source-branch.txt
+
+      - name: Verify release and focused 0.1.747 contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:verifyReleaseHistory :app:verifyAndroidUpdateContract --no-daemon --stacktrace | tee /tmp/release-history.log
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.FarolRoadKmFinality0713Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTouchIsolation0712Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTrackingControl0706Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TimelinePerformance0705ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.RemoteSupportAttention0743ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.RemoteSupportNotification0744ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.RemoteSupportConsent0746ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.RemoteHealth0747ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaGlobalNotificationBubble0416Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolOneSecondVisualAuthority0711Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolVisualAuthority0740ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolFullLocalityPreservation0711Test' \
+            --tests 'br.com.mapeiaia.rotacerta.GpsOfflineGridShortcut0710Test' \
+            --tests 'br.com.mapeiaia.rotacerta.OrganicMapsOfflineBridge0709Test' \
+            --tests 'br.com.mapeiaia.rotacerta.OfflineMapFilePolicy0708Test' \
+            --tests 'br.com.mapeiaia.rotacerta.ScreenVisualFusion0742Test' \
+            --tests 'br.com.mapeiaia.rotacerta.ScreenPhoneVideoRegressionTest' \
+            --tests 'br.com.mapeiaia.rotacerta.BubbleCopyAndReplyContract138Test' \
+            --no-daemon --max-workers=2 --stacktrace \
+            | tee /tmp/focused-android-0742.log
+
+      - name: Validate remote health backend contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/remote-health-0747.js
+          node --check trip-platform/functions/index.js
+          node --test trip-platform/functions/test/remote-health-0747.test.js | tee /tmp/remote-health-backend-0747.log
+
+      - name: Run permanent FAROL regression contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.ReadingProximity0545ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.ReadingGeocodeResilience0547ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolSealed0547RegressionContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolStage44SemanticFinalLeaseTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolStage46ImmediateAddressRouteR7Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolEdge0634Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace \
+            | tee /tmp/sealed-farol-regression.log
+
+      - name: Compare complete Android failures with exact 0.1.746 base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add --detach /tmp/rc-base "$BASE_SHA"
+          chmod +x /tmp/rc-base/gradlew
+          set +e
+          (cd /tmp/rc-base && ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace) > /tmp/android-base-full.log 2>&1
+          BASE_EXIT=$?
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace > /tmp/android-head-full.log 2>&1
+          HEAD_EXIT=$?
+          set -e
+          python3 - <<'PY'
+          import pathlib, xml.etree.ElementTree as ET
+          def failures(root):
+              result=set()
+              d=pathlib.Path(root)/"app/build/test-results/testDebugUnitTest"
+              if not d.exists():
+                  return result
+              for f in d.glob("*.xml"):
+                  try:
+                      tree=ET.parse(f)
+                  except Exception:
+                      continue
+                  for case in tree.getroot().iter("testcase"):
+                      if case.find("failure") is not None or case.find("error") is not None:
+                          result.add(f"{case.attrib.get('classname','')}::{case.attrib.get('name','')}")
+              return result
+          base=failures("/tmp/rc-base")
+          head=failures(".")
+          new=sorted(head-base)
+          fixed=sorted(base-head)
+          pathlib.Path("/tmp/android-new-failures.txt").write_text("\n".join(new)+("\n" if new else ""))
+          pathlib.Path("/tmp/android-fixed-failures.txt").write_text("\n".join(fixed)+("\n" if fixed else ""))
+          print(f"base_failures={len(base)} head_failures={len(head)} new_failures={len(new)} fixed={len(fixed)}")
+          if new:
+              print("\n".join(new))
+              raise SystemExit(1)
+          PY
+          printf 'base_exit=%s\nhead_exit=%s\n' "$BASE_EXIT" "$HEAD_EXIT" | tee /tmp/android-regression-summary.txt
+
+      - name: Assemble exact-head APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/assemble.log
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Prove APK identity, compiled contracts and preserved offline engine
+        id: proof
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          APKANALYZER="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+
+          fail_proof() {
+            local message="$1"
+            echo "::error title=APK proof failed::$message"
+            echo "- ❌ $message" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
+          pass_proof() {
+            echo "- ✅ $1" >> "$GITHUB_STEP_SUMMARY"
+          }
+          require_contains() {
+            local file="$1" needle="$2" label="$3"
+            grep -Fq "$needle" "$file" || fail_proof "$label"
+            pass_proof "$label"
+          }
+          require_match() {
+            local file="$1" pattern="$2" label="$3"
+            grep -Eq "$pattern" "$file" || fail_proof "$label"
+            pass_proof "$label"
+          }
+
+          {
+            echo "## Rota Certa 0.1.747 — prova do APK"
+            echo ""
+            echo "SHA: `$GITHUB_SHA`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          test -s "$APK" || fail_proof "APK debug não foi produzido"
+          pass_proof "APK produzido"
+
+          unzip -t "$APK" > /tmp/zip-integrity.txt 2>&1 || fail_proof "Integridade ZIP do APK"
+          pass_proof "Integridade ZIP do APK"
+          unzip -l "$APK" > /tmp/apk-files.txt
+          require_match /tmp/apk-files.txt 'lib/arm64-v8a/liborganicmaps\.so' "Organic Maps arm64 presente"
+          require_match /tmp/apk-files.txt 'assets/World\.mwm' "Mapa World embutido"
+          require_match /tmp/apk-files.txt 'assets/WorldCoasts\.mwm' "Mapa WorldCoasts embutido"
+
+          test -x "$APKANALYZER" || fail_proof "apkanalyzer indisponível no Android SDK"
+          "$APKANALYZER" apk summary "$APK" | tee /tmp/apkanalyzer-summary.txt
+          read -r ANALYZER_APP_ID ANALYZER_VERSION_CODE ANALYZER_VERSION_NAME < /tmp/apkanalyzer-summary.txt
+          test "$ANALYZER_APP_ID" = "br.com.mapeiaia.rotacerta" || fail_proof "applicationId divergente no APK"
+          pass_proof "applicationId correto"
+          test "$ANALYZER_VERSION_CODE" = "$EXPECTED_VERSION_CODE" || fail_proof "versionCode divergente no APK"
+          pass_proof "versionCode $EXPECTED_VERSION_CODE"
+          test "$ANALYZER_VERSION_NAME" = "$EXPECTED_VERSION_NAME" || fail_proof "versionName divergente no APK"
+          pass_proof "versionName $EXPECTED_VERSION_NAME"
+
+          "$APKANALYZER" manifest print "$APK" > /tmp/apkanalyzer-manifest.xml
+          require_contains /tmp/apkanalyzer-manifest.xml 'br.com.mapeiaia.rotacerta.trips.RemoteSupportConsentReceiver0746' "Receiver de consentimento compilado no manifest"
+
+          "$APKANALYZER" dex packages --defined-only "$APK" > /tmp/apkanalyzer-dex-packages.txt
+          require_contains /tmp/apkanalyzer-dex-packages.txt 'RemoteSupportConsentReceiver0746' "Receiver ACEITAR/RECUSAR presente no DEX"
+          require_contains /tmp/apkanalyzer-dex-packages.txt 'RemoteSupportConsentStore0746' "Store de consentimento presente no DEX"
+          require_contains /tmp/apkanalyzer-dex-packages.txt 'RemoteSupportNotification0744' "Notificação remota presente no DEX"
+
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE" || fail_proof "aapt applicationId"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE" || fail_proof "aapt versionCode"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE" || fail_proof "aapt versionName"
+          pass_proof "aapt confirma identidade e versão"
+
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          require_contains /tmp/apksigner.txt 'Verified using v2 scheme (APK Signature Scheme v2): true' "Assinatura APK v2 válida"
+
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          require_contains /tmp/dex-strings.txt "$GITHUB_SHA" "SHA exact-head embutido no APK"
+          require_contains /tmp/dex-strings.txt 'FAROL_ONE_SECOND_VISUAL_AUTHORITY_0711' "Autoridade visual FAROL preservada"
+          require_contains /tmp/dex-strings.txt 'FAROL_NO_OBSERVATION_PRESERVES_0740' "Lease visual FAROL preservado"
+          require_contains /tmp/dex-strings.txt 'ORGANIC_MAPS_EMBEDDED_RUNTIME_0711' "Runtime Organic Maps preservado"
+          require_contains /tmp/dex-strings.txt 'FAROL_ROAD_KM_FINALITY_0713' "Finalidade road-km preservada"
+          require_contains /tmp/dex-strings.txt 'RC_DIAGNOSTIC_FABRIC_0741' "Diagnostic Fabric presente"
+          require_contains /tmp/dex-strings.txt 'REMOTE_SUPPORT_BUBBLE_ATTENTION_CHANGED_0745' "Alerta remoto da bolinha presente"
+          require_contains /tmp/dex-strings.txt 'REMOTE_SUPPORT_ACCEPTED_0746' "Evento de ACEITAR compilado"
+          require_contains /tmp/dex-strings.txt 'REMOTE_SUPPORT_DECLINED_0746' "Evento de RECUSAR compilado"
+          require_contains /tmp/dex-strings.txt 'REMOTE_ACCESS_DECLINED_BY_USER' "RECUSAR encerra job sem coleta"
+          require_contains /tmp/dex-strings.txt 'REMOTE_HEALTH_0747' "Coletor remoto da Central de Saúde compilado"
+          require_contains /tmp/dex-strings.txt 'REMOTE_HEALTH_CONSENT_REQUIRED_0747' "Consentimento da Central de Saúde compilado"
+          require_contains /tmp/dex-strings.txt 'REMOTE_HEALTH_RESULT_SENT_0747' "Envio sanitizado da Central de Saúde compilado"
+
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.747-6038-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          APK_SHA256="$(sha256sum "$FINAL" | awk '{print $1}')"
+          sha256sum "$FINAL" | tee /tmp/apk-sha256.txt
+          stat -c '%s' "$FINAL" | tee /tmp/apk-size-bytes.txt
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=$EXPECTED_VERSION_NAME"
+            echo "versionCode=$EXPECTED_VERSION_CODE"
+            echo "sourceSha=$GITHUB_SHA"
+            echo "sourceBranch=$ROTA_CERTA_GIT_BRANCH"
+            echo "deviceTarget=Samsung SM-S911B / Android 16"
+            echo "organicMapsSdk=$OM_VERSION"
+            echo "organicMapsEmbeddedArm64=true"
+            echo "worldMapsEmbedded=true"
+            echo "verifyAndroidUpdateContract=PASS"
+            echo "remoteRequestSamsungNotification=true"
+            echo "remoteNotificationRequiresExplicitConsent=true"
+            echo "remoteCollectionBeforeConsent=false"
+            echo "remoteDeclineStartsCollection=false"
+            echo "remoteAcceptIsOnlyExecutionGate=true"
+            echo "remoteHealthRequiresExplicitConsent=true"
+            echo "remoteHealthDeclineCollectsLogs=false"
+            echo "remoteHealthPayloadSanitized=true"
+            echo "remoteHealthMaxEvidenceEvents=240"
+            echo "remoteRequestMirrorsAgendaBubbleAttention=true"
+            echo "farolFillPreservedDuringRemoteAttention=true"
+            echo "apkSha256=$APK_SHA256"
+          } | tee /tmp/final-proof.txt
+          pass_proof "APK exact-SHA validado"
+
+      - name: Persist CI forensic evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-ci-evidence-0.1.747-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            /tmp/zip-integrity.txt
+            /tmp/apk-files.txt
+            /tmp/apkanalyzer-summary.txt
+            /tmp/apkanalyzer-manifest.xml
+            /tmp/apkanalyzer-dex-packages.txt
+            /tmp/aapt.txt
+            /tmp/apksigner.txt
+            /tmp/dex-strings.txt
+            /tmp/focused-android-0742.log
+            /tmp/remote-health-backend-0747.log
+            /tmp/sealed-farol-regression.log
+            /tmp/android-base-full.log
+            /tmp/android-head-full.log
+            /tmp/android-new-failures.txt
+            /tmp/android-fixed-failures.txt
+            /tmp/android-regression-summary.txt
+            /tmp/release-history.log
+            /tmp/assemble.log
+            /tmp/organicmaps-sdk-build.log
+            /tmp/final-proof.txt
+
+      - name: Upload exact-SHA APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-remote-health-0.1.747-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            /tmp/source-sha.txt
+            /tmp/source-branch.txt
+            /tmp/final-proof.txt
+            /tmp/apk-sha256.txt
+            /tmp/apk-size-bytes.txt
+            /tmp/aapt.txt
+            /tmp/apksigner.txt
+            /tmp/zip-integrity.txt
+            /tmp/apk-files.txt
+            /tmp/focused-android-0742.log
+            /tmp/remote-health-backend-0747.log
+            /tmp/sealed-farol-regression.log
+            /tmp/android-base-full.log
+            /tmp/android-head-full.log
+            /tmp/android-new-failures.txt
+            /tmp/android-fixed-failures.txt
+            /tmp/android-regression-summary.txt
+            /tmp/release-history.log
+            /tmp/assemble.log
+            /tmp/organicmaps-sdk-build.log
