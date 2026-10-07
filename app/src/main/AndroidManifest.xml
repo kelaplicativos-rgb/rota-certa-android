@@ -173,6 +173,9 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+        <receiver
+            android:name=".trips.RemoteSupportConsentReceiver0746"
+            android:exported="false" />
         <!-- 0.1.655: notification is only a wake-up signal; /messages/list HTML remains authoritative. -->
         <service
             android:name=".trips.BlaBlaMessageNotificationListener0655"
