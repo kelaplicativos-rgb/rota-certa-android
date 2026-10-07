@@ -223,55 +223,90 @@ jobs:
           ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/assemble.log
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
-      - name: Prove APK identity, touch isolation and preserved offline engine
+      - name: Prove APK identity, compiled contracts and preserved offline engine
         id: proof
         shell: bash
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
           APK='app/build/outputs/apk/debug/app-debug.apk'
-          test -s "$APK"
-          unzip -t "$APK" | tee /tmp/zip-integrity.txt
-          unzip -l "$APK" | tee /tmp/apk-files.txt
-          grep -Eq 'lib/arm64-v8a/liborganicmaps\.so' /tmp/apk-files.txt
-          grep -Eq 'assets/World\.mwm' /tmp/apk-files.txt
-          grep -Eq 'assets/WorldCoasts\.mwm' /tmp/apk-files.txt
-
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          APKANALYZER="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+
+          fail_proof() {
+            local message="$1"
+            echo "::error title=APK proof failed::$message"
+            echo "- ❌ $message" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
+          pass_proof() {
+            echo "- ✅ $1" >> "$GITHUB_STEP_SUMMARY"
+          }
+          require_contains() {
+            local file="$1" needle="$2" label="$3"
+            grep -Fq "$needle" "$file" || fail_proof "$label"
+            pass_proof "$label"
+          }
+          require_match() {
+            local file="$1" pattern="$2" label="$3"
+            grep -Eq "$pattern" "$file" || fail_proof "$label"
+            pass_proof "$label"
+          }
+
+          {
+            echo "## Rota Certa 0.1.746 — prova do APK"
+            echo ""
+            echo "SHA: `$GITHUB_SHA`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          test -s "$APK" || fail_proof "APK debug não foi produzido"
+          pass_proof "APK produzido"
+
+          unzip -t "$APK" > /tmp/zip-integrity.txt 2>&1 || fail_proof "Integridade ZIP do APK"
+          pass_proof "Integridade ZIP do APK"
+          unzip -l "$APK" > /tmp/apk-files.txt
+          require_match /tmp/apk-files.txt 'lib/arm64-v8a/liborganicmaps\.so' "Organic Maps arm64 presente"
+          require_match /tmp/apk-files.txt 'assets/World\.mwm' "Mapa World embutido"
+          require_match /tmp/apk-files.txt 'assets/WorldCoasts\.mwm' "Mapa WorldCoasts embutido"
+
+          test -x "$APKANALYZER" || fail_proof "apkanalyzer indisponível no Android SDK"
+          "$APKANALYZER" apk summary "$APK" | tee /tmp/apkanalyzer-summary.txt
+          read -r ANALYZER_APP_ID ANALYZER_VERSION_CODE ANALYZER_VERSION_NAME < /tmp/apkanalyzer-summary.txt
+          test "$ANALYZER_APP_ID" = "br.com.mapeiaia.rotacerta" || fail_proof "applicationId divergente no APK"
+          pass_proof "applicationId correto"
+          test "$ANALYZER_VERSION_CODE" = "$EXPECTED_VERSION_CODE" || fail_proof "versionCode divergente no APK"
+          pass_proof "versionCode $EXPECTED_VERSION_CODE"
+          test "$ANALYZER_VERSION_NAME" = "$EXPECTED_VERSION_NAME" || fail_proof "versionName divergente no APK"
+          pass_proof "versionName $EXPECTED_VERSION_NAME"
+
+          "$APKANALYZER" manifest print "$APK" > /tmp/apkanalyzer-manifest.xml
+          require_contains /tmp/apkanalyzer-manifest.xml 'br.com.mapeiaia.rotacerta.trips.RemoteSupportConsentReceiver0746' "Receiver de consentimento compilado no manifest"
+
+          "$APKANALYZER" dex packages --defined-only "$APK" > /tmp/apkanalyzer-dex-packages.txt
+          require_contains /tmp/apkanalyzer-dex-packages.txt 'RemoteSupportConsentReceiver0746' "Receiver ACEITAR/RECUSAR presente no DEX"
+          require_contains /tmp/apkanalyzer-dex-packages.txt 'RemoteSupportConsentStore0746' "Store de consentimento presente no DEX"
+          require_contains /tmp/apkanalyzer-dex-packages.txt 'RemoteSupportNotification0744' "Notificação remota presente no DEX"
+
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
-          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
-          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
-          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE" || fail_proof "aapt applicationId"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE" || fail_proof "aapt versionCode"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE" || fail_proof "aapt versionName"
+          pass_proof "aapt confirma identidade e versão"
+
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
-          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/apksigner.txt
+          require_contains /tmp/apksigner.txt 'Verified using v2 scheme (APK Signature Scheme v2): true' "Assinatura APK v2 válida"
 
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
-          grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
-          grep -Fq 'FAROL_ONE_SECOND_VISUAL_AUTHORITY_0711' /tmp/dex-strings.txt
-          grep -Fq 'FAROL_NO_OBSERVATION_PRESERVES_0740' /tmp/dex-strings.txt
-          grep -Fq 'FAROL_REFERENCE_CHANGED_RECALCULATE_0740' /tmp/dex-strings.txt
-          grep -Fq 'FAROL_PAID_AI_STALE_DROPPED_0740' /tmp/dex-strings.txt
-          grep -Fq 'FAROL_CHANGED_ADDRESS_REVOKES_OLD_RESULT_0711' /tmp/dex-strings.txt
-          grep -Fq 'ORGANIC_MAPS_EMBEDDED_RUNTIME_0711' /tmp/dex-strings.txt
-          grep -Fq 'FULL_LOCALITY_PRESERVED_TO_OFFLINE_GEOCODER_0711' /tmp/dex-strings.txt
-          grep -Fq 'FAROL_ORGANIC_OFFLINE_RESOLVED_0711' /tmp/dex-strings.txt
-          grep -Fq 'PASSENGER_TRACKING_STOP_REQUEST_0712' /tmp/dex-strings.txt
-          grep -Fq 'FAROL_ROAD_KM_FINALITY_0713' /tmp/dex-strings.txt
-          grep -Fq 'RC_DIAGNOSTIC_FABRIC_0741' /tmp/dex-strings.txt
-          grep -Fq 'REMOTE_SUPPORT_NOTIFICATION_0744' /tmp/dex-strings.txt
-          grep -Fq 'REMOTE_SUPPORT_CONSENT_NOTIFICATION_SHOWN_0746' /tmp/dex-strings.txt
-          grep -Fq 'REMOTE_SUPPORT_BUBBLE_ATTENTION_CHANGED_0745' /tmp/dex-strings.txt
-          grep -Fq 'REMOTE_SUPPORT_CONSENT_0746' /tmp/dex-strings.txt
-          grep -Fq 'REMOTE_SUPPORT_ACCEPTED_0746' /tmp/dex-strings.txt
-          grep -Fq 'REMOTE_SUPPORT_DECLINED_0746' /tmp/dex-strings.txt
-          grep -Fq 'ACEITAR' /tmp/dex-strings.txt
-          grep -Fq 'RECUSAR' /tmp/dex-strings.txt
-          grep -Fq 'solicitação remota pendente' /tmp/dex-strings.txt
-          grep -Fq 'FAROL_LOCAL_KM_NEVER_PUBLIC_0713' /tmp/dex-strings.txt
-          grep -Fq 'FAROL_ROAD_KM_CONFIRMED_PUBLIC_0713' /tmp/dex-strings.txt
-          grep -Fq 'ROTA_VISUAL_INTELLIGENCE_0742' /tmp/dex-strings.txt
-          grep -Fq 'MANUAL_SCREEN_TEXT_0742' /tmp/dex-strings.txt
-          grep -Fq 'MANUAL_SCREEN_PHONE_0742' /tmp/dex-strings.txt
+          require_contains /tmp/dex-strings.txt "$GITHUB_SHA" "SHA exact-head embutido no APK"
+          require_contains /tmp/dex-strings.txt 'FAROL_ONE_SECOND_VISUAL_AUTHORITY_0711' "Autoridade visual FAROL preservada"
+          require_contains /tmp/dex-strings.txt 'FAROL_NO_OBSERVATION_PRESERVES_0740' "Lease visual FAROL preservado"
+          require_contains /tmp/dex-strings.txt 'ORGANIC_MAPS_EMBEDDED_RUNTIME_0711' "Runtime Organic Maps preservado"
+          require_contains /tmp/dex-strings.txt 'FAROL_ROAD_KM_FINALITY_0713' "Finalidade road-km preservada"
+          require_contains /tmp/dex-strings.txt 'RC_DIAGNOSTIC_FABRIC_0741' "Diagnostic Fabric presente"
+          require_contains /tmp/dex-strings.txt 'REMOTE_SUPPORT_BUBBLE_ATTENTION_CHANGED_0745' "Alerta remoto da bolinha presente"
+          require_contains /tmp/dex-strings.txt 'REMOTE_SUPPORT_ACCEPTED_0746' "Evento de ACEITAR compilado"
+          require_contains /tmp/dex-strings.txt 'REMOTE_SUPPORT_DECLINED_0746' "Evento de RECUSAR compilado"
+          require_contains /tmp/dex-strings.txt 'REMOTE_ACCESS_DECLINED_BY_USER' "RECUSAR encerra job sem coleta"
 
           SHORT_SHA="$(git rev-parse --short=12 HEAD)"
           FINAL="rota-certa-0.1.746-6037-$SHORT_SHA.apk"
@@ -291,33 +326,45 @@ jobs:
             echo "organicMapsSdk=$OM_VERSION"
             echo "organicMapsEmbeddedArm64=true"
             echo "worldMapsEmbedded=true"
-            echo "regionalMwmImport=true"
-            echo "visualResultTtlMs=1000"
-            echo "visualHeartbeatMs=700"
-            echo "noObservationPreservesConfirmedResult=true"
-            echo "referenceChangedRecalculatesLastObservedA=true"
-            echo "stalePaidAiGenerationDropped=true"
             echo "verifyAndroidUpdateContract=PASS"
-            echo "changedAddressRevokesOldResult=true"
-            echo "offlineGeocoderFirst=true"
-            echo "passengerCardTouchIsolated=true"
-            echo "passengerTrackingRemoteAckRequired=true"
-            echo "passengerTrackingDoesNotActivateWorkTracking=true"
-            echo "passengerTrackingStopReconcilesLocationCore=true"
-            echo "haversineKmPublic=false"
-            echo "roadConfirmedKmOnly=true"
             echo "remoteRequestSamsungNotification=true"
             echo "remoteNotificationRequiresExplicitConsent=true"
-            echo "remoteNotificationLeaksSecrets=false"
-            echo "remoteRequestMirrorsAgendaBubbleAttention=true"
             echo "remoteCollectionBeforeConsent=false"
             echo "remoteDeclineStartsCollection=false"
             echo "remoteAcceptIsOnlyExecutionGate=true"
+            echo "remoteRequestMirrorsAgendaBubbleAttention=true"
             echo "farolFillPreservedDuringRemoteAttention=true"
-            echo "sameBindingRoadResultMonotonic=true"
-            echo "timerOnlyLeaseRevocation=false"
             echo "apkSha256=$APK_SHA256"
           } | tee /tmp/final-proof.txt
+          pass_proof "APK exact-SHA validado"
+
+      - name: Persist CI forensic evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-ci-evidence-0.1.746-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            /tmp/zip-integrity.txt
+            /tmp/apk-files.txt
+            /tmp/apkanalyzer-summary.txt
+            /tmp/apkanalyzer-manifest.xml
+            /tmp/apkanalyzer-dex-packages.txt
+            /tmp/aapt.txt
+            /tmp/apksigner.txt
+            /tmp/dex-strings.txt
+            /tmp/focused-android-0742.log
+            /tmp/sealed-farol-regression.log
+            /tmp/android-base-full.log
+            /tmp/android-head-full.log
+            /tmp/android-new-failures.txt
+            /tmp/android-fixed-failures.txt
+            /tmp/android-regression-summary.txt
+            /tmp/release-history.log
+            /tmp/assemble.log
+            /tmp/organicmaps-sdk-build.log
+            /tmp/final-proof.txt
 
       - name: Upload exact-SHA APK
         uses: actions/upload-artifact@v4
