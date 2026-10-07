@@ -192,6 +192,15 @@ fun BlaBlaCollectorPanel(
             }
             standaloneRemoteAccess0736 = result.access
             standaloneRemoteMessage0739 = result.message
+            if (result.pushRegistered) {
+                RemoteSupportAttention0743.markReady(context)
+            } else {
+                RemoteSupportAttention0743.markPending(
+                    context,
+                    reasonCode = "PUSH_REGISTRATION_PENDING",
+                    message = result.message,
+                )
+            }
             if (copyWhenReady) copyRemoteAccess0739(result.access)
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -207,6 +216,11 @@ fun BlaBlaCollectorPanel(
                 }
                 else -> "Não foi possível preparar o acesso remoto. Confira sua conexão e tente novamente."
             }
+            RemoteSupportAttention0743.markPending(
+                context,
+                reasonCode = "REMOTE_ACCESS_CHECK_FAILED",
+                message = standaloneRemoteMessage0739 ?: "Não foi possível verificar a conexão remota.",
+            )
             UnifiedDebugEventStore.record(
                 "STANDALONE_REMOTE_ACCESS_FAILED_0739", context.packageName,
                 "error=${error.javaClass.simpleName} retryAvailable=true",
