@@ -2,6 +2,35 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.747",
+      "build": 6038,
+      "commit": null,
+      "branch": "agent/remote-health-consent-0.1.747",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Adiciona consulta remota da Central de Saúde usando a mesma capability privada já provisionada no aparelho.",
+        "A solicitação remote_health_collect passa obrigatoriamente pelo consentimento ACEITAR ou RECUSAR antes de qualquer coleta.",
+        "Após ACEITAR, envia ao backend somente um snapshot sanitizado e limitado de incidentes, eventos correlacionados e métricas do buffer."
+      ],
+      "fixed": [
+        "Remove a necessidade de gerar e compartilhar manualmente o ZIP da Central de Saúde para uma investigação remota.",
+        "RECUSAR encerra o job como REMOTE_ACCESS_DECLINED_BY_USER sem coletar logs."
+      ],
+      "improved": [
+        "Payload remoto valida schema, tamanho, campos permitidos e limites de incidentes/eventos antes de persistir.",
+        "Nenhum HTML bruto, token, cookie, senha, URL privada, telefone, e-mail ou endereço é transportado intencionalmente.",
+        "A consulta de saúde fica isolada da Agenda, Timeline, FAROL e ações operacionais."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Central de Saúde disponível apenas por compartilhamento manual.",
+        "Impossibilidade de provar remotamente que RECUSAR interrompe a coleta antes dos logs."
+      ],
+      "modulesAffected": ["Central de Saúde", "Diagnóstico", "Consentimento remoto", "Notificações", "Backend", "FCM", "Build"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.746",
       "build": 6037,
       "commit": null,
