@@ -74,6 +74,19 @@ internal object RemoteSupportAttention0743 {
         )
     }
 
+    fun markRequestPending(
+        context: Context,
+        message: String = "Solicitação remota recebida. Toque na notificação para abrir o suporte remoto.",
+    ) {
+        update(
+            context = context,
+            status = "REQUESTED",
+            reasonCode = "REMOTE_REQUEST_RECEIVED",
+            message = message,
+            needsAttention = true,
+        )
+    }
+
     fun markReady(
         context: Context,
         message: String = "Conexão remota pronta. O aparelho pode receber consultas.",
