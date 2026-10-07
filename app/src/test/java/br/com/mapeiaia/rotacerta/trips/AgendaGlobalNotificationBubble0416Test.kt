@@ -50,9 +50,12 @@ class AgendaGlobalNotificationBubble0416Test {
         assertTrue(farol.contains("applyAgendaNotificationDecoration0416"))
         assertTrue(farol.contains("setColor(color.argb(currentSettings))"))
         assertTrue(farol.contains("Color.argb(alpha, 255, 152, 0)"))
-        assertTrue(farol.contains("setStroke(dp(if (unread > 0) 4 else 3), strokeColor)"))
+        assertTrue(farol.contains("val hasAttention = unread > 0 || remoteAttention"))
+        assertTrue(farol.contains("setStroke(dp(if (hasAttention) 4 else 3), strokeColor)"))
         assertTrue(farol.contains("\"Rota Certa, Agenda com \$unread notificações não lidas\""))
+        assertTrue(farol.contains("\"Rota Certa, solicitação remota pendente\""))
         assertTrue(farol.contains("if (agendaUnreadCount0416 != unread)"))
+        assertTrue(farol.contains("RemoteSupportAttention0743.state(applicationContext).collect"))
     }
 
     @Test
