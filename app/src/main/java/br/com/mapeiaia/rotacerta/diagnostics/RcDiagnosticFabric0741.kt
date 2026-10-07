@@ -9,6 +9,10 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
+import br.com.mapeiaia.rotacerta.DiagnosticEventContext0507
+import br.com.mapeiaia.rotacerta.DiagnosticModule0507
+import br.com.mapeiaia.rotacerta.DiagnosticSeverity0507
+import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.security.MessageDigest
 import java.util.ArrayDeque
 import java.util.UUID
@@ -101,6 +105,35 @@ object RcDiagnosticFabric0741 {
             safe(traceId), severity, RcPrivacyRedactor.sanitize(details)
         )
         modules += e.module
+        // Converge with the proven unified recorder instead of creating a competing
+        // diagnostic silo. The recorder is bounded, fail-open and already feeds the
+        // Operational Health Center and the existing FAROL flight recorder.
+        runCatching {
+            UnifiedDebugEventStore.recordAlways(
+                stage = "RCFABRIC_${e.module}_${e.action}",
+                packageName = "br.com.mapeiaia.rotacerta",
+                details = buildString {
+                    append("traceId=").append(e.traceId)
+                    append(" severity=").append(e.severity.name)
+                    if (e.details.isNotEmpty()) {
+                        append(" details=")
+                        append(e.details.entries.joinToString(",") { "${it.key}=${it.value}" })
+                    }
+                },
+                nowMillis = e.wallMs,
+                monotonicNs = e.monotonicNs,
+                diagnosticContext = DiagnosticEventContext0507(
+                    parentModule = module0507(e.module),
+                    originModule = module0507(e.module),
+                    executorModule = module0507(e.module),
+                    correlationId = e.traceId,
+                    operationId = e.action,
+                    operation = e.action,
+                    errorCode = if (severity >= RcDiagnosticSeverity.ERROR) e.action else "",
+                    severity = severity0507(severity),
+                ),
+            )
+        }
         synchronized(lock) {
             while (events.size >= MAX_EVENTS) events.removeFirst()
             events.addLast(e)
@@ -145,6 +178,20 @@ object RcDiagnosticFabric0741 {
         }
         return MessageDigest.getInstance("SHA-256").digest(payload.toByteArray())
             .joinToString("") { "%02x".format(it) }
+    }
+
+    private fun module0507(module: String): DiagnosticModule0507 = when (module) {
+        "AGENDA" -> DiagnosticModule0507.AGENDA
+        "TIMELINE" -> DiagnosticModule0507.TIMELINE
+        "FAROL" -> DiagnosticModule0507.FAROL
+        "BLABLACAR" -> DiagnosticModule0507.BLABLACAR
+        else -> DiagnosticModule0507.APP
+    }
+
+    private fun severity0507(severity: RcDiagnosticSeverity): DiagnosticSeverity0507 = when (severity) {
+        RcDiagnosticSeverity.DEBUG, RcDiagnosticSeverity.INFO -> DiagnosticSeverity0507.INFO
+        RcDiagnosticSeverity.WARN -> DiagnosticSeverity0507.WARNING
+        RcDiagnosticSeverity.ERROR, RcDiagnosticSeverity.CRITICAL -> DiagnosticSeverity0507.ERROR
     }
 
     private fun lifecycle(a: Activity, state: String) {
