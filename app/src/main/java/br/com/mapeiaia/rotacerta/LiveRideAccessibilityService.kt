@@ -42,6 +42,7 @@ import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import br.com.mapeiaia.rotacerta.trips.BookingRealtimeEvents0356
 import br.com.mapeiaia.rotacerta.trips.DriverNotificationProjection0416
+import br.com.mapeiaia.rotacerta.trips.RemoteSupportAttention0743
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
@@ -187,6 +188,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var lastAccessibilityAcceptedAtMillis127: Long = 0L // accessibility_first_timestamp_0_1_127
     private var overlayView: TextView? = null
     @Volatile private var agendaUnreadCount0416: Int = 0
+    @Volatile private var remoteSupportAttention0745: Boolean = false
     private var savedPlacePopupView: LinearLayout? = null
     private var shortcutModulePopupView0181: LinearLayout? = null
     private var overlayParams: WindowManager.LayoutParams? = null
@@ -436,6 +438,20 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 if (agendaUnreadCount0416 != unread) {
                     agendaUnreadCount0416 = unread
                     overlayView?.let { applyAgendaNotificationDecoration0416(it, currentRadarColor) }
+                }
+            }
+        }
+        scope.launch {
+            RemoteSupportAttention0743.state(applicationContext).collect { state ->
+                val attention = state.needsAttention
+                if (remoteSupportAttention0745 != attention) {
+                    remoteSupportAttention0745 = attention
+                    overlayView?.let { applyAgendaNotificationDecoration0416(it, currentRadarColor) }
+                    UnifiedDebugEventStore.recordAlways(
+                        "REMOTE_SUPPORT_BUBBLE_ATTENTION_CHANGED_0745",
+                        packageName,
+                        "attention=$attention status=${state.status.take(32)}",
+                    )
                 }
             }
         }
@@ -8300,22 +8316,29 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     private fun applyAgendaNotificationDecoration0416(view: TextView, color: RadarColor) {
         val unread = agendaUnreadCount0416.coerceAtLeast(0)
-        view.contentDescription = if (unread > 0) {
-            "Rota Certa, Agenda com $unread notificações não lidas"
-        } else {
-            "Rota Certa"
+        val remoteAttention = remoteSupportAttention0745
+        val hasAttention = unread > 0 || remoteAttention
+        view.contentDescription = when {
+            unread > 0 && remoteAttention ->
+                "Rota Certa, Agenda com $unread notificações não lidas e solicitação remota pendente"
+            remoteAttention ->
+                "Rota Certa, solicitação remota pendente"
+            unread > 0 ->
+                "Rota Certa, Agenda com $unread notificações não lidas"
+            else ->
+                "Rota Certa"
         }
         val alpha = (currentSettings.bubbleOpacity.coerceIn(0.25, 1.0) * 255).roundToInt()
-        val strokeColor = if (unread > 0) {
+        val strokeColor = if (hasAttention) {
             Color.argb(alpha, 255, 152, 0)
         } else {
             Color.argb(alpha, 255, 255, 255)
         }
         view.background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            // Preserve FAROL fill semantics; Agenda attention is only an independent orange ring.
+            // Preserve FAROL fill semantics; Agenda/remote attention is only an independent orange ring.
             setColor(color.argb(currentSettings))
-            setStroke(dp(if (unread > 0) 4 else 3), strokeColor)
+            setStroke(dp(if (hasAttention) 4 else 3), strokeColor)
         }
     }
 
