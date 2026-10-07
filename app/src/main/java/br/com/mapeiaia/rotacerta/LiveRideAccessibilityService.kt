@@ -222,6 +222,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
     @Volatile private var lastAcceptedEvaluation0740: FarolUniversalVisualPipelineStage19.Evaluation? = null
     @Volatile private var lastAcceptedOwnershipText0740: String = ""
     @Volatile private var lastAcceptedPackage0740: String? = null
+    @Volatile private var lastAcceptedPairEvaluation0749: FarolUniversalVisualPipelineStage19.Evaluation? = null
+    @Volatile private var lastAcceptedPairAtElapsed0749: Long = 0L
+    @Volatile private var lastAcceptedPairPackage0749: String? = null
     private var proximityAlertMonitorStarted = false
     private var serviceReady = false
     private var analyzing = false
@@ -3783,6 +3786,29 @@ class LiveRideAccessibilityService : AccessibilityService() {
             previousCardIdentity0683,
             candidateCardIdentity0683,
         )
+        val pairDecision0749 = FarolPairDestinationAuthority0749.evaluate(
+            previousPair = lastAcceptedPairEvaluation0749,
+            candidate = evaluationStage19,
+            samePackage = packageStage47 != null && packageStage47 == lastAcceptedPairPackage0749,
+            previousPairAtElapsedMillis = lastAcceptedPairAtElapsed0749,
+            nowElapsedMillis = SystemClock.elapsedRealtime(),
+        )
+        if (pairDecision0749.suppressCandidate) {
+            UnifiedDebugEventStore.record(
+                FarolPairDestinationAuthority0749.PARTIAL_PICKUP_BLOCKED_MARKER,
+                packageStage47,
+                "reason=${pairDecision0749.reason}; preservedDestination=${lastAcceptedPairEvaluation0749?.destination.orEmpty().take(220)}; partial=${evaluationStage19.destination.take(220)}",
+            )
+            FarolFlightRecorder0163.record(
+                stage = FarolPairDestinationAuthority0749.PARTIAL_PICKUP_BLOCKED_MARKER,
+                packageName = packageStage47,
+                details = "reason=${pairDecision0749.reason}; window=${evaluationStage19.windowId}; source=$sourceStage19",
+            )
+            if (sourceStage19.startsWith("Accessibility", ignoreCase = true) && packageStage47 != null) {
+                scheduleScreenshotFallback127(packageStage47)
+            }
+            return
+        }
         val previousAddressSignatureStage635 = universalActiveAddressSignature
         val sameDestinationVariantStage635 = DestinationAddressIdentityPolicy.sameDestinationSignatures(
             previousAddressSignatureStage635,
@@ -3857,6 +3883,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
             return
         }
 
+        if (evaluationStage19.addresses.size >= 2) {
+            lastAcceptedPairEvaluation0749 = evaluationStage19
+            lastAcceptedPairAtElapsed0749 = SystemClock.elapsedRealtime()
+            lastAcceptedPairPackage0749 = packageStage47
+        }
         lastAcceptedEvaluation0740 = evaluationStage19
         lastAcceptedOwnershipText0740 = ownershipTextStage47
         lastAcceptedPackage0740 = packageStage47
@@ -4030,7 +4061,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             )
         }
 
-        val cachedExactStage637 = googleMapsService.cachedTrafficAwareDrivingDistancesFromAddressKm(
+        val cachedExactStage637 = googleMapsService.cachedOfflineFirstDrivingDistancesFromAddressKm0749(
             originAddress = fieldsStage19.destination.orEmpty(),
             destinations = targetsStage19.destinations,
         )
@@ -4315,23 +4346,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
             operationId = routeJobIdStage20,
             destinationAddress = fieldsStage19.destination.orEmpty(),
         )
-        var trustedDirectDistances0696: List<Double?>? = null
         var exactRoadDistancesCandidate0699: List<Double?>? = null
         var remoteFailure0699: Throwable? = null
         try {
-            trustedDirectDistances0696 = withTimeoutOrNull(TRUSTED_DIRECT_ROUTE_TIMEOUT_MILLIS_0682) {
-                googleMapsService.trustedDirectDrivingDistancesFromAddressKm0682(
-                    originAddress = fieldsStage19.destination.orEmpty(),
-                    destinations = targetsStage19.destinations,
-                    apiKey = apiKeyStage19,
-                )
-            }
-            exactRoadDistancesCandidate0699 = trustedDirectDistances0696
-                ?: googleMapsService.trafficAwareDrivingDistancesFromAddressKm(
-                    originAddress = fieldsStage19.destination.orEmpty(),
-                    destinations = targetsStage19.destinations,
-                    apiKey = apiKeyStage19,
-                )
+            exactRoadDistancesCandidate0699 = googleMapsService.offlineFirstDrivingDistancesFromAddressKm0749(
+                originAddress = fieldsStage19.destination.orEmpty(),
+                destinations = targetsStage19.destinations,
+                apiKey = apiKeyStage19,
+            )
         } catch (cancelled0699: kotlinx.coroutines.CancellationException) {
             throw cancelled0699
         } catch (error0699: Throwable) {
@@ -4432,8 +4454,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
         bubblePrefs.edit().putString(
             "fast_farol_last_path",
-            if (trustedDirectDistances0696 != null) "stage696_local_then_trusted_refinement"
-            else "stage696_local_then_traffic_refinement",
+            "stage749_offline_first_road",
         ).apply()
         UnifiedDebugEventStore.record(
             FarolLocalDecisionAuthority0696.REMOTE_APPLIED_MARKER,
@@ -4663,8 +4684,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
         return preliminaryStage637.copy(
             recommendation = preliminaryStage637.recommendation,
             reason = preliminaryStage637.reason + " Quilometragem exibida refinada pela rota rodoviaria sem alterar a cor local.",
-            pickupToHomeKm = exactHomeStage637 ?: preliminaryStage637.pickupToHomeKm,
-            pickupToAlternativeKm = exactPinStage637 ?: preliminaryStage637.pickupToAlternativeKm,
+            // 0.1.749 provenance hardening: a ROAD_CONFIRMED result can contain road km only.
+            // Never carry a private Haversine value into a public road-authority result.
+            pickupToHomeKm = exactHomeStage637,
+            pickupToAlternativeKm = exactPinStage637,
         )
     }
 
@@ -7184,7 +7207,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
         if (!FarolLocalDecisionAuthority0696.isFinalLocalDecision(localResultChecklist13)) return
 
-        val roadDistancesChecklist13 = googleMapsService.trafficAwareDrivingDistancesFromAddressKm(
+        val roadDistancesChecklist13 = googleMapsService.offlineFirstDrivingDistancesFromAddressKm0749(
             originAddress = fields.destination.orEmpty(),
             destinations = targetsChecklist13.destinations,
             apiKey = apiKeyChecklist13,

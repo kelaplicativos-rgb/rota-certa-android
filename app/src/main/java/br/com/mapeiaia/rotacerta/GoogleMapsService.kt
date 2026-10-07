@@ -37,6 +37,9 @@ class GoogleMapsService(context: Context? = null) {
     private val organicMapsOfflineResolver0711: OrganicMapsOfflineAddressResolver0711? = context
         ?.applicationContext
         ?.let(::OrganicMapsOfflineAddressResolver0711)
+    private val organicMapsOfflineRoadRouter0749: OrganicMapsOfflineRoadRouter0749? = context
+        ?.applicationContext
+        ?.let(::OrganicMapsOfflineRoadRouter0749)
     private var writesSincePrune = 0
 
     suspend fun geocode(query: String, region: DeviceRegion, apiKey: String): Coordinate? = withContext(Dispatchers.IO) {
@@ -407,6 +410,117 @@ class GoogleMapsService(context: Context? = null) {
      * Google Route Matrix is attempted first with TRAFFIC_AWARE. OSM/OSRM is only
      * a contingency when Google is unavailable; neither provider blocks bubble input.
      */
+    /**
+     * 0.1.749 instant road-cache authority: embedded Organic Maps first, then the existing
+     * persistent Google/OSM exact-road cache. No network is started from this method.
+     */
+    fun cachedOfflineFirstDrivingDistancesFromAddressKm0749(
+        originAddress: String,
+        destinations: List<Coordinate>,
+    ): List<Double?>? {
+        if (originAddress.isBlank() || destinations.isEmpty()) return null
+        val origin0749 = cachedFarolCoordinate(originAddress)
+        if (origin0749 != null) {
+            organicMapsOfflineRoadRouter0749
+                ?.cachedDrivingDistancesKm(origin0749, destinations)
+                ?.let { values0749 ->
+                    FarolFlightRecorder0163.record(
+                        stage = OrganicMapsOfflineRoadRouter0749.CACHE_MARKER,
+                        packageName = null,
+                        details = "resolved=${values0749.count { it != null }}; destinations=${destinations.size}; network=false",
+                    )
+                    return values0749
+                }
+        }
+        return cachedTrafficAwareDrivingDistancesFromAddressKm(originAddress, destinations)
+    }
+
+    /**
+     * 0.1.749 exact-road pipeline:
+     *   1) persistent Organic Maps route cache;
+     *   2) embedded Organic Maps vehicle route with a 350 ms total budget;
+     *   3) existing Google Route Matrix path only for unresolved targets.
+     *
+     * Haversine never enters this result. Any value returned here is an exact road-route result.
+     */
+    suspend fun offlineFirstDrivingDistancesFromAddressKm0749(
+        originAddress: String,
+        destinations: List<Coordinate>,
+        apiKey: String,
+    ): List<Double?> = withContext(Dispatchers.IO) {
+        if (originAddress.isBlank() || destinations.isEmpty()) {
+            return@withContext List(destinations.size) { null }
+        }
+
+        val started0749 = SystemClock.elapsedRealtime()
+        val result0749 = MutableList<Double?>(destinations.size) { null }
+        val origin0749 = cachedFarolCoordinate(originAddress)
+        val offline0749 = if (origin0749 != null) {
+            organicMapsOfflineRoadRouter0749?.drivingDistancesKm(
+                origin = origin0749,
+                destinations = destinations,
+                totalBudgetMillis = OrganicMapsOfflineRoadRouter0749.TOTAL_OFFLINE_BUDGET_MS,
+            )
+        } else {
+            null
+        }
+
+        offline0749?.distancesKm?.forEachIndexed { index0749, distance0749 ->
+            if (OrganicMapsOfflineRoadRouter0749.isUsableRoadKm(distance0749)) {
+                result0749[index0749] = distance0749
+            }
+        }
+        if (offline0749 != null) {
+            if (offline0749.cacheHits > 0) {
+                FarolFlightRecorder0163.record(
+                    stage = OrganicMapsOfflineRoadRouter0749.CACHE_MARKER,
+                    packageName = null,
+                    details = "cacheHits=${offline0749.cacheHits}; computed=${offline0749.computedRoutes}; resolved=${offline0749.resolvedCount}; elapsedMs=${offline0749.elapsedMillis}; network=false",
+                )
+            }
+            if (offline0749.computedRoutes > 0) {
+                FarolFlightRecorder0163.record(
+                    stage = OrganicMapsOfflineRoadRouter0749.ROUTE_MARKER,
+                    packageName = null,
+                    details = "computed=${offline0749.computedRoutes}; resolved=${offline0749.resolvedCount}; elapsedMs=${offline0749.elapsedMillis}; network=false",
+                )
+            }
+        }
+
+        val unresolved0749 = result0749.indices.filter { result0749[it] == null }
+        if (unresolved0749.isEmpty()) {
+            FarolFlightRecorder0163.record(
+                stage = OrganicMapsOfflineRoadRouter0749.CONTRACT_MARKER,
+                packageName = null,
+                details = "offlineComplete=true; destinations=${destinations.size}; elapsedMs=${SystemClock.elapsedRealtime() - started0749}; googleCalled=false",
+            )
+            return@withContext result0749
+        }
+
+        FarolFlightRecorder0163.record(
+            stage = OrganicMapsOfflineRoadRouter0749.GOOGLE_FALLBACK_MARKER,
+            packageName = null,
+            details = "offlineResolved=${result0749.count { it != null }}; unresolved=${unresolved0749.size}; reason=${offline0749?.lastFailure ?: if (origin0749 == null) "origin_not_cached" else "offline_router_unavailable"}; budgetMs=${OrganicMapsOfflineRoadRouter0749.TOTAL_OFFLINE_BUDGET_MS}",
+        )
+        val fallback0749 = trafficAwareDrivingDistancesFromAddressKm(
+            originAddress = originAddress,
+            destinations = unresolved0749.map(destinations::get),
+            apiKey = apiKey,
+        )
+        unresolved0749.forEachIndexed { localIndex0749, originalIndex0749 ->
+            val exact0749 = fallback0749.getOrNull(localIndex0749)
+            if (OrganicMapsOfflineRoadRouter0749.isUsableRoadKm(exact0749)) {
+                result0749[originalIndex0749] = exact0749
+            }
+        }
+        FarolFlightRecorder0163.record(
+            stage = OrganicMapsOfflineRoadRouter0749.CONTRACT_MARKER,
+            packageName = null,
+            details = "offlineResolved=${offline0749?.resolvedCount ?: 0}; finalResolved=${result0749.count { it != null }}; destinations=${destinations.size}; elapsedMs=${SystemClock.elapsedRealtime() - started0749}; googleFallback=true",
+        )
+        result0749
+    }
+
     fun cachedTrafficAwareDrivingDistancesFromAddressKm(
         originAddress: String,
         destinations: List<Coordinate>,

@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.749",
+      "build": 6040,
+      "commit": null,
+      "branch": "agent/farol-offline-road-0.1.749",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Torna o roteador veicular incorporado do Organic Maps a fonte primária de quilometragem rodoviária pública do FAROL, sem rede e com orçamento total local de 350 ms.",
+        "Adiciona cache persistente de 14 dias por par exato de coordenadas, versão do SDK e versão dos mapas para responder em milissegundos quando a rota já foi calculada.",
+        "Mantém Google Route Matrix como fallback somente para alvos que o caminho offline não conseguiu resolver dentro do orçamento."
+      ],
+      "fixed": [
+        "Impede uma leitura parcial posterior contendo apenas o endereço A de substituir, durante a mesma evidência visual recente, o destino B já comprovado por um card A/B.",
+        "Impede que distância Haversine privada sobreviva dentro de um resultado marcado como ROAD_CONFIRMED quando uma rota exata estiver ausente."
+      ],
+      "improved": [
+        "O Organic Maps é aquecido junto do FAROL e o roteamento headless usa o SDK já incorporado, sem abrir outro aplicativo.",
+        "Telemetria diferencia cache offline, rota offline calculada e fallback Google para auditoria de origem de cada quilometragem.",
+        "Preserva assinatura, pacote, atualização sobre a instalação existente, autoridade local de cor e descarte de resultados de bindings obsoletos."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Destino B substituído por evento parcial que continha somente o embarque A.",
+        "Dependência desnecessária de chamada Google para toda quilometragem rodoviária inédita mesmo com motor offline incorporado."
+      ],
+      "modulesAffected": [
+        "FAROL",
+        "Organic Maps",
+        "Roteamento offline",
+        "Google Maps fallback",
+        "Cache",
+        "Acessibilidade",
+        "OCR",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.748",
       "build": 6039,
       "commit": null,
