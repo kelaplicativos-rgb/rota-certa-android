@@ -65,8 +65,8 @@ val buildGeneratedAt = firstNonBlank(System.getenv("ROTA_CERTA_BUILD_TIME")).ifB
 val minimumVersionCode = 5_020
 val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { maxOf(minimumVersionCode, 5_000 + it) }
 val appVersionCode = ciVersionCode ?: minimumVersionCode
-val releaseVersionCode = 6_035
-val releaseVersionName = "0.1.744"
+val releaseVersionCode = 6_036
+val releaseVersionName = "0.1.745"
 val stableDebugKeystoreSource = layout.projectDirectory.file("debug-signing/rota-certa-debug.keystore.b64").asFile
 val stableDebugKeystoreFile = rootProject.file(".gradle/rota-certa-signing/rota-certa-debug.keystore")
 if (stableDebugKeystoreSource.exists()) {
