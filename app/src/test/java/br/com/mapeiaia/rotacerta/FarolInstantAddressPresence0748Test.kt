@@ -51,13 +51,17 @@ class FarolInstantAddressPresence0748Test {
         assertTrue(gate.observe(secondEvaluation, 7).armPipeline)
     }
 
-    @Test fun service_arms_before_the_precollect_duplicate_return_and_uses_paid_ai_only_after_local_ambiguity() {
-        var root = File(System.getProperty("user.dir")).absoluteFile
+    private fun projectRoot(): File {
+        var dir = File(System.getProperty("user.dir")).absoluteFile
         repeat(8) {
-            if (File(root, "app/src/main/java/br/com/mapeiaia/rotacerta").exists()) return@repeat
-            root = root.parentFile ?: return@repeat
+            if (File(dir, "app/src/main/java/br/com/mapeiaia/rotacerta").exists()) return dir
+            dir = dir.parentFile ?: return@repeat
         }
-        val service = File(root, "app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").readText()
+        error("project root not found")
+    }
+
+    @Test fun service_arms_before_the_precollect_duplicate_return_and_uses_paid_ai_only_after_local_ambiguity() {
+        val service = File(projectRoot(), "app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").readText()
         val presence = service.indexOf("S748_ADDRESS_PRESENT_ARMED")
         val duplicateReturn = service.indexOf("if (!admissionStage26.heavyCollect && !instantPresence0748.armPipeline)")
         assertTrue(presence >= 0)
