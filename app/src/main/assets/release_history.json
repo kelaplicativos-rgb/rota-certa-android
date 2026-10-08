@@ -2,6 +2,13 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.757",
+      "build": 6048,
+      "date": "2026-10-08",
+      "title": "ALL Consults remoto somente-leitura",
+      "summary": "Unifica descoberta e consulta remota ao vivo sem duplicar a fonte canônica; preserva Agenda, Timeline, FAROL e coletores existentes."
+    },
+    {
       "version": "0.1.756",
       "build": 6047,
       "commit": null,
