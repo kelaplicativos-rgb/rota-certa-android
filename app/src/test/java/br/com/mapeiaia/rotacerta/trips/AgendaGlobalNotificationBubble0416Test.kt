@@ -62,7 +62,7 @@ class AgendaGlobalNotificationBubble0416Test {
     fun openingNotificationCenterDoesNotMarkEverythingRead() {
         val activity = trips("TripsActivity.kt")
         val openCenter = activity.substringAfter("val openNotifications0396 = {")
-            .substringBefore("val headerActions0396")
+            .substringBefore("val baseHeaderActions0396")
 
         assertFalse(openCenter.contains("markAllDriverNotificationsRead()"))
         assertTrue(activity.contains("markDriverNotificationRead(item.id)"))
