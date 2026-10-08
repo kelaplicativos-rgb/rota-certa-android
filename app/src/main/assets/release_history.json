@@ -2,6 +2,35 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.753",
+      "build": 6044,
+      "commit": null,
+      "branch": "agent/manual-screen-reader-resilience-0.1.753",
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Fallback determinístico para Ler texto da tela: janela → display → Accessibility."
+      ],
+      "fixed": [
+        "Falha de takeScreenshotOfWindow não descarta mais texto já obtido por Accessibility.",
+        "Falha de bitmap/OCR agora preserva e entrega o texto Accessibility disponível.",
+        "Leitura ocupada usa texto Accessibility imediatamente quando já existe conteúdo válido."
+      ],
+      "improved": [
+        "Telemetria distingue falha da captura visual, fallback de display e fallback Accessibility."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Ler texto da tela podia falhar integralmente quando o Android recusava screenshot mesmo com texto Accessibility disponível."
+      ],
+      "modulesAffected": [
+        "Grade de atalhos",
+        "Ler texto da tela",
+        "Accessibility",
+        "OCR"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.752",
       "build": 6043,
       "commit": null,
