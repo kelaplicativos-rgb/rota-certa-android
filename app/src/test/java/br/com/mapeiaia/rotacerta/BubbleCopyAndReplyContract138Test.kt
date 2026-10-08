@@ -12,7 +12,9 @@ class BubbleCopyAndReplyContract138Test {
         assertTrue(source.contains("Texto da tela copiado"))
         assertTrue(source.contains("takeScreenshotOfWindow"))
         assertTrue(source.contains("ScreenVisualReader0742"))
-        assertTrue(source.contains("MANUAL_SCREEN_TEXT_0742"))
+        assertTrue(source.contains("MANUAL_SCREEN_TEXT_0753"))
+        assertTrue(source.contains("MANUAL_SCREEN_TEXT_WINDOW_FALLBACK_0753"))
+        assertTrue(source.contains("finishManualScreenText0753(accessibilityText"))
     }
 
     @Test fun `duplo toque em respostas abre editor novo`() {
