@@ -64,7 +64,7 @@ jobs:
           node trip-platform/functions/test/live-agenda-tool-0732.test.js
           node trip-platform/functions/test/blablacar-trip-query-remote-0737.test.js
           node trip-platform/functions/test/standalone-covers-remote-0736.test.js
-          node trip-platform/functions/test/public-agenda-realtime-0724.test.js
+          node trip-platform/functions/test/agenda-public-realtime-0724.test.js
           ./gradlew :app:verifyReleaseHistory :app:verifyAndroidUpdateContract --no-daemon --stacktrace
           ./gradlew :app:testDebugUnitTest --tests 'br.com.mapeiaia.rotacerta.FarolSealed0547RegressionContractTest' --tests 'br.com.mapeiaia.rotacerta.FarolCaptureFabric0751ContractTest' --no-daemon --max-workers=1 --stacktrace
       - name: Assemble exact-head APK
