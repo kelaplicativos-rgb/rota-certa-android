@@ -2,6 +2,39 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.755",
+      "build": 6046,
+      "commit": null,
+      "branch": "agent/screen-reader-arbiter-0.1.755",
+      "status": "EM_VALIDACAO",
+      "generatedAt": null,
+      "implemented": [
+        "Adiciona arbitragem do recurso compartilhado de screenshot para impedir que o FAROL automático bloqueie o comando manual Ler texto da tela.",
+        "Libera o lock físico de screenshot imediatamente após materializar o bitmap; OCR e recortes de recuperação continuam fora do lock."
+      ],
+      "fixed": [
+        "Elimina a mensagem 'A leitura da tela está ocupada' causada por contenção transitória com o FAROL.",
+        "Comando manual aguarda contenção transitória por até 2 segundos e preserva texto de Accessibility como fallback sem reportar busy ao usuário."
+      ],
+      "improved": [
+        "Prioridade prática para leitura manual sem desativar o FAROL nem duplicar o ScreenVisualReader0742.",
+        "Reduz o tempo de posse de screenshot no FAROL de toda a duração do OCR para somente a aquisição do bitmap."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "FAROL compartilhando ScreenVisualReader podia manter screenshotInProgress ocupado durante OCR e bloquear Texto Tela."
+      ],
+      "modulesAffected": [
+        "FAROL",
+        "Leitura da tela",
+        "Accessibility",
+        "OCR",
+        "Grade de atalhos",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.754",
       "build": 6045,
       "commit": null,
