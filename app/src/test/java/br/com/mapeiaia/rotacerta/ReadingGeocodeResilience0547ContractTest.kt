@@ -60,10 +60,4 @@ class ReadingGeocodeResilience0547ContractTest {
         assertFalse(liveRide.contains("GEOCODE_RESOLUTION_START_0547"))
     }
 
-    @Test
-    fun release_metadata_is_owned_by_release_gate_not_farol_contract() {
-        val build = source("build.gradle.kts")
-        assertTrue(Regex("""releaseVersionCode\\s*=\\s*[0-9_]+""").containsMatchIn(build))
-        assertTrue(Regex("""releaseVersionName\\s*=\\s*"[^"]+"""").containsMatchIn(build))
-    }
 }
