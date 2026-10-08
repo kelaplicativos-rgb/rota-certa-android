@@ -60,7 +60,11 @@ jobs:
           grep -Fq 'liveAgendaTool0732.getLiveAgendaTool0732' trip-platform/functions/all-consults-0757.js
           grep -Fq 'FAROL_CAPTURE_FABRIC_0751' app/src/main/java/br/com/mapeiaia/rotacerta/FarolCaptureFabric0751.kt
           node trip-platform/functions/test/all-consults-0757.test.js
-          (cd trip-platform/functions && npm test)
+          node trip-platform/functions/test/live-agenda-feed-0701.test.js
+          node trip-platform/functions/test/live-agenda-tool-0732.test.js
+          node trip-platform/functions/test/blablacar-trip-query-remote-0737.test.js
+          node trip-platform/functions/test/standalone-covers-remote-0736.test.js
+          node trip-platform/functions/test/public-agenda-realtime-0724.test.js
           ./gradlew :app:verifyReleaseHistory :app:verifyAndroidUpdateContract --no-daemon --stacktrace
           ./gradlew :app:testDebugUnitTest --tests 'br.com.mapeiaia.rotacerta.FarolSealed0547RegressionContractTest' --tests 'br.com.mapeiaia.rotacerta.FarolCaptureFabric0751ContractTest' --no-daemon --max-workers=1 --stacktrace
       - name: Assemble exact-head APK
