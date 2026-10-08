@@ -9631,68 +9631,112 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun requestFullScreenCopyOcr138(accessibilityText: String, windowId0742: Int?) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+        fun finishWithAccessibility0753(reason0753: String, errorCode0753: Int? = null) {
+            screenshotInProgress.set(false)
             fullScreenCopyInProgress138.set(false)
-            if (accessibilityText.isNotBlank()) copyAllVisibleTextToClipboard138(accessibilityText)
-            else toast("Esta tela não disponibilizou texto para copiar.")
+            UnifiedDebugEventStore.record(
+                "MANUAL_SCREEN_TEXT_ACCESSIBILITY_FALLBACK_0753",
+                universalResolvedForegroundPackage(),
+                "reason=$reason0753; errorCode=${errorCode0753 ?: -1}; accessibilityChars=${accessibilityText.length}",
+            )
+            if (accessibilityText.isNotBlank()) {
+                copyAllVisibleTextToClipboard138(accessibilityText)
+            } else {
+                toast("Nenhum texto foi encontrado nesta tela.")
+            }
+        }
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            finishWithAccessibility0753("android_before_screenshot_api")
             return
         }
         if (!screenshotInProgress.compareAndSet(false, true)) {
             fullScreenCopyInProgress138.set(false)
-            toast("A leitura da tela está ocupada. Tente novamente.")
+            if (accessibilityText.isNotBlank()) {
+                UnifiedDebugEventStore.record(
+                    "MANUAL_SCREEN_TEXT_BUSY_ACCESSIBILITY_FALLBACK_0753",
+                    universalResolvedForegroundPackage(),
+                    "accessibilityChars=${accessibilityText.length}",
+                )
+                copyAllVisibleTextToClipboard138(accessibilityText)
+            } else {
+                toast("A leitura da tela está ocupada. Tente novamente.")
+            }
             return
         }
-        runCatching {
-            takeManualVisualScreenshot0742(
-                windowId0742,
-                object : TakeScreenshotCallback {
-                    override fun onSuccess(screenshot: ScreenshotResult) {
-                        scope.launch {
-                            var bitmap: Bitmap? = null
-                            try {
-                                bitmap = screenshot.toSoftwareBitmap()
-                                val result0742 = bitmap?.let {
-                                    ScreenVisualReader0742(ocrService).read(
-                                        bitmap = it,
-                                        accessibilityText = accessibilityText,
-                                        purpose = VisualReadPurpose0742.FullText,
-                                    )
-                                }
-                                val text = result0742?.text.orEmpty()
-                                FarolFlightRecorder0163.record(
-                                    stage = "MANUAL_SCREEN_TEXT_0742",
-                                    packageName = universalResolvedForegroundPackage(),
-                                    details = "marker=" + ScreenVisualFusion0742.MARKER +
-                                        "; windowCapture=" + (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && windowId0742 != null) +
-                                        "; passes=" + (result0742?.passCount ?: 0) +
-                                        "; blocks=" + (result0742?.blockCount ?: 0) +
-                                        "; recovery=" + (result0742?.usedRecovery == true),
+
+        fun requestScreenshot0753(displayFallback0753: Boolean) {
+            val callback0753 = object : TakeScreenshotCallback {
+                override fun onSuccess(screenshot: ScreenshotResult) {
+                    scope.launch {
+                        var bitmap: Bitmap? = null
+                        try {
+                            bitmap = screenshot.toSoftwareBitmap()
+                            val result0742 = bitmap?.let {
+                                ScreenVisualReader0742(ocrService).read(
+                                    bitmap = it,
+                                    accessibilityText = accessibilityText,
+                                    purpose = VisualReadPurpose0742.FullText,
                                 )
-                                if (text.isBlank()) {
-                                    toast("Nenhum texto foi encontrado nesta tela.")
-                                } else {
-                                    copyAllVisibleTextToClipboard138(text)
-                                }
-                            } finally {
-                                bitmap?.recycle()
-                                screenshotInProgress.set(false)
-                                fullScreenCopyInProgress138.set(false)
                             }
+                            val text = result0742?.text.orEmpty().ifBlank { accessibilityText }
+                            FarolFlightRecorder0163.record(
+                                stage = "MANUAL_SCREEN_TEXT_0753",
+                                packageName = universalResolvedForegroundPackage(),
+                                details = "marker=" + ScreenVisualFusion0742.MARKER +
+                                    "; displayFallback=" + displayFallback0753 +
+                                    "; windowCapture=" + (!displayFallback0753 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && windowId0742 != null) +
+                                    "; passes=" + (result0742?.passCount ?: 0) +
+                                    "; blocks=" + (result0742?.blockCount ?: 0) +
+                                    "; recovery=" + (result0742?.usedRecovery == true) +
+                                    "; accessibilityFallback=" + (result0742?.text.isNullOrBlank()),
+                            )
+                            screenshotInProgress.set(false)
+                            fullScreenCopyInProgress138.set(false)
+                            if (text.isBlank()) toast("Nenhum texto foi encontrado nesta tela.")
+                            else copyAllVisibleTextToClipboard138(text)
+                        } catch (error0753: Throwable) {
+                            finishWithAccessibility0753("ocr_or_bitmap_failure:" + error0753::class.java.simpleName)
+                        } finally {
+                            bitmap?.recycle()
                         }
                     }
+                }
 
-                    override fun onFailure(errorCode: Int) {
-                        screenshotInProgress.set(false)
-                        fullScreenCopyInProgress138.set(false)
-                        toast("O Android não permitiu ler esta tela. Código: " + errorCode)
+                override fun onFailure(errorCode: Int) {
+                    UnifiedDebugEventStore.record(
+                        "MANUAL_SCREEN_SCREENSHOT_FAILED_0753",
+                        universalResolvedForegroundPackage(),
+                        "errorCode=$errorCode; displayFallback=$displayFallback0753; window=${windowId0742 ?: -1}; accessibilityChars=${accessibilityText.length}",
+                    )
+                    if (!displayFallback0753 && windowId0742 != null) {
+                        runCatching {
+                            takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, this)
+                        }.onFailure {
+                            finishWithAccessibility0753("display_screenshot_request_failure", errorCode)
+                        }
+                    } else {
+                        finishWithAccessibility0753("screenshot_failure", errorCode)
                     }
-                },
-            )
-        }.onFailure {
-            screenshotInProgress.set(false)
-            fullScreenCopyInProgress138.set(false)
-            toast("Não consegui solicitar a leitura desta tela.")
+                }
+            }
+
+            runCatching {
+                if (!displayFallback0753 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && windowId0742 != null) {
+                    takeScreenshotOfWindow(windowId0742, mainExecutor, callback0753)
+                } else {
+                    takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, callback0753)
+                }
+            }.onFailure {
+                if (!displayFallback0753 && windowId0742 != null) {
+                    requestScreenshot0753(true)
+                } else {
+                    finishWithAccessibility0753("screenshot_request_exception:" + it::class.java.simpleName)
+                }
+            }
         }
+
+        requestScreenshot0753(false)
     }
 
     private fun copyAllVisibleTextToClipboard138(text: String) {
