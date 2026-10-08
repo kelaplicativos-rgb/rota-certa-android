@@ -9681,7 +9681,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                             }
                             val text = result0742?.text.orEmpty().ifBlank { accessibilityText }
                             FarolFlightRecorder0163.record(
-                                stage = "MANUAL_SCREEN_TEXT_0753",
+                                stage = "MANUAL_SCREEN_TEXT_0742",
                                 packageName = universalResolvedForegroundPackage(),
                                 details = "marker=" + ScreenVisualFusion0742.MARKER +
                                     "; displayFallback=" + displayFallback0753 +
