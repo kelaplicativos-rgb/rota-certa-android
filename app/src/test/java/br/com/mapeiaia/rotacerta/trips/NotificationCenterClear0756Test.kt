@@ -34,4 +34,3 @@ class NotificationCenterClear0756Test {
         assertTrue(activity.contains("Verificar conexão remota"))
     }
 }
-
