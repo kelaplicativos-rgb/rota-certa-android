@@ -705,6 +705,20 @@ private fun TripApp(
                 scriptsUiCommandToken0488 += 1
             },
         )
+        TripScreen.NOTIFICATIONS -> listOf(
+            AgendaHeaderAction0396(
+                label = "Limpar notificações",
+                enabled = driverNotifications.isNotEmpty() || driverUnreadCount > 0,
+            ) {
+                shareScope.launch {
+                    val online = store.onlineSettings()
+                    if (online.configured) {
+                        runCatching { TripRemoteApi(online).markAllDriverNotificationsRead() }
+                    }
+                    refreshDriverNotifications()
+                }
+            },
+        )
         TripScreen.TIMELINE -> listOf(
             AgendaHeaderAction0396("Nova viagem") {
                 pendingCreateForPassengerId = ""
@@ -879,7 +893,7 @@ private fun TripApp(
                     navigationEnabled0689 = navigationCanGoBack0689,
                     overflowActions = headerActions0396,
                     notificationUnreadCount = driverUnreadCount,
-                    remoteAttentionNeeded0743 = remoteSupportAttention0743.needsAttention,
+                    remoteAttentionNeeded0743 = false,
                     onNotificationsClick = openNotifications0396,
                     onUniversalSearchClick0687 = if (headerIsRoot0396) {
                         {
@@ -1138,17 +1152,7 @@ private fun TripApp(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text("Central de Notificações", style = MaterialTheme.typography.titleMedium)
-                        if (driverUnreadCount > 0) {
-                            TextButton(onClick = {
-                                shareScope.launch {
-                                    val online = store.onlineSettings()
-                                    if (online.configured) {
-                                        runCatching { TripRemoteApi(online).markAllDriverNotificationsRead() }
-                                        refreshDriverNotifications()
-                                    }
-                                }
-                            }) { Text("Marcar todas como lidas") }
-                        }
+
                     }
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(
