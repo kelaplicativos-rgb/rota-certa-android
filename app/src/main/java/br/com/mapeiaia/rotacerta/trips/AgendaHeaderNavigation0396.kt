@@ -311,25 +311,10 @@ internal fun AgendaModuleHeader0396(
                 }
             }
             val unread = notificationUnreadCount.coerceAtLeast(0)
-            val remoteAttentionTransition0743 = rememberInfiniteTransition(
-                label = "remote-support-attention-0743",
-            )
-            val remoteAttentionAlpha0743 by remoteAttentionTransition0743.animateFloat(
-                initialValue = 0.28f,
-                targetValue = 1f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(durationMillis = 650),
-                    repeatMode = RepeatMode.Reverse,
-                ),
-                label = "remote-support-orange-pulse-0743",
-            )
-            val notificationsDescription = when {
-                remoteAttentionNeeded0743 && unread > 0 ->
-                    "Notificações, $unread não lidas; atenção: conexão remota pendente"
-                remoteAttentionNeeded0743 ->
-                    "Notificações; atenção: conexão remota pendente"
-                unread > 0 -> "Notificações, $unread não lidas"
-                else -> "Notificações"
+            val notificationsDescription = if (unread > 0) {
+                "Notificações, $unread não lidas"
+            } else {
+                "Notificações"
             }
             IconButton(
                 onClick = { onNotificationsClick?.invoke() },
@@ -338,20 +323,11 @@ internal fun AgendaModuleHeader0396(
             ) {
                 BadgedBox(
                     badge = {
-                        if (unread > 0 || remoteAttentionNeeded0743) {
+                        if (unread > 0) {
                             Badge(
-                                containerColor = if (remoteAttentionNeeded0743) {
-                                    Color(0xFFFF9800)
-                                } else {
-                                    MaterialTheme.colorScheme.error
-                                },
-                                modifier = Modifier.graphicsLayer(
-                                    alpha = if (remoteAttentionNeeded0743) remoteAttentionAlpha0743 else 1f,
-                                ),
+                                containerColor = Color(0xFFFF9800),
                             ) {
-                                if (unread > 0) {
-                                    Text(if (unread > 99) "99+" else unread.toString())
-                                }
+                                Text(if (unread > 99) "99+" else unread.toString())
                             }
                         }
                     },

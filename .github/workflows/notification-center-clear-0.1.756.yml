@@ -1,0 +1,265 @@
+name: Rota Certa 0.1.756 Notification Center exact SHA
+
+on:
+  push:
+    branches:
+      - 'agent/notification-center-clear-0.1.756'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: notification-center-clear-0756-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: 'agent/notification-center-clear-0.1.756'
+      BASE_SHA: '2cd4937cc83947ca1a81e45fdc001da55605dd47'
+      EXPECTED_VERSION_NAME: '0.1.756'
+      EXPECTED_VERSION_CODE: '6047'
+      OM_VERSION: '2026.08.27-18'
+      OM_SOURCE_SHA: '3ef379196cca434cf17f4ee684f16aa99fd8985e'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore pinned Organic Maps SDK cache
+        id: om-sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/app/organicmaps/sdk
+          key: organicmaps-sdk-${{ runner.os }}-${{ env.OM_SOURCE_SHA }}-android36-ndk29-arm64
+
+      - name: Build exact pinned Organic Maps SDK on cache miss
+        if: steps.om-sdk-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: bash tools/ci/build-organicmaps-sdk.sh
+
+      - name: Save pinned Organic Maps SDK cache immediately
+        if: steps.om-sdk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.m2/repository/app/organicmaps/sdk
+          key: organicmaps-sdk-${{ runner.os }}-${{ env.OM_SOURCE_SHA }}-android36-ndk29-arm64
+
+      - name: Prove exact source and 0.1.756 contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'val releaseVersionName = "0.1.756"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 6_047' app/build.gradle.kts
+          grep -Fq '"version": "0.1.756"' app/src/main/assets/release_history.json
+          grep -Fq 'MANUAL_SCREEN_TEXT_0742' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'takeManualVisualScreenshot0742' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          ! grep -Fq 'MANUAL_SCREEN_TEXT_WINDOW_FALLBACK_0753' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          ! grep -Fq 'requestManualScreenScreenshot0753' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'SCREEN_ADDRESS_VISUAL_AUTHORITY_0752' app/src/main/java/br/com/mapeiaia/rotacerta/ScreenAddressVisualAuthority0752.kt
+          grep -Fq 'FAROL_UNIVERSAL_ADDRESS_PAIR_AUTHORITY_0752' app/src/main/java/br/com/mapeiaia/rotacerta/FarolUniversalAddressPairAuthority0752.kt
+          grep -Fq 'ANY_APP_TWO_OR_MORE_ADDRESSES_0752' app/src/main/java/br/com/mapeiaia/rotacerta/FarolUniversalAddressPairAuthority0752.kt
+          grep -Fq 'ANY_APP_LAST_ADDRESS_ROUTE_TRIGGER_0752' app/src/main/java/br/com/mapeiaia/rotacerta/FarolUniversalAddressPairAuthority0752.kt
+          grep -Fq 'VisualReadPurpose0742.Address' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'scheduleUniversalAddressVisual0752' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'FAROL_CAPTURE_FABRIC_0751' app/src/main/java/br/com/mapeiaia/rotacerta/FarolCaptureFabric0751.kt
+          grep -Fq 'FAROL_ORGANIC_OFFLINE_ROAD_PRIMARY_0749' app/src/main/java/br/com/mapeiaia/rotacerta/OrganicMapsOfflineRoadRouter0749.kt
+          grep -Fq 'PARTIAL_A_CANNOT_REPLACE_B_0749' app/src/main/java/br/com/mapeiaia/rotacerta/FarolPairDestinationAuthority0749.kt
+          grep -Fq 'FAROL_ROAD_KM_FINALITY_0713' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRoadKmFinality0713.kt
+          git diff --check "$BASE_SHA"...HEAD
+          printf '%s\n' "$GITHUB_SHA" | tee /tmp/source-sha.txt
+          printf '%s\n' "$ROTA_CERTA_GIT_BRANCH" | tee /tmp/source-branch.txt
+
+      - name: Verify update identity and focused 0.1.756 contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:verifyReleaseHistory :app:verifyAndroidUpdateContract --no-daemon --stacktrace | tee /tmp/release-contract.log
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.NotificationCenterClear0756Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolUnifiedVisualReader0752Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolUnifiedVisualReader0752ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolCaptureFabric0751Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolCaptureFabric0751ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolCoordinateResilience0697ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.OrganicMapsOfflineRoadRouter0749Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolPairDestinationAuthority0749Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolRoadKmFinality0713Test' \
+            --no-daemon --max-workers=2 --stacktrace | tee /tmp/focused.log
+
+      - name: Run permanent FAROL regression contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.ReadingProximity0545ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.ReadingGeocodeResilience0547ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolSealed0547RegressionContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolStage44SemanticFinalLeaseTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolStage46ImmediateAddressRouteR7Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolEdge0634Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/sealed.log
+
+      - name: Compare complete Android failures with exact 0.1.751 base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add --detach /tmp/rc-base "$BASE_SHA"
+          chmod +x /tmp/rc-base/gradlew
+          set +e
+          (cd /tmp/rc-base && ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace) > /tmp/android-base-full.log 2>&1
+          BASE_EXIT=$?
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace > /tmp/android-head-full.log 2>&1
+          HEAD_EXIT=$?
+          set -e
+          python3 - <<'PY'
+          import pathlib, xml.etree.ElementTree as ET
+          def failures(root):
+              result=set()
+              d=pathlib.Path(root)/"app/build/test-results/testDebugUnitTest"
+              if not d.exists(): return result
+              for f in d.glob("*.xml"):
+                  try: tree=ET.parse(f)
+                  except Exception: continue
+                  for case in tree.getroot().iter("testcase"):
+                      if case.find("failure") is not None or case.find("error") is not None:
+                          result.add(f"{case.attrib.get('classname','')}::{case.attrib.get('name','')}")
+              return result
+          base=failures("/tmp/rc-base")
+          head=failures(".")
+          new=sorted(head-base)
+          pathlib.Path("/tmp/android-new-failures.txt").write_text("\n".join(new)+("\n" if new else ""))
+          print(f"base_failures={len(base)} head_failures={len(head)} new_failures={len(new)}")
+          if new:
+              print("\n".join(new))
+              raise SystemExit(1)
+          PY
+          printf 'base_exit=%s\nhead_exit=%s\n' "$BASE_EXIT" "$HEAD_EXIT" | tee /tmp/android-regression-summary.txt
+
+      - name: Assemble exact-head APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/assemble.log
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Prove APK identity and compiled contracts
+        id: proof
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          APKANALYZER="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+          test -s "$APK"
+          unzip -t "$APK" > /tmp/zip-integrity.txt 2>&1
+          "$APKANALYZER" apk summary "$APK" | tee /tmp/apkanalyzer-summary.txt
+          read -r APP_ID VERSION_CODE VERSION_NAME < /tmp/apkanalyzer-summary.txt
+          test "$APP_ID" = "br.com.mapeiaia.rotacerta"
+          test "$VERSION_CODE" = "$EXPECTED_VERSION_CODE"
+          test "$VERSION_NAME" = "$EXPECTED_VERSION_NAME"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
+          grep -Fq 'MANUAL_SCREEN_TEXT_0742' /tmp/dex-strings.txt\n          grep -Fq 'SCREEN_READER_ARBITER_0755' /tmp/dex-strings.txt
+          ! grep -Fq 'MANUAL_SCREEN_TEXT_WINDOW_FALLBACK_0753' /tmp/dex-strings.txt
+          grep -Fq 'SCREEN_ADDRESS_VISUAL_AUTHORITY_0752' /tmp/dex-strings.txt
+          grep -Fq 'FAROL_UNIVERSAL_ADDRESS_PAIR_AUTHORITY_0752' /tmp/dex-strings.txt
+          grep -Fq 'ANY_APP_TWO_OR_MORE_ADDRESSES_0752' /tmp/dex-strings.txt
+          grep -Fq 'ANY_APP_LAST_ADDRESS_ROUTE_TRIGGER_0752' /tmp/dex-strings.txt
+          grep -Fq 'FAROL_SHARED_VISUAL_READER_REQUESTED_0752' /tmp/dex-strings.txt
+          grep -Fq 'FAROL_ORGANIC_OFFLINE_ROAD_PRIMARY_0749' /tmp/dex-strings.txt
+          grep -Fq 'FAROL_ROAD_KM_FINALITY_0713' /tmp/dex-strings.txt
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.756-6045-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          APK_SHA256="$(sha256sum "$FINAL" | awk '{print $1}')"
+          sha256sum "$FINAL" | tee /tmp/apk-sha256.txt
+          stat -c '%s' "$FINAL" | tee /tmp/apk-size-bytes.txt
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=$EXPECTED_VERSION_NAME"
+            echo "versionCode=$EXPECTED_VERSION_CODE"
+            echo "sourceSha=$GITHUB_SHA"
+            echo "sourceBranch=$ROTA_CERTA_GIT_BRANCH"
+            echo "deviceTarget=Samsung SM-S911B / Android 16"
+            echo "screenReaderArbiter0755=true
+            manualDisplayFallbackRemoved=true
+            manualReaderMatches0752=true
+            sharedVisualReader0752=true"
+            echo "sharedReaderPurposes=FullText,Phone,Address"
+            echo "authorizedRootMissVisualRecovery=true"
+            echo "anyExternalAppTwoAddresses=true"
+            echo "lastVisibleAddressIsDestination=true"
+            echo "captureFabric0751=true"
+            echo "organicMapsRoadPrimary=true"
+            echo "googleFallback=true"
+            echo "pairDestinationBProtected=true"
+            echo "haversinePublicKm=false"
+            echo "apkSha256=$APK_SHA256"
+          } | tee /tmp/final-proof.txt
+
+      - name: Persist CI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-ci-evidence-0.1.756-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            /tmp/source-sha.txt
+            /tmp/source-branch.txt
+            /tmp/release-contract.log
+            /tmp/focused.log
+            /tmp/sealed.log
+            /tmp/android-base-full.log
+            /tmp/android-head-full.log
+            /tmp/android-new-failures.txt
+            /tmp/android-regression-summary.txt
+            /tmp/assemble.log
+            /tmp/final-proof.txt
+            /tmp/apk-sha256.txt
+            /tmp/apk-size-bytes.txt
+            /tmp/aapt.txt
+            /tmp/apksigner.txt
+            /tmp/apkanalyzer-summary.txt
+
+      - name: Upload exact-SHA APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-screen-reader-arbiter-0.1.756-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            /tmp/source-sha.txt
+            /tmp/source-branch.txt
+            /tmp/final-proof.txt
+            /tmp/apk-sha256.txt
+            /tmp/apk-size-bytes.txt
+            /tmp/aapt.txt
+            /tmp/apksigner.txt
+            /tmp/apkanalyzer-summary.txt
+            /tmp/focused.log
+            /tmp/sealed.log
+            /tmp/android-regression-summary.txt

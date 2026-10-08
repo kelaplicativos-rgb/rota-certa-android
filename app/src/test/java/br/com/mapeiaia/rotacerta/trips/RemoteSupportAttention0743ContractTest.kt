@@ -13,13 +13,15 @@ class RemoteSupportAttention0743ContractTest {
         File("src/main/java/br/com/mapeiaia/rotacerta/diagnostics/$name").readText()
 
     @Test
-    fun globalBellPulsesOrangeFromRemoteAttentionState() {
+    fun globalBellIsIndependentFromRemoteAttentionState() {
         val header = trips("AgendaHeaderNavigation0396.kt")
         val activity = trips("TripsActivity.kt")
-        assertTrue(header.contains("remoteAttentionNeeded0743"))
         assertTrue(header.contains("Color(0xFFFF9800)"))
-        assertTrue(header.contains("remote-support-orange-pulse-0743"))
-        assertTrue(activity.contains("remoteAttentionNeeded0743 = remoteSupportAttention0743.needsAttention"))
+        assertTrue(header.contains("if (unread > 0)"))
+        assertFalse(header.contains("remote-support-orange-pulse-0743"))
+        assertFalse(header.contains("if (unread > 0 || remoteAttentionNeeded0743)"))
+        assertTrue(activity.contains("remoteSupportAttention0743.ready"))
+        assertTrue(activity.contains("Verificar conexão remota"))
     }
 
     @Test
