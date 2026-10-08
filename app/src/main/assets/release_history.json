@@ -2,6 +2,27 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.756",
+      "build": 6047,
+      "commit": null,
+      "branch": "agent/notification-center-clear-0.1.756",
+      "status": "EM_VALIDACAO",
+      "generatedAt": null,
+      "implemented": [
+        "Adiciona a ação 'Limpar notificações' ao menu de três pontos da Central de Notificações."
+      ],
+      "fixed": [
+        "O indicador laranja do sino passa a representar somente notificações não lidas e deixa de ficar preso pelo estado técnico do suporte remoto."
+      ],
+      "improved": [
+        "Mantém o cartão de Suporte remoto independente do estado visual do sino."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Anel laranja persistente sem notificação não lida."
+      ]
+    },
+    {
       "version": "0.1.755",
       "build": 6046,
       "commit": null,
