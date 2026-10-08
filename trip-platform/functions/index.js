@@ -17,6 +17,7 @@ const { createLiveAgendaTool0732 } = require("./live-agenda-tool-0732");
 const { createStandaloneCoversRemote0736 } = require("./standalone-covers-remote-0736");
 const { createBlaBlaTripQueryRemote0737 } = require("./blablacar-trip-query-remote-0737");
 const { createRemoteHealth0747 } = require("./remote-health-0747");
+const { createAllConsults0757 } = require("./all-consults-0757");
 const { buildProfileUpdate } = require("./public-profile-policy");
 const { cleanIdentifier, deriveRotationToken, tokenMatches } = require("./public-agenda-link-policy");
 const { createAgendaAdmin0417, safeVisibility0417 } = require("./agenda-admin-0417");
@@ -11546,6 +11547,7 @@ const liveAgendaFeed0701 = createLiveAgendaFeed0701({
   safePublicTripWithCanonicalBookings0497,
 });
 const liveAgendaTool0732 = createLiveAgendaTool0732({ liveAgendaFeed0701 });
+const allConsults0757 = createAllConsults0757({ liveAgendaTool0732 });
 
 const standaloneCoversRemote0736 = createStandaloneCoversRemote0736({
   db,
@@ -11912,6 +11914,16 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     }
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "bookings" && req.method === "GET") {
       return await listDriverBookings(req, res, parts[3]);
+    }
+    if (req.method === "GET" && path === "/v1/public/all-consults/capabilities") {
+      return await allConsults0757.getCapabilities0757(req, res);
+    }
+    if (req.method === "GET" && path === "/v1/public/all-consults/health") {
+      return await allConsults0757.getHealth0757(req, res);
+    }
+    if (req.method === "GET" && parts.length === 5 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "all-consults" && parts[3] === "trips") {
+      if (isReservedPublicUsername(parts[4])) return fail(res, 404, "all_consults_not_found", "Consulta não encontrada.");
+      return await allConsults0757.getTrips0757(req, res, parts[4]);
     }
     if (req.method === "GET" && parts.length === 4 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "live-query") {
       if (isReservedPublicUsername(parts[3])) {
