@@ -6,7 +6,8 @@
       "build": 6048,
       "date": "2026-10-08",
       "title": "ALL Consults remoto somente-leitura",
-      "summary": "Unifica descoberta e consulta remota ao vivo sem duplicar a fonte canônica; preserva Agenda, Timeline, FAROL e coletores existentes."
+      "summary": "Unifica descoberta e consulta remota ao vivo sem duplicar a fonte canônica; preserva Agenda, Timeline, FAROL e coletores existentes.",
+      "allConsultsContract": "ALL_CONSULTS_READ_ONLY_0757"
     },
     {
       "version": "0.1.756",
