@@ -9630,69 +9630,97 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
     }
 
+    // SCREEN_TEXT_RESILIENCE_0753 — Accessibility text survives screenshot failures.
     private fun requestFullScreenCopyOcr138(accessibilityText: String, windowId0742: Int?) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            fullScreenCopyInProgress138.set(false)
-            if (accessibilityText.isNotBlank()) copyAllVisibleTextToClipboard138(accessibilityText)
-            else toast("Esta tela não disponibilizou texto para copiar.")
+            finishManualScreenText0753(accessibilityText, "accessibility_pre_r")
             return
         }
         if (!screenshotInProgress.compareAndSet(false, true)) {
-            fullScreenCopyInProgress138.set(false)
-            toast("A leitura da tela está ocupada. Tente novamente.")
+            if (accessibilityText.isNotBlank()) finishManualScreenText0753(accessibilityText, "accessibility_screenshot_busy")
+            else {
+                fullScreenCopyInProgress138.set(false)
+                toast("A leitura da tela está ocupada. Tente novamente.")
+            }
             return
         }
-        runCatching {
-            takeManualVisualScreenshot0742(
-                windowId0742,
-                object : TakeScreenshotCallback {
-                    override fun onSuccess(screenshot: ScreenshotResult) {
-                        scope.launch {
-                            var bitmap: Bitmap? = null
-                            try {
-                                bitmap = screenshot.toSoftwareBitmap()
-                                val result0742 = bitmap?.let {
-                                    ScreenVisualReader0742(ocrService).read(
-                                        bitmap = it,
-                                        accessibilityText = accessibilityText,
-                                        purpose = VisualReadPurpose0742.FullText,
-                                    )
-                                }
-                                val text = result0742?.text.orEmpty()
-                                FarolFlightRecorder0163.record(
-                                    stage = "MANUAL_SCREEN_TEXT_0742",
-                                    packageName = universalResolvedForegroundPackage(),
-                                    details = "marker=" + ScreenVisualFusion0742.MARKER +
-                                        "; windowCapture=" + (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && windowId0742 != null) +
-                                        "; passes=" + (result0742?.passCount ?: 0) +
-                                        "; blocks=" + (result0742?.blockCount ?: 0) +
-                                        "; recovery=" + (result0742?.usedRecovery == true),
-                                )
-                                if (text.isBlank()) {
-                                    toast("Nenhum texto foi encontrado nesta tela.")
-                                } else {
-                                    copyAllVisibleTextToClipboard138(text)
-                                }
-                            } finally {
-                                bitmap?.recycle()
-                                screenshotInProgress.set(false)
-                                fullScreenCopyInProgress138.set(false)
-                            }
-                        }
-                    }
+        requestManualScreenScreenshot0753(accessibilityText, windowId0742, false)
+    }
 
-                    override fun onFailure(errorCode: Int) {
-                        screenshotInProgress.set(false)
-                        fullScreenCopyInProgress138.set(false)
-                        toast("O Android não permitiu ler esta tela. Código: " + errorCode)
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun requestManualScreenScreenshot0753(
+        accessibilityText: String,
+        windowId0742: Int?,
+        useDisplayFallback0753: Boolean,
+    ) {
+        val callback0753 = object : TakeScreenshotCallback {
+            override fun onSuccess(screenshot: ScreenshotResult) {
+                scope.launch {
+                    var bitmap: Bitmap? = null
+                    try {
+                        bitmap = screenshot.toSoftwareBitmap()
+                        val result0742 = bitmap?.let {
+                            ScreenVisualReader0742(ocrService).read(
+                                bitmap = it,
+                                accessibilityText = accessibilityText,
+                                purpose = VisualReadPurpose0742.FullText,
+                            )
+                        }
+                        val merged0753 = result0742?.text.orEmpty().ifBlank { accessibilityText }
+                        FarolFlightRecorder0163.record(
+                            stage = "MANUAL_SCREEN_TEXT_0753",
+                            packageName = universalResolvedForegroundPackage(),
+                            details = "marker=SCREEN_TEXT_RESILIENCE_0753" +
+                                "; mode=" + if (useDisplayFallback0753) "display_fallback" else "window_primary" +
+                                "; passes=" + (result0742?.passCount ?: 0) +
+                                "; blocks=" + (result0742?.blockCount ?: 0) +
+                                "; recovery=" + (result0742?.usedRecovery == true) +
+                                "; accessibilityChars=" + accessibilityText.length,
+                        )
+                        finishManualScreenText0753(merged0753, if (useDisplayFallback0753) "display_ocr" else "window_ocr")
+                    } catch (error0753: Throwable) {
+                        finishManualScreenText0753(accessibilityText, "ocr_exception_" + error0753::class.java.simpleName)
+                    } finally {
+                        bitmap?.takeUnless(Bitmap::isRecycled)?.recycle()
                     }
-                },
-            )
-        }.onFailure {
-            screenshotInProgress.set(false)
-            fullScreenCopyInProgress138.set(false)
-            toast("Não consegui solicitar a leitura desta tela.")
+                }
+            }
+
+            override fun onFailure(errorCode: Int) {
+                if (!useDisplayFallback0753 && windowId0742 != null) {
+                    FarolFlightRecorder0163.record(
+                        stage = "MANUAL_SCREEN_TEXT_WINDOW_FALLBACK_0753",
+                        packageName = universalResolvedForegroundPackage(),
+                        details = "code=" + errorCode + "; fallback=display",
+                    )
+                    requestManualScreenScreenshot0753(accessibilityText, null, true)
+                    return
+                }
+                finishManualScreenText0753(accessibilityText, "screenshot_error_" + errorCode)
+            }
         }
+        runCatching {
+            if (!useDisplayFallback0753 &&
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+                windowId0742 != null
+            ) takeScreenshotOfWindow(windowId0742, mainExecutor, callback0753)
+            else takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, callback0753)
+        }.onFailure {
+            if (!useDisplayFallback0753 && windowId0742 != null) requestManualScreenScreenshot0753(accessibilityText, null, true)
+            else finishManualScreenText0753(accessibilityText, "screenshot_request_exception")
+        }
+    }
+
+    private fun finishManualScreenText0753(text0753: String, source0753: String) {
+        screenshotInProgress.set(false)
+        fullScreenCopyInProgress138.set(false)
+        FarolFlightRecorder0163.record(
+            stage = "MANUAL_SCREEN_TEXT_FINISHED_0753",
+            packageName = universalResolvedForegroundPackage(),
+            details = "source=" + source0753 + "; chars=" + text0753.length,
+        )
+        if (text0753.isBlank()) toast("Nenhum texto foi encontrado nesta tela.")
+        else copyAllVisibleTextToClipboard138(text0753)
     }
 
     private fun copyAllVisibleTextToClipboard138(text: String) {
