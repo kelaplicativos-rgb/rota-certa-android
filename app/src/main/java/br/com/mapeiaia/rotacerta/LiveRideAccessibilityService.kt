@@ -9457,6 +9457,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
                                 var bitmap0752: Bitmap? = null
                                 try {
                                     bitmap0752 = screenshot0752.toSoftwareBitmap() ?: return@launch
+                                    // SCREEN_READER_ARBITER_0755 — FAROL não monopoliza o
+                                    // screenshot enquanto executa OCR/recovery passes.
+                                    screenshotInProgress.set(false)
                                     val result0752 = ScreenVisualReader0742(ocrService).read(
                                         bitmap = requireNotNull(bitmap0752),
                                         accessibilityText = target0752.accessibilityText,
@@ -9630,7 +9633,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun requestFullScreenCopyOcr138(accessibilityText: String, windowId0742: Int?) {
+    private fun requestFullScreenCopyOcr138(accessibilityText: String, windowId0742: Int?, arbitrationAttempt0755: Int = 0) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             fullScreenCopyInProgress138.set(false)
             if (accessibilityText.isNotBlank()) copyAllVisibleTextToClipboard138(accessibilityText)
@@ -9638,8 +9641,26 @@ class LiveRideAccessibilityService : AccessibilityService() {
             return
         }
         if (!screenshotInProgress.compareAndSet(false, true)) {
-            fullScreenCopyInProgress138.set(false)
-            toast("A leitura da tela está ocupada. Tente novamente.")
+            // SCREEN_READER_ARBITER_0755 — a captura automática nunca transforma contenção
+            // transitória em erro do comando manual. O usuário tem prioridade e aguarda
+            // somente a posse física do screenshot; OCR não mantém este lock.
+            if (arbitrationAttempt0755 < 40) {
+                scope.launch {
+                    delay(50L)
+                    requestFullScreenCopyOcr138(
+                        accessibilityText = accessibilityText,
+                        windowId0742 = windowId0742,
+                        arbitrationAttempt0755 = arbitrationAttempt0755 + 1,
+                    )
+                }
+            } else {
+                fullScreenCopyInProgress138.set(false)
+                if (accessibilityText.isNotBlank()) {
+                    copyAllVisibleTextToClipboard138(accessibilityText)
+                } else {
+                    toast("Não foi possível obter texto desta tela. Tente novamente.")
+                }
+            }
             return
         }
         runCatching {
@@ -9651,6 +9672,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
                             var bitmap: Bitmap? = null
                             try {
                                 bitmap = screenshot.toSoftwareBitmap()
+                                // SCREEN_READER_ARBITER_0755 — o recurso Android de screenshot
+                                // fica livre assim que o bitmap é materializado. OCR é independente.
+                                screenshotInProgress.set(false)
                                 val result0742 = bitmap?.let {
                                     ScreenVisualReader0742(ocrService).read(
                                         bitmap = it,
