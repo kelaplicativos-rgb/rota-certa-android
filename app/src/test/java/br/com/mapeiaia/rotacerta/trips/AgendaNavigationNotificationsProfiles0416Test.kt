@@ -58,7 +58,7 @@ class AgendaNavigationNotificationsProfiles0416Test {
         assertFalse(header.contains("if (unread > 0 || remoteAttentionNeeded0743)"))
         assertTrue(header.contains("Color(0xFFFF9800)"))
         assertTrue(header.contains("\"Notificações, \$unread não lidas\""))
-        assertTrue(header.contains("else -> \"Notificações\""))
+        assertTrue(header.contains("} else {\n                \"Notificações\""))
         assertFalse(header.contains("remote-support-orange-pulse-0743"))
         assertFalse(header.contains("atenção: conexão remota pendente"))
         assertFalse(header.contains("🔔"))
