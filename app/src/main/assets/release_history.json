@@ -2,6 +2,40 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.753",
+      "build": 6044,
+      "commit": null,
+      "branch": "agent/screen-text-resilience-0.1.753",
+      "status": "EM_VALIDACAO",
+      "generatedAt": null,
+      "implemented": [
+        "Leitura da tela mantém o texto já obtido por Accessibility mesmo quando screenshot/OCR não está disponível.",
+        "Android 14+ tenta primeiro a captura da janela concreta e, se ela falhar, faz fallback automático para captura do display.",
+        "OCR visual continua sendo usado para texto presente apenas em imagens, Canvas, WebView ou superfícies sem nós úteis."
+      ],
+      "fixed": [
+        "Corrige a regressão em que uma falha de takeScreenshotOfWindow encerrava Ler texto da tela mesmo com texto de Accessibility disponível.",
+        "Corrige a ausência de fallback para screenshot do display após erro de captura da janela.",
+        "Evita que contenção temporária do screenshot descarte uma leitura manual que já possui texto acessível."
+      ],
+      "improved": [
+        "Telemetria diferencia window_primary, display_ocr, accessibility_screenshot_busy e erros de captura.",
+        "Finalização centralizada sempre libera os gates da leitura manual e do screenshot."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Ler texto da tela podia parar de funcionar após erro interno de screenshot no Android 16."
+      ],
+      "modulesAffected": [
+        "Leitura da tela",
+        "Accessibility",
+        "OCR",
+        "Grade de atalhos",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.752",
       "build": 6043,
       "commit": null,
