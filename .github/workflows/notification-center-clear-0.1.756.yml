@@ -1,9 +1,9 @@
-name: Rota Certa 0.1.756 Screen Text Restore exact SHA
+name: Rota Certa 0.1.756 Notification Center exact SHA
 
 on:
   push:
     branches:
-      - 'agent/screen-reader-arbiter-0.1.756'
+      - 'agent/notification-center-clear-0.1.756'
   workflow_dispatch:
 
 permissions:
@@ -20,7 +20,7 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
       ROTA_CERTA_GIT_SHA: ${{ github.sha }}
-      ROTA_CERTA_GIT_BRANCH: 'agent/screen-reader-arbiter-0.1.756'
+      ROTA_CERTA_GIT_BRANCH: 'agent/notification-center-clear-0.1.756'
       BASE_SHA: '2cd4937cc83947ca1a81e45fdc001da55605dd47'
       EXPECTED_VERSION_NAME: '0.1.756'
       EXPECTED_VERSION_CODE: '6047'
