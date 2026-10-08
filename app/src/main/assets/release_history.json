@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.754",
+      "build": 6045,
+      "commit": null,
+      "branch": "agent/screen-text-restore-0.1.754",
+      "status": "EM_VALIDACAO",
+      "generatedAt": null,
+      "implemented": [
+        "Restaura o caminho manual Ler texto da tela ao comportamento comprovado da 0.1.752, sem alterar o ScreenVisualReader0742 compartilhado pelo FAROL.",
+        "Mantém a captura de janela concreta no Android 14+ e o OCR visual do leitor manual exatamente no caminho anterior à regressão 0.1.753."
+      ],
+      "fixed": [
+        "Remove do leitor manual o fallback novo para captura do display inteiro que podia incluir a grade/overlay do Rota Certa e contaminar o texto copiado.",
+        "Remove a finalização 0.1.753 que alterava a semântica do leitor manual, preservando o isolamento do recurso."
+      ],
+      "improved": [
+        "Adiciona contrato de regressão que proíbe o retorno do fallback MANUAL_SCREEN_TEXT_WINDOW_FALLBACK_0753 ao leitor manual.",
+        "Build exact-SHA valida que o marcador MANUAL_SCREEN_TEXT_0742 permanece compilado e o fallback contaminante não aparece no DEX."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Ler texto da tela podia misturar botões da grade/overlay com o conteúdo do aplicativo externo após fallback para screenshot do display."
+      ],
+      "modulesAffected": [
+        "Leitura da tela",
+        "Accessibility",
+        "OCR",
+        "Grade de atalhos",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.753",
       "build": 6044,
       "commit": null,
