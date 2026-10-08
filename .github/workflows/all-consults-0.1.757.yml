@@ -1,0 +1,100 @@
+name: Rota Certa 0.1.757 ALL Consults exact SHA
+
+on:
+  push:
+    branches:
+      - 'agent/all-consults-remote-query-0.1.757'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: all-consults-0757-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: 'agent/all-consults-remote-query-0.1.757'
+      EXPECTED_VERSION_NAME: '0.1.757'
+      EXPECTED_VERSION_CODE: '6048'
+      OM_SOURCE_SHA: '3ef379196cca434cf17f4ee684f16aa99fd8985e'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Restore pinned Organic Maps SDK cache
+        id: om-sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/app/organicmaps/sdk
+          key: organicmaps-sdk-${{ runner.os }}-${{ env.OM_SOURCE_SHA }}-android36-ndk29-arm64
+      - name: Build exact pinned Organic Maps SDK on cache miss
+        if: steps.om-sdk-cache.outputs.cache-hit != 'true'
+        run: bash tools/ci/build-organicmaps-sdk.sh
+      - name: Save pinned Organic Maps SDK cache
+        if: steps.om-sdk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.m2/repository/app/organicmaps/sdk
+          key: organicmaps-sdk-${{ runner.os }}-${{ env.OM_SOURCE_SHA }}-android36-ndk29-arm64
+      - name: Prove exact source and ALL Consults contracts
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'val releaseVersionName = "0.1.757"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 6_048' app/build.gradle.kts
+          grep -Fq 'createAllConsults0757' trip-platform/functions/all-consults-0757.js
+          grep -Fq 'controlEnabled: false' trip-platform/functions/all-consults-0757.js
+          grep -Fq 'liveAgendaTool0732.getLiveAgendaTool0732' trip-platform/functions/all-consults-0757.js
+          grep -Fq 'FAROL_CAPTURE_FABRIC_0751' app/src/main/java/br/com/mapeiaia/rotacerta/FarolCaptureFabric0751.kt
+          node trip-platform/functions/test/all-consults-0757.test.js
+          (cd trip-platform/functions && npm test)
+          ./gradlew :app:verifyReleaseHistory :app:verifyAndroidUpdateContract --no-daemon --stacktrace
+          ./gradlew :app:testDebugUnitTest --tests 'br.com.mapeiaia.rotacerta.FarolSealed0547RegressionContractTest' --tests 'br.com.mapeiaia.rotacerta.FarolCaptureFabric0751ContractTest' --no-daemon --max-workers=1 --stacktrace
+      - name: Assemble exact-head APK
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Prove APK identity
+        run: |
+          set -euo pipefail
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          APKANALYZER="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+          test -s "$APK"
+          unzip -t "$APK" >/tmp/zip-integrity.txt
+          "$APKANALYZER" apk summary "$APK" | tee /tmp/apkanalyzer-summary.txt
+          read -r APP_ID VERSION_CODE VERSION_NAME < /tmp/apkanalyzer-summary.txt
+          test "$APP_ID" = "br.com.mapeiaia.rotacerta"
+          test "$VERSION_CODE" = "$EXPECTED_VERSION_CODE"
+          test "$VERSION_NAME" = "$EXPECTED_VERSION_NAME"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
+          sha256sum "$APK" | tee /tmp/apk-sha256.txt
+          printf '%s\n' "$GITHUB_SHA" > /tmp/source-sha.txt
+      - name: Package proof
+        run: |
+          mkdir -p /tmp/proof
+          cp /tmp/source-sha.txt /tmp/apk-sha256.txt /tmp/apkanalyzer-summary.txt /tmp/apksigner.txt /tmp/proof/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.757-all-consults-exact-sha-${{ github.sha }}
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            /tmp/proof/*
+          if-no-files-found: error
