@@ -23,14 +23,14 @@ class StandaloneRemoteAccessProvisioning0739Test {
         )
         assertEquals(listOf("access", "push"), calls)
         assertTrue(result.pushRegistered)
-        assertTrue(result.message.contains("O pop-up só é dispensado"))
+        assertTrue(result.message.contains("toggle abaixo"))
     }
 
     @Test fun missingPushTokenDoesNotHideOrPreventPrivateAccess() = runBlocking<Unit> {
         val result = provisionStandaloneRemoteAccess0739({ validAccess() }, { false })
         assertTrue(result.access.configured)
         assertFalse(result.pushRegistered)
-        assertTrue(result.message.contains("Ative a escuta remota"))
+        assertTrue(result.message.contains("toggle abaixo"))
         assertTrue(standaloneRemoteClipboardText0739(result.access).contains("Consulta HTML por viagem:"))
     }
 
@@ -38,7 +38,7 @@ class StandaloneRemoteAccessProvisioning0739Test {
         val result = provisionStandaloneRemoteAccess0739({ validAccess() }, { error("FCM unavailable") })
         assertTrue(result.access.configured)
         assertFalse(result.pushRegistered)
-        assertTrue(result.message.contains("Ative a escuta remota"))
+        assertTrue(result.message.contains("toggle abaixo"))
     }
 
     @Test fun deniedAccessDoesNotProceedToPushRegistration() = runBlocking<Unit> {
