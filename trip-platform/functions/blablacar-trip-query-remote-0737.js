@@ -209,7 +209,13 @@ function createBlaBlaTripQueryRemote0737({ db, requireDriver, getMessaging, norm
     const data = snap.data();
     if (data.enabled !== true || Number(data.expiresAtMillis || 0) <= Date.now()) return null;
     const username = normalizeUsername(data.driverUsername);
-    return username ? { token, username } : null;
+    if (!username) return null;
+    const stateSnap = await db.collection(STATE_COLLECTION_0736).doc(username).get();
+    if (!stateSnap.exists) return null;
+    const state = stateSnap.data();
+    if (state.remoteAutoAccessEnabled0764 === false ||
+        clean0737(state.accessTokenHash, 80) !== sha256Hex0737(token)) return null;
+    return { token, username };
   }
 
   async function latestCompleteCoverCard0737(driverUsername, profileUuidRaw, tripIdRaw) {
