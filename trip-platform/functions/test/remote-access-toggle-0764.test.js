@@ -10,6 +10,7 @@ const {
   STATE_COLLECTION_0736,
 } = require("../standalone-covers-remote-0736");
 const { createBlaBlaTripQueryRemote0737 } = require("../blablacar-trip-query-remote-0737");
+const { createRemoteHealth0747 } = require("../remote-health-0747");
 
 test("OFF revoga imediatamente a mesma chave para capas E detalhe e ON restaura", async () => {
   const token = publicAccessToken0736();
@@ -68,6 +69,7 @@ test("OFF revoga imediatamente a mesma chave para capas E detalhe e ON restaura"
   };
   const covers = createStandaloneCoversRemote0736(options);
   const details = createBlaBlaTripQueryRemote0737(options);
+  const health = createRemoteHealth0747(options);
   const req = enabled => ({ body: { enabled } });
   let res = {};
   await covers.setAccessEnabled0764(req(false), res);
@@ -81,6 +83,16 @@ test("OFF revoga imediatamente a mesma chave para capas E detalhe e ON restaura"
   await details.latestPublic0737({}, res, token,
     "7371f028-9c55-4903-8444-308015823efd",
     "01a10f40-5046-7e0f-a0f1-084aaeb436e9");
+  assert.equal(res.status, 404);
+
+  res = {};
+  await health.latestPublic0747({}, res, token);
+  assert.equal(res.status, 404);
+  res = {};
+  await health.latestTechnicalPublic0761({}, res, token);
+  assert.equal(res.status, 404);
+  res = {};
+  await health.downloadTechnicalPublic0761({}, res, token);
   assert.equal(res.status, 404);
 
   res = {};
