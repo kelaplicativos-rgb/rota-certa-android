@@ -155,7 +155,10 @@ function validateTechnicalZip0761(raw) {
   const bytes = Buffer.from(encoded, "base64");
   if (bytes.toString("base64") !== encoded || bytes.length < 22 ||
       bytes.length > MAX_TECHNICAL_ZIP_BYTES_0761 ||
-      bytes.readUInt32LE(0) !== 0x04034b50) throw new Error("ZIP corrompido ou fora do limite.");
+      bytes.readUInt32LE(0) !== 0x04034b50 ||
+      bytes.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06])) < 0) {
+    throw new Error("ZIP corrompido ou fora do limite.");
+  }
   if (int0747(v.archiveBytes, 22, MAX_TECHNICAL_ZIP_BYTES_0761) !== bytes.length ||
       clean0747(v.archiveSha256, 64) !== sha256Hex0747(bytes)) throw new Error("Integridade SHA-256 do ZIP invalida.");
   const fileName = clean0747(v.fileName, 160);
@@ -223,13 +226,14 @@ function createRemoteHealth0747({
     return { driver, jobId, ref, data: snap.data() };
   }
 
-  async function sendPush0747(driverUsername, jobId) {
+  async function sendPush0747(driverUsername, jobId, mode) {
     const snapshot = await db.collection("tripDriverPushTokens")
       .where("driverUsername", "==", driverUsername)
       .limit(20)
       .get();
     const now = Date.now();
-    const active = snapshot.docs.filter((doc) => remoteHealthCapable0747(doc.data(), now));
+    const active = snapshot.docs.filter((doc) => remoteHealthCapable0747(doc.data(), now) &&
+      (mode !== TECHNICAL_ZIP_MODE_0761 || Number(doc.data().remoteHealthVersion || 0) >= 2));
     const jobRef = db.collection(JOB_COLLECTION_0747).doc(jobId);
     if (!active.length) {
       await jobRef.set({
@@ -339,7 +343,7 @@ function createRemoteHealth0747({
     });
 
     if (throttled) return { throttled: true, retryAfterMillis };
-    if (!reused) await sendPush0747(driverUsername, jobId);
+    if (!reused) await sendPush0747(driverUsername, jobId, mode);
     const snap = await db.collection(JOB_COLLECTION_0747).doc(jobId).get();
     const data = snap.exists ? snap.data() : { state: "PENDING_DEVICE" };
     return {
