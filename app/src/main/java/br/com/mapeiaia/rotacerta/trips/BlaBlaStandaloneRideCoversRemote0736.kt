@@ -118,6 +118,7 @@ internal object StandaloneCoversRemoteScheduler0736 {
     fun enqueue(context: Context, rawJobId: String?): Boolean {
         val jobId = normalizeStandaloneCoversRemoteJobId0736(rawJobId) ?: return false
         val request = OneTimeWorkRequestBuilder<StandaloneCoversRemoteWorker0736>()
+            .addTag(RemoteSupportAutoAccess0763.WORK_TAG)
             .setInputData(
                 Data.Builder()
                     .putString(STANDALONE_COVERS_REMOTE_JOB_ID_0736, jobId)
@@ -144,6 +145,9 @@ internal class StandaloneCoversRemoteWorker0736(
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
+        if (!RemoteSupportAutoAccess0763.enabled(applicationContext, "standalone_covers_collect")) {
+            return Result.failure()
+        }
         val jobId = normalizeStandaloneCoversRemoteJobId0736(
             inputData.getString(STANDALONE_COVERS_REMOTE_JOB_ID_0736),
         ) ?: return Result.failure()
