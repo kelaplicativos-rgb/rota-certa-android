@@ -630,8 +630,8 @@ function createStandaloneCoversRemote0736({
   async function latestPublic0736(req, res, tokenRaw) {
     const access = await resolveAccess0736(tokenRaw);
     if (!access) return fail(res, 404, "standalone_cover_access_not_found", "Acesso privado à coleta remota não encontrado ou expirado.");
-    res.set("Cache-Control", "private, no-store, max-age=0");
-    res.set("Pragma", "no-cache");
+    res.set?.("Cache-Control", "private, no-store, max-age=0");
+    res.set?.("Pragma", "no-cache");
     const stateSnap = await db.collection(STATE_COLLECTION_0736).doc(access.username).get();
     const state = stateSnap.exists ? stateSnap.data() : {};
     const pollStatus = remotePollStatus0766(state);
