@@ -70,6 +70,11 @@ data class DriverPushTokenResponse(
 )
 
 @Serializable
+internal data class RemoteAccessStateResponse0764(
+    val enabled: Boolean = false,
+)
+
+@Serializable
 internal data class StandaloneCoversAccessResponse0736(
     val enabled: Boolean = false,
     val refreshPath: String = "",
@@ -1083,6 +1088,13 @@ class TripRemoteApi(
         method = "POST",
         path = "/v1/driver/standalone-covers/access/ensure",
         body = "{}",
+        requireDriverToken = true,
+    )
+
+    internal suspend fun setRemoteAccessState0764(enabled: Boolean): RemoteAccessStateResponse0764 = request(
+        method = "POST",
+        path = "/v1/driver/standalone-covers/access/state",
+        body = json.encodeToString(mapOf("enabled" to enabled)),
         requireDriverToken = true,
     )
 
