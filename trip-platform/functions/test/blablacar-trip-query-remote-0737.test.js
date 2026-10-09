@@ -8,6 +8,10 @@ const {
   sanitizeTripQueryPayload0737,
   queryResultTransition0737,
   remoteQueryCapablePushToken0737,
+  pendingConsentTripQuery0760,
+  QUERY_PENDING_COLLECTION_0760,
+  QUERY_JOB_COLLECTION_0737,
+  createBlaBlaTripQueryRemote0737,
 } = require("../blablacar-trip-query-remote-0737");
 
 function payload0737() {
@@ -100,4 +104,75 @@ test("push detalhado exige capability explicita do APK", () => {
   const base = { token: "x".repeat(64), expiresAtMillis: now + 60_000 };
   assert.equal(remoteQueryCapablePushToken0737(base, now), false);
   assert.equal(remoteQueryCapablePushToken0737({ ...base, blablacarTripQueryRemoteVersion: 1 }, now), true);
+});
+
+test("poll sem FCM exige motorista autenticado, estado pendente e vínculo de dono", async () => {
+  const now = Date.now();
+  const jobId = "7371f028-9c55-4903-8444-308015823efd";
+  const docs = new Map();
+  const key = (collection, id) => collection + "|" + id;
+  docs.set(key(QUERY_PENDING_COLLECTION_0760, "driver-a"), { latestJobId: jobId });
+  docs.set(key(QUERY_JOB_COLLECTION_0737, jobId), {
+    driverUsername: "driver-a", state: "PENDING_DEVICE",
+    requestedAtMillis: now, expiresAtMillis: now + 60_000,
+  });
+  const db = {
+    collection(name) {
+      return { doc(id) {
+        return { async get() {
+          const item = docs.get(key(name, id));
+          return { exists: !!item, data: () => item };
+        } };
+      } };
+    },
+  };
+  let authenticated = true;
+  const route = createBlaBlaTripQueryRemote0737({
+    db,
+    requireDriver: async () => authenticated ? { username: "driver-a" } : null,
+    normalizeUsername: (value) => String(value || "").trim(),
+    getMessaging: () => { throw Error("não deve usar FCM"); },
+    json: (res, status, payload) => { res.status = status; res.body = payload; return payload; },
+    fail: (res, status, code) => { res.status = status; res.body = { code }; return res.body; },
+  });
+  const makeRes = () => ({ set(name, value) { this[name] = value; } });
+  let res = makeRes();
+  await route.pollDriverPending0760({}, res);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.pending, true);
+  assert.equal(res.body.jobId, jobId);
+  assert.equal(res["Cache-Control"].includes("no-store"), true);
+
+  authenticated = false;
+  res = makeRes();
+  await route.pollDriverPending0760({}, res);
+  assert.equal(res.body, undefined);
+  authenticated = true;
+
+  docs.get(key(QUERY_JOB_COLLECTION_0737, jobId)).driverUsername = "driver-b";
+  res = makeRes();
+  await route.pollDriverPending0760({}, res);
+  assert.equal(res.status, 403);
+  docs.get(key(QUERY_JOB_COLLECTION_0737, jobId)).driverUsername = "driver-a";
+  docs.get(key(QUERY_JOB_COLLECTION_0737, jobId)).state = "COMPLETE";
+  res = makeRes();
+  await route.pollDriverPending0760({}, res);
+  assert.equal(res.body.pending, false);
+});
+
+test("expirado e RUNNING nunca reaparecem como pedido de consentimento", () => {
+  const now = Date.now();
+  const base = { state: "PENDING_DEVICE", expiresAtMillis: now + 60_000 };
+  assert.equal(pendingConsentTripQuery0760(base, now), true);
+  assert.equal(pendingConsentTripQuery0760({ ...base, state: "RUNNING" }, now), false);
+  assert.equal(pendingConsentTripQuery0760({ ...base, expiresAtMillis: now - 1 }, now), false);
+  assert.equal(pendingConsentTripQuery0760({ ...base, state: "COMPLETE" }, now), false);
+});
+
+test("roteamento de polling detalhado não usa a autorização pública", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const code = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
+  assert.match(code, /\/v1\/driver\/blablacar-query\/pending/);
+  assert.match(code, /blablacarTripQueryRemote0737\.pollDriverPending0760/);
 });
