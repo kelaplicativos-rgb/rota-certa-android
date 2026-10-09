@@ -844,14 +844,6 @@ fun BlaBlaCollectorPanel(
                 onVerify = { standaloneScope0734.launch { connectRemoteAccess0739() } },
             )
 
-            Text("Use um único toggle acima: ligado, a escuta recebe consultas de capas, detalhes de viagens, saúde e ZIP. " +
-                "Desligado, nenhuma nova coleta remota é autorizada. O Android pode limitar serviços em segundo plano " +
-                "e continuar exigindo permissões próprias. Dados já enviados ao servidor têm expiração independente.")
-            Text(
-                "Compartilhe este acesso somente com quem pode consultar suas viagens. " +
-                    "Capas continuam isoladas; a consulta HTML dirigida lê uma viagem por profileUuid + tripId e não envia cookies, senha ou HTML bruto.",
-            )
-
             Text("A leitura usa somente a interface oficial logada. Senha não é capturada nem enviada ao Railway.")
             Text("Nas sincronizações normais, o Rota Certa guarda em área privada do app os MHTMLs necessários: /rides, resumo de cada viagem, passageiros individuais e opções de lugares. A coleta avulsa acima não usa esse pipeline; ela apenas baixa o JSON de capas solicitado.")
             message?.let { Text(it) }
