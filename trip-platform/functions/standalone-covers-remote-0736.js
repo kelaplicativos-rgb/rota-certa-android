@@ -296,6 +296,9 @@ function createStandaloneCoversRemote0736({
     const existingData = existing.exists ? existing.data() : {};
     let token = normalizePublicToken0736(existingData.accessToken);
     let expiresAtMillis = Number(existingData.accessExpiresAtMillis || 0);
+    // Preserve the driver's explicit OFF state across public-link rotation.
+    // Legacy accounts without a stored choice keep the previous consent flow.
+    const accessEnabled = existingData.remoteAutoAccessEnabled0764 !== false;
 
     if (!token || expiresAtMillis <= now + 7 * 24 * 60 * 60 * 1000) {
       const previousHash = clean0736(existingData.accessTokenHash, 80);
@@ -308,7 +311,7 @@ function createStandaloneCoversRemote0736({
       }
       batch.set(db.collection(ACCESS_COLLECTION_0736).doc(tokenHash), {
         driverUsername: driver.username,
-        enabled: true,
+        enabled: accessEnabled,
         createdAtMillis: now,
         updatedAtMillis: now,
         expiresAtMillis,
@@ -325,12 +328,49 @@ function createStandaloneCoversRemote0736({
 
     const basePath = "/v1/public/standalone-covers/" + token;
     return json(res, 200, {
-      enabled: true,
+      enabled: accessEnabled,
       refreshPath: basePath + "/refresh",
       latestPath: basePath + "/latest",
       tripQueryBasePath: "/v1/public/blablacar-query/" + token,
       expiresAtMillis,
     });
+  }
+
+  async function setAccessEnabled0764(req, res) {
+    const driver = await requireDriver(req, res);
+    if (!driver) return;
+    if (!driver.username) return fail(res, 400, "driver_username_required", "Motorista não identificado.");
+    if (!req.body || typeof req.body.enabled !== "boolean") {
+      return fail(res, 400, "remote_access_setting_invalid", "Informe enabled como boolean.");
+    }
+    const enabled = req.body.enabled;
+    const stateRef = db.collection(STATE_COLLECTION_0736).doc(driver.username);
+    const stateSnap = await stateRef.get();
+    const state = stateSnap.exists ? stateSnap.data() : {};
+    const hash = clean0736(state.accessTokenHash, 80);
+    const now = Date.now();
+    if (!hash) {
+      if (enabled) return fail(res, 409, "remote_access_not_provisioned", "Provisione primeiro o acesso remoto.");
+      await stateRef.set({
+        driverUsername: driver.username,
+        remoteAutoAccessEnabled0764: false,
+        updatedAtMillis: now,
+      }, { merge: true });
+      return json(res, 200, { enabled: false });
+    }
+    const accessRef = db.collection(ACCESS_COLLECTION_0736).doc(hash);
+    const accessSnap = await accessRef.get();
+    if (!accessSnap.exists || normalizeUsername(accessSnap.data().driverUsername) !== driver.username) {
+      return fail(res, 409, "remote_access_owner_mismatch", "Acesso remoto não corresponde ao motorista autenticado.");
+    }
+    const batch = db.batch();
+    batch.set(stateRef, {
+      remoteAutoAccessEnabled0764: enabled,
+      updatedAtMillis: now,
+    }, { merge: true });
+    batch.set(accessRef, { enabled, updatedAtMillis: now }, { merge: true });
+    await batch.commit();
+    return json(res, 200, { enabled });
   }
 
   async function resolveAccess0736(tokenRaw) {
@@ -715,6 +755,7 @@ function createStandaloneCoversRemote0736({
 
   return {
     ensureAccess0736,
+    setAccessEnabled0764,
     requestAuthenticated0736,
     pollDriverPending0758,
     refreshPublic0736,
