@@ -2,6 +2,34 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.761",
+      "build": 6052,
+      "date": "2026-10-09",
+      "title": "ZIP técnico por consentimento remoto",
+      "summary": "Solicitação remota, pop-up Aceitar/Recusar e ZIP sanitizado com SHA-256 e download privado.",
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Solicitação remota do ZIP técnico",
+        "Consulta do job sem FCM",
+        "Entrega HTTPS privada com integridade SHA-256"
+      ],
+      "fixed": [
+        "Dispensa compartilhamento manual do arquivo técnico"
+      ],
+      "improved": [
+        "Preserva FAROL, Agenda e Timeline",
+        "Reutiliza o gerador de ZIP sanitizado da Central de Saúde"
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Central de Saúde",
+        "Suporte remoto",
+        "Privacidade"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.760",
       "build": 6051,
       "date": "2026-10-09",
