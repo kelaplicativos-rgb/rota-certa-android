@@ -68,7 +68,7 @@ function sanitizeTripQueryPayload0737(input, expectedProfileUuid = "", expectedT
     "sourceCommitSha", "sourceBranch", "profileUuid", "tripId", "dateIso",
     "departureTime", "arrivalTime", "origin", "destination", "price", "availability",
     "bookedSeats", "publishedSeats", "passengerRosterComplete", "itineraryAuthoritative",
-    "operationalComplete", "passengerCount", "passengerSeatCount", "passengers",
+    "operationalComplete", "passengerCount", "passengerSeatCount", "individualFaresComplete", "passengers",
     "itineraryStops", "itineraryStopTimes",
   ]), "Snapshot HTML");
 
@@ -85,14 +85,35 @@ function sanitizeTripQueryPayload0737(input, expectedProfileUuid = "", expectedT
   if (!passengersRaw || passengersRaw.length > 16) throw new Error("Lista de passageiros inválida.");
   const passengers = passengersRaw.map((raw) => {
     const p = assertObject0737(raw, "Passageiro remoto inválido.");
-    assertKeys0737(p, new Set(["name", "seats", "boarding", "dropoff"]), "Passageiro remoto");
+    assertKeys0737(p, new Set([
+      "name", "seats", "boarding", "dropoff",
+      "passengerTotalMinorUnits", "driverReceivesMinorUnits", "fareCurrencyCode",
+    ]), "Passageiro remoto");
     const seats = Number(p.seats);
     if (!Number.isSafeInteger(seats) || seats < 1 || seats > 8) throw new Error("Quantidade de lugares do passageiro inválida.");
+    function monetaryEvidence(raw, field) {
+      if (raw == null) return null;
+      const n = Number(raw);
+      if (!Number.isSafeInteger(n) || n < 0 || n > 10_000_000) {
+        throw new Error(field + " inválido (centavos inteiros).");
+      }
+      return n;
+    }
+    const passengerTotalMinorUnits = monetaryEvidence(p.passengerTotalMinorUnits, "Valor individual");
+    const driverReceivesMinorUnits = monetaryEvidence(p.driverReceivesMinorUnits, "Repasse ao motorista");
+    const fareCurrencyCode = clean0737(p.fareCurrencyCode, 3).toUpperCase();
+    if ((passengerTotalMinorUnits != null || driverReceivesMinorUnits != null) && fareCurrencyCode !== "BRL") {
+      throw new Error("Valor individual sem moeda BRL confirmada.");
+    }
+    if (fareCurrencyCode && fareCurrencyCode !== "BRL") throw new Error("Moeda não suportada.");
     return {
       name: clean0737(p.name, 160),
       seats,
       boarding: clean0737(p.boarding, 240),
       dropoff: clean0737(p.dropoff, 240),
+      passengerTotalMinorUnits,
+      driverReceivesMinorUnits,
+      fareCurrencyCode,
     };
   });
 
@@ -103,6 +124,12 @@ function sanitizeTripQueryPayload0737(input, expectedProfileUuid = "", expectedT
   if (!Number.isSafeInteger(passengerSeatCount) || passengerSeatCount < 0) throw new Error("Contagem de lugares dos passageiros inválida.");
   if (passengerSeatCount !== passengers.reduce((sum, p) => sum + p.seats, 0)) throw new Error("Lugares dos passageiros inconsistentes.");
   if (!Number.isSafeInteger(bookedSeats) || bookedSeats < 0 || bookedSeats < passengerSeatCount) throw new Error("Ocupação observada inválida.");
+  const individualFaresComplete = passengers.every((p) =>
+    p.passengerTotalMinorUnits != null && p.fareCurrencyCode === "BRL");
+  if (root.individualFaresComplete != null &&
+      root.individualFaresComplete !== individualFaresComplete) {
+    throw new Error("Completude de valores individuais inconsistente.");
+  }
 
   let publishedSeats = null;
   if (root.publishedSeats != null) {
@@ -140,6 +167,7 @@ function sanitizeTripQueryPayload0737(input, expectedProfileUuid = "", expectedT
     operationalComplete: root.operationalComplete === true,
     passengerCount,
     passengerSeatCount,
+    individualFaresComplete,
     passengers,
     itineraryStops,
     itineraryStopTimes,
