@@ -1,0 +1,167 @@
+name: Rota Certa 0.1.765 Remote Technical & Version Audit exact SHA
+
+on:
+  push:
+    branches: ['agent/remote-technical-version-audit-0.1.765']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: remote-version-audit-0765-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      ROTA_CERTA_GIT_SHA: ${{ github.sha }}
+      ROTA_CERTA_GIT_BRANCH: agent/remote-technical-version-audit-0.1.765
+      OM_SOURCE_SHA: 3ef379196cca434cf17f4ee684f16aa99fd8985e
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Prove version, same-package update and protected FAROL scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'val releaseVersionName = "0.1.765"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 6_056' app/build.gradle.kts
+          grep -Fq '"version": "0.1.765"' app/src/main/assets/release_history.json
+          ! git diff --name-only 494ae3b42a8489af5a01299d2edaaa35f8355a7a...HEAD | grep -E '(Farol|farol|FAROL)'
+          git diff --check 494ae3b42a8489af5a01299d2edaaa35f8355a7a...HEAD
+          printf '%s\n' "$GITHUB_SHA" > /tmp/source-sha.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Backend test and schema validation
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/functions/remote-health-0747.js
+          node --test \
+            trip-platform/functions/test/remote-technical-zip-0761.test.js \
+            trip-platform/functions/test/remote-health-0747.test.js \
+            trip-platform/functions/test/remote-health-poll-0762.test.js \
+            trip-platform/functions/test/standalone-covers-remote-0736.test.js \
+            trip-platform/functions/test/remote-access-toggle-0764.test.js \
+            trip-platform/functions/test/blablacar-trip-query-remote-0737.test.js | tee /tmp/backend-tests.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/cache@v4
+        id: om-sdk-cache
+        with:
+          path: ~/.m2/repository/app/organicmaps/sdk
+          key: organicmaps-sdk-${{ runner.os }}-${{ env.OM_SOURCE_SHA }}-android36-ndk29-arm64
+      - name: Build pinned Organic Maps SDK only on cache miss
+        if: steps.om-sdk-cache.outputs.cache-hit != 'true'
+        run: bash tools/ci/build-organicmaps-sdk.sh
+
+      - name: Verify history, signature, existing FAROL and remote consent
+        run: |
+          set -euo pipefail
+          ./gradlew :app:verifyReleaseHistory :app:verifyAndroidUpdateContract --no-daemon
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.RemoteTechnicalZip0761ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.RemoteHealth0747ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.RemoteHealthSnapshot0762ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.RemoteVersionAudit0765ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.RemoteAutoAccess0763ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.StandaloneRemoteAccessProvisioning0739Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPassengerDeepCapture0653Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.RemoteSupportConsent0746ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRemoteTripQuery0737Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolRoadKmFinality0713Test' \
+            --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-tests.txt
+
+      - name: Build exact-SHA APK
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
+
+      - name: Verify artifact and signer
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" apk summary "$APK" | tee /tmp/apk-summary.txt
+          read -r APP_ID VC VN < /tmp/apk-summary.txt
+          test "$APP_ID" = br.com.mapeiaia.rotacerta
+          test "$VC" = 6056
+          test "$VN" = 0.1.765
+          TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apk-signer.txt
+          unzip -p "$APK" 'classes*.dex' | strings | grep -Fqm1 "$ROTA_CERTA_GIT_SHA"
+          sha256sum "$APK" | tee /tmp/apk-sha256.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rota-certa-0.1.765-technical-audit-${{ github.sha }}
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            /tmp/source-sha.txt
+            /tmp/backend-tests.txt
+            /tmp/android-tests.txt
+            /tmp/apk-summary.txt
+            /tmp/apk-signer.txt
+            /tmp/apk-sha256.txt
+          if-no-files-found: warn
+
+  deploy-validated-backend:
+    needs: validate-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install cloud function dependencies
+        run: npm --prefix trip-platform/functions install --no-audit --no-fund
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Deploy canonical tripApi from validated SHA
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          gcloud functions deploy tripApi \
+            --gen2 --project="$PROJECT" --region=southamerica-east1 \
+            --runtime=nodejs20 --source=trip-platform/functions \
+            --entry-point=tripApi --trigger-http --allow-unauthenticated \
+            --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$GITHUB_SHA" --quiet
+      - name: Verify canonical live SHA and denied unauthorized download
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 15 --retry-delay 4 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health.txt
+          grep -Fq "\"backendGitSha\":\"$GITHUB_SHA\"" /tmp/live-health.txt
+          CODE="$(curl -sS -o /tmp/no-zip.txt -w '%{http_code}' "$BASE/v1/public/remote-technical/invalid_capability_token_000000000000000/download")"
+          test "$CODE" = 404
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rota-certa-0.1.765-backend-validation-${{ github.sha }}
+          path: /tmp/live-health.txt
+          if-no-files-found: warn

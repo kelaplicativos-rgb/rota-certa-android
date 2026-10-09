@@ -75,6 +75,38 @@ test("snapshot remoto de saude aceita somente contrato sanitizado e limitado", (
   assert.equal(value.buffer.bufferCapacity, 6000);
 });
 
+test("historico técnico remoto traz implementações, correções e melhorias sem HTML bruto", () => {
+  const input = payload0747();
+  input.recentReleases = [{
+    version: "0.1.765",
+    build: 6056,
+    status: "EM_VALIDACAO",
+    implemented: ["Histórico de versão no diagnóstico remoto"],
+    fixed: ["Revogação do toggle na Central de Saúde"],
+    improved: ["Menos consultas duplicadas"],
+    modulesAffected: ["Central de Saúde"],
+  }];
+  const result = sanitizeHealthPayload0747(input);
+  assert.equal(result.recentReleases.length, 1);
+  assert.equal(result.recentReleases[0].version, "0.1.765");
+  assert.equal(result.recentReleases[0].fixed[0], "Revogação do toggle na Central de Saúde");
+  input.recentReleases[0].rawHtml = "<div>segredo</div>";
+  assert.throws(() => sanitizeHealthPayload0747(input), /campo nao permitido/i);
+  delete input.recentReleases[0].rawHtml;
+  input.recentReleases[0].implemented = Array(11).fill("excesso");
+  assert.throws(() => sanitizeHealthPayload0747(input), /lista de alteracoes valida/i);
+  input.recentReleases = Array(9).fill({
+    version: "0.1.765", build: 6056, status: "",
+    implemented: [], fixed: [], improved: [], modulesAffected: [],
+  });
+  assert.throws(() => sanitizeHealthPayload0747(input), /Historico de versoes excede/i);
+});
+
+test("snapshots antigos continuam validos e nao inventam historico de versao", () => {
+  const result = sanitizeHealthPayload0747(payload0747());
+  assert.deepEqual(result.recentReleases, []);
+});
+
 test("snapshot remoto de saude rejeita campos arbitrarios", () => {
   const value = payload0747();
   value.events[0].rawHtml = "<html>segredo</html>";

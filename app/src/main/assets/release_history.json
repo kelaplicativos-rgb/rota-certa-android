@@ -2,6 +2,33 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.765",
+      "build": 6056,
+      "date": "2026-10-09",
+      "title": "Auditoria remota de versoes e diagnosticos",
+      "summary": "Consulta autenticada do historico de mudancas integrada ao snapshot de saude e ao pacote ZIP tecnico.",
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Oito versoes recentes no snapshot de saude",
+        "Registro release-audit.json no ZIP tecnico"
+      ],
+      "fixed": [
+        "Revogacao do toggle considerada nas consultas remotas de saude e ZIP"
+      ],
+      "improved": [
+        "Historico rastreavel da versao instalada",
+        "FAROL e Agenda preservados"
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Central de Saude",
+        "Central de Versoes",
+        "Privacidade"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.764",
       "build": 6055,
       "date": "2026-10-09",
@@ -25,7 +52,12 @@
       ],
       "regressions": [],
       "resolvedRegressions": [],
-      "modulesAffected": ["BlaBlaCar", "Consulta HTML", "Coleta remota", "Privacidade"],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Consulta HTML",
+        "Coleta remota",
+        "Privacidade"
+      ],
       "detailsComplete": true
     },
     {
@@ -51,7 +83,12 @@
       ],
       "regressions": [],
       "resolvedRegressions": [],
-      "modulesAffected": ["Coleta remota", "Central de Saúde", "BlaBlaCar", "Privacidade"],
+      "modulesAffected": [
+        "Coleta remota",
+        "Central de Saúde",
+        "BlaBlaCar",
+        "Privacidade"
+      ],
       "detailsComplete": true
     },
     {

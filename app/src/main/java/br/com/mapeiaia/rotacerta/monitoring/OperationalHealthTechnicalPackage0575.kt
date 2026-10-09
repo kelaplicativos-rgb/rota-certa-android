@@ -9,6 +9,8 @@ import android.provider.MediaStore
 import br.com.mapeiaia.rotacerta.BuildConfig
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import br.com.mapeiaia.rotacerta.trips.AgendaSyncCrashTraceStore
+import br.com.mapeiaia.rotacerta.versioncenter.ReleaseHistoryStore
+import br.com.mapeiaia.rotacerta.versioncenter.VersionHistoryLogic
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.text.SimpleDateFormat
@@ -54,6 +56,7 @@ object OperationalHealthTechnicalPackage0575 {
         val entries = linkedMapOf(
             "README.txt" to readme0575(incidentId),
             "manifest.json" to manifest0575(appContext, generatedAt, incidentId, selectedIncidents.size, evidenceEvents.size),
+            "release-audit.json" to releaseAudit0765(appContext),
             "health-snapshot.json" to healthSnapshot0575(health),
             "incident-evidence.json" to incidentEvidence0575(selectedIncidents, evidenceEvents),
             "events.ndjson" to eventsNdjson0575(evidenceEvents),
@@ -119,6 +122,38 @@ object OperationalHealthTechnicalPackage0575 {
             (sorted.take(firstHalf) + sorted.takeLast(lastHalf)).distinct().sorted()
         }
         return bounded.map(events::get)
+    }
+
+    private fun releaseAudit0765(context: Context): String {
+        val source = ReleaseHistoryStore.load(context)
+        val releases = JSONArray()
+        VersionHistoryLogic.sortedReleases(source.releases).take(8).forEach { item ->
+            val safe: (String) -> String = { value ->
+                UnifiedDebugEventStore.sanitizeForExport(value).take(240)
+            }
+            fun bounded(values: List<String>): JSONArray {
+                val array = JSONArray()
+                values.take(10).forEach { array.put(safe(it)) }
+                return array
+            }
+            releases.put(JSONObject()
+                .put("version", safe(item.version))
+                .put("build", item.build)
+                .put("status", safe(item.status.orEmpty()))
+                .put("implemented", bounded(item.implemented))
+                .put("fixed", bounded(item.fixed))
+                .put("improved", bounded(item.improved))
+                .put("modulesAffected", bounded(item.modulesAffected))
+            )
+        }
+        return JSONObject()
+            .put("schema", "rota-certa-release-audit-v1")
+            .put("installedVersion", BuildConfig.VERSION_NAME)
+            .put("installedBuild", BuildConfig.VERSION_CODE)
+            .put("installedSha", BuildConfig.BUILD_GIT_SHA)
+            .put("capturedAtMillis", System.currentTimeMillis())
+            .put("releases", releases)
+            .toString(2)
     }
 
     private fun manifest0575(
@@ -264,6 +299,7 @@ object OperationalHealthTechnicalPackage0575 {
         appendLine()
         appendLine("Arquivos:")
         appendLine("- manifest.json: versao/build/SHA/aparelho e escopo.")
+        appendLine("- release-audit.json: implementacoes, correcoes, melhorias e modulos incorporados ao APK.")
         appendLine("- health-snapshot.json: estado calculado da Central.")
         appendLine("- incident-evidence.json: incidentes, fingerprints, causa provavel e politica de selecao.")
         appendLine("- events.ndjson: contexto cronologico selecionado ao redor dos desvios e IDs correlacionados.")
