@@ -1,4 +1,4 @@
-name: Deploy Rota Certa 0.1.758 remote covers polling
+name: Deploy Rota Certa 0.1.760 remote trip details polling
 on:
   push:
     branches:
@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
-      SOURCE_SHA: e67706adc6b4e1402a153f8b5298a8831958f59e
+      SOURCE_SHA: fc8360cb9d00aacb2ad971ba02ad105c24ae0624
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
     steps:
@@ -29,11 +29,15 @@ jobs:
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           grep -Fq 'async function pollDriverPending0758' trip-platform/functions/standalone-covers-remote-0736.js
           grep -Fq '/v1/driver/standalone-covers/pending' trip-platform/functions/index.js
+          grep -Fq '/v1/driver/blablacar-query/pending' trip-platform/functions/index.js
+          grep -Fq 'async function pollDriverPending0760' trip-platform/functions/blablacar-trip-query-remote-0737.js
+          grep -Fq 'normalizeUsername(job.driverUsername) !== driver.username' trip-platform/functions/blablacar-trip-query-remote-0737.js
           grep -Fq 'const driver = await requireDriver(req, res)' trip-platform/functions/standalone-covers-remote-0736.js
           grep -Fq 'normalizeUsername(job.driverUsername) !== driver.username' trip-platform/functions/standalone-covers-remote-0736.js
           node --check trip-platform/functions/index.js
           node --check trip-platform/functions/standalone-covers-remote-0736.js
-          node --test trip-platform/functions/test/standalone-covers-remote-0736.test.js trip-platform/functions/test/all-consults-0757.test.js
+          node --check trip-platform/functions/blablacar-trip-query-remote-0737.js
+          node --test trip-platform/functions/test/standalone-covers-remote-0736.test.js trip-platform/functions/test/blablacar-trip-query-remote-0737.test.js trip-platform/functions/test/all-consults-0757.test.js
       - name: Install Google Cloud SDK credentials
         uses: google-github-actions/auth@v2
         with:
@@ -72,14 +76,19 @@ jobs:
           done
           echo "privatePendingRouteHttpStatus=$STATUS"
           test "$STATUS" = "401"
+          TRIP_STATUS="$(curl --silent --show-error -o /tmp/trip-query-unauthorized.json -w '%{http_code}' \
+            "$BASE/v1/driver/blablacar-query/pending?ci=$SOURCE_SHA" || true)"
+          echo "privateTripQueryRouteHttpStatus=$TRIP_STATUS"
+          test "$TRIP_STATUS" = "401"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           printf '%s\n' "$SOURCE_SHA" > /tmp/backend-source-sha.txt
       - name: Upload deploy proof
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: backend-polling-0758-proof-${{ github.run_id }}
+          name: backend-trip-polling-0760-proof-${{ github.run_id }}
           path: |
             /tmp/backend-source-sha.txt
             /tmp/pending-unauthorized.json
+            /tmp/trip-query-unauthorized.json
           if-no-files-found: warn
