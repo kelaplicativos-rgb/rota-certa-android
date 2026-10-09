@@ -51,6 +51,14 @@ function capabilities0757() {
       supports: ["profileUuid", "tripId", "latest", "refresh"],
     },
     {
+      id: "technical-zip",
+      mode: "REMOTE_COLLECTOR",
+      authority: "remote-health-0747:TECHNICAL_ZIP",
+      readOnly: true,
+      supports: ["refresh", "latest", "download", "consent"],
+      note: "ZIP sanitizado capturado somente apos consentimento do motorista.",
+    },
+    {
       id: "reports",
       mode: "DERIVED_QUERY",
       authority: "canonical-query-sources",
