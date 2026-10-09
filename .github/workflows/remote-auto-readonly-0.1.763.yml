@@ -118,4 +118,3 @@ jobs:
             /tmp/apk-signer.txt
             /tmp/apk-sha256.txt
           if-no-files-found: warn
-
