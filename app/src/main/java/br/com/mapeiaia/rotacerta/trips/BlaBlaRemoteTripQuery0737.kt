@@ -178,6 +178,7 @@ internal object BlaBlaRemoteTripQueryScheduler0737 {
     fun enqueue(context: Context, rawJobId: String?): Boolean {
         val jobId = normalizeBlaBlaRemoteTripQueryJobId0737(rawJobId) ?: return false
         val request = OneTimeWorkRequestBuilder<BlaBlaRemoteTripQueryWorker0737>()
+            .addTag(RemoteSupportAutoAccess0763.WORK_TAG)
             .setInputData(
                 Data.Builder()
                     .putString(BLABLACAR_REMOTE_TRIP_QUERY_JOB_ID_0737, jobId)
@@ -207,6 +208,9 @@ internal class BlaBlaRemoteTripQueryWorker0737(
     private val json0737 = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     override suspend fun doWork(): Result {
+        if (!RemoteSupportAutoAccess0763.enabled(applicationContext, "blablacar_trip_query_collect")) {
+            return Result.failure()
+        }
         val jobId = normalizeBlaBlaRemoteTripQueryJobId0737(
             inputData.getString(BLABLACAR_REMOTE_TRIP_QUERY_JOB_ID_0737),
         ) ?: return Result.failure()
