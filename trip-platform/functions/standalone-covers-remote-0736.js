@@ -249,6 +249,25 @@ function remoteCapablePushToken0736(data, nowMillis = Date.now()) {
 }
 
 
+/**
+ * Authenticated device-poll heartbeat. This is not proof that a BlaBlaCar
+ * collection completed: it only proves a driver-authenticated poll was received.
+ * No device identifier, credentials, or passenger data leave this tenant scope.
+ */
+function remotePollStatus0766(state, nowMillis = Date.now()) {
+  const raw = state && typeof state === "object" ? state : {};
+  const now = Number(nowMillis);
+  const last = Number(raw.lastAuthenticatedPollAtMillis0766 || 0);
+  const age = last > 0 && now >= last ? now - last : null;
+  const enabled = raw.remoteAutoAccessEnabled0764 === true;
+  return {
+    remoteAccessEnabled: enabled,
+    lastAuthenticatedPollAtMillis: last,
+    authenticatedPollingRecent: enabled && age !== null && age <= 90_000,
+    authenticatedPollAgeMillis: age,
+  };
+}
+
 function pendingConsentJob0758(job, nowMillis = Date.now()) {
   const raw = job && typeof job === "object" ? job : {};
   const state = clean0736(raw.state, 32).toUpperCase();
@@ -538,8 +557,15 @@ function createStandaloneCoversRemote0736({
     const driver = await requireDriver(req, res);
     if (!driver) return;
     if (!driver.username) return fail(res, 400, "driver_username_required", "Identidade pública não configurada.");
-    const stateSnap = await db.collection(STATE_COLLECTION_0736).doc(driver.username).get();
+    const stateRef = db.collection(STATE_COLLECTION_0736).doc(driver.username);
+    const stateSnap = await stateRef.get();
     const state = stateSnap.exists ? stateSnap.data() : {};
+    const now = Date.now();
+    // Throttle writes to at most one per 30 seconds even if Android polls every 10.
+    if (state.remoteAutoAccessEnabled0764 === true &&
+        now - Number(state.lastAuthenticatedPollAtMillis0766 || 0) >= 30_000) {
+      await stateRef.set({ lastAuthenticatedPollAtMillis0766: now }, { merge: true });
+    }
     const jobId = canonicalUuid0736(state.latestJobId);
     if (!jobId) return json(res, 200, { pending: false, jobId: "", state: "NONE" });
     const jobSnap = await db.collection(JOB_COLLECTION_0736).doc(jobId).get();
@@ -604,8 +630,11 @@ function createStandaloneCoversRemote0736({
   async function latestPublic0736(req, res, tokenRaw) {
     const access = await resolveAccess0736(tokenRaw);
     if (!access) return fail(res, 404, "standalone_cover_access_not_found", "Acesso privado à coleta remota não encontrado ou expirado.");
+    res.set("Cache-Control", "private, no-store, max-age=0");
+    res.set("Pragma", "no-cache");
     const stateSnap = await db.collection(STATE_COLLECTION_0736).doc(access.username).get();
     const state = stateSnap.exists ? stateSnap.data() : {};
+    const pollStatus = remotePollStatus0766(state);
     const jobId = canonicalUuid0736(state.latestJobId);
     if (!jobId) {
       return json(res, 200, {
@@ -614,11 +643,15 @@ function createStandaloneCoversRemote0736({
         result: null,
         errorCode: "",
         statusMeaning: "Nenhuma coleta remota foi concluída ainda.",
+        ...pollStatus,
       });
     }
     const jobSnap = await db.collection(JOB_COLLECTION_0736).doc(jobId).get();
     if (!jobSnap.exists) {
-      return json(res, 200, { state: "PENDING_UNKNOWN", jobId, result: null, errorCode: "JOB_NOT_AVAILABLE" });
+      return json(res, 200, {
+        state: "PENDING_UNKNOWN", jobId, result: null,
+        errorCode: "JOB_NOT_AVAILABLE", ...pollStatus,
+      });
     }
     const job = jobSnap.data();
     const now = Date.now();
@@ -663,6 +696,7 @@ function createStandaloneCoversRemote0736({
       result: resultPayload,
       errorCode,
       errorMessage,
+      ...pollStatus,
       statusMeaning: stateValue === "COMPLETE"
         ? "Inventário de capas comprovado pelo aparelho."
         : "Inventário não comprovado como completo; trate como desconhecido.",
@@ -789,5 +823,6 @@ module.exports = {
   standaloneCoverRefreshDecision0736,
   remoteCapablePushToken0736,
   pendingConsentJob0758,
+  remotePollStatus0766,
   createStandaloneCoversRemote0736,
 };
