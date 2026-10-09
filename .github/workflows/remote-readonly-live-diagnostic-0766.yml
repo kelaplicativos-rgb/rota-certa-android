@@ -1,0 +1,86 @@
+name: Rota Certa read-only remote collector diagnostic 0766
+
+on:
+  push:
+    branches: ['agent/remote-readonly-live-diagnostic-0766']
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Firebase Admin client
+        run: npm --prefix trip-platform/functions install --no-audit --no-fund
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      - name: Read authenticated collector state without secrets or trip data
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          "use strict";
+          const admin = require("./trip-platform/functions/node_modules/firebase-admin");
+          const cleanState = value => {
+            const s = String(value || "").trim().toUpperCase();
+            return ["REQUESTED", "PUSH_SENT", "PENDING_DEVICE", "RUNNING", "COMPLETE", "PARTIAL", "FAILED", "EXPIRED", "NONE"].includes(s) ? s : "UNKNOWN";
+          };
+          const safeError = value => {
+            const x = String(value || "").trim();
+            return /^[A-Z][A-Z0-9_]{1,72}$/.test(x) ? x : (x ? "REDACTED" : "");
+          };
+          async function main() {
+            admin.initializeApp({ projectId: process.env.FIREBASE_PROJECT_ID || "rota-certa-7ccc8" });
+            const db = admin.firestore(), driver = "ezequiel";
+            const now = Date.now();
+            const cover = await db.collection("tripStandaloneCoverRemoteState0736").doc(driver).get();
+            const c = cover.exists ? cover.data() : {};
+            const health = await db.collection("tripRemoteHealthState0747").doc(driver).get();
+            const h = health.exists ? health.data() : {};
+            const ids = [
+              ["covers", "tripStandaloneCoverJobs0736", c.latestJobId],
+              ["health", "tripRemoteHealthJobs0747", h.latestHealthJobId],
+              ["technical", "tripRemoteHealthJobs0747", h.latestTechnicalJobId],
+            ];
+            const jobs = {};
+            for(const [kind, col, id] of ids) {
+              if(typeof id!=="string" || !/^[a-f0-9-]{36}$/i.test(id)) {
+                jobs[kind]={state:"NONE"};continue;
+              }
+              const snap = await db.collection(col).doc(id).get();
+              const v = snap.exists ? snap.data() : {};
+              jobs[kind]={
+                state:cleanState(v.state),
+                errorCode:safeError(v.errorCode),
+                ageMinutes: Number(v.requestedAtMillis)>0 ? Math.round((now-Number(v.requestedAtMillis))/60000) : null,
+                completed:!!v.completedAtMillis,
+                resultPresent:v.payload!=null,
+              };
+            }
+            const last=Number(c.lastAuthenticatedPollAtMillis0766||0);
+            const age=last>0? Math.max(0, Math.round((now-last)/1000)):null;
+            const diagnostics = {
+              checkedAtUtc:new Date(now).toISOString(),
+              driverStatePresent:cover.exists,
+              healthStatePresent:health.exists,
+              remoteToggleServerState:c.remoteAutoAccessEnabled0764===true?"ON":c.remoteAutoAccessEnabled0764===false?"OFF":"UNKNOWN",
+              capabilityRecordPresent:!!c.accessTokenHash,
+              deviceAuthenticatedPollAgeSeconds:age,
+              deviceAuthenticatedPollingRecent:c.remoteAutoAccessEnabled0764===true && age!==null && age<=90,
+              jobs,
+            };
+            process.stdout.write(JSON.stringify(diagnostics,null,2)+"\n");
+          }
+          main().catch(e=>{process.stderr.write("Diagnostic query failed: "+String(e.code||e.name||"UNKNOWN").slice(0,80)+"\n"); process.exitCode=1;});
+          NODE
