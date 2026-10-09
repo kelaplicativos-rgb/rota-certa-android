@@ -2,6 +2,34 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.760",
+      "build": 6051,
+      "date": "2026-10-09",
+      "title": "Consulta detalhada remota sem FCM",
+      "summary": "Escuta detalhada por motorista com aceite explicito.",
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Polling autenticado de consultas de viagem",
+        "Aceitar/Recusar antes da coleta"
+      ],
+      "fixed": [
+        "PENDING_DEVICE de viagem chega ao celular",
+        "Consentimento de outro pedido nao e substituido"
+      ],
+      "improved": [
+        "FAROL, Agenda e Timeline preservados",
+        "Somente COMPLETE comprova disponibilidade"
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Coleta remota",
+        "Privacidade"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.759",
       "build": 6050,
       "date": "2026-10-09",
