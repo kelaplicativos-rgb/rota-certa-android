@@ -25,14 +25,31 @@ internal object RemoteSupportNotification0744 {
         context: Context,
         event: String,
         jobId: String,
-    ) {
+    ): Boolean {
         val app = context.applicationContext
         val normalizedJobId = when (event) {
             "standalone_covers_collect" -> normalizeStandaloneCoversRemoteJobId0736(jobId)
             "blablacar_trip_query_collect" -> normalizeBlaBlaRemoteTripQueryJobId0737(jobId)
             "remote_health_collect" -> normalizeRemoteHealthJobId0747(jobId)
             else -> null
-        } ?: return
+        } ?: return false
+
+        // A deliberate on-device opt-in substitutes for repeated in-app popups.
+        // The receiver checks authorization again, so revocation wins races.
+        if (RemoteSupportAutoAccess0763.enabled(app, event)) {
+            UnifiedDebugEventStore.recordAlways(
+                "REMOTE_SUPPORT_AUTO_APPROVAL_REQUESTED_0763",
+                app.packageName,
+                "event=${event.take(48)} jobPresent=true completed=false",
+            )
+            app.sendBroadcast(Intent(app, RemoteSupportConsentReceiver0746::class.java).apply {
+                action = RemoteSupportConsentReceiver0746.ACTION_ACCEPT
+                putExtra(RemoteSupportConsentReceiver0746.EXTRA_EVENT, event)
+                putExtra(RemoteSupportConsentReceiver0746.EXTRA_JOB_ID, normalizedJobId)
+                putExtra(RemoteSupportConsentReceiver0746.EXTRA_AUTO_APPROVED, true)
+            })
+            return true
+        }
 
         RemoteSupportConsentStore0746.add(app, event, normalizedJobId)
         RemoteSupportAttention0743.markRequestPending(
@@ -80,7 +97,7 @@ internal object RemoteSupportNotification0744 {
                 app.packageName,
                 "event=${event.take(48)} jobPresent=true consentRequired=true",
             )
-            return
+            return false
         }
 
         val notification = NotificationCompat.Builder(app, CHANNEL_ID)
@@ -120,5 +137,6 @@ internal object RemoteSupportNotification0744 {
                 "event=${event.take(48)} error=${error.javaClass.simpleName.take(80)}",
             )
         }
+        return false
     }
 }

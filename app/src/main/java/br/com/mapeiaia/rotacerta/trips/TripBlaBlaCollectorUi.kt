@@ -853,7 +853,8 @@ fun BlaBlaCollectorPanel(
                         remotePolling0758 = false
                         standaloneRemoteMessage0739 = "Escuta remota desligada. Nenhuma solicitação será recebida até reativar."
                     } else if (android.os.Build.VERSION.SDK_INT >= 23 &&
-                        !android.provider.Settings.canDrawOverlays(context)) {
+                        !android.provider.Settings.canDrawOverlays(context) &&
+                        !RemoteSupportAutoAccess0763.enabled(context, "remote_health_collect")) {
                         standaloneRemoteMessage0739 =
                             "Autorize a sobreposição de tela para mostrar o pop-up sobre outros aplicativos; depois volte e ative a escuta."
                         context.startActivity(android.content.Intent(
@@ -869,7 +870,11 @@ fun BlaBlaCollectorPanel(
                         }.onSuccess {
                             remotePolling0758 = true
                             standaloneRemoteMessage0739 =
-                                "Escuta remota ativada (sem token FCM). A leitura só começa após Aceitar."
+                                if (RemoteSupportAutoAccess0763.enabled(context, "remote_health_collect")) {
+                                    "Escuta remota ativa. Consultas autorizadas automaticamente; Android continua exigindo suas permissões próprias."
+                                } else {
+                                    "Escuta remota ativada (sem token FCM). A leitura só começa após Aceitar."
+                                }
                         }.onFailure { error ->
                             remotePolling0758 = false
                             standaloneRemoteMessage0739 =
@@ -882,7 +887,8 @@ fun BlaBlaCollectorPanel(
                 Text(if (remotePolling0758) "■ Desligar escuta remota" else "◉ Ativar escuta remota (sem FCM)")
             }
             Text("Enquanto a escuta estiver ativa, o Android mantém uma notificação de serviço. " +
-                "Pode haver limites de execução em segundo plano; não é leitura automática nem dispensa o seu aceite.")
+                "Pode haver limites de execução em segundo plano. Com autorização automática desligada, cada consulta exige Aceitar; " +
+                "com ela ligada, consultas autenticadas somente-leitura dispensam o pop-up interno, mas não permissões do Android.")
             Text(
                 "Compartilhe este acesso somente com quem pode consultar suas viagens. " +
                     "Capas continuam isoladas; a consulta HTML dirigida lê uma viagem por profileUuid + tripId e não envia cookies, senha ou HTML bruto.",

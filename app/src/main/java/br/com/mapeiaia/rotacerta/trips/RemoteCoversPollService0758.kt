@@ -110,7 +110,7 @@ internal class RemoteCoversPollService0758 : Service() {
         }
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL)
             .setContentTitle("Rota Certa — escuta remota ativa")
-            .setContentText("Aguardando consultas de capas e viagens para aceitar ou recusar.")
+            .setContentText("Consultas remotas conforme a autorização definida no aplicativo.")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -210,7 +210,9 @@ internal class RemoteCoversPollService0758 : Service() {
     private fun showConsent(event: String, jobId: String) {
         // Every job remains actionable via a local notification even if a
         // different consent popup is currently shown.
-        RemoteSupportNotification0744.show(this, event, jobId)
+        // Automatic approval is possible only after the driver opted in locally.
+        // This covers both health/ZIP and BlaBlaCar requests; Android OS prompts remain authoritative.
+        if (RemoteSupportNotification0744.show(this, event, jobId)) return
         if (!isRunning || !Settings.canDrawOverlays(this) || activePopup != null) return
         val context = this
         val dp = resources.displayMetrics.density

@@ -68,6 +68,14 @@ class RemoteSupportConsentReceiver0746 : BroadcastReceiver() {
             else -> null
         } ?: return
 
+        // Never accept an automatic request after the tenant revokes the opt-in.
+        // Fall back to an explicit local permission decision in a revoke race.
+        if (intent.getBooleanExtra(EXTRA_AUTO_APPROVED, false) &&
+            !RemoteSupportAutoAccess0763.enabled(context, event)) {
+            RemoteSupportNotification0744.show(context, event, jobId)
+            return
+        }
+
         val app = context.applicationContext
         val notificationId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, RemoteSupportNotification0744.notificationId(jobId))
         (app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(notificationId)
@@ -163,5 +171,6 @@ class RemoteSupportConsentReceiver0746 : BroadcastReceiver() {
         const val EXTRA_EVENT = "remote_support_event_0746"
         const val EXTRA_JOB_ID = "remote_support_job_id_0746"
         const val EXTRA_NOTIFICATION_ID = "remote_support_notification_id_0746"
+        const val EXTRA_AUTO_APPROVED = "remote_support_auto_approved_0763"
     }
 }

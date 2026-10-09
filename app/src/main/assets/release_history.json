@@ -2,6 +2,32 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.763",
+      "build": 6054,
+      "date": "2026-10-09",
+      "title": "Consulta remota automática autorizada uma vez",
+      "summary": "Opt-in revogável no aparelho dispensa pop-ups internos apenas para consultas remotas somente-leitura autenticadas.",
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Chave de autorização automática desativada por padrão e isolada por motorista",
+        "Processamento autenticado de capas, viagem, saúde e ZIP técnico mediante opt-in explícito",
+        "Revogação imediata no aplicativo e trilha de auditoria",
+        "Escuta remota pode iniciar sem sobreposição quando autorização automática está ligada"
+      ],
+      "fixed": [
+        "Pop-up repetitivo desnecessário após autorização persistente",
+        "Revogação revalidada pelo receptor antes de executar consulta automática"
+      ],
+      "improved": [
+        "Preservados FAROL, Agenda, Timeline, assinatura e dados já instalados",
+        "Permissões obrigatórias do Android continuam sendo respeitadas"
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": ["Coleta remota", "Central de Saúde", "BlaBlaCar", "Privacidade"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.762",
       "build": 6053,
       "date": "2026-10-09",
