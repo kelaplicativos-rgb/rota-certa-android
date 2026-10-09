@@ -46,6 +46,15 @@ internal fun shouldOfferRemoteConsent0758(
     job.jobId != seenJobId &&
     job.expiresAtMillis > nowMillis
 
+internal fun shouldOfferRemoteTripConsent0760(
+    job: StandaloneCoversPendingJob0758,
+    seenJobId: String,
+    nowMillis: Long,
+): Boolean = job.pending &&
+    normalizeBlaBlaRemoteTripQueryJobId0737(job.jobId) != null &&
+    job.jobId != seenJobId &&
+    job.expiresAtMillis > nowMillis
+
 internal class RemoteCoversPollService0758 : Service() {
     companion object {
         @Volatile var isRunning: Boolean = false
@@ -58,7 +67,9 @@ internal class RemoteCoversPollService0758 : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val main = Handler(Looper.getMainLooper())
     private var polling: Job? = null
-    private var seenJobId: String = ""
+    private var seenCoverJobId: String = ""
+    private var seenTripJobId: String = ""
+    private var activePopupEvent: String = ""
     private var activePopup: View? = null
     private var overlayManager: WindowManager? = null
 
@@ -73,12 +84,12 @@ internal class RemoteCoversPollService0758 : Service() {
         val manager = getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= 26) {
             manager.createNotificationChannel(NotificationChannel(
-                CHANNEL, "Consulta remota de capas", NotificationManager.IMPORTANCE_LOW
-            ).apply { description = "Escuta ativada pelo motorista; nenhuma capa é lida sem autorização." })
+                CHANNEL, "Consulta remota BlaBlaCar", NotificationManager.IMPORTANCE_LOW
+            ).apply { description = "Escuta ativada pelo motorista; nenhuma viagem é lida sem autorização." })
         }
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL)
             .setContentTitle("Rota Certa — escuta remota ativa")
-            .setContentText("Aguardando solicitações de capas para aceitar ou recusar.")
+            .setContentText("Aguardando consultas de capas e viagens para aceitar ou recusar.")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -95,16 +106,41 @@ internal class RemoteCoversPollService0758 : Service() {
                     val settings = TripStore(applicationContext).onlineSettings()
                     if (settings.configured && settings.driverUsername.isNotBlank() &&
                         settings.driverToken.isNotBlank()) {
-                        val pending = TripRemoteApi(settings).pollStandaloneCoversPending0758()
+                        val api = TripRemoteApi(settings)
                         val now = System.currentTimeMillis()
-                        if (shouldOfferRemoteConsent0758(pending, seenJobId, now)) {
-                            seenJobId = pending.jobId
-                            val jobId = pending.jobId
-                            main.post { showConsent(jobId) }
-                        } else if (!pending.pending) {
-                            seenJobId = ""
-                            main.post { closePopup() }
-                        }
+                        // Independent polls: failure of one source must not suppress the other.
+                        runCatching { api.pollStandaloneCoversPending0758() }
+                            .onSuccess { pending ->
+                                if (shouldOfferRemoteConsent0758(pending, seenCoverJobId, now)) {
+                                    seenCoverJobId = pending.jobId
+                                    val jobId = pending.jobId
+                                    main.post { showConsent("standalone_covers_collect", jobId) }
+                                } else if (!pending.pending) {
+                                    seenCoverJobId = ""
+                                    main.post { closePopupFor("standalone_covers_collect") }
+                                }
+                            }.onFailure { error ->
+                                UnifiedDebugEventStore.record(
+                                    "REMOTE_COVERS_POLL_FAILED_0758", packageName,
+                                    "source=covers reason=${error.javaClass.simpleName.take(64)}"
+                                )
+                            }
+                        runCatching { api.pollBlaBlaTripQueryPending0760() }
+                            .onSuccess { pending ->
+                                if (shouldOfferRemoteTripConsent0760(pending, seenTripJobId, now)) {
+                                    seenTripJobId = pending.jobId
+                                    val jobId = pending.jobId
+                                    main.post { showConsent("blablacar_trip_query_collect", jobId) }
+                                } else if (!pending.pending) {
+                                    seenTripJobId = ""
+                                    main.post { closePopupFor("blablacar_trip_query_collect") }
+                                }
+                            }.onFailure { error ->
+                                UnifiedDebugEventStore.record(
+                                    "REMOTE_TRIP_QUERY_POLL_FAILED_0760", packageName,
+                                    "source=trip_query reason=${error.javaClass.simpleName.take(64)}"
+                                )
+                            }
                     }
                 } catch (error: Exception) {
                     UnifiedDebugEventStore.record(
@@ -118,14 +154,11 @@ internal class RemoteCoversPollService0758 : Service() {
         return START_NOT_STICKY
     }
 
-    private fun showConsent(jobId: String) {
-        if (!isRunning || !Settings.canDrawOverlays(this)) {
-            // Fallback is a local notification, NOT an FCM push.
-            RemoteSupportNotification0744.show(this, "standalone_covers_collect", jobId)
-            return
-        }
-        closePopup()
-        RemoteSupportNotification0744.show(this, "standalone_covers_collect", jobId)
+    private fun showConsent(event: String, jobId: String) {
+        // Every job remains actionable via a local notification even if a
+        // different consent popup is currently shown.
+        RemoteSupportNotification0744.show(this, event, jobId)
+        if (!isRunning || !Settings.canDrawOverlays(this) || activePopup != null) return
         val context = this
         val dp = resources.displayMetrics.density
         fun d(value: Int): Int = (value * dp).toInt()
@@ -146,7 +179,9 @@ internal class RemoteCoversPollService0758 : Service() {
             setTypeface(null, Typeface.BOLD)
         })
         panel.addView(TextView(context).apply {
-            text = "Permitir leitura SOMENTE das capas BlaBlaCar? Nenhuma viagem será alterada."
+            text = if (event == "blablacar_trip_query_collect")
+                "Permitir consulta detalhada de UMA viagem BlaBlaCar? Nenhuma viagem será alterada."
+            else "Permitir leitura SOMENTE das capas BlaBlaCar? Nenhuma viagem será alterada."
             setTextColor(Color.WHITE)
             textSize = 15f
             setPadding(0, d(10), 0, d(12))
@@ -158,7 +193,7 @@ internal class RemoteCoversPollService0758 : Service() {
             setOnClickListener {
                 val request = Intent(context, RemoteSupportConsentReceiver0746::class.java).apply {
                     this.action = action
-                    putExtra(RemoteSupportConsentReceiver0746.EXTRA_EVENT, "standalone_covers_collect")
+                    putExtra(RemoteSupportConsentReceiver0746.EXTRA_EVENT, event)
                     putExtra(RemoteSupportConsentReceiver0746.EXTRA_JOB_ID, jobId)
                     putExtra(RemoteSupportConsentReceiver0746.EXTRA_NOTIFICATION_ID,
                         RemoteSupportNotification0744.notificationId(jobId))
@@ -185,6 +220,7 @@ internal class RemoteCoversPollService0758 : Service() {
                 android.graphics.PixelFormat.TRANSLUCENT
             ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; y = d(52) })
             overlayManager = window
+            activePopupEvent = event
             activePopup = panel
         } catch (error: Exception) {
             UnifiedDebugEventStore.record(
@@ -196,9 +232,14 @@ internal class RemoteCoversPollService0758 : Service() {
         main.postDelayed({ if (activePopup === panel) closePopup() }, 30_000)
     }
 
+    private fun closePopupFor(event: String) {
+        if (activePopupEvent == event) closePopup()
+    }
+
     private fun closePopup() {
         val view = activePopup ?: return
         activePopup = null
+        activePopupEvent = ""
         runCatching { overlayManager?.removeViewImmediate(view) }
         overlayManager = null
     }
