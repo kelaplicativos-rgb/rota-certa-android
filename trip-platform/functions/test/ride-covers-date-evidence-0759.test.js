@@ -57,6 +57,11 @@ test("date shown only in the card body is extracted without opening details", ()
   assert.match(h.read().covers[0].dateText, /18 Nov/i);
 });
 
+test("explicit year is preserved even when the day and month match another year", () => {
+  const h = makeHarness0759("Qua., 18 Nov. 2027");
+  assert.equal(h.read().covers[0].dateText, "18 Nov. 2027");
+});
+
 test("date in an unambiguous single-card wrapper can be used", () => {
   const h = makeHarness0759("Três Corações Santo André", "Quarta-feira, 18 Nov. 2026");
   assert.match(h.read().covers[0].dateText, /18 Nov/i);
