@@ -78,6 +78,7 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.trips.RemoteHealth0747ContractTest' \
             --tests 'br.com.mapeiaia.rotacerta.trips.RemoteHealthSnapshot0762ContractTest' \
             --tests 'br.com.mapeiaia.rotacerta.trips.RemoteAutoAccess0763ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.StandaloneRemoteAccessProvisioning0739Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPassengerDeepCapture0653Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.RemoteSupportConsent0746ContractTest' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRemoteTripQuery0737Test' \
