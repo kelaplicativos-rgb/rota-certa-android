@@ -34,6 +34,11 @@ internal object RemoteSupportNotification0744 {
             else -> null
         } ?: return false
 
+        // OFF means that no new remote phone collection can be authorized,
+        // including unsolicited push messages. Previously submitted snapshots
+        // are a separate server-side retention concern.
+        if (!RemoteSupportAutoAccess0763.enabled(app, event)) return false
+
         // A deliberate on-device opt-in substitutes for repeated in-app popups.
         // The receiver checks authorization again, so revocation wins races.
         if (RemoteSupportAutoAccess0763.enabled(app, event)) {
