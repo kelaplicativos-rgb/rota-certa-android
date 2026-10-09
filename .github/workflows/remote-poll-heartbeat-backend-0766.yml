@@ -1,0 +1,97 @@
+name: Rota Certa Remote Poll Heartbeat 0766 backend-only
+
+on:
+  push:
+    branches: ['agent/remote-poll-heartbeat-backend-0766']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: remote-poll-heartbeat-0766-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check backend-only scope and JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/functions/standalone-covers-remote-0736.js
+          node --check trip-platform/functions/test/remote-access-toggle-0764.test.js
+          git diff --check 1bcdd821db28e07a0f8c0fbcdc55a03d6dc1fabf...HEAD
+          if git diff --name-only 1bcdd821db28e07a0f8c0fbcdc55a03d6dc1fabf...HEAD | grep -Ev '^trip-platform/functions/(standalone-covers-remote-0736.js|test/remote-access-toggle-0764.test.js)$|^\.github/workflows/remote-poll-heartbeat-backend-0766.yml$'; then
+            echo 'Unexpected Android or out-of-scope modifications'; exit 1
+          fi
+      - name: Run polling, authorization, covers and health regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test \
+            trip-platform/functions/test/remote-access-toggle-0764.test.js \
+            trip-platform/functions/test/standalone-covers-remote-0736.test.js \
+            trip-platform/functions/test/remote-health-0747.test.js \
+            trip-platform/functions/test/remote-health-poll-0762.test.js \
+            trip-platform/functions/test/remote-technical-zip-0761.test.js \
+            trip-platform/functions/test/blablacar-trip-query-remote-0737.test.js | tee /tmp/heartbeat-tests.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rota-certa-backend-poll-tests-${{ github.sha }}
+          path: /tmp/heartbeat-tests.txt
+          if-no-files-found: warn
+
+  deploy:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install cloud function dependencies
+        run: npm --prefix trip-platform/functions install --no-audit --no-fund
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Deploy validated backend only
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          gcloud functions deploy tripApi \
+            --gen2 --project="$PROJECT" --region=southamerica-east1 \
+            --runtime=nodejs20 --source=trip-platform/functions \
+            --entry-point=tripApi --trigger-http --allow-unauthenticated \
+            --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$GITHUB_SHA" --quiet
+      - name: Prove live release and forbid unauthorized data
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 12 --retry-delay 3 -H 'Cache-Control: no-cache' --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health.txt
+          grep -Fq "\"backendGitSha\":\"$GITHUB_SHA\"" /tmp/live-health.txt
+          CODE="$(curl -sS -o /tmp/invalid-private-link.txt -w '%{http_code}' "$BASE/v1/public/standalone-covers/invalid_capability_token_000000000000000/latest")"
+          test "$CODE" = 404
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rota-certa-backend-poll-live-${{ github.sha }}
+          path: /tmp/live-health.txt
+          if-no-files-found: warn
