@@ -10,7 +10,7 @@ internal data class StandaloneRemoteConnection0739(
     val message: String
         get() = if (pushRegistered) {
             "Acesso privado disponível e escuta remota ligada, sem FCM. " +
-                "Toda leitura exige ACEITAR no pop-up."
+                "O pop-up só é dispensado com autorização automática ativada no aparelho."
         } else {
             "Acesso privado disponível. Ative a escuta remota abaixo para receber pedidos sem token FCM."
         }
