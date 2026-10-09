@@ -64,6 +64,16 @@ internal fun shouldOfferRemoteTechnicalConsent0761(
     job.jobId != seenJobId &&
     job.expiresAtMillis > nowMillis
 
+internal fun shouldOfferRemoteHealthConsent0762(
+    job: StandaloneCoversPendingJob0758,
+    seenJobId: String,
+    nowMillis: Long,
+): Boolean = job.pending &&
+    job.mode == "HEALTH_SNAPSHOT" &&
+    normalizeRemoteHealthJobId0747(job.jobId) != null &&
+    job.jobId != seenJobId &&
+    job.expiresAtMillis > nowMillis
+
 internal class RemoteCoversPollService0758 : Service() {
     companion object {
         @Volatile var isRunning: Boolean = false
@@ -79,6 +89,7 @@ internal class RemoteCoversPollService0758 : Service() {
     private var seenCoverJobId: String = ""
     private var seenTripJobId: String = ""
     private var seenTechnicalJobId: String = ""
+    private var seenHealthJobId: String = ""
     private var activePopupEvent: String = ""
     private var activePopup: View? = null
     private var overlayManager: WindowManager? = null
@@ -143,12 +154,28 @@ internal class RemoteCoversPollService0758 : Service() {
                                     main.post { showConsent("remote_health_collect", jobId) }
                                 } else if (!pending.pending) {
                                     seenTechnicalJobId = ""
-                                    main.post { closePopupFor("remote_health_collect") }
+                                    // A separate health snapshot popup must not be dismissed.
                                 }
                             }.onFailure { error ->
                                 UnifiedDebugEventStore.record(
                                     "REMOTE_TECHNICAL_POLL_FAILED_0761", packageName,
                                     "source=technical_zip reason=${error.javaClass.simpleName.take(64)}"
+                                )
+                            }
+                        runCatching { api.pollRemoteHealthPending0762() }
+                            .onSuccess { pending ->
+                                if (shouldOfferRemoteHealthConsent0762(pending, seenHealthJobId, now)) {
+                                    seenHealthJobId = pending.jobId
+                                    val jobId = pending.jobId
+                                    main.post { showConsent("remote_health_collect", jobId) }
+                                } else if (!pending.pending) {
+                                    seenHealthJobId = ""
+                                    // Keep separate ZIP technical consent open.
+                                }
+                            }.onFailure { error ->
+                                UnifiedDebugEventStore.record(
+                                    "REMOTE_HEALTH_POLL_FAILED_0762", packageName,
+                                    "source=health_snapshot reason=${error.javaClass.simpleName.take(64)}"
                                 )
                             }
                         runCatching { api.pollBlaBlaTripQueryPending0760() }
@@ -209,7 +236,7 @@ internal class RemoteCoversPollService0758 : Service() {
                 "blablacar_trip_query_collect" ->
                     "Permitir consulta detalhada de UMA viagem BlaBlaCar? Nenhuma viagem será alterada."
                 "remote_health_collect" ->
-                    "Permitir gerar e enviar o ZIP técnico sanitizado da Central de Saúde? Nenhuma viagem será alterada."
+                    "Permitir consultar a Central de Saúde e enviar o relatório sanitizado ou ZIP técnico solicitado? Nenhuma viagem será alterada."
                 else ->
                     "Permitir leitura SOMENTE das capas BlaBlaCar? Nenhuma viagem será alterada."
             }

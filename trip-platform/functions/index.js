@@ -11751,6 +11751,9 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     if (req.method === "GET" && path === "/v1/driver/remote-health/pending") {
       return await remoteHealth0747.pendingDriver0761(req, res);
     }
+    if (req.method === "GET" && path === "/v1/driver/remote-health/pending-snapshot") {
+      return await remoteHealth0747.pendingHealthDriver0762(req, res);
+    }
     if (
       req.method === "POST" &&
       parts.length === 6 &&

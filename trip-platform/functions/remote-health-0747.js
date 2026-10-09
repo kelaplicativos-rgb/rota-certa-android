@@ -452,6 +452,29 @@ function createRemoteHealth0747({
     });
   }
 
+  // Authenticated read-only polling when FCM push is unavailable.
+  // Consent is still required before any diagnostic is collected.
+  async function pendingHealthDriver0762(req, res) {
+    const driver = await requireDriver(req, res);
+    if (!driver) return;
+    const stateSnap = await db.collection(STATE_COLLECTION_0747).doc(driver.username).get();
+    const jobId = canonicalUuid0736((stateSnap.data() || {}).latestHealthJobId);
+    const jobSnap = jobId && await db.collection(JOB_COLLECTION_0747).doc(jobId).get();
+    const job = jobSnap && jobSnap.exists ? jobSnap.data() : {};
+    const pending = Boolean(job.mode === "HEALTH_SNAPSHOT" &&
+      ACTIVE_STATES_0747.has(job.state) && job.state !== "RUNNING" &&
+      Number(job.expiresAtMillis || 0) > Date.now());
+    res.set("Cache-Control", "no-store");
+    return json(res, 200, {
+      pending,
+      jobId: pending ? jobId : "",
+      state: pending ? job.state : "",
+      mode: pending ? job.mode : "",
+      requestedAtMillis: pending ? Number(job.requestedAtMillis || 0) : 0,
+      expiresAtMillis: pending ? Number(job.expiresAtMillis || 0) : 0,
+    });
+  }
+
   async function refreshPublic0747(req, res, tokenRaw) {
     const access = await resolveAccess0747(tokenRaw);
     if (!access) return fail(res, 404, "remote_health_access_not_found", "Acesso privado de saude nao encontrado ou expirado.");
@@ -603,7 +626,7 @@ function createRemoteHealth0747({
   }
 
   return { refreshPublic0747, latestPublic0747, ackJob0747, submitResult0747,
-    refreshTechnicalPublic0761, latestTechnicalPublic0761, downloadTechnicalPublic0761, pendingDriver0761 };
+    refreshTechnicalPublic0761, latestTechnicalPublic0761, downloadTechnicalPublic0761, pendingDriver0761, pendingHealthDriver0762 };
 }
 
 module.exports = {

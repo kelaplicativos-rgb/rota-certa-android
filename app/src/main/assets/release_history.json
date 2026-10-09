@@ -2,6 +2,34 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.762",
+      "build": 6053,
+      "date": "2026-10-09",
+      "title": "Central de Saúde — relatório remoto sem FCM",
+      "summary": "Polling autenticado do snapshot da Central de Saúde com autorização explícita.",
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Consulta remota autenticada de solicitações HEALTH_SNAPSHOT pendentes",
+        "Pop-up Aceitar/Recusar obrigatório antes da coleta"
+      ],
+      "fixed": [
+        "Relatório de saúde deixa de depender exclusivamente de notificação FCM",
+        "Pedido de ZIP técnico não encerra o pop-up de outro snapshot"
+      ],
+      "improved": [
+        "Isolamento do FAROL, Agenda e Timeline",
+        "Consulta de status não lê logs nem concede autorização"
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Central de Saúde",
+        "Suporte remoto",
+        "Privacidade"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.761",
       "build": 6052,
       "date": "2026-10-09",

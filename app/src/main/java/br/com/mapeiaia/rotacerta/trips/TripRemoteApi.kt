@@ -85,6 +85,7 @@ internal data class StandaloneCoversPendingJob0758(
     val state: String = "",
     val requestedAtMillis: Long = 0L,
     val expiresAtMillis: Long = 0L,
+    val mode: String = "",
 )
 
 @Serializable
@@ -1096,6 +1097,14 @@ class TripRemoteApi(
     internal suspend fun pollBlaBlaTripQueryPending0760(): StandaloneCoversPendingJob0758 = request(
         method = "GET",
         path = "/v1/driver/blablacar-query/pending",
+        requireDriverToken = true,
+        connectTimeoutMs = 8_000,
+        readTimeoutMs = 10_000,
+    )
+
+    internal suspend fun pollRemoteHealthPending0762(): StandaloneCoversPendingJob0758 = request(
+        method = "GET",
+        path = "/v1/driver/remote-health/pending-snapshot",
         requireDriverToken = true,
         connectTimeoutMs = 8_000,
         readTimeoutMs = 10_000,
