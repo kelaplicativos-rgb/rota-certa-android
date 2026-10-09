@@ -112,6 +112,7 @@ internal object RemoteHealthScheduler0747 {
     fun enqueue(context: Context, rawJobId: String?): Boolean {
         val jobId = normalizeRemoteHealthJobId0747(rawJobId) ?: return false
         val request = OneTimeWorkRequestBuilder<RemoteHealthWorker0747>()
+            .addTag(RemoteSupportAutoAccess0763.WORK_TAG)
             .setInputData(
                 Data.Builder()
                     .putString(REMOTE_HEALTH_JOB_ID_0747, jobId)
@@ -193,6 +194,9 @@ internal class RemoteHealthWorker0747(
     }
 
     override suspend fun doWork(): Result {
+        if (!RemoteSupportAutoAccess0763.enabled(applicationContext, "remote_health_collect")) {
+            return Result.failure()
+        }
         val jobId = normalizeRemoteHealthJobId0747(
             inputData.getString(REMOTE_HEALTH_JOB_ID_0747),
         ) ?: return Result.failure()
