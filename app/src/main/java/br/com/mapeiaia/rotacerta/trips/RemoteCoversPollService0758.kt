@@ -55,6 +55,15 @@ internal fun shouldOfferRemoteTripConsent0760(
     job.jobId != seenJobId &&
     job.expiresAtMillis > nowMillis
 
+internal fun shouldOfferRemoteTechnicalConsent0761(
+    job: StandaloneCoversPendingJob0758,
+    seenJobId: String,
+    nowMillis: Long,
+): Boolean = job.pending &&
+    normalizeRemoteHealthJobId0747(job.jobId) != null &&
+    job.jobId != seenJobId &&
+    job.expiresAtMillis > nowMillis
+
 internal class RemoteCoversPollService0758 : Service() {
     companion object {
         @Volatile var isRunning: Boolean = false
@@ -69,6 +78,7 @@ internal class RemoteCoversPollService0758 : Service() {
     private var polling: Job? = null
     private var seenCoverJobId: String = ""
     private var seenTripJobId: String = ""
+    private var seenTechnicalJobId: String = ""
     private var activePopupEvent: String = ""
     private var activePopup: View? = null
     private var overlayManager: WindowManager? = null
@@ -125,6 +135,22 @@ internal class RemoteCoversPollService0758 : Service() {
                                     "source=covers reason=${error.javaClass.simpleName.take(64)}"
                                 )
                             }
+                        runCatching { api.pollRemoteTechnicalPending0761() }
+                            .onSuccess { pending ->
+                                if (shouldOfferRemoteTechnicalConsent0761(pending, seenTechnicalJobId, now)) {
+                                    seenTechnicalJobId = pending.jobId
+                                    val jobId = pending.jobId
+                                    main.post { showConsent("remote_health_collect", jobId) }
+                                } else if (!pending.pending) {
+                                    seenTechnicalJobId = ""
+                                    main.post { closePopupFor("remote_health_collect") }
+                                }
+                            }.onFailure { error ->
+                                UnifiedDebugEventStore.record(
+                                    "REMOTE_TECHNICAL_POLL_FAILED_0761", packageName,
+                                    "source=technical_zip reason=${error.javaClass.simpleName.take(64)}"
+                                )
+                            }
                         runCatching { api.pollBlaBlaTripQueryPending0760() }
                             .onSuccess { pending ->
                                 if (shouldOfferRemoteTripConsent0760(pending, seenTripJobId, now)) {
@@ -179,9 +205,14 @@ internal class RemoteCoversPollService0758 : Service() {
             setTypeface(null, Typeface.BOLD)
         })
         panel.addView(TextView(context).apply {
-            text = if (event == "blablacar_trip_query_collect")
-                "Permitir consulta detalhada de UMA viagem BlaBlaCar? Nenhuma viagem será alterada."
-            else "Permitir leitura SOMENTE das capas BlaBlaCar? Nenhuma viagem será alterada."
+            text = when (event) {
+                "blablacar_trip_query_collect" ->
+                    "Permitir consulta detalhada de UMA viagem BlaBlaCar? Nenhuma viagem será alterada."
+                "remote_health_collect" ->
+                    "Permitir gerar e enviar o ZIP técnico sanitizado da Central de Saúde? Nenhuma viagem será alterada."
+                else ->
+                    "Permitir leitura SOMENTE das capas BlaBlaCar? Nenhuma viagem será alterada."
+            }
             setTextColor(Color.WHITE)
             textSize = 15f
             setPadding(0, d(10), 0, d(12))

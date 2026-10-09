@@ -61,7 +61,7 @@ data class DriverPushTokenRequest(
     val deviceLabel: String = "",
     val standaloneCoversRemoteVersion: Int = 1,
     val blablacarTripQueryRemoteVersion: Int = 1,
-    val remoteHealthVersion: Int = 1,
+    val remoteHealthVersion: Int = 2,
 )
 
 @Serializable
@@ -152,12 +152,14 @@ internal data class RemoteHealthJobAckResponse0747(
     val accepted: Boolean = false,
     val jobId: String = "",
     val state: String = "",
+    val mode: String = "HEALTH_SNAPSHOT",
 )
 
 @Serializable
 internal data class RemoteHealthResultRequest0747(
     val status: String,
     val payload: RemoteHealthPayload0747? = null,
+    val technicalPackage: RemoteTechnicalZipPayload0761? = null,
     val errorCode: String = "",
     val errorMessage: String = "",
 )
@@ -1099,6 +1101,14 @@ class TripRemoteApi(
         readTimeoutMs = 10_000,
     )
 
+    internal suspend fun pollRemoteTechnicalPending0761(): StandaloneCoversPendingJob0758 = request(
+        method = "GET",
+        path = "/v1/driver/remote-health/pending",
+        requireDriverToken = true,
+        connectTimeoutMs = 8_000,
+        readTimeoutMs = 10_000,
+    )
+
     internal suspend fun ackStandaloneCoversJob0736(
         jobId: String,
         state: String = "RUNNING",
@@ -1193,6 +1203,7 @@ class TripRemoteApi(
         jobId: String,
         status: String,
         payload: RemoteHealthPayload0747? = null,
+        technicalPackage: RemoteTechnicalZipPayload0761? = null,
         errorCode: String = "",
         errorMessage: String = "",
     ): RemoteHealthResultResponse0747 = request(
@@ -1202,6 +1213,7 @@ class TripRemoteApi(
             RemoteHealthResultRequest0747(
                 status = status.trim().uppercase(),
                 payload = payload,
+                technicalPackage = technicalPackage,
                 errorCode = errorCode.trim().take(120),
                 errorMessage = errorMessage.trim().take(240),
             ),

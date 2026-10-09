@@ -1,6 +1,8 @@
 package br.com.mapeiaia.rotacerta.trips
 
 import android.content.Context
+import android.util.Base64
+import java.security.MessageDigest
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.Data
@@ -94,6 +96,18 @@ internal data class RemoteHealthPayload0747(
     val buffer: RemoteHealthBuffer0747,
 )
 
+@Serializable
+internal data class RemoteTechnicalZipPayload0761(
+    val schemaVersion: String = "rota-certa-remote-technical-zip-v1",
+    val archiveBase64: String,
+    val archiveSha256: String,
+    val archiveBytes: Int,
+    val capturedAtMillis: Long,
+    val sourceAppVersion: String,
+    val sourceCommitSha: String,
+    val fileName: String,
+)
+
 internal object RemoteHealthScheduler0747 {
     fun enqueue(context: Context, rawJobId: String?): Boolean {
         val jobId = normalizeRemoteHealthJobId0747(rawJobId) ?: return false
@@ -123,6 +137,61 @@ internal class RemoteHealthWorker0747(
     appContext: Context,
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
+    private suspend fun uploadTechnicalZip0761(api: TripRemoteApi, jobId: String): Result {
+        return runCatching {
+            val app = applicationContext
+            val source = UnifiedDebugEventStore.snapshot()
+            val health = OperationalHealthCoordinator.scan(app)
+            // Reuse the same generator and sanitization used by the manual ZIP action.
+            val saved = withContext(Dispatchers.IO) {
+                OperationalHealthTechnicalPackage0575.generateAndSave(
+                    context = app, health = health, source = source,
+                ).getOrThrow()
+            }
+            val bytes = withContext(Dispatchers.IO) {
+                app.contentResolver.openInputStream(saved.uri)?.use { it.readBytes() }
+                    ?: error("ZIP criado, mas nao pode ser lido para envio.")
+            }
+            check(bytes.size in 22..(640 * 1024)) {
+                "ZIP tecnico excedeu limite seguro de 640 KiB para envio; arquivo local preservado."
+            }
+            val sha = MessageDigest.getInstance("SHA-256").digest(bytes)
+                .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            val payload = RemoteTechnicalZipPayload0761(
+                archiveBase64 = Base64.encodeToString(bytes, Base64.NO_WRAP),
+                archiveSha256 = sha,
+                archiveBytes = bytes.size,
+                capturedAtMillis = System.currentTimeMillis(),
+                sourceAppVersion = BuildConfig.VERSION_NAME,
+                sourceCommitSha = BuildConfig.BUILD_GIT_SHA,
+                fileName = saved.displayName,
+            )
+            val response = api.submitRemoteHealthResult0747(
+                jobId = jobId, status = "COMPLETE", technicalPackage = payload,
+            )
+            check(response.accepted) { "Servidor nao confirmou o recebimento do ZIP tecnico." }
+            UnifiedDebugEventStore.recordAlways(
+                "REMOTE_TECHNICAL_ZIP_SENT_0761", app.packageName,
+                "jobPresent=true archiveBytes=${bytes.size} sha256=$sha",
+            )
+            Result.success()
+        }.getOrElse { error ->
+            // A failure never uploads partial evidence or retries using an unconsented job.
+            val reported = runCatching {
+                api.submitRemoteHealthResult0747(
+                    jobId = jobId, status = "FAILED",
+                    errorCode = "REMOTE_TECHNICAL_ZIP_COLLECTION_FAILED",
+                    errorMessage = error.javaClass.simpleName.take(120),
+                ).accepted
+            }.getOrDefault(false)
+            UnifiedDebugEventStore.recordAlways(
+                "REMOTE_TECHNICAL_ZIP_FAILED_0761", applicationContext.packageName,
+                "jobPresent=true reported=$reported error=${error.javaClass.simpleName.take(80)}",
+            )
+            if (reported) Result.success() else if (runAttemptCount < 3) Result.retry() else Result.failure()
+        }
+    }
+
     override suspend fun doWork(): Result {
         val jobId = normalizeRemoteHealthJobId0747(
             inputData.getString(REMOTE_HEALTH_JOB_ID_0747),
@@ -151,6 +220,10 @@ internal class RemoteHealthWorker0747(
             return if (runAttemptCount < 3) Result.retry() else Result.failure()
         }
         if (ack.state in setOf("COMPLETE", "FAILED", "EXPIRED")) return Result.success()
+        if (ack.mode == "TECHNICAL_ZIP") {
+            return uploadTechnicalZip0761(api, jobId)
+        }
+        check(ack.mode == "HEALTH_SNAPSHOT") { "Modo de coleta desconhecido: ${ack.mode.take(32)}" }
 
         return runCatching {
             val source = UnifiedDebugEventStore.snapshot()
