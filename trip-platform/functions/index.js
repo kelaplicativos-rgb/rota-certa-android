@@ -11735,6 +11735,22 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     ) {
       return await standaloneCoversRemote0736.latestPublic0736(req, res, parts[3]);
     }
+    // Technical ZIP uses the existing private bearer capability, driver auth and explicit device consent.
+    if (parts[0] === "v1" && parts[1] === "public" &&
+        parts[2] === "remote-technical" && parts.length === 5) {
+      if (req.method === "POST" && parts[4] === "refresh") {
+        return await remoteHealth0747.refreshTechnicalPublic0761(req, res, parts[3]);
+      }
+      if (req.method === "GET" && parts[4] === "latest") {
+        return await remoteHealth0747.latestTechnicalPublic0761(req, res, parts[3]);
+      }
+      if (req.method === "GET" && parts[4] === "download") {
+        return await remoteHealth0747.downloadTechnicalPublic0761(req, res, parts[3]);
+      }
+    }
+    if (req.method === "GET" && path === "/v1/driver/remote-health/pending") {
+      return await remoteHealth0747.pendingDriver0761(req, res);
+    }
     if (
       req.method === "POST" &&
       parts.length === 6 &&
