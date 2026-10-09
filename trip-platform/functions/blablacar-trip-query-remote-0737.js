@@ -200,6 +200,62 @@ function pendingConsentTripQuery0760(job, nowMillis = Date.now()) {
     Number(job.expiresAtMillis || 0) > Number(nowMillis || 0);
 }
 
+
+/**
+ * A PARTIAL fleet inventory can still contain a fully verified individual
+ * profile. Never waive any per-profile or per-card checks: only verified
+ * identity, end-of-list, stabilized collection, exact tripId and date may
+ * authorize an HTML detail query. A PARTIAL profile remains ineligible.
+ */
+function verifiedCoverTarget0767(job, profileUuidRaw, tripIdRaw, nowMillis = Date.now()) {
+  const profileUuid = canonicalUuid0736(profileUuidRaw);
+  const tripId = normalizeTripId0737(tripIdRaw);
+  if (!profileUuid || !tripId) return { ok: false, code: "TRIP_IDENTITY_INVALID" };
+  const state = clean0737(job && job.state, 20).toUpperCase();
+  const result = clean0737(job && job.payload && job.payload.result, 20).toUpperCase();
+  if (!["COMPLETE", "PARTIAL"].includes(state) || result !== state) {
+    return { ok: false, code: "COVER_INDEX_NOT_COMPLETE" };
+  }
+  if (Number(job.resultExpiresAtMillis || 0) <= Number(nowMillis)) {
+    return { ok: false, code: "COVER_INDEX_STALE" };
+  }
+  const profiles = Array.isArray(job.payload.profiles) ? job.payload.profiles : [];
+  const matching = profiles.filter(profile =>
+    canonicalUuid0736(profile && profile.profileUuid) === profileUuid &&
+    profile.identityConfirmed === true &&
+    clean0737(profile.status, 20).toUpperCase() === "COMPLETE" &&
+    profile.reachedEnd === true &&
+    profile.stabilized === true
+  );
+  if (matching.length !== 1) {
+    return { ok: false, code: "PROFILE_NOT_COMPLETE_IN_COVER_INDEX" };
+  }
+  const cards = Array.isArray(matching[0].cards) ? matching[0].cards : [];
+  const matches = cards.filter(card => normalizeTripId0737(card && card.tripId) === tripId);
+  if (matches.length !== 1) {
+    return { ok: false, code: matches.length > 1 ? "COVER_INDEX_DUPLICATE_TRIP" : "TRIP_NOT_IN_COMPLETE_COVER_INDEX" };
+  }
+  const card = matches[0];
+  const dateIso = clean0737(card.dateIso, 20);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) {
+    return { ok: false, code: "COVER_INDEX_DATE_INVALID" };
+  }
+  const administrativeHref = normalizeAdministrativeHref0737(card.administrativeHref, tripId);
+  if (!administrativeHref) return { ok: false, code: "COVER_INDEX_ADMIN_HREF_INVALID" };
+  return {
+    ok: true,
+    profileUuid,
+    tripId,
+    administrativeHref,
+    dateIso,
+    departureTime: clean0737(card.departureTime, 40),
+    arrivalTime: clean0737(card.arrivalTime, 40),
+    origin: clean0737(card.origin, 500),
+    destination: clean0737(card.destination, 500),
+    price: clean0737(card.price, 120),
+  };
+}
+
 function createBlaBlaTripQueryRemote0737({ db, requireDriver, getMessaging, normalizeUsername, json, fail }) {
   async function resolveAccess0737(tokenRaw) {
     const token = normalizePublicToken0736(tokenRaw);
@@ -225,52 +281,23 @@ function createBlaBlaTripQueryRemote0737({ db, requireDriver, getMessaging, norm
 
     const stateSnap = await db.collection(STATE_COLLECTION_0736).doc(driverUsername).get();
     const state = stateSnap.exists ? stateSnap.data() : {};
-    let jobId = clean0737(state.latestCompleteJobId, 80);
-    if (!jobId && clean0737(state.latestCompletedState, 20).toUpperCase() === "COMPLETE") {
-      jobId = clean0737(state.latestCompletedJobId, 80);
-    }
+    const lastState = clean0737(state.latestCompletedState, 20).toUpperCase();
+    let jobId = ["COMPLETE", "PARTIAL"].includes(lastState)
+      ? clean0737(state.latestCompletedJobId, 80)
+      : "";
+    if (!jobId) jobId = clean0737(state.latestCompleteJobId, 80);
     if (!jobId) return { ok: false, code: "COVER_INDEX_COMPLETE_REQUIRED" };
 
     const jobSnap = await db.collection(JOB_COLLECTION_0736).doc(jobId).get();
     if (!jobSnap.exists) return { ok: false, code: "COVER_INDEX_JOB_MISSING" };
     const job = jobSnap.data();
-    if (clean0737(job.state, 20).toUpperCase() !== "COMPLETE" || !job.payload || job.payload.result !== "COMPLETE") {
-      return { ok: false, code: "COVER_INDEX_NOT_COMPLETE" };
+    if (normalizeUsername(job.driverUsername) !== driverUsername) {
+      return { ok: false, code: "COVER_INDEX_SCOPE_MISMATCH" };
     }
-    if (Number(job.resultExpiresAtMillis || 0) <= Date.now()) {
-      return { ok: false, code: "COVER_INDEX_STALE" };
-    }
-
-    const profiles = Array.isArray(job.payload.profiles) ? job.payload.profiles : [];
-    const matches = [];
-    profiles.forEach((profile) => {
-      if (
-        canonicalUuid0736(profile && profile.profileUuid) !== profileUuid ||
-        profile.identityConfirmed !== true ||
-        clean0737(profile.status, 20).toUpperCase() !== "COMPLETE"
-      ) return;
-      const cards = Array.isArray(profile.cards) ? profile.cards : [];
-      cards.forEach((card) => {
-        if (normalizeTripId0737(card && card.tripId) === tripId) matches.push(card);
-      });
-    });
-    if (matches.length !== 1) {
-      return { ok: false, code: matches.length ? "COVER_INDEX_DUPLICATE_TRIP" : "TRIP_NOT_IN_COMPLETE_COVER_INDEX" };
-    }
-    const card = matches[0];
-    const administrativeHref = normalizeAdministrativeHref0737(card.administrativeHref, tripId);
-    if (!administrativeHref) return { ok: false, code: "COVER_INDEX_ADMIN_HREF_INVALID" };
+    const target = verifiedCoverTarget0767(job, profileUuid, tripId);
+    if (!target.ok) return target;
     return {
-      ok: true,
-      profileUuid,
-      tripId,
-      administrativeHref,
-      dateIso: clean0737(card.dateIso, 20),
-      departureTime: clean0737(card.departureTime, 40),
-      arrivalTime: clean0737(card.arrivalTime, 40),
-      origin: clean0737(card.origin, 500),
-      destination: clean0737(card.destination, 500),
-      price: clean0737(card.price, 120),
+      ...target,
       coverJobId: jobId,
       coverCapturedAt: clean0737(job.payload.capturedAt, 80),
     };
@@ -683,5 +710,6 @@ module.exports = {
   queryResultTransition0737,
   remoteQueryCapablePushToken0737,
   pendingConsentTripQuery0760,
+  verifiedCoverTarget0767,
   createBlaBlaTripQueryRemote0737,
 };
