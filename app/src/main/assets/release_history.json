@@ -2,6 +2,34 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.766",
+      "build": 6057,
+      "date": "2026-10-09",
+      "title": "Recuperacao segura da coleta de capas com navegador ocupado",
+      "summary": "A coleta remota aguarda cooperativamente a liberacao do navegador por perfil por ate 30 segundos por tentativa, sem roubar a sessao ativa; exportacao manual preserva o tempo de espera anterior.",
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Espera de lease isolada para solicitacoes remotas",
+        "Mensagem de progresso quando o navegador do perfil esta ocupado",
+        "Cancelamento da espera por coroutine sem interromper sessao BlaBlaCar existente"
+      ],
+      "fixed": [
+        "Tempo insuficiente de espera para coleta remota quando outro fluxo usa o perfil"
+      ],
+      "improved": [
+        "Perfis completos continuam independentes de perfis ocupados",
+        "Sem alteracoes na Agenda, Timeline e FAROL"
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Coletor BlaBlaCar",
+        "Coleta remota",
+        "Central de Saude"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.765",
       "build": 6056,
       "date": "2026-10-09",

@@ -213,6 +213,7 @@ internal class StandaloneCoversRemoteWorker0736(
                         progress.take(180),
                     )
                 },
+                leaseWaitMillis0766 = REMOTE_LEASE_WAIT_MS_0766,
             )
             val raw = encodeStandaloneRideCoversPayload0734(payload)
             writeCachedPayload0736(cache, raw)

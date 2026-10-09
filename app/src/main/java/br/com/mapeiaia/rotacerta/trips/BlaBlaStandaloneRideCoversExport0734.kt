@@ -177,6 +177,13 @@ private const val MAX_EVALUATION_PASSES_0734 = 120
 private const val MAX_PROFILE_ATTEMPTS_0735 = 2
 private const val PROFILE_RETRY_DELAY_MS_0735 = 900L
 private const val MAX_ARCHIVE_REWINDS_0735 = 1
+// A remote request waits cooperatively for a browser already in use, instead
+// of taking its WebView profile lock away from an interactive user session.
+// Manual export retains its short pre-existing wait.
+private const val LEASE_RETRY_DELAY_MS_0766 = 200L
+internal const val REMOTE_LEASE_WAIT_MS_0766 = 30_000L
+internal fun standaloneLeasePollAttempts0766(waitMillis: Long): Int =
+    (waitMillis.coerceIn(0L, REMOTE_LEASE_WAIT_MS_0766) / LEASE_RETRY_DELAY_MS_0766).toInt() + 1
 
 internal fun validateStandaloneRideCoversPayload0734(
     value: BlaBlaStandaloneRideCoversPayload0734,
@@ -349,6 +356,7 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
         context: Context,
         accounts: List<BlaBlaDynamicAccount>,
         onProgress: (String) -> Unit = {},
+        leaseWaitMillis0766: Long = 2_400L,
     ): BlaBlaStandaloneRideCoversPayload0734 {
         require(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             "Coleta avulsa requer Android 10 ou superior"
@@ -385,6 +393,7 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
                 identityScript = identityScript,
                 coverScript = coverScript,
                 onProgress = onProgress,
+                leaseWaitMillis0766 = leaseWaitMillis0766,
             )
         }
 
@@ -431,6 +440,7 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
         identityScript: String,
         coverScript: String,
         onProgress: (String) -> Unit,
+        leaseWaitMillis0766: Long,
     ): BlaBlaStandaloneRideCoversProfile0734 {
         var best: BlaBlaStandaloneRideCoversProfile0734? = null
         var attempts = 0
@@ -449,6 +459,7 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
                 identityScript = identityScript,
                 coverScript = coverScript,
                 onProgress = onProgress,
+                leaseWaitMillis0766 = leaseWaitMillis0766,
             )
 
             if (candidate.status == PROFILE_COMPLETE_0734) {
@@ -486,6 +497,7 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
         identityScript: String,
         coverScript: String,
         onProgress: (String) -> Unit,
+        leaseWaitMillis0766: Long,
     ): BlaBlaStandaloneRideCoversProfile0734 {
         val definition = account.verifiedDefinition()
         val profileUuid = normalizeStandaloneProfileUuid0734(definition?.uuid)
@@ -494,8 +506,9 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
         }
 
         val sessionStore = BlaBlaDynamicSessionStore(context)
-        val lease = acquire(sessionStore, account)
-            ?: return failedProfile(account, profileUuid, "PROFILE_BROWSER_BUSY")
+        val lease = acquire(sessionStore, account, leaseWaitMillis0766) {
+            onProgress(account.displayLabel + " • aguardando navegador da conta ficar livre")
+        } ?: return failedProfile(account, profileUuid, "PROFILE_BROWSER_BUSY")
 
         val page = try {
             withContext(Dispatchers.Main.immediate) {
@@ -637,13 +650,19 @@ internal object BlaBlaStandaloneRideCoversExport0734 {
     private suspend fun acquire(
         store: BlaBlaDynamicSessionStore,
         account: BlaBlaDynamicAccount,
+        waitMillis0766: Long,
+        onBusy0766: () -> Unit,
     ): BlaBlaExternalFlightLease0426? {
-        repeat(12) { attempt ->
+        // Never steal a lease: the currently active WebView owns the authenticated
+        // profile until it releases that lease. Coroutine delay is cancellable.
+        val attempts = standaloneLeasePollAttempts0766(waitMillis0766)
+        repeat(attempts) { attempt ->
             store.tryAcquireExternalFlight0426(
                 account,
                 "standalone-ride-covers-0734-" + account.id.take(18),
             )?.let { return it }
-            if (attempt < 11) delay(200L)
+            if (attempt == 0) onBusy0766()
+            if (attempt < attempts - 1) delay(LEASE_RETRY_DELAY_MS_0766)
         }
         return null
     }
