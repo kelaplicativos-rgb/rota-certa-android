@@ -1,0 +1,66 @@
+name: Publish Rota Certa 0.1.758 exact-SHA APK
+
+on:
+  push:
+    branches: ['agent/publish-remote-popup-0.1.758']
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_SHA: e67706adc6b4e1402a153f8b5298a8831958f59e
+      RUN_ID: "37874286483"
+      ARTIFACT_NAME: rota-certa-0.1.758-remote-popup-exact-sha-e67706adc6b4e1402a153f8b5298a8831958f59e
+      RELEASE_TAG: v0.1.758-remote-popup-e67706adc6b4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 0
+      - name: Prove exact source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          grep -Fq 'val releaseVersionName = "0.1.758"' app/build.gradle.kts
+          grep -Fq 'REMOTE_COVERS_POLL_0758' app/src/main/java/br/com/mapeiaia/rotacerta/trips/RemoteCoversPollService0758.kt
+      - name: Download successful validated GitHub Actions artifact
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/apk-artifact
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$ARTIFACT_NAME" --dir /tmp/apk-artifact
+          test "$(find /tmp/apk-artifact -type f -name 'app-debug.apk' | wc -l)" -eq 1
+          test "$(find /tmp/apk-artifact -type f -name 'source-sha.txt' | wc -l)" -eq 1
+          APK="$(find /tmp/apk-artifact -type f -name 'app-debug.apk' -print -quit)"
+          PROOF="$(find /tmp/apk-artifact -type f -name 'source-sha.txt' -print -quit)"
+          HASH="$(find /tmp/apk-artifact -type f -name 'apk-sha256.txt' -print -quit)"
+          test -s "$APK"
+          test "$(cat "$PROOF")" = "$SOURCE_SHA"
+          test -s "$HASH"
+          EXPECTED="$(awk '{print $1}' "$HASH")"
+          ACTUAL="$(sha256sum "$APK" | awk '{print $1}')"
+          test "$ACTUAL" = "$EXPECTED"
+          unzip -t "$APK" >/dev/null
+          cp "$APK" rota-certa-0.1.758-remote-popup-e67706adc6b4.apk
+          cp "$PROOF" source-sha.txt
+          cp "$HASH" apk-sha256.txt
+      - name: Release exact validated APK
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<EOF
+          Rota Certa 0.1.758 — consulta remota de capas com autorização.
+          Código exato: $SOURCE_SHA
+          Pacote: br.com.mapeiaia.rotacerta
+          VersionCode: 6049
+          Assinatura estável e testes provados pelo workflow $RUN_ID.
+
+          Ative 'escuta remota (sem FCM)' na tela de contas e permita a sobreposição.
+          Toda solicitação pede ACEITAR ou RECUSAR. Coleta somente capas.
+          A rota adicional do servidor exige deploy do backend antes do teste remoto completo.
+          EOF
+          gh release create "$RELEASE_TAG"             rota-certa-0.1.758-remote-popup-e67706adc6b4.apk             apk-sha256.txt source-sha.txt             --target "$SOURCE_SHA"             --title "Rota Certa 0.1.758 — pop-up remoto sem FCM"             --notes-file release-notes.md             --repo "$GITHUB_REPOSITORY"
