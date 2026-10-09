@@ -77,7 +77,9 @@ internal class StandaloneCoversRemoteAccessStore0736(context: Context) {
     ): StandaloneCoversRemoteAccess0736 {
         val base = publicBaseUrl.trim().trimEnd('/')
         require(base.startsWith("https://")) { "Base pública HTTPS não configurada" }
-        require(response.enabled) { "Coleta remota não foi habilitada pelo servidor" }
+        // A valid capability may be provisioned but currently revoked by the OFF toggle.
+        // Saving a disabled access URL does not reactivate it; only the authenticated state
+        // endpoint can grant access again.
         require(response.refreshPath.startsWith("/v1/public/standalone-covers/")) {
             "Caminho privado de coleta remota inválido"
         }
