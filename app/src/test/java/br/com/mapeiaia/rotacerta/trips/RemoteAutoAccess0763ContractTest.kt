@@ -46,7 +46,7 @@ class RemoteAutoAccess0763ContractTest {
         assertTrue(screen.contains("RemoteSupportAutoAccess0763.setEnabled(context, true)"))
         assertTrue(screen.contains("RemoteSupportAutoAccess0763.setEnabled(context, false)"))
         assertTrue(screen.contains("api.setRemoteAccessState0764(enabled)"))
-        assertTrue(screen.contains("não altera"))
+        assertTrue(screen.contains("Não altera"))
         assertFalse(collector.contains("Ativar escuta remota (sem FCM)"))
         assertTrue(collector.contains("StandaloneRemoteAccessActions0739("))
         assertTrue(screen.contains("ContextCompat.startForegroundService"))
