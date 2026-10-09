@@ -98,4 +98,20 @@ class BlaBlaRemoteTripQuery0737Test {
         assertNull(normalizeBlaBlaRemoteTripId0737("../rides/offer"))
         assertNull(normalizeBlaBlaRemoteTripId0737("https://example.com"))
     }
+
+    @Test
+    fun pollingDetalhadoSemFcmExigeJobValidoNovoENaoExpirado() {
+        val now = System.currentTimeMillis()
+        val job = StandaloneCoversPendingJob0758(
+            pending = true,
+            jobId = "7371f028-9c55-4903-8444-308015823efd",
+            state = "PENDING_DEVICE",
+            expiresAtMillis = now + 60_000L,
+        )
+        assertTrue(shouldOfferRemoteTripConsent0760(job, "", now))
+        assertFalse(shouldOfferRemoteTripConsent0760(job, job.jobId, now))
+        assertFalse(shouldOfferRemoteTripConsent0760(job.copy(pending = false), "", now))
+        assertFalse(shouldOfferRemoteTripConsent0760(job.copy(expiresAtMillis = now), "", now))
+        assertFalse(shouldOfferRemoteTripConsent0760(job.copy(jobId = "invalid"), "", now))
+    }
 }
