@@ -884,7 +884,7 @@ fun BlaBlaCollectorPanel(
             Text("Enquanto a escuta estiver ativa, o Android mantém uma notificação de serviço. " +
                 "Pode haver limites de execução em segundo plano; não é leitura automática nem dispensa o seu aceite.")
             Text(
-                "Compartilhe este acesso somente com quem pode consultar suas viagens.  +
+                "Compartilhe este acesso somente com quem pode consultar suas viagens. " +
                     "Capas continuam isoladas; a consulta HTML dirigida lê uma viagem por profileUuid + tripId e não envia cookies, senha ou HTML bruto.",
             )
 
