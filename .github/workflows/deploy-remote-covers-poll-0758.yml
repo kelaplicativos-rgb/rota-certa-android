@@ -1,0 +1,85 @@
+name: Deploy Rota Certa 0.1.758 remote covers polling
+on:
+  push:
+    branches:
+      - agent/deploy-remote-covers-poll-0758
+permissions:
+  contents: read
+concurrency:
+  group: rota-certa-remote-covers-prod-deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      SOURCE_SHA: e67706adc6b4e1402a153f8b5298a8831958f59e
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+    steps:
+      - name: Checkout exact validated code SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 0
+      - name: Test remote backend and ensure no Farol changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          grep -Fq 'async function pollDriverPending0758' trip-platform/functions/standalone-covers-remote-0736.js
+          grep -Fq '/v1/driver/standalone-covers/pending' trip-platform/functions/index.js
+          grep -Fq 'const driver = await requireDriver(req, res)' trip-platform/functions/standalone-covers-remote-0736.js
+          grep -Fq 'normalizeUsername(job.driverUsername) !== driver.username' trip-platform/functions/standalone-covers-remote-0736.js
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/functions/standalone-covers-remote-0736.js
+          node --test trip-platform/functions/test/standalone-covers-remote-0736.test.js trip-platform/functions/test/all-consults-0757.test.js
+      - name: Install Google Cloud SDK credentials
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Deploy only tripApi backend from validated SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          gcloud functions deploy tripApi \
+            --gen2 \
+            --project="$PROJECT" \
+            --region=southamerica-east1 \
+            --runtime=nodejs20 \
+            --source=trip-platform/functions \
+            --entry-point=tripApi \
+            --trigger-http \
+            --allow-unauthenticated \
+            --clear-secrets \
+            --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$SOURCE_SHA" \
+            --quiet
+      - name: Smoke-check remote route rejects unauthenticated calls
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          STATUS=0
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            STATUS="$(curl --silent --show-error -o /tmp/pending-unauthorized.json -w '%{http_code}' \
+              "$BASE/v1/driver/standalone-covers/pending?ci=$SOURCE_SHA" || true)"
+            if [ "$STATUS" = "401" ]; then break; fi
+            sleep 4
+          done
+          echo "privatePendingRouteHttpStatus=$STATUS"
+          test "$STATUS" = "401"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          printf '%s\n' "$SOURCE_SHA" > /tmp/backend-source-sha.txt
+      - name: Upload deploy proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-polling-0758-proof-${{ github.run_id }}
+          path: |
+            /tmp/backend-source-sha.txt
+            /tmp/pending-unauthorized.json
+          if-no-files-found: warn
