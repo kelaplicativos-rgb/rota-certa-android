@@ -8,6 +8,27 @@ import kotlin.test.assertTrue
 
 class BlaBlaStandaloneRideCoversExport0734Test {
     @Test
+    fun remoteLeaseRecoveryIsBoundedAndKeepsManualWaitShort() {
+        assertEquals(1, standaloneLeasePollAttempts0766(-1L))
+        assertEquals(1, standaloneLeasePollAttempts0766(0L))
+        assertEquals(13, standaloneLeasePollAttempts0766(2_400L))
+        assertEquals(151, standaloneLeasePollAttempts0766(REMOTE_LEASE_WAIT_MS_0766))
+        assertEquals(151, standaloneLeasePollAttempts0766(Long.MAX_VALUE))
+    }
+
+    @Test
+    fun remoteWaitDoesNotPreemptInteractiveWebViewOrWriteAgenda() {
+        val source = java.io.File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversExport0734.kt").readText()
+        val remote = java.io.File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaStandaloneRideCoversRemote0736.kt").readText()
+        assertTrue(source.contains("store.tryAcquireExternalFlight0426("))
+        assertTrue(source.contains("delay(LEASE_RETRY_DELAY_MS_0766)"))
+        assertTrue(source.contains("leaseWaitMillis0766: Long = 2_400L"))
+        assertTrue(remote.contains("leaseWaitMillis0766 = REMOTE_LEASE_WAIT_MS_0766"))
+        assertFalse(source.contains("forceReleaseExternalFlight"))
+        assertFalse(source.contains("saveCanonicalTrip("))
+    }
+
+    @Test
     fun completePayloadIsStrictlyDownloadOnlyAndRoundTrips() {
         val uuid = "7371f028-9c55-4903-8444-308015823efd"
         val payload = BlaBlaStandaloneRideCoversPayload0734(
