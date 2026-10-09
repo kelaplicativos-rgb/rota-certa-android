@@ -12,6 +12,7 @@ const {
   QUERY_PENDING_COLLECTION_0760,
   QUERY_JOB_COLLECTION_0737,
   createBlaBlaTripQueryRemote0737,
+  verifiedCoverTarget0767,
 } = require("../blablacar-trip-query-remote-0737");
 
 function payload0737() {
@@ -53,6 +54,73 @@ function payload0737() {
     itineraryStopTimes: ["10:30", "13:00", "15:30"],
   };
 }
+
+function completeCoverJobInPartialFleet0767() {
+  const now = Date.now();
+  const card = {
+    tripId: "01a10f40-5046-7e0f-a0f1-084aaeb436e9",
+    dateIso: "2026-10-10",
+    administrativeHref: "https://www.blablacar.com.br/rides/offer/01a10f40-5046-7e0f-a0f1-084aaeb436e9",
+    origin: "Três Corações",
+    destination: "São Paulo",
+  };
+  return {
+    state: "PARTIAL", resultExpiresAtMillis: now + 3600_000,
+    payload: {
+      result: "PARTIAL", capturedAt: new Date(now).toISOString(),
+      profiles: [
+        { profileUuid: "175a7068-50d8-40c3-a27a-214b9c6e0461",
+          identityConfirmed: true, status: "COMPLETE", reachedEnd: true,
+          stabilized: true, cards: [card] },
+        { profileUuid: "7371f028-9c55-4903-8444-308015823efd",
+          identityConfirmed: true, status: "PARTIAL", reachedEnd: true,
+          stabilized: true, cards: [{ ...card }] },
+      ],
+    },
+  };
+}
+
+test("frotação PARTIAL permite detalhe apenas do perfil COMPLETE com card forte", () => {
+  const job = completeCoverJobInPartialFleet0767();
+  const profile = "175a7068-50d8-40c3-a27a-214b9c6e0461";
+  const trip = job.payload.profiles[0].cards[0].tripId;
+  const good = verifiedCoverTarget0767(job, profile, trip);
+  assert.equal(good.ok, true);
+  assert.equal(good.dateIso, "2026-10-10");
+  assert.equal(good.tripId, trip);
+  const partial = verifiedCoverTarget0767(job,
+    "7371f028-9c55-4903-8444-308015823efd", trip);
+  assert.deepEqual(partial, {ok:false,code:"PROFILE_NOT_COMPLETE_IN_COVER_INDEX"});
+});
+
+test("perfil COMPLETE isolado nunca libera card sem data, href ou unicidade", () => {
+  const job = completeCoverJobInPartialFleet0767();
+  const profile = job.payload.profiles[0].profileUuid;
+  const card = job.payload.profiles[0].cards[0];
+  const trip = card.tripId;
+  card.dateIso = "";
+  assert.equal(verifiedCoverTarget0767(job,profile,trip).code, "COVER_INDEX_DATE_INVALID");
+  card.dateIso = "2026-10-10";
+  card.administrativeHref = "https://evil.example/"+trip;
+  assert.equal(verifiedCoverTarget0767(job,profile,trip).code, "COVER_INDEX_ADMIN_HREF_INVALID");
+  card.administrativeHref = "https://www.blablacar.com.br/rides/offer/"+trip;
+  job.payload.profiles[0].cards.push({ ...card });
+  assert.equal(verifiedCoverTarget0767(job,profile,trip).code, "COVER_INDEX_DUPLICATE_TRIP");
+});
+
+test("indice PARTIAL rejeita payload expirado, perfil nao confirmado e resultado divergente", () => {
+  const job = completeCoverJobInPartialFleet0767();
+  const profile = job.payload.profiles[0].profileUuid;
+  const trip = job.payload.profiles[0].cards[0].tripId;
+  job.resultExpiresAtMillis = Date.now() - 1000;
+  assert.equal(verifiedCoverTarget0767(job,profile,trip).code, "COVER_INDEX_STALE");
+  job.resultExpiresAtMillis = Date.now() + 60_000;
+  job.payload.profiles[0].identityConfirmed = false;
+  assert.equal(verifiedCoverTarget0767(job,profile,trip).code, "PROFILE_NOT_COMPLETE_IN_COVER_INDEX");
+  job.payload.profiles[0].identityConfirmed = true;
+  job.payload.result = "COMPLETE";
+  assert.equal(verifiedCoverTarget0767(job,profile,trip).code, "COVER_INDEX_NOT_COMPLETE");
+});
 
 test("snapshot COMPLETE aceita somente campos operacionais sanitizados", () => {
   const value = sanitizeTripQueryPayload0737(
