@@ -11687,6 +11687,9 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     if (req.method === "GET" && path === "/v1/driver/standalone-covers/pending") {
       return await standaloneCoversRemote0736.pollDriverPending0758(req, res);
     }
+    if (req.method === "GET" && path === "/v1/driver/blablacar-query/pending") {
+      return await blablacarTripQueryRemote0737.pollDriverPending0760(req, res);
+    }
     if (req.method === "POST" && path === "/v1/driver/standalone-covers/request") {
       return await standaloneCoversRemote0736.requestAuthenticated0736(req, res);
     }

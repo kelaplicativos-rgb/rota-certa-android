@@ -1091,6 +1091,14 @@ class TripRemoteApi(
         readTimeoutMs = 10_000,
     )
 
+    internal suspend fun pollBlaBlaTripQueryPending0760(): StandaloneCoversPendingJob0758 = request(
+        method = "GET",
+        path = "/v1/driver/blablacar-query/pending",
+        requireDriverToken = true,
+        connectTimeoutMs = 8_000,
+        readTimeoutMs = 10_000,
+    )
+
     internal suspend fun ackStandaloneCoversJob0736(
         jobId: String,
         state: String = "RUNNING",

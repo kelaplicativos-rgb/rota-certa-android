@@ -1,0 +1,130 @@
+name: Rota Certa 0.1.760 remote trip polling exact SHA
+
+on:
+  push:
+    branches: ['agent/remote-trip-polling-0.1.760']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: remote-trip-poll-0760-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      ROTA_CERTA_GIT_BRANCH: agent/remote-trip-polling-0.1.760
+      OM_SOURCE_SHA: 3ef379196cca434cf17f4ee684f16aa99fd8985e
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/remote-trip-polling-0.1.760
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Record 0.1.760 without losing existing history
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("app/src/main/assets/release_history.json")
+          data = json.loads(p.read_text(encoding="utf-8"))
+          releases = data["releases"]
+          if not any(x.get("version") == "0.1.760" for x in releases):
+              releases.insert(0, {
+                  "version": "0.1.760", "build": 6051, "date": "2026-10-09",
+                  "title": "Consulta detalhada remota sem FCM",
+                  "summary": "Escuta detalhada por motorista com aceite explicito.",
+                  "status": "EM_VALIDACAO",
+                  "implemented": ["Polling autenticado de consultas de viagem", "Aceitar/Recusar antes da coleta"],
+                  "fixed": ["PENDING_DEVICE de viagem chega ao celular", "Consentimento de outro pedido nao e substituido"],
+                  "improved": ["FAROL, Agenda e Timeline preservados", "Somente COMPLETE comprova disponibilidade"],
+                  "regressions": [], "resolvedRegressions": [],
+                  "modulesAffected": ["BlaBlaCar", "Coleta remota", "Privacidade"],
+                  "detailsComplete": True
+              })
+              p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          assert sum(x.get("version") == "0.1.760" and x.get("build") == 6051 for x in releases) == 1
+          PY
+          if ! git diff --quiet -- app/src/main/assets/release_history.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add app/src/main/assets/release_history.json
+            git commit -m "docs: register Rota Certa 0.1.760"
+            git push origin HEAD:refs/heads/agent/remote-trip-polling-0.1.760
+          fi
+          echo "ROTA_CERTA_GIT_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          git rev-parse HEAD > /tmp/source-sha.txt
+      - name: Enforce Farol scope and exact source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
+          grep -Fq 'val releaseVersionName = "0.1.760"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 6_051' app/build.gradle.kts
+          ! git diff --name-only origin/agent/remote-cover-date-recovery-0.1.759...HEAD | grep -E '(Farol|farol|FAROL)'
+          grep -Fq '/v1/driver/blablacar-query/pending' trip-platform/functions/index.js
+          grep -Fq 'pollBlaBlaTripQueryPending0760' app/src/main/java/br/com/mapeiaia/rotacerta/trips/RemoteCoversPollService0758.kt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Test server and authenticated polling
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/functions/blablacar-trip-query-remote-0737.js
+          node --test trip-platform/functions/test/blablacar-trip-query-remote-0737.test.js trip-platform/functions/test/standalone-covers-remote-0736.test.js
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/cache@v4
+        id: om-sdk-cache
+        with:
+          path: ~/.m2/repository/app/organicmaps/sdk
+          key: organicmaps-sdk-${{ runner.os }}-${{ env.OM_SOURCE_SHA }}-android36-ndk29-arm64
+      - name: Prepare pinned Organic Maps SDK when missing
+        if: steps.om-sdk-cache.outputs.cache-hit != 'true'
+        run: bash tools/ci/build-organicmaps-sdk.sh
+      - name: Validate version, update and Kotlin consent tests
+        run: |
+          set -euo pipefail
+          ./gradlew :app:verifyReleaseHistory :app:verifyAndroidUpdateContract --no-daemon --stacktrace
+          ./gradlew :app:testDebugUnitTest --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRemoteTripQuery0737Test' --tests 'br.com.mapeiaia.rotacerta.trips.RemoteSupportConsent0746ContractTest' --no-daemon --max-workers=1 --stacktrace
+      - name: Assemble exact source APK
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
+      - name: Verify installable APK
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" apk summary "$APK" | tee /tmp/apk-summary.txt
+          read -r APP_ID VC VN < /tmp/apk-summary.txt
+          test "$APP_ID" = br.com.mapeiaia.rotacerta
+          test "$VC" = 6051
+          test "$VN" = 0.1.760
+          "$TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apk-signature.txt
+          unzip -p "$APK" 'classes*.dex' | strings | grep -Fqm1 "$ROTA_CERTA_GIT_SHA"
+          sha256sum "$APK" | tee /tmp/apk-sha256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.760-remote-trip-poll-${{ env.ROTA_CERTA_GIT_SHA }}
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            /tmp/source-sha.txt
+            /tmp/apk-summary.txt
+            /tmp/apk-signature.txt
+            /tmp/apk-sha256.txt
+          if-no-files-found: error
