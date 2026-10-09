@@ -52,6 +52,7 @@ jobs:
             trip-platform/functions/test/remote-health-0747.test.js \
             trip-platform/functions/test/remote-health-poll-0762.test.js \
             trip-platform/functions/test/standalone-covers-remote-0736.test.js \
+            trip-platform/functions/test/remote-access-toggle-0764.test.js \
             trip-platform/functions/test/blablacar-trip-query-remote-0737.test.js | tee /tmp/backend-tests.txt
 
       - uses: actions/setup-java@v4
@@ -77,6 +78,7 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.trips.RemoteHealth0747ContractTest' \
             --tests 'br.com.mapeiaia.rotacerta.trips.RemoteHealthSnapshot0762ContractTest' \
             --tests 'br.com.mapeiaia.rotacerta.trips.RemoteAutoAccess0763ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPassengerDeepCapture0653Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.RemoteSupportConsent0746ContractTest' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRemoteTripQuery0737Test' \
             --tests 'br.com.mapeiaia.rotacerta.FarolRoadKmFinality0713Test' \
