@@ -31,7 +31,7 @@
   // Never infer a date by position or by the date of an adjacent journey.
   const uniqueCalendarToken = (text) => {
     const normalized = clean(text);
-    const matches = normalized.match(/\b(?:20\d{2}-\d{1,2}-\d{1,2}|\d{1,2}[\\/.-]\d{1,2}(?:[\\/.-]\d{2,4})?|\d{1,2}\s*(?:de\s+)?(?:jan(?:eiro)?|fev(?:ereiro)?|mar(?:ço|co)?|abr(?:il)?|mai(?:o)?|jun(?:ho)?|jul(?:ho)?|ago(?:sto)?|set(?:embro)?|out(?:ubro)?|nov(?:embro)?|dez(?:embro)?)(?:\s+de\s+20\d{2})?)\b/gi) || [];
+    const matches = normalized.match(/\b(?:20\d{2}-\d{1,2}-\d{1,2}|\d{1,2}[-.\x2f]\d{1,2}(?:[\\/.-]\d{2,4})?|\d{1,2}\s*(?:de\s+)?(?:jan(?:eiro)?|fev(?:ereiro)?|mar(?:ço|co)?|abr(?:il)?|mai(?:o)?|jun(?:ho)?|jul(?:ho)?|ago(?:sto)?|set(?:embro)?|out(?:ubro)?|nov(?:embro)?|dez(?:embro)?)(?:\s+de\s+20\d{2})?)\b/gi) || [];
     const unique = Array.from(new Set(matches.map((value) => clean(value).toLowerCase())));
     return unique.length === 1 ? matches[0] : '';
   };
