@@ -16,6 +16,8 @@ import br.com.mapeiaia.rotacerta.BuildConfig
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import br.com.mapeiaia.rotacerta.monitoring.OperationalHealthCoordinator
 import br.com.mapeiaia.rotacerta.monitoring.OperationalHealthTechnicalPackage0575
+import br.com.mapeiaia.rotacerta.versioncenter.ReleaseHistoryStore
+import br.com.mapeiaia.rotacerta.versioncenter.VersionHistoryLogic
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -77,6 +79,21 @@ internal data class RemoteHealthBuffer0747(
     val recordMaxNs: Long,
 )
 
+/**
+ * Installed release evidence, never a claim about what is already installed on the device.
+ * Entries are sourced from the embedded Version Center manifest and kept bounded.
+ */
+@Serializable
+internal data class RemoteReleaseAudit0765(
+    val version: String,
+    val build: Int,
+    val status: String,
+    val implemented: List<String>,
+    val fixed: List<String>,
+    val improved: List<String>,
+    val modulesAffected: List<String>,
+)
+
 @Serializable
 internal data class RemoteHealthPayload0747(
     val schemaVersion: String = "rota-certa-remote-health-v1",
@@ -94,6 +111,7 @@ internal data class RemoteHealthPayload0747(
     val incidents: List<RemoteHealthIncident0747>,
     val events: List<RemoteHealthEvent0747>,
     val buffer: RemoteHealthBuffer0747,
+    val recentReleases: List<RemoteReleaseAudit0765> = emptyList(),
 )
 
 @Serializable
@@ -288,6 +306,22 @@ internal class RemoteHealthWorker0747(
                         durationMs = diagnostic?.durationMs,
                     )
                 },
+                recentReleases = VersionHistoryLogic
+                    .sortedReleases(ReleaseHistoryStore.load(applicationContext).releases)
+                    .take(8)
+                    .map { release ->
+                        fun strings(items: List<String>): List<String> = items.take(10)
+                            .map { safe(it, 240) }
+                        RemoteReleaseAudit0765(
+                            version = safe(release.version, 40),
+                            build = release.build,
+                            status = safe(release.status.orEmpty(), 40),
+                            implemented = strings(release.implemented),
+                            fixed = strings(release.fixed),
+                            improved = strings(release.improved),
+                            modulesAffected = strings(release.modulesAffected),
+                        )
+                    },
                 buffer = RemoteHealthBuffer0747(
                     eventsInBuffer = source.events.size,
                     bufferCapacity = source.bufferCapacity,
