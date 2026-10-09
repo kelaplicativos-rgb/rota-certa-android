@@ -42,5 +42,9 @@ internal fun standaloneRemoteClipboardText0739(access: StandaloneCoversRemoteAcc
     return "Rota Certa — coleta remota avulsa\n" +
         "Solicitar capas: ${access.refreshUrl}\n" +
         "Consultar capas: ${access.latestUrl}\n" +
-        "Consulta HTML por viagem: ${access.tripQueryBaseUrl}"
+        "Consulta HTML por viagem: ${access.tripQueryBaseUrl}\\n" +
+        "Solicitar detalhe: ${access.tripQueryBaseUrl}/trip/{profileUuid}/{tripId}/refresh\\n" +
+        "Consultar detalhe: ${access.tripQueryBaseUrl}/trip/{profileUuid}/{tripId}/latest\\n" +
+        "Leia primeiro as capas COMPLETE para confirmar perfil, tripId, rota e data. " +
+        "No detalhe, só informe valor individual se vier de HTML confirmado; jamais divida o preço da capa."
 }
