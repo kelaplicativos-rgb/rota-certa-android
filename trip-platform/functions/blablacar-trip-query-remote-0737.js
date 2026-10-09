@@ -11,6 +11,7 @@ const {
 
 const QUERY_STATE_COLLECTION_0737 = "tripBlaBlaQueryState0737";
 const QUERY_JOB_COLLECTION_0737 = "tripBlaBlaQueryJobs0737";
+const QUERY_PENDING_COLLECTION_0760 = "tripBlaBlaQueryPending0760";
 const QUERY_JOB_TTL_MILLIS_0737 = 10 * 60 * 1000;
 const QUERY_RESULT_TTL_MILLIS_0737 = 24 * 60 * 60 * 1000;
 const QUERY_MIN_REFRESH_MILLIS_0737 = 30 * 1000;
@@ -164,6 +165,13 @@ function remoteQueryCapablePushToken0737(data, nowMillis = Date.now()) {
     Number(value.blablacarTripQueryRemoteVersion || 0) >= 1;
 }
 
+function pendingConsentTripQuery0760(job, nowMillis = Date.now()) {
+  if (!job || typeof job !== "object") return false;
+  const state = clean0737(job.state, 32).toUpperCase();
+  return (state === "REQUESTED" || state === "PUSH_SENT" || state === "PENDING_DEVICE") &&
+    Number(job.expiresAtMillis || 0) > Number(nowMillis || 0);
+}
+
 function createBlaBlaTripQueryRemote0737({ db, requireDriver, getMessaging, normalizeUsername, json, fail }) {
   async function resolveAccess0737(tokenRaw) {
     const token = normalizePublicToken0736(tokenRaw);
@@ -277,6 +285,7 @@ function createBlaBlaTripQueryRemote0737({ db, requireDriver, getMessaging, norm
     let reused = false;
     let throttled = false;
     let retryAfterMillis = 0;
+    let busy = false;
 
     await db.runTransaction(async (transaction) => {
       const stateSnap = await transaction.get(stateRef);
@@ -303,7 +312,26 @@ function createBlaBlaTripQueryRemote0737({ db, requireDriver, getMessaging, norm
         return;
       }
 
+      // One visible pending consultation per driver. Do not overwrite a previous
+      // unanswered consent request when a second target is requested.
+      const pendingRef = db.collection(QUERY_PENDING_COLLECTION_0760).doc(driverUsername);
+      const pendingSnap = await transaction.get(pendingRef);
+      const currentId = clean0737(pendingSnap.exists && pendingSnap.data().latestJobId, 80);
+      if (currentId) {
+        const previousSnap = await transaction.get(db.collection(QUERY_JOB_COLLECTION_0737).doc(currentId));
+        if (previousSnap.exists && normalizeUsername(previousSnap.data().driverUsername) === driverUsername &&
+            pendingConsentTripQuery0760(previousSnap.data(), now)) {
+          busy = true;
+          return;
+        }
+      }
+
       jobId = crypto.randomUUID();
+      transaction.set(pendingRef, {
+        driverUsername,
+        latestJobId: jobId,
+        updatedAtMillis: now,
+      }, { merge: true });
       transaction.set(db.collection(QUERY_JOB_COLLECTION_0737).doc(jobId), {
         jobId,
         driverUsername,
@@ -338,6 +366,7 @@ function createBlaBlaTripQueryRemote0737({ db, requireDriver, getMessaging, norm
     });
 
     if (throttled) return { state: "THROTTLED", throttled: true, retryAfterMillis };
+    if (busy) return { state: "PENDING_CONSENT", busy: true };
     if (!reused) await sendPush0737(driverUsername, jobId);
     const snap = await db.collection(QUERY_JOB_COLLECTION_0737).doc(jobId).get();
     const data = snap.exists ? snap.data() : {};
@@ -351,6 +380,35 @@ function createBlaBlaTripQueryRemote0737({ db, requireDriver, getMessaging, norm
     };
   }
 
+  // A driver-authenticated poll is the fallback when FCM registration is absent.
+  // Never expose trip details or driver identity to unauthenticated callers.
+  async function pollDriverPending0760(req, res) {
+    const driver = await requireDriver(req, res);
+    if (!driver) return;
+    if (!driver.username) return fail(res, 400, "driver_username_required", "Identidade pública do motorista não configurada.");
+    res.set("Cache-Control", "no-store, no-cache, max-age=0, must-revalidate");
+    const pendingSnap = await db.collection(QUERY_PENDING_COLLECTION_0760).doc(driver.username).get();
+    const jobId = clean0737(pendingSnap.exists && pendingSnap.data().latestJobId, 80);
+    if (!/^[0-9a-f-]{36}$/i.test(jobId)) return json(res, 200, { pending: false, jobId: "", state: "NONE" });
+
+    const jobSnap = await db.collection(QUERY_JOB_COLLECTION_0737).doc(jobId).get();
+    if (!jobSnap.exists) return json(res, 200, { pending: false, jobId: "", state: "MISSING" });
+    const job = jobSnap.data();
+    if (normalizeUsername(job.driverUsername) !== driver.username) {
+      return fail(res, 403, "blablacar_query_scope_mismatch", "Consulta pertence a outro motorista.");
+    }
+    if (!pendingConsentTripQuery0760(job)) {
+      return json(res, 200, { pending: false, jobId: "", state: clean0737(job.state, 32) || "EXPIRED" });
+    }
+    return json(res, 200, {
+      pending: true,
+      jobId,
+      state: clean0737(job.state, 32),
+      requestedAtMillis: Number(job.requestedAtMillis || 0),
+      expiresAtMillis: Number(job.expiresAtMillis || 0),
+    });
+  }
+
   async function refreshPublic0737(req, res, tokenRaw, profileUuidRaw, tripIdRaw) {
     const access = await resolveAccess0737(tokenRaw);
     if (!access) return fail(res, 404, "blablacar_query_access_not_found", "Acesso privado à consulta BlaBlaCar não encontrado ou expirado.");
@@ -359,6 +417,9 @@ function createBlaBlaTripQueryRemote0737({ db, requireDriver, getMessaging, norm
       return fail(res, 409, "blablacar_query_cover_index_required", "A consulta detalhada exige um inventário de capas COMPLETE e fresco.", { reason: target.code });
     }
     const job = await createJob0737(access.username, target);
+    if (job.busy) {
+      return fail(res, 409, "blablacar_query_consent_pending", "Conclua a solicitação remota pendente antes de consultar outra viagem.");
+    }
     if (job.throttled) {
       res.set("Retry-After", String(Math.max(1, Math.ceil(job.retryAfterMillis / 1000))));
       return fail(res, 429, "blablacar_query_refresh_throttled", "Aguarde antes de solicitar novamente esta viagem.", { retryAfterMillis: job.retryAfterMillis });
@@ -571,12 +632,13 @@ function createBlaBlaTripQueryRemote0737({ db, requireDriver, getMessaging, norm
     return json(res, 200, { accepted: true, jobId: owned.jobId, state: requestedStatus });
   }
 
-  return { refreshPublic0737, latestPublic0737, ackJob0737, submitResult0737 };
+  return { refreshPublic0737, latestPublic0737, ackJob0737, submitResult0737, pollDriverPending0760 };
 }
 
 module.exports = {
   QUERY_STATE_COLLECTION_0737,
   QUERY_JOB_COLLECTION_0737,
+  QUERY_PENDING_COLLECTION_0760,
   QUERY_MAX_PAYLOAD_BYTES_0737,
   normalizeTripId0737,
   normalizeAdministrativeHref0737,
@@ -584,5 +646,6 @@ module.exports = {
   tripQueryStateKey0737,
   queryResultTransition0737,
   remoteQueryCapablePushToken0737,
+  pendingConsentTripQuery0760,
   createBlaBlaTripQueryRemote0737,
 };
