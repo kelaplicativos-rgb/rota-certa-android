@@ -44,7 +44,7 @@ class RemoteHealth0747ContractTest {
     @Test
     fun pushRegistrationAndApiDeclareRemoteHealthCapability() {
         val api = source("TripRemoteApi.kt")
-        assertTrue(api.contains("val remoteHealthVersion: Int = 1"))
+        assertTrue(api.contains("val remoteHealthVersion: Int = 2"))
         assertTrue(api.contains("/v1/driver/remote-health/jobs/"))
         assertTrue(api.contains("ackRemoteHealthJob0747"))
         assertTrue(api.contains("submitRemoteHealthResult0747"))
