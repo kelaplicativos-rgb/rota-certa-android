@@ -3,7 +3,7 @@ name: Rota Certa 0.1.759 popup remoto exact SHA
 on:
   push:
     branches:
-      - 'agent/remote-popup-no-fcm-0.1.759'
+      - 'agent/remote-cover-date-recovery-0.1.759'
   workflow_dispatch:
 
 permissions:
