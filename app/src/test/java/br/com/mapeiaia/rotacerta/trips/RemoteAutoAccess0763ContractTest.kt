@@ -39,12 +39,14 @@ class RemoteAutoAccess0763ContractTest {
     }
 
     @Test
-    fun driverHasImmediateOptOutAndListeningStillRequiresExplicitStart() {
+    fun driverHasSingleToggleAndServerAcknowledgedAccess() {
         val screen = src("StandaloneRemoteAccessActions0739.kt")
         val collector = src("TripBlaBlaCollectorUi.kt")
         assertTrue(screen.contains("Switch("))
-        assertTrue(screen.contains("RemoteSupportAutoAccess0763.setEnabled(context, enabled)"))
-        assertTrue(screen.contains("Somente leitura"))
+        assertTrue(screen.contains("RemoteSupportAutoAccess0763.setEnabled(context, true)"))
+        assertTrue(screen.contains("RemoteSupportAutoAccess0763.setEnabled(context, false)"))
+        assertTrue(screen.contains("api.setRemoteAccessState0764(enabled)"))
+        assertTrue(screen.contains("não altera"))
         assertFalse(collector.contains("Ativar escuta remota (sem FCM)"))
         assertTrue(collector.contains("StandaloneRemoteAccessActions0739("))
         assertTrue(screen.contains("ContextCompat.startForegroundService"))
