@@ -2,6 +2,33 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.758",
+      "build": 6049,
+      "date": "2026-10-08",
+      "title": "Escuta remota de capas sem token FCM",
+      "summary": "Adiciona polling autenticado isolado e pop-up de consentimento explícito sem alterar FAROL/Agenda/Timeline.",
+      "implemented": [
+        "Endpoint de consulta pendente por motorista autenticado",
+        "Serviço de escuta remota opt-in com pop-up Aceitar/Recusar",
+        "Continuidade da coleta avulsa existente após autorização"
+      ],
+      "fixed": [
+        "Consulta de capas não exige token FCM para entrega"
+      ],
+      "improved": [
+        "Fallback para notificação local",
+        "Limites de background declarados ao motorista"
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Coleta remota",
+        "Privacidade"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.757",
       "build": 6048,
       "date": "2026-10-08",

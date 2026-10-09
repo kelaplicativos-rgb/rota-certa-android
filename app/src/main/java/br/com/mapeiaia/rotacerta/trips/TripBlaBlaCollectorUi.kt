@@ -158,6 +158,7 @@ fun BlaBlaCollectorPanel(
     var standaloneRemoteAccess0736 by remember { mutableStateOf(standaloneRemoteAccessStore0736.read()) }
     var standaloneRemoteConnecting0739 by remember { mutableStateOf(false) }
     var standaloneRemoteMessage0739 by remember { mutableStateOf<String?>(null) }
+    var remotePolling0758 by remember { mutableStateOf(RemoteCoversPollService0758.isRunning) }
 
     fun copyRemoteAccess0739(access: StandaloneCoversRemoteAccess0736) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -187,7 +188,7 @@ fun BlaBlaCollectorPanel(
                             settings.publicBaseUrl, TripRemoteApi(settings).ensureStandaloneCoversAccess0736(),
                         )
                     },
-                    registerPush = { BookingPushRegistration0304.ensureRegistered(context, store) },
+                    registerPush = { RemoteCoversPollService0758.isRunning },
                 )
             }
             standaloneRemoteAccess0736 = result.access
@@ -843,8 +844,47 @@ fun BlaBlaCollectorPanel(
                 },
                 onVerify = { standaloneScope0734.launch { connectRemoteAccess0739() } },
             )
+
+            OutlinedButton(
+                onClick = {
+                    val isRunning = RemoteCoversPollService0758.isRunning
+                    if (isRunning) {
+                        context.stopService(android.content.Intent(context, RemoteCoversPollService0758::class.java))
+                        remotePolling0758 = false
+                        standaloneRemoteMessage0739 = "Escuta remota desligada. Nenhuma solicitação será recebida até reativar."
+                    } else if (android.os.Build.VERSION.SDK_INT >= 23 &&
+                        !android.provider.Settings.canDrawOverlays(context)) {
+                        standaloneRemoteMessage0739 =
+                            "Autorize a sobreposição de tela para mostrar o pop-up sobre outros aplicativos; depois volte e ative a escuta."
+                        context.startActivity(android.content.Intent(
+                            android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            android.net.Uri.parse("package:${context.packageName}")
+                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                    } else {
+                        runCatching {
+                            androidx.core.content.ContextCompat.startForegroundService(
+                                context,
+                                android.content.Intent(context, RemoteCoversPollService0758::class.java)
+                            )
+                        }.onSuccess {
+                            remotePolling0758 = true
+                            standaloneRemoteMessage0739 =
+                                "Escuta remota ativada (sem token FCM). A leitura só começa após Aceitar."
+                        }.onFailure { error ->
+                            remotePolling0758 = false
+                            standaloneRemoteMessage0739 =
+                                "Não foi possível ativar a escuta: ${error.javaClass.simpleName}."
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (remotePolling0758) "■ Desligar escuta remota" else "◉ Ativar escuta remota (sem FCM)")
+            }
+            Text("Enquanto a escuta estiver ativa, o Android mantém uma notificação de serviço. " +
+                "Pode haver limites de execução em segundo plano; não é leitura automática nem dispensa o seu aceite.")
             Text(
-                "Compartilhe este acesso somente com quem pode consultar suas viagens. " +
+                "Compartilhe este acesso somente com quem pode consultar suas viagens.  +
                     "Capas continuam isoladas; a consulta HTML dirigida lê uma viagem por profileUuid + tripId e não envia cookies, senha ou HTML bruto.",
             )
 

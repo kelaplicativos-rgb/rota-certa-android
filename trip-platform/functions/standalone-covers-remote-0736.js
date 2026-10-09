@@ -248,6 +248,15 @@ function remoteCapablePushToken0736(data, nowMillis = Date.now()) {
     Number(value.standaloneCoversRemoteVersion || 0) >= 1;
 }
 
+
+function pendingConsentJob0758(job, nowMillis = Date.now()) {
+  const raw = job && typeof job === "object" ? job : {};
+  const state = clean0736(raw.state, 32).toUpperCase();
+  return (state === "REQUESTED" || state === "PUSH_SENT" || state === "PENDING_DEVICE") &&
+    canonicalUuid0736(raw.jobId) !== "" &&
+    Number(raw.expiresAtMillis || 0) > Number(nowMillis || 0);
+}
+
 function createStandaloneCoversRemote0736({
   db,
   requireDriver,
@@ -474,6 +483,35 @@ function createStandaloneCoversRemote0736({
     };
   }
 
+
+  // Tokenless refers to FCM delivery only: this endpoint always requires the
+  // existing per-driver credential and never exposes cross-tenant requests.
+  async function pollDriverPending0758(req, res) {
+    const driver = await requireDriver(req, res);
+    if (!driver) return;
+    if (!driver.username) return fail(res, 400, "driver_username_required", "Identidade pública não configurada.");
+    const stateSnap = await db.collection(STATE_COLLECTION_0736).doc(driver.username).get();
+    const state = stateSnap.exists ? stateSnap.data() : {};
+    const jobId = canonicalUuid0736(state.latestJobId);
+    if (!jobId) return json(res, 200, { pending: false, jobId: "", state: "NONE" });
+    const jobSnap = await db.collection(JOB_COLLECTION_0736).doc(jobId).get();
+    const job = jobSnap.exists ? jobSnap.data() : null;
+    if (!pendingConsentJob0758(job)) {
+      return json(res, 200, { pending: false, jobId: "", state: job ? clean0736(job.state, 32) : "MISSING" });
+    }
+    if (normalizeUsername(job.driverUsername) !== driver.username) {
+      return fail(res, 403, "standalone_cover_scope_mismatch", "Coleta pertence a outro motorista.");
+    }
+    res.set("Cache-Control", "no-store, no-cache, max-age=0, must-revalidate");
+    return json(res, 200, {
+      pending: true,
+      jobId,
+      state: clean0736(job.state, 32),
+      requestedAtMillis: Number(job.requestedAtMillis || 0),
+      expiresAtMillis: Number(job.expiresAtMillis || 0),
+    });
+  }
+
   async function requestAuthenticated0736(req, res) {
     const driver = await requireDriver(req, res);
     if (!driver) return;
@@ -678,6 +716,7 @@ function createStandaloneCoversRemote0736({
   return {
     ensureAccess0736,
     requestAuthenticated0736,
+    pollDriverPending0758,
     refreshPublic0736,
     latestPublic0736,
     ackJob0736,
@@ -700,5 +739,6 @@ module.exports = {
   standaloneCoverResultTransition0736,
   standaloneCoverRefreshDecision0736,
   remoteCapablePushToken0736,
+  pendingConsentJob0758,
   createStandaloneCoversRemote0736,
 };

@@ -13,6 +13,7 @@ const {
   standaloneCoverResultTransition0736,
   standaloneCoverRefreshDecision0736,
   remoteCapablePushToken0736,
+  pendingConsentJob0758,
   MAX_PAYLOAD_BYTES_0736,
 } = require("../standalone-covers-remote-0736");
 
@@ -248,4 +249,22 @@ test("PENDING_DEVICE pode tentar novamente após o backoff sem fingir frescor", 
     }),
     { action: "CREATE", retryAfterMillis: 0 },
   );
+});
+
+test("polling tokenless não permite execução sem consentimento nem job expirado", () => {
+  const now = 1_000_000;
+  const job = { jobId: "7371f028-9c55-4903-8444-308015823efd", state: "PENDING_DEVICE", expiresAtMillis: now + 1_000 };
+  assert.equal(pendingConsentJob0758(job, now), true);
+  assert.equal(pendingConsentJob0758({ ...job, state: "RUNNING" }, now), false);
+  assert.equal(pendingConsentJob0758({ ...job, state: "COMPLETE" }, now), false);
+  assert.equal(pendingConsentJob0758({ ...job, expiresAtMillis: now }, now), false);
+  assert.equal(pendingConsentJob0758({ ...job, jobId: "invalid" }, now), false);
+});
+test("polling remoto exige autenticação individual do motorista", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "standalone-covers-remote-0736.js"), "utf8");
+  assert.match(source, /async function pollDriverPending0758/);
+  assert.match(source, /const driver = await requireDriver\(req, res\)/);
+  assert.match(source, /normalizeUsername\(job.driverUsername\) !== driver.username/);
+  const routes = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
+  assert.match(routes, /GET" && path === "\/v1\/driver\/standalone-covers\/pending/);
 });

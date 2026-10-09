@@ -9,11 +9,10 @@ internal data class StandaloneRemoteConnection0739(
 ) {
     val message: String
         get() = if (pushRegistered) {
-            "Acesso privado disponível e aparelho registrado para receber consultas. " +
-                "A resposta a uma consulta ainda precisa ser confirmada."
+            "Acesso privado disponível e escuta remota ligada, sem FCM. " +
+                "Toda leitura exige ACEITAR no pop-up."
         } else {
-            "Acesso privado disponível. Registro de notificações pendente; " +
-                "o aparelho ainda não está confirmado para receber consultas. Toque em Verificar conexão remota para tentar novamente."
+            "Acesso privado disponível. Ative a escuta remota abaixo para receber pedidos sem token FCM."
         }
 }
 

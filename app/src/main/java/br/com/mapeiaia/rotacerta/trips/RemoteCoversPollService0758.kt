@@ -1,0 +1,213 @@
+package br.com.mapeiaia.rotacerta.trips
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.net.Uri
+import android.os.Build
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
+import android.provider.Settings
+import android.view.Gravity
+import android.view.View
+import android.view.WindowManager
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.core.app.NotificationCompat
+import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+
+// No Firebase registration is required. This service must be started explicitly
+// by the driver and cannot bypass Android background execution limitations.
+internal const val REMOTE_COVERS_POLL_0758 = "REMOTE_COVERS_POLL_0758"
+
+internal fun shouldOfferRemoteConsent0758(
+    job: StandaloneCoversPendingJob0758,
+    seenJobId: String,
+    nowMillis: Long,
+): Boolean = job.pending &&
+    normalizeStandaloneCoversRemoteJobId0736(job.jobId) != null &&
+    job.jobId != seenJobId &&
+    job.expiresAtMillis > nowMillis
+
+internal class RemoteCoversPollService0758 : Service() {
+    companion object {
+        @Volatile var isRunning: Boolean = false
+            private set
+        private const val CHANNEL = "rota_certa_remote_covers_poll_0758"
+        private const val NOTIFICATION_ID = 758_008
+        const val ACTION_STOP = "br.com.mapeiaia.rotacerta.REMOTE_POLL_STOP_0758"
+    }
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val main = Handler(Looper.getMainLooper())
+    private var polling: Job? = null
+    private var seenJobId: String = ""
+    private var activePopup: View? = null
+    private var overlayManager: WindowManager? = null
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        if (polling?.isActive == true) return START_NOT_STICKY
+        val manager = getSystemService(NotificationManager::class.java)
+        if (Build.VERSION.SDK_INT >= 26) {
+            manager.createNotificationChannel(NotificationChannel(
+                CHANNEL, "Consulta remota de capas", NotificationManager.IMPORTANCE_LOW
+            ).apply { description = "Escuta ativada pelo motorista; nenhuma capa é lida sem autorização." })
+        }
+        val notification: Notification = NotificationCompat.Builder(this, CHANNEL)
+            .setContentTitle("Rota Certa — escuta remota ativa")
+            .setContentText("Aguardando solicitações de capas para aceitar ou recusar.")
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+        if (Build.VERSION.SDK_INT >= 29) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+        isRunning = true
+        polling = scope.launch {
+            while (isActive) {
+                try {
+                    val settings = TripStore(applicationContext).onlineSettings()
+                    if (settings.configured && settings.driverUsername.isNotBlank() &&
+                        settings.driverToken.isNotBlank()) {
+                        val pending = TripRemoteApi(settings).pollStandaloneCoversPending0758()
+                        val now = System.currentTimeMillis()
+                        if (shouldOfferRemoteConsent0758(pending, seenJobId, now)) {
+                            seenJobId = pending.jobId
+                            val jobId = pending.jobId
+                            main.post { showConsent(jobId) }
+                        } else if (!pending.pending) {
+                            seenJobId = ""
+                            main.post { closePopup() }
+                        }
+                    }
+                } catch (error: Exception) {
+                    UnifiedDebugEventStore.record(
+                        "REMOTE_COVERS_POLL_FAILED_0758", packageName,
+                        "reason=${error.javaClass.simpleName.take(64)}"
+                    )
+                }
+                delay(10_000)
+            }
+        }
+        return START_NOT_STICKY
+    }
+
+    private fun showConsent(jobId: String) {
+        if (!isRunning || !Settings.canDrawOverlays(this)) {
+            // Fallback is a local notification, NOT an FCM push.
+            RemoteSupportNotification0744.show(this, "standalone_covers_collect", jobId)
+            return
+        }
+        closePopup()
+        RemoteSupportNotification0744.show(this, "standalone_covers_collect", jobId)
+        val context = this
+        val dp = resources.displayMetrics.density
+        fun d(value: Int): Int = (value * dp).toInt()
+        val panel = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(d(18), d(16), d(18), d(14))
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(32, 34, 47))
+                cornerRadius = d(18).toFloat()
+                setStroke(d(2), Color.rgb(113, 88, 183))
+            }
+            elevation = d(12).toFloat()
+        }
+        panel.addView(TextView(context).apply {
+            text = "Rota Certa • consulta remota"
+            setTextColor(Color.WHITE)
+            textSize = 18f
+            setTypeface(null, Typeface.BOLD)
+        })
+        panel.addView(TextView(context).apply {
+            text = "Permitir leitura SOMENTE das capas BlaBlaCar? Nenhuma viagem será alterada."
+            setTextColor(Color.WHITE)
+            textSize = 15f
+            setPadding(0, d(10), 0, d(12))
+        })
+        val buttons = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        fun consentButton(title: String, action: String): Button = Button(context).apply {
+            text = title
+            isAllCaps = false
+            setOnClickListener {
+                val request = Intent(context, RemoteSupportConsentReceiver0746::class.java).apply {
+                    this.action = action
+                    putExtra(RemoteSupportConsentReceiver0746.EXTRA_EVENT, "standalone_covers_collect")
+                    putExtra(RemoteSupportConsentReceiver0746.EXTRA_JOB_ID, jobId)
+                    putExtra(RemoteSupportConsentReceiver0746.EXTRA_NOTIFICATION_ID,
+                        RemoteSupportNotification0744.notificationId(jobId))
+                }
+                context.sendBroadcast(request)
+                closePopup()
+            }
+        }
+        buttons.addView(consentButton("Recusar", RemoteSupportConsentReceiver0746.ACTION_DECLINE),
+            LinearLayout.LayoutParams(0, d(52), 1f))
+        buttons.addView(consentButton("Aceitar", RemoteSupportConsentReceiver0746.ACTION_ACCEPT),
+            LinearLayout.LayoutParams(0, d(52), 1f))
+        panel.addView(buttons)
+        try {
+            val window = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            window.addView(panel, WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                if (Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                else WindowManager.LayoutParams.TYPE_PHONE,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_SECURE,
+                android.graphics.PixelFormat.TRANSLUCENT
+            ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; y = d(52) })
+            overlayManager = window
+            activePopup = panel
+        } catch (error: Exception) {
+            UnifiedDebugEventStore.record(
+                "REMOTE_COVERS_POPUP_FAILED_0758", packageName,
+                "reason=${error.javaClass.simpleName.take(64)}"
+            )
+        }
+        // After 30 s the request remains actionable from the local notification.
+        main.postDelayed({ if (activePopup === panel) closePopup() }, 30_000)
+    }
+
+    private fun closePopup() {
+        val view = activePopup ?: return
+        activePopup = null
+        runCatching { overlayManager?.removeViewImmediate(view) }
+        overlayManager = null
+    }
+
+    override fun onDestroy() {
+        isRunning = false
+        polling?.cancel()
+        main.post { closePopup() }
+        scope.cancel()
+        super.onDestroy()
+    }
+}

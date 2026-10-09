@@ -79,6 +79,15 @@ internal data class StandaloneCoversAccessResponse0736(
 )
 
 @Serializable
+internal data class StandaloneCoversPendingJob0758(
+    val pending: Boolean = false,
+    val jobId: String = "",
+    val state: String = "",
+    val requestedAtMillis: Long = 0L,
+    val expiresAtMillis: Long = 0L,
+)
+
+@Serializable
 internal data class StandaloneCoversJobAckRequest0736(
     val state: String = "RUNNING",
     val appVersion: String = "",
@@ -1072,6 +1081,14 @@ class TripRemoteApi(
         path = "/v1/driver/standalone-covers/access/ensure",
         body = "{}",
         requireDriverToken = true,
+    )
+
+    internal suspend fun pollStandaloneCoversPending0758(): StandaloneCoversPendingJob0758 = request(
+        method = "GET",
+        path = "/v1/driver/standalone-covers/pending",
+        requireDriverToken = true,
+        connectTimeoutMs = 8_000,
+        readTimeoutMs = 10_000,
     )
 
     internal suspend fun ackStandaloneCoversJob0736(

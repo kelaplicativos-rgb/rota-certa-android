@@ -11684,6 +11684,9 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     if (req.method === "POST" && path === "/v1/driver/standalone-covers/access/ensure") {
       return await standaloneCoversRemote0736.ensureAccess0736(req, res);
     }
+    if (req.method === "GET" && path === "/v1/driver/standalone-covers/pending") {
+      return await standaloneCoversRemote0736.pollDriverPending0758(req, res);
+    }
     if (req.method === "POST" && path === "/v1/driver/standalone-covers/request") {
       return await standaloneCoversRemote0736.requestAuthenticated0736(req, res);
     }
