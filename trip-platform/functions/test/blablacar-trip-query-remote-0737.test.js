@@ -44,7 +44,11 @@ function payload0737() {
       seats: 2,
       boarding: "São Paulo",
       dropoff: "Pouso Alegre",
+      passengerTotalMinorUnits: 21200,
+      driverReceivesMinorUnits: 18700,
+      fareCurrencyCode: "BRL",
     }],
+    individualFaresComplete: true,
     itineraryStops: ["São Paulo", "Pouso Alegre", "São Tomé das Letras"],
     itineraryStopTimes: ["10:30", "13:00", "15:30"],
   };
@@ -59,6 +63,9 @@ test("snapshot COMPLETE aceita somente campos operacionais sanitizados", () => {
   assert.equal(value.passengerCount, 1);
   assert.equal(value.passengerSeatCount, 2);
   assert.equal(value.passengers[0].name, "Pessoa");
+  assert.equal(value.passengers[0].passengerTotalMinorUnits, 21200);
+  assert.equal(value.passengers[0].driverReceivesMinorUnits, 18700);
+  assert.equal(value.individualFaresComplete, true);
 });
 
 test("telefone e booking href sao rejeitados no snapshot remoto", () => {
@@ -68,6 +75,30 @@ test("telefone e booking href sao rejeitados no snapshot remoto", () => {
   delete value.passengers[0].phone;
   value.passengers[0].booking_href = "https://example.com";
   assert.throws(() => sanitizeTripQueryPayload0737(value), /campo não permitido/i);
+});
+
+
+test("snapshot nunca deduz valor por passageiro a partir do preco da capa", () => {
+  const input = payload0737();
+  input.passengers[0].passengerTotalMinorUnits = null;
+  input.passengers[0].driverReceivesMinorUnits = null;
+  input.passengers[0].fareCurrencyCode = "";
+  input.individualFaresComplete = false;
+  const result = sanitizeTripQueryPayload0737(input);
+  assert.equal(result.passengers[0].passengerTotalMinorUnits, null);
+  assert.equal(result.individualFaresComplete, false);
+});
+
+test("valor remoto exige centavos inteiros e moeda confirmada", () => {
+  const input = payload0737();
+  input.passengers[0].passengerTotalMinorUnits = -1;
+  assert.throws(() => sanitizeTripQueryPayload0737(input), /centavos inteiros/i);
+  input.passengers[0].passengerTotalMinorUnits = 21200;
+  input.passengers[0].fareCurrencyCode = "";
+  assert.throws(() => sanitizeTripQueryPayload0737(input), /moeda BRL/i);
+  input.passengers[0].fareCurrencyCode = "BRL";
+  input.individualFaresComplete = false;
+  assert.throws(() => sanitizeTripQueryPayload0737(input), /Completude de valores/i);
 });
 
 test("identidade forte divergente e contagens inconsistentes falham", () => {

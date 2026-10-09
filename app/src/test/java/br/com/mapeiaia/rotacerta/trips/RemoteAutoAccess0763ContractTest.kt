@@ -39,15 +39,21 @@ class RemoteAutoAccess0763ContractTest {
     }
 
     @Test
-    fun driverHasImmediateOptOutAndListeningStillRequiresExplicitStart() {
+    fun driverHasSingleToggleAndServerAcknowledgedAccess() {
         val screen = src("StandaloneRemoteAccessActions0739.kt")
         val collector = src("TripBlaBlaCollectorUi.kt")
         assertTrue(screen.contains("Switch("))
-        assertTrue(screen.contains("RemoteSupportAutoAccess0763.setEnabled(context, enabled)"))
-        assertTrue(screen.contains("Somente leitura"))
-        assertTrue(collector.contains("RemoteCoversPollService0758::class.java"))
-        assertTrue(collector.contains("context.stopService"))
-        assertTrue(collector.contains("android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION"))
-        assertTrue(collector.contains("!RemoteSupportAutoAccess0763.enabled(context"))
+        assertTrue(screen.contains("RemoteSupportAutoAccess0763.setEnabled(context, true)"))
+        assertTrue(screen.contains("RemoteSupportAutoAccess0763.setEnabled(context, false)"))
+        assertTrue(screen.contains("api.setRemoteAccessState0764(enabled)"))
+        assertTrue(screen.contains("Não altera"))
+        assertFalse(collector.contains("Ativar escuta remota (sem FCM)"))
+        assertTrue(collector.contains("StandaloneRemoteAccessActions0739("))
+        assertTrue(screen.contains("ContextCompat.startForegroundService"))
+        assertTrue(screen.contains("context.stopService"))
+        val poller = src("RemoteCoversPollService0758.kt")
+        assertTrue(poller.contains("RemoteSupportAutoAccess0763.enabled(applicationContext"))
+        val consent = src("RemoteSupportConsent0746.kt")
+        assertTrue(consent.contains("RemoteSupportAutoAccess0763.enabled(app, event)"))
     }
 }

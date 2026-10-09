@@ -158,7 +158,6 @@ fun BlaBlaCollectorPanel(
     var standaloneRemoteAccess0736 by remember { mutableStateOf(standaloneRemoteAccessStore0736.read()) }
     var standaloneRemoteConnecting0739 by remember { mutableStateOf(false) }
     var standaloneRemoteMessage0739 by remember { mutableStateOf<String?>(null) }
-    var remotePolling0758 by remember { mutableStateOf(RemoteCoversPollService0758.isRunning) }
 
     fun copyRemoteAccess0739(access: StandaloneCoversRemoteAccess0736) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -843,55 +842,6 @@ fun BlaBlaCollectorPanel(
                     }
                 },
                 onVerify = { standaloneScope0734.launch { connectRemoteAccess0739() } },
-            )
-
-            OutlinedButton(
-                onClick = {
-                    val isRunning = RemoteCoversPollService0758.isRunning
-                    if (isRunning) {
-                        context.stopService(android.content.Intent(context, RemoteCoversPollService0758::class.java))
-                        remotePolling0758 = false
-                        standaloneRemoteMessage0739 = "Escuta remota desligada. Nenhuma solicitação será recebida até reativar."
-                    } else if (android.os.Build.VERSION.SDK_INT >= 23 &&
-                        !android.provider.Settings.canDrawOverlays(context) &&
-                        !RemoteSupportAutoAccess0763.enabled(context, "remote_health_collect")) {
-                        standaloneRemoteMessage0739 =
-                            "Autorize a sobreposição de tela para mostrar o pop-up sobre outros aplicativos; depois volte e ative a escuta."
-                        context.startActivity(android.content.Intent(
-                            android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            android.net.Uri.parse("package:${context.packageName}")
-                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
-                    } else {
-                        runCatching {
-                            androidx.core.content.ContextCompat.startForegroundService(
-                                context,
-                                android.content.Intent(context, RemoteCoversPollService0758::class.java)
-                            )
-                        }.onSuccess {
-                            remotePolling0758 = true
-                            standaloneRemoteMessage0739 =
-                                if (RemoteSupportAutoAccess0763.enabled(context, "remote_health_collect")) {
-                                    "Escuta remota ativa. Consultas autorizadas automaticamente; Android continua exigindo suas permissões próprias."
-                                } else {
-                                    "Escuta remota ativada (sem token FCM). A leitura só começa após Aceitar."
-                                }
-                        }.onFailure { error ->
-                            remotePolling0758 = false
-                            standaloneRemoteMessage0739 =
-                                "Não foi possível ativar a escuta: ${error.javaClass.simpleName}."
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(if (remotePolling0758) "■ Desligar escuta remota" else "◉ Ativar escuta remota (sem FCM)")
-            }
-            Text("Enquanto a escuta estiver ativa, o Android mantém uma notificação de serviço. " +
-                "Pode haver limites de execução em segundo plano. Com autorização automática desligada, cada consulta exige Aceitar; " +
-                "com ela ligada, consultas autenticadas somente-leitura dispensam o pop-up interno, mas não permissões do Android.")
-            Text(
-                "Compartilhe este acesso somente com quem pode consultar suas viagens. " +
-                    "Capas continuam isoladas; a consulta HTML dirigida lê uma viagem por profileUuid + tripId e não envia cookies, senha ou HTML bruto.",
             )
 
             Text("A leitura usa somente a interface oficial logada. Senha não é capturada nem enviada ao Railway.")

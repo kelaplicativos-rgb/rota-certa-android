@@ -77,7 +77,9 @@ internal class StandaloneCoversRemoteAccessStore0736(context: Context) {
     ): StandaloneCoversRemoteAccess0736 {
         val base = publicBaseUrl.trim().trimEnd('/')
         require(base.startsWith("https://")) { "Base pública HTTPS não configurada" }
-        require(response.enabled) { "Coleta remota não foi habilitada pelo servidor" }
+        // A valid capability may be provisioned but currently revoked by the OFF toggle.
+        // Saving a disabled access URL does not reactivate it; only the authenticated state
+        // endpoint can grant access again.
         require(response.refreshPath.startsWith("/v1/public/standalone-covers/")) {
             "Caminho privado de coleta remota inválido"
         }
@@ -116,6 +118,7 @@ internal object StandaloneCoversRemoteScheduler0736 {
     fun enqueue(context: Context, rawJobId: String?): Boolean {
         val jobId = normalizeStandaloneCoversRemoteJobId0736(rawJobId) ?: return false
         val request = OneTimeWorkRequestBuilder<StandaloneCoversRemoteWorker0736>()
+            .addTag(RemoteSupportAutoAccess0763.WORK_TAG)
             .setInputData(
                 Data.Builder()
                     .putString(STANDALONE_COVERS_REMOTE_JOB_ID_0736, jobId)
@@ -142,6 +145,9 @@ internal class StandaloneCoversRemoteWorker0736(
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
+        if (!RemoteSupportAutoAccess0763.enabled(applicationContext, "standalone_covers_collect")) {
+            return Result.failure()
+        }
         val jobId = normalizeStandaloneCoversRemoteJobId0736(
             inputData.getString(STANDALONE_COVERS_REMOTE_JOB_ID_0736),
         ) ?: return Result.failure()

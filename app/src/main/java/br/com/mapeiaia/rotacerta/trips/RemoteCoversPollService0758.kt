@@ -129,10 +129,18 @@ internal class RemoteCoversPollService0758 : Service() {
                         settings.driverToken.isNotBlank()) {
                         val api = TripRemoteApi(settings)
                         val now = System.currentTimeMillis()
+                        if (!RemoteSupportAutoAccess0763.enabled(applicationContext, "standalone_covers_collect")) {
+                            seenCoverJobId = ""
+                            seenTripJobId = ""
+                            seenTechnicalJobId = ""
+                            seenHealthJobId = ""
+                            main.post { closePopup() }
+                        }
                         // Independent polls: failure of one source must not suppress the other.
                         runCatching { api.pollStandaloneCoversPending0758() }
                             .onSuccess { pending ->
-                                if (shouldOfferRemoteConsent0758(pending, seenCoverJobId, now)) {
+                                if (RemoteSupportAutoAccess0763.enabled(applicationContext, "standalone_covers_collect") &&
+                                    shouldOfferRemoteConsent0758(pending, seenCoverJobId, now)) {
                                     seenCoverJobId = pending.jobId
                                     val jobId = pending.jobId
                                     main.post { showConsent("standalone_covers_collect", jobId) }
@@ -148,7 +156,8 @@ internal class RemoteCoversPollService0758 : Service() {
                             }
                         runCatching { api.pollRemoteTechnicalPending0761() }
                             .onSuccess { pending ->
-                                if (shouldOfferRemoteTechnicalConsent0761(pending, seenTechnicalJobId, now)) {
+                                if (RemoteSupportAutoAccess0763.enabled(applicationContext, "remote_health_collect") &&
+                                    shouldOfferRemoteTechnicalConsent0761(pending, seenTechnicalJobId, now)) {
                                     seenTechnicalJobId = pending.jobId
                                     val jobId = pending.jobId
                                     main.post { showConsent("remote_health_collect", jobId) }
@@ -164,7 +173,8 @@ internal class RemoteCoversPollService0758 : Service() {
                             }
                         runCatching { api.pollRemoteHealthPending0762() }
                             .onSuccess { pending ->
-                                if (shouldOfferRemoteHealthConsent0762(pending, seenHealthJobId, now)) {
+                                if (RemoteSupportAutoAccess0763.enabled(applicationContext, "remote_health_collect") &&
+                                    shouldOfferRemoteHealthConsent0762(pending, seenHealthJobId, now)) {
                                     seenHealthJobId = pending.jobId
                                     val jobId = pending.jobId
                                     main.post { showConsent("remote_health_collect", jobId) }
@@ -180,7 +190,8 @@ internal class RemoteCoversPollService0758 : Service() {
                             }
                         runCatching { api.pollBlaBlaTripQueryPending0760() }
                             .onSuccess { pending ->
-                                if (shouldOfferRemoteTripConsent0760(pending, seenTripJobId, now)) {
+                                if (RemoteSupportAutoAccess0763.enabled(applicationContext, "blablacar_trip_query_collect") &&
+                                    shouldOfferRemoteTripConsent0760(pending, seenTripJobId, now)) {
                                     seenTripJobId = pending.jobId
                                     val jobId = pending.jobId
                                     main.post { showConsent("blablacar_trip_query_collect", jobId) }
@@ -208,6 +219,9 @@ internal class RemoteCoversPollService0758 : Service() {
     }
 
     private fun showConsent(event: String, jobId: String) {
+        // OFF is a hard stop for *new device collection*. Even if the backend
+        // holds an old request or a push arrives, no prompt or worker is started.
+        if (!RemoteSupportAutoAccess0763.enabled(this, event)) return
         // Every job remains actionable via a local notification even if a
         // different consent popup is currently shown.
         // Automatic approval is possible only after the driver opted in locally.

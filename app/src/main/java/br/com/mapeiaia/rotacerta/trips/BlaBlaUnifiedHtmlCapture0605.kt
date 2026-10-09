@@ -182,12 +182,23 @@ private data class UnifiedPassengerPageCapture0653(
     val addresses: UnifiedPassengerAddressEvidence0653,
 )
 
+/**
+ * Payment figures come only from distinct, explicitly labeled BlaBlaCar passenger HTML fields.
+ * Never derive passenger payable from trip price, driver receipts or occupied seat counts.
+ */
+internal data class BlaBlaPassengerPaymentEvidence0764(
+    val passengerTotalMinorUnits: Long? = null,
+    val driverReceivesMinorUnits: Long? = null,
+    val currencyCode: String = "",
+)
+
 private data class UnifiedPassengerDepthResult0653(
     val trip: BlaBlaCollectorTrip,
     val expected: Int,
     val resolved: Int,
     val htmlFiles: List<String>,
     val htmlArtifacts: List<BlaBlaRidesSnapshotFile0526>,
+    val paymentEvidence0764: List<BlaBlaPassengerPaymentEvidence0764?> = emptyList(),
 )
 
 private data class UnifiedDirectScripts0605(
@@ -215,6 +226,7 @@ private data class UnifiedCapturedTrip0605(
     val trip: BlaBlaCollectorTrip?,
     val evidence: BlaBlaRidesTripCapture0605,
     val operationalComplete: Boolean,
+    val paymentEvidence0764: List<BlaBlaPassengerPaymentEvidence0764?> = emptyList(),
 )
 
 internal fun shouldCaptureRide0605(
@@ -250,6 +262,7 @@ internal data class BlaBlaTargetedHtmlRefreshResult0607(
     val operationalComplete: Boolean = false,
     val coreOperationalComplete0737: Boolean = false,
     val evidencePath: String = "",
+    val paymentEvidence0764: List<BlaBlaPassengerPaymentEvidence0764?> = emptyList(),
 )
 
 internal enum class TargetedHtmlAcceptance0675 {
@@ -1271,6 +1284,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 operationalComplete = captured.operationalComplete,
                 coreOperationalComplete0737 = targetedHtmlCoreOperationalComplete0675(captured.evidence),
                 evidencePath = captured.evidence.htmlFile,
+                paymentEvidence0764 = captured.paymentEvidence0764,
             )
         } finally {
             sessionStore.releaseExternalFlight0426(lease)
@@ -1532,6 +1546,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         return UnifiedCapturedTrip0605(
             trip = trip,
             operationalComplete = operationalComplete,
+            paymentEvidence0764 = passengerDepth0653?.paymentEvidence0764.orEmpty(),
             evidence = BlaBlaRidesTripCapture0605(
                 tripId = ride.tripId,
                 administrativeUrl = administrativeUrl,
@@ -2013,6 +2028,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         }
 
         val passengers = source.passengers.toMutableList()
+        val paymentEvidence0764 = MutableList<BlaBlaPassengerPaymentEvidence0764?>(expected) { null }
         val pendingMetadata = mutableListOf<ExternalPassengerMetadata>()
         val htmlFiles = mutableListOf<String>()
         val htmlArtifacts = mutableListOf<BlaBlaRidesSnapshotFile0526>()
@@ -2142,6 +2158,21 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             }
             htmlFiles += htmlEvidence.relativePath
             htmlArtifacts += htmlEvidence
+            // Preserve provenance: "passenger total" is NOT the driver's amount and
+            // neither can be inferred from the trip card. Evidence stays in-memory for
+            // the isolated remote query; no new private persistence is introduced.
+            val paymentFields0764 = listOf(page.fare.passengerTotal, page.fare.driverReceives)
+            val passengerPayable0764 = parsePassengerFareMinorUnits0653(listOf(page.fare.passengerTotal))
+            val driverReceives0764 = parsePassengerFareMinorUnits0653(listOf(page.fare.driverReceives))
+            val paymentCurrency0764 = passengerFareCurrency0653(
+                explicitCurrency = page.contact.fareCurrencyCode,
+                fareValues = paymentFields0764,
+            )
+            paymentEvidence0764[index] = BlaBlaPassengerPaymentEvidence0764(
+                passengerTotalMinorUnits = passengerPayable0764,
+                driverReceivesMinorUnits = driverReceives0764,
+                currencyCode = paymentCurrency0764.takeIf { it == "BRL" }.orEmpty(),
+            )
             if (privateEvidenceMissing0657) {
                 UnifiedDebugEventStore.recordAlways(
                     "BLABLACAR_HTML_PASSENGER_PRIVATE_MISSING_0657",
@@ -2226,6 +2257,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             resolved = resolved,
             htmlFiles = htmlFiles,
             htmlArtifacts = htmlArtifacts,
+            paymentEvidence0764 = paymentEvidence0764,
         )
     }
 

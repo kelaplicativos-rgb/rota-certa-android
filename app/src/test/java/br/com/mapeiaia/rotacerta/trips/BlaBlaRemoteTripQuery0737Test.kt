@@ -47,6 +47,13 @@ class BlaBlaRemoteTripQuery0737Test {
                 trip = source,
                 operationalComplete = true,
                 coreOperationalComplete0737 = true,
+                paymentEvidence0764 = listOf(
+                    BlaBlaPassengerPaymentEvidence0764(
+                        passengerTotalMinorUnits = 21200L,
+                        driverReceivesMinorUnits = 18700L,
+                        currencyCode = "BRL",
+                    ),
+                ),
             ),
             expectedProfileUuid = source.profile_uuid,
             expectedTripId = source.trip_id.orEmpty(),
@@ -59,8 +66,77 @@ class BlaBlaRemoteTripQuery0737Test {
         val passenger = snapshot.passengers.single()
         assertEquals("Pessoa", passenger.name)
         assertEquals("São Paulo", passenger.boarding)
+        assertEquals(21200L, passenger.passengerTotalMinorUnits)
+        assertEquals(18700L, passenger.driverReceivesMinorUnits)
+        assertEquals("BRL", passenger.fareCurrencyCode)
+        assertTrue(snapshot.individualFaresComplete)
         assertFalse(passenger.toString().contains("5511999999999"))
         assertFalse(passenger.toString().contains("private"))
+    }
+
+
+    @Test
+    fun nuncaCalculaValorIndividualDividindoPrecoDoCard() {
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "7371f028-9c55-4903-8444-308015823efd",
+            date = "2026-11-08",
+            trip_id = "01a10f40-5046-7e0f-a0f1-084aaeb436e9",
+            price = "R$ 110",
+            passengers = listOf(
+                BlaBlaCollectorPassenger(name = "Pessoa A", seats = 2, boarding = "São Paulo", dropoff = "Pouso Alegre"),
+                BlaBlaCollectorPassenger(name = "Pessoa B", seats = 1, boarding = "Extrema", dropoff = "Três Corações"),
+            ),
+            booked_seats = 3,
+            published_seats = 4,
+            passenger_roster_complete = true,
+            itinerary_authoritative = true,
+        )
+        val result = toBlaBlaRemoteTripSnapshot0737(
+            BlaBlaTargetedHtmlRefreshResult0607(
+                trip = source,
+                operationalComplete = true,
+                coreOperationalComplete0737 = true,
+                paymentEvidence0764 = listOf(
+                    BlaBlaPassengerPaymentEvidence0764(
+                        passengerTotalMinorUnits = 15350,
+                        driverReceivesMinorUnits = 13100,
+                        currencyCode = "BRL",
+                    ),
+                    null,
+                ),
+            ),
+            source.profile_uuid,
+            source.trip_id.orEmpty(),
+        )
+        assertNotNull(result)
+        assertEquals("R$ 110", result.price)
+        assertEquals(15350L, result.passengers[0].passengerTotalMinorUnits)
+        assertNull(result.passengers[1].passengerTotalMinorUnits)
+        assertFalse(result.individualFaresComplete)
+        assertEquals("PARTIAL", blaBlaRemoteTripQueryResultState0737(result))
+    }
+
+    @Test
+    fun valorSemMoedaVerificadaNaoEPublicavel() {
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "7371f028-9c55-4903-8444-308015823efd",
+            date = "2026-11-08",
+            trip_id = "01a10f40-5046-7e0f-a0f1-084aaeb436e9",
+            passengers = listOf(BlaBlaCollectorPassenger(name = "Pessoa", seats = 1)),
+        )
+        val result = toBlaBlaRemoteTripSnapshot0737(
+            BlaBlaTargetedHtmlRefreshResult0607(
+                trip = source,
+                paymentEvidence0764 = listOf(
+                    BlaBlaPassengerPaymentEvidence0764(passengerTotalMinorUnits = 20000, currencyCode = ""),
+                ),
+            ),
+            source.profile_uuid,
+            source.trip_id.orEmpty(),
+        )
+        assertNotNull(result)
+        assertNull(result.passengers.single().passengerTotalMinorUnits)
+        assertFalse(result.individualFaresComplete)
     }
 
     @Test

@@ -2,6 +2,33 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.764",
+      "build": 6055,
+      "date": "2026-10-09",
+      "title": "Consulta remota completa de capas e valores por passageiro",
+      "summary": "A consulta detalhada do BlaBlaCar preserva preços reais individuais e repasses identificados em HTML privado autenticado, sob o toggle opt-in remoto da versão anterior.",
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Mesmo toggle protege coleta remota de capas, consulta detalhada HTML, Central de Saúde e ZIP",
+        "Snapshot individual distingue total a pagar do passageiro de repasse estimado ao motorista",
+        "Valores obtidos de campos identificados do HTML de cada passageiro, sem ratear preço geral",
+        "Valores sem evidência de moeda e origem não são apresentados como confirmados",
+        "Contagens de passageiros, lugares e embarque/desembarque por card mantidas"
+      ],
+      "fixed": [
+        "Campos de dinheiro já extraídos do HTML privado deixavam de chegar ao snapshot remoto",
+        "Consulta sem valor individual verificado deixa de declarar completude monetária"
+      ],
+      "improved": [
+        "Backend sanitiza valores em centavos e rejeita dados de pagamento inválidos",
+        "Preservados pacote, assinatura, sessões de BlaBlaCar e FAROL"
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": ["BlaBlaCar", "Consulta HTML", "Coleta remota", "Privacidade"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.763",
       "build": 6054,
       "date": "2026-10-09",

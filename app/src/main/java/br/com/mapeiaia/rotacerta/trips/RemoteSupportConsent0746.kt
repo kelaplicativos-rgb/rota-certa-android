@@ -84,7 +84,12 @@ class RemoteSupportConsentReceiver0746 : BroadcastReceiver() {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 if (action == ACTION_ACCEPT) {
-                    accept(app, event, jobId)
+                    if (RemoteSupportAutoAccess0763.enabled(app, event)) {
+                        accept(app, event, jobId)
+                    } else {
+                        // OFF rejects even a stale prior notification action.
+                        decline(app, event, jobId)
+                    }
                 } else {
                     decline(app, event, jobId)
                 }
@@ -93,7 +98,7 @@ class RemoteSupportConsentReceiver0746 : BroadcastReceiver() {
                 if (noPending) {
                     RemoteSupportAttention0743.markReady(
                         app,
-                        if (action == ACTION_ACCEPT) "Acesso remoto aceito."
+                        if (action == ACTION_ACCEPT && RemoteSupportAutoAccess0763.enabled(app, event)) "Acesso remoto aceito."
                         else "Solicitação de acesso remoto recusada.",
                     )
                 } else {

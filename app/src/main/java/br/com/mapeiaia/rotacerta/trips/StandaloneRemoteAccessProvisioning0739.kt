@@ -9,10 +9,9 @@ internal data class StandaloneRemoteConnection0739(
 ) {
     val message: String
         get() = if (pushRegistered) {
-            "Acesso privado disponível e escuta remota ligada, sem FCM. " +
-                "O pop-up só é dispensado com autorização automática ativada no aparelho."
+            "Acesso privado preparado. Use o toggle abaixo para permitir ou bloquear consultas remotas."
         } else {
-            "Acesso privado disponível. Ative a escuta remota abaixo para receber pedidos sem token FCM."
+            "Acesso privado preparado. O toggle abaixo controla as consultas, mesmo sem token FCM."
         }
 }
 
@@ -39,8 +38,14 @@ internal fun standaloneRemoteClipboardText0739(access: StandaloneCoversRemoteAcc
     check(access.configured && access.tripQueryBaseUrl.startsWith("https://")) {
         "O acesso remoto precisa ser atualizado antes de copiar."
     }
-    return "Rota Certa — coleta remota avulsa\n" +
-        "Solicitar capas: ${access.refreshUrl}\n" +
-        "Consultar capas: ${access.latestUrl}\n" +
-        "Consulta HTML por viagem: ${access.tripQueryBaseUrl}"
+    return listOf(
+        "Rota Certa — coleta remota avulsa",
+        "Solicitar capas: ${access.refreshUrl}",
+        "Consultar capas: ${access.latestUrl}",
+        "Consulta HTML por viagem: ${access.tripQueryBaseUrl}",
+        "Solicitar detalhe: ${access.tripQueryBaseUrl}/trip/{profileUuid}/{tripId}/refresh",
+        "Consultar detalhe: ${access.tripQueryBaseUrl}/trip/{profileUuid}/{tripId}/latest",
+        "Leia primeiro as capas COMPLETE para confirmar perfil, tripId, rota e data. " +
+            "No detalhe, só informe valor individual se vier de HTML confirmado; jamais divida o preço da capa.",
+    ).joinToString("\n")
 }

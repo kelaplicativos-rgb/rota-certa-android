@@ -51,6 +51,11 @@ internal data class BlaBlaRemoteTripPassenger0737(
     val seats: Int = 1,
     val boarding: String = "",
     val dropoff: String = "",
+    /** Actual passenger-facing total explicitly shown in that person's BlaBlaCar HTML. */
+    val passengerTotalMinorUnits: Long? = null,
+    /** Driver's expected receipt, NOT a payment-received confirmation. */
+    val driverReceivesMinorUnits: Long? = null,
+    val fareCurrencyCode: String = "",
 )
 
 @Serializable
@@ -78,6 +83,7 @@ internal data class BlaBlaRemoteTripSnapshot0737(
     val operationalComplete: Boolean = false,
     val passengerCount: Int = 0,
     val passengerSeatCount: Int = 0,
+    val individualFaresComplete: Boolean = false,
     val passengers: List<BlaBlaRemoteTripPassenger0737> = emptyList(),
     val itineraryStops: List<String> = emptyList(),
     val itineraryStopTimes: List<String> = emptyList(),
@@ -106,12 +112,21 @@ internal fun toBlaBlaRemoteTripSnapshot0737(
     ) {
         return null
     }
-    val passengers = trip.passengers.map { passenger ->
+    val passengers = trip.passengers.mapIndexed { index, passenger ->
+        val payment = result.paymentEvidence0764.getOrNull(index)
+        val currency = payment?.currencyCode?.takeIf { it == "BRL" }.orEmpty()
         BlaBlaRemoteTripPassenger0737(
             name = passenger.name.trim().take(160),
             seats = passenger.seats.coerceAtLeast(1),
             boarding = passenger.boarding.orEmpty().trim().take(240),
             dropoff = passenger.dropoff.orEmpty().trim().take(240),
+            passengerTotalMinorUnits = payment?.passengerTotalMinorUnits?.takeIf {
+                currency == "BRL" && it >= 0L
+            },
+            driverReceivesMinorUnits = payment?.driverReceivesMinorUnits?.takeIf {
+                currency == "BRL" && it >= 0L
+            },
+            fareCurrencyCode = currency,
         )
     }
     return BlaBlaRemoteTripSnapshot0737(
@@ -136,6 +151,9 @@ internal fun toBlaBlaRemoteTripSnapshot0737(
         operationalComplete = result.coreOperationalComplete0737,
         passengerCount = passengers.size,
         passengerSeatCount = passengers.sumOf { it.seats.coerceAtLeast(1) },
+        individualFaresComplete = passengers.all {
+            it.passengerTotalMinorUnits != null && it.fareCurrencyCode == "BRL"
+        },
         passengers = passengers,
         itineraryStops = trip.itinerary_stops.map { it.trim().take(240) },
         itineraryStopTimes = trip.itinerary_stop_times.map { it.trim().take(40) },
@@ -148,6 +166,7 @@ internal fun blaBlaRemoteTripQueryResultState0737(
     snapshot.operationalComplete &&
     snapshot.passengerRosterComplete &&
     snapshot.itineraryAuthoritative &&
+    snapshot.individualFaresComplete &&
     snapshot.publishedSeats != null
 ) {
     "COMPLETE"
@@ -159,6 +178,7 @@ internal object BlaBlaRemoteTripQueryScheduler0737 {
     fun enqueue(context: Context, rawJobId: String?): Boolean {
         val jobId = normalizeBlaBlaRemoteTripQueryJobId0737(rawJobId) ?: return false
         val request = OneTimeWorkRequestBuilder<BlaBlaRemoteTripQueryWorker0737>()
+            .addTag(RemoteSupportAutoAccess0763.WORK_TAG)
             .setInputData(
                 Data.Builder()
                     .putString(BLABLACAR_REMOTE_TRIP_QUERY_JOB_ID_0737, jobId)
@@ -188,6 +208,9 @@ internal class BlaBlaRemoteTripQueryWorker0737(
     private val json0737 = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     override suspend fun doWork(): Result {
+        if (!RemoteSupportAutoAccess0763.enabled(applicationContext, "blablacar_trip_query_collect")) {
+            return Result.failure()
+        }
         val jobId = normalizeBlaBlaRemoteTripQueryJobId0737(
             inputData.getString(BLABLACAR_REMOTE_TRIP_QUERY_JOB_ID_0737),
         ) ?: return Result.failure()
