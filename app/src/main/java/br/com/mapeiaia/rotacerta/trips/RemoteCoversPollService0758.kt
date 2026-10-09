@@ -208,6 +208,9 @@ internal class RemoteCoversPollService0758 : Service() {
     }
 
     private fun showConsent(event: String, jobId: String) {
+        // OFF is a hard stop for *new device collection*. Even if the backend
+        // holds an old request or a push arrives, no prompt or worker is started.
+        if (!RemoteSupportAutoAccess0763.enabled(this, event)) return
         // Every job remains actionable via a local notification even if a
         // different consent popup is currently shown.
         // Automatic approval is possible only after the driver opted in locally.
