@@ -8,6 +8,7 @@ const {
   publicAccessToken0736,
   ACCESS_COLLECTION_0736,
   STATE_COLLECTION_0736,
+  remotePollStatus0766,
 } = require("../standalone-covers-remote-0736");
 const { createBlaBlaTripQueryRemote0737 } = require("../blablacar-trip-query-remote-0737");
 const { createRemoteHealth0747 } = require("../remote-health-0747");
@@ -100,9 +101,17 @@ test("OFF revoga imediatamente a mesma chave para capas E detalhe e ON restaura"
   assert.equal(res.status, 200);
   assert.equal(res.body.enabled, true);
   res = {};
+  await covers.pollDriverPending0758({}, res);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.pending, false);
+  res = {};
   await covers.latestPublic0736({}, res, token);
   assert.equal(res.status, 200);
   assert.equal(res.body.state, "PENDING_UNKNOWN");
+  assert.equal(res.body.remoteAccessEnabled, true);
+  assert.equal(res.body.authenticatedPollingRecent, true);
+  assert.ok(res.body.lastAuthenticatedPollAtMillis > now);
+  assert.ok(res.body.authenticatedPollAgeMillis >= 0);
   res = {};
   await details.latestPublic0737({}, res, token,
     "7371f028-9c55-4903-8444-308015823efd",
@@ -117,4 +126,27 @@ test("rota de toggling exige autenticação do motorista", () => {
   const route = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
   assert.match(route, /\/v1\/driver\/standalone-covers\/access\/state/);
   assert.match(route, /standaloneCoversRemote0736\.setAccessEnabled0764/);
+});
+
+test("heartbeat distinguishes authenticated polling from successful collection", () => {
+  const now = 1_800_000_000_000;
+  assert.deepEqual(remotePollStatus0766({}, now), {
+    remoteAccessEnabled: false,
+    lastAuthenticatedPollAtMillis: 0,
+    authenticatedPollingRecent: false,
+    authenticatedPollAgeMillis: null,
+  });
+  const active = {
+    remoteAutoAccessEnabled0764: true,
+    lastAuthenticatedPollAtMillis0766: now - 9_000,
+  };
+  assert.equal(remotePollStatus0766(active, now).authenticatedPollingRecent, true);
+  assert.equal(remotePollStatus0766(active, now).authenticatedPollAgeMillis, 9_000);
+  assert.equal(remotePollStatus0766(active, now + 91_000).authenticatedPollingRecent, false);
+  assert.equal(remotePollStatus0766({
+    ...active, remoteAutoAccessEnabled0764: false,
+  }, now).authenticatedPollingRecent, false);
+  assert.equal(remotePollStatus0766({
+    ...active, lastAuthenticatedPollAtMillis0766: now + 10_000,
+  }, now).authenticatedPollingRecent, false);
 });
