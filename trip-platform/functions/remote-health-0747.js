@@ -337,6 +337,8 @@ function createRemoteHealth0747({
       transaction.set(stateRef, {
         driverUsername,
         latestJobId: jobId,
+        ...(mode === TECHNICAL_ZIP_MODE_0761
+          ? { latestTechnicalJobId: jobId } : { latestHealthJobId: jobId }),
         lastRequestedAtMillis: now,
         updatedAtMillis: now,
       }, { merge: true });
@@ -372,7 +374,7 @@ function createRemoteHealth0747({
     if (!access) return fail(res, 404, "technical_access_not_found", "Acesso privado ausente ou expirado.");
     res.set("Cache-Control", "no-store");
     const stateSnap = await db.collection(STATE_COLLECTION_0747).doc(access.username).get();
-    const jobId = canonicalUuid0736((stateSnap.data() || {}).latestJobId);
+    const jobId = canonicalUuid0736((stateSnap.data() || {}).latestTechnicalJobId);
     const jobSnap = jobId && await db.collection(JOB_COLLECTION_0747).doc(jobId).get();
     if (!jobSnap || !jobSnap.exists || jobSnap.data().mode !== TECHNICAL_ZIP_MODE_0761) {
       return json(res, 200, { state: "PENDING_UNKNOWN", result: null });
@@ -411,7 +413,7 @@ function createRemoteHealth0747({
     const access = await resolveAccess0747(tokenRaw);
     if (!access) return fail(res, 404, "technical_access_not_found", "Acesso privado ausente ou expirado.");
     const latest = await db.collection(STATE_COLLECTION_0747).doc(access.username).get();
-    const jobId = canonicalUuid0736((latest.data() || {}).latestJobId);
+    const jobId = canonicalUuid0736((latest.data() || {}).latestTechnicalJobId);
     if (!jobId) return fail(res, 404, "technical_archive_not_found", "ZIP tecnico nao disponivel.");
     const snap = await db.collection(JOB_COLLECTION_0747).doc(jobId).get();
     const job = snap.exists ? snap.data() : {};
@@ -433,7 +435,7 @@ function createRemoteHealth0747({
     const driver = await requireDriver(req, res);
     if (!driver) return;
     const stateSnap = await db.collection(STATE_COLLECTION_0747).doc(driver.username).get();
-    const jobId = canonicalUuid0736((stateSnap.data() || {}).latestJobId);
+    const jobId = canonicalUuid0736((stateSnap.data() || {}).latestTechnicalJobId);
     const jobSnap = jobId && await db.collection(JOB_COLLECTION_0747).doc(jobId).get();
     const job = jobSnap && jobSnap.exists ? jobSnap.data() : {};
     const pending = Boolean(job.mode === TECHNICAL_ZIP_MODE_0761 &&
@@ -471,7 +473,7 @@ function createRemoteHealth0747({
     if (!access) return fail(res, 404, "remote_health_access_not_found", "Acesso privado de saude nao encontrado ou expirado.");
     const stateSnap = await db.collection(STATE_COLLECTION_0747).doc(access.username).get();
     const state = stateSnap.exists ? stateSnap.data() : {};
-    const jobId = canonicalUuid0736(state.latestJobId);
+    const jobId = canonicalUuid0736(state.latestHealthJobId || state.latestJobId);
     if (!jobId) {
       return json(res, 200, { state: "PENDING_UNKNOWN", jobId: "", result: null, errorCode: "" });
     }
@@ -480,6 +482,9 @@ function createRemoteHealth0747({
       return json(res, 200, { state: "PENDING_UNKNOWN", jobId, result: null, errorCode: "JOB_NOT_AVAILABLE" });
     }
     const job = jobSnap.data();
+    if (job.mode === TECHNICAL_ZIP_MODE_0761) {
+      return json(res, 200, { state: "PENDING_UNKNOWN", jobId: "", result: null, errorCode: "" });
+    }
     const now = Date.now();
     let stateValue = clean0747(job.state, 32) || "PENDING_UNKNOWN";
     let result = job.payload || null;
