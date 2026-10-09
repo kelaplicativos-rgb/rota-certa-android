@@ -381,7 +381,15 @@ function createStandaloneCoversRemote0736({
     const data = snap.data();
     if (data.enabled !== true || Number(data.expiresAtMillis || 0) <= Date.now()) return null;
     const username = normalizeUsername(data.driverUsername);
-    return username ? { token, username, data } : null;
+    if (!username) return null;
+    // Recheck the canonical driver state on EVERY access. A concurrent token
+    // renewal cannot re-enable an obsolete capability after driver revocation.
+    const stateSnap = await db.collection(STATE_COLLECTION_0736).doc(username).get();
+    if (!stateSnap.exists) return null;
+    const state = stateSnap.data();
+    if (state.remoteAutoAccessEnabled0764 === false ||
+        clean0736(state.accessTokenHash, 80) !== sha256Hex0736(token)) return null;
+    return { token, username, data };
   }
 
   async function sendPush0736(driverUsername, jobId) {
