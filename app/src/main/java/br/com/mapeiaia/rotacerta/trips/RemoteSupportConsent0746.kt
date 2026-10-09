@@ -83,10 +83,14 @@ class RemoteSupportConsentReceiver0746 : BroadcastReceiver() {
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                if (action == ACTION_ACCEPT && RemoteSupportAutoAccess0763.enabled(app, event)) {
-                    accept(app, event, jobId)
+                if (action == ACTION_ACCEPT) {
+                    if (RemoteSupportAutoAccess0763.enabled(app, event)) {
+                        accept(app, event, jobId)
+                    } else {
+                        // OFF rejects even a stale prior notification action.
+                        decline(app, event, jobId)
+                    }
                 } else {
-                    // OFF blocks stale notification actions and races after revocation.
                     decline(app, event, jobId)
                 }
             } finally {
