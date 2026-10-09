@@ -27,6 +27,14 @@
       /\b(?:hoje|amanh[ãa])\b/i.test(text) ||
       /\b\d{1,2}\s*(?:de\s+)?(?:jan(?:eiro)?|fev(?:ereiro)?|mar(?:ço|co)?|abr(?:il)?|mai(?:o)?|jun(?:ho)?|jul(?:ho)?|ago(?:sto)?|set(?:embro)?|out(?:ubro)?|nov(?:embro)?|dez(?:embro)?)\b/i.test(text);
   };
+  // A date visible in the card itself has priority over a list-level heading.
+  // Never infer a date by position or by the date of an adjacent journey.
+  const uniqueCalendarToken = (text) => {
+    const normalized = clean(text);
+    const matches = normalized.match(/\b(?:20\d{2}-\d{1,2}-\d{1,2}|\d{1,2}[\\/.-]\d{1,2}(?:[\\/.-]\d{2,4})?|\d{1,2}\s*(?:de\s+)?(?:jan(?:eiro)?|fev(?:ereiro)?|mar(?:ço|co)?|abr(?:il)?|mai(?:o)?|jun(?:ho)?|jul(?:ho)?|ago(?:sto)?|set(?:embro)?|out(?:ubro)?|nov(?:embro)?|dez(?:embro)?)(?:\s+de\s+20\d{2})?)\b/gi) || [];
+    const unique = Array.from(new Set(matches.map((value) => clean(value).toLowerCase())));
+    return unique.length === 1 ? matches[0] : '';
+  };
   const nearestPrecedingDateEvidence = (root) => {
     const markers = Array.from(document.querySelectorAll('[data-testid*="date"], time[datetime], h1, h2, h3'));
     for (let index = markers.length - 1; index >= 0; index--) {
@@ -49,6 +57,28 @@
       .filter(Boolean);
     const local = structured.concat(visible);
     if (local.some(looksLikeCalendarDate)) return clean(local.join(' | ')).slice(0, 600);
+    const labeled = [
+      root.getAttribute && root.getAttribute('aria-label'),
+      root.getAttribute && root.getAttribute('data-date'),
+      root.getAttribute && root.getAttribute('data-datetime'),
+      root.getAttribute && root.getAttribute('datetime'),
+    ].map(uniqueCalendarToken).filter(Boolean);
+    if (labeled.length === 1) return labeled[0].slice(0, 600);
+
+    const ownDate = uniqueCalendarToken(root.innerText || root.textContent);
+    if (ownDate) return ownDate.slice(0, 600);
+
+    // A parent may be a date-group wrapper. Use it only when it contains
+    // exactly this ride card; a shared list would be ambiguous.
+    let ancestor = root.parentElement;
+    for (let depth = 0; ancestor && depth < 3; depth++, ancestor = ancestor.parentElement) {
+      const containedCards = Array.from(ancestor.querySelectorAll(
+        '[data-testid^="e2e-your-rides-trip-card-"]'
+      )).filter((node) => node !== root && node !== ancestor);
+      if (containedCards.length > 0) break;
+      const parentDate = uniqueCalendarToken(ancestor.innerText || ancestor.textContent);
+      if (parentDate) return parentDate.slice(0, 600);
+    }
     return nearestPrecedingDateEvidence(root).slice(0, 600);
   };
 
@@ -81,7 +111,15 @@
   }
   if (!probe.coversByHref) probe.coversByHref = {};
   currentCovers.forEach((cover) => {
-    if (cover && cover.href) probe.coversByHref[cover.href] = cover;
+    if (!cover || !cover.href) return;
+    const prior = probe.coversByHref[cover.href];
+    // Virtualized lists may drop the visible date after scrolling. Preserve
+    // only proven date text for the *same* administrative href in this WebView.
+    if (prior && !looksLikeCalendarDate(cover.dateText) &&
+        looksLikeCalendarDate(prior.dateText)) {
+      cover.dateText = prior.dateText;
+    }
+    probe.coversByHref[cover.href] = cover;
   });
   let covers = Object.keys(probe.coversByHref).sort().map((href) => probe.coversByHref[href]);
   let observedTripHrefs = covers.map((cover) => cover.href);

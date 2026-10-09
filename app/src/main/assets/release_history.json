@@ -2,6 +2,36 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.759",
+      "build": 6050,
+      "date": "2026-10-09",
+      "title": "Capas remotas: recuperar datas e preservar evidências",
+      "summary": "Reconsulta perfis com datas incompletas, mantém a melhor evidência por capa e só responde conclusivamente após COMPLETE em todos os perfis.",
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Leitura adicional de datas explícitas no cartão e em agrupamentos não ambíguos",
+        "Preservação da data comprovada ao re-renderizar o mesmo href durante a coleta",
+        "Nova tentativa quando somente a data/identidade de capa estiver incompleta"
+      ],
+      "fixed": [
+        "COVER_IDENTITY_OR_DATE_INCOMPLETE agora é elegível à recuperação",
+        "Em igualdade de quantidade de capas, prefere a tentativa com mais tripId+dateIso válidos",
+        "Metadados da branch alinhados ao SHA compilado"
+      ],
+      "improved": [
+        "Mantém fail-closed para datas não identificadas ou ambíguas",
+        "Mantém isolamento das capas, sem escrita de Agenda, Timeline, vagas ou FAROL"
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Coleta remota",
+        "Diagnóstico"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.758",
       "build": 6049,
       "date": "2026-10-08",

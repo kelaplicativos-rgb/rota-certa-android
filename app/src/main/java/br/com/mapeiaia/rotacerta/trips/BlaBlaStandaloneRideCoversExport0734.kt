@@ -293,7 +293,8 @@ internal fun shouldRetryStandaloneProfile0735(
 ): Boolean {
     if (profile.status == PROFILE_COMPLETE_0734) return false
     val code = profile.errorCode
-    return code == "COVER_LIST_NOT_STABLE" ||
+    return code == "COVER_IDENTITY_OR_DATE_INCOMPLETE" ||
+        code == "COVER_LIST_NOT_STABLE" ||
         code == "COVER_COLLECTION_TIMEOUT" ||
         code == "COVER_SCRIPT_NOT_READABLE" ||
         code == "RIDES_COVERS_NOT_AVAILABLE" ||
@@ -332,6 +333,13 @@ internal fun chooseBetterStandaloneProfile0735(
     }
     if (candidate.identityConfirmed != current.identityConfirmed) {
         return if (candidate.identityConfirmed) candidate else current
+    }
+    // When both attempts return the same card count, retain the sample with
+    // more strong tripId + dateIso pairs. Never promote incomplete evidence.
+    val currentDated = current.cards.count { it.tripId.isNotBlank() && it.dateIso.isNotBlank() }
+    val candidateDated = candidate.cards.count { it.tripId.isNotBlank() && it.dateIso.isNotBlank() }
+    if (candidateDated != currentDated) {
+        return if (candidateDated > currentDated) candidate else current
     }
     return candidate
 }

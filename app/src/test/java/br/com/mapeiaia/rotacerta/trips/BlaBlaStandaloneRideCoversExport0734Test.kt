@@ -146,6 +146,21 @@ class BlaBlaStandaloneRideCoversExport0734Test {
         )
 
         assertTrue(shouldRetryStandaloneProfile0735(unstable))
+        val incompleteDates = partialWithEvidence.copy(
+            cards = partialWithEvidence.cards.mapIndexed { index, card ->
+                if (index == 0) card.copy(dateIso = "") else card
+            },
+            errorCode = "COVER_IDENTITY_OR_DATE_INCOMPLETE",
+        )
+        assertTrue(shouldRetryStandaloneProfile0735(incompleteDates))
+        assertEquals(
+            partialWithEvidence,
+            chooseBetterStandaloneProfile0735(incompleteDates, partialWithEvidence),
+        )
+        assertEquals(
+            partialWithEvidence,
+            chooseBetterStandaloneProfile0735(partialWithEvidence, incompleteDates),
+        )
         assertFalse(shouldRetryStandaloneProfile0735(mismatch))
         assertEquals(
             partialWithEvidence,
