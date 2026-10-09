@@ -530,7 +530,8 @@ function createBlaBlaTripQueryRemote0737({ db, requireDriver, getMessaging, norm
       result,
       errorCode,
       errorMessage,
-      decisionSafe: stateValue === "COMPLETE" && result && result.operationalComplete === true,
+      decisionSafe: stateValue === "COMPLETE" && result &&
+        result.operationalComplete === true && result.individualFaresComplete === true,
       statusMeaning: stateValue === "COMPLETE"
         ? "Detalhe HTML desta viagem comprovado pelo aparelho."
         : "Detalhe não comprovado como COMPLETE; trate como desconhecido para decisões críticas.",
@@ -624,10 +625,11 @@ function createBlaBlaTripQueryRemote0737({ db, requireDriver, getMessaging, norm
           payload.operationalComplete !== true ||
           payload.passengerRosterComplete !== true ||
           payload.itineraryAuthoritative !== true ||
+          payload.individualFaresComplete !== true ||
           payload.publishedSeats == null
         )
       ) {
-        return fail(res, 400, "blablacar_query_complete_not_proven", "COMPLETE exige prova operacional completa.");
+        return fail(res, 400, "blablacar_query_complete_not_proven", "COMPLETE exige dados operacionais e valores individuais comprovados.");
       }
     } else if (req.body && req.body.payload != null) {
       return fail(res, 400, "blablacar_query_failed_payload_forbidden", "FAILED não pode transportar snapshot como prova válida.");
