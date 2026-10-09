@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,6 +40,7 @@ internal fun StandaloneRemoteAccessActions0739(
         mutableStateOf(RemoteSupportAutoAccess0763.enabled(context, "remote_health_collect"))
     }
     var busy by remember(context, tenantId) { mutableStateOf(false) }
+    var showAdvanced by remember(context, tenantId) { mutableStateOf(false) }
     var permissionMessage by remember(context, tenantId) { mutableStateOf<String?>(null) }
 
     suspend fun syncServer(enabled: Boolean): Boolean {
@@ -89,13 +91,6 @@ internal fun StandaloneRemoteAccessActions0739(
 
     Column {
         Text(message)
-        OutlinedButton(onClick = onCopy, enabled = !connecting, modifier = Modifier.fillMaxWidth()) {
-            Text("🔐 Copiar acesso privado remoto")
-        }
-        OutlinedButton(onClick = onVerify, enabled = !connecting, modifier = Modifier.fillMaxWidth()) {
-            Text(if (connecting) "Verificando conexão…" else "Verificar conexão remota")
-        }
-
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -150,5 +145,33 @@ internal fun StandaloneRemoteAccessActions0739(
                 "senhas e não contorna permissões obrigatórias do Android.",
         )
         permissionMessage?.let { Text(it) }
+
+        TextButton(
+            onClick = { showAdvanced = !showAdvanced },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (showAdvanced) "Ocultar opções avançadas" else "Opções avançadas")
+        }
+        if (showAdvanced) {
+            OutlinedButton(
+                onClick = onVerify,
+                enabled = !connecting,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (connecting) "Verificando conexão…" else "Verificar conexão remota")
+            }
+            OutlinedButton(
+                onClick = onCopy,
+                enabled = !connecting && autoAccess,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Copiar acesso privado remoto")
+            }
+            Text(
+                "Só compartilhe o link privado com quem está autorizado a consultar suas viagens. " +
+                    "A consulta detalhada usa o perfil e o ID real da viagem. " +
+                    "O sistema não envia cookies ou senhas e não ignora permissões do Android.",
+            )
+        }
     }
 }
