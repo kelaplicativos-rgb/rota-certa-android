@@ -13,6 +13,8 @@ const JOB_TTL_MILLIS_0747 = 10 * 60 * 1000;
 const RESULT_TTL_MILLIS_0747 = 24 * 60 * 60 * 1000;
 const MIN_REFRESH_MILLIS_0747 = 30 * 1000;
 const MAX_PAYLOAD_BYTES_0747 = 512 * 1024;
+const MAX_TECHNICAL_ZIP_BYTES_0761 = 640 * 1024;
+const TECHNICAL_ZIP_MODE_0761 = "TECHNICAL_ZIP";
 const ACTIVE_STATES_0747 = new Set(["REQUESTED", "PUSH_SENT", "PENDING_DEVICE", "RUNNING"]);
 const TERMINAL_STATES_0747 = new Set(["COMPLETE", "FAILED", "EXPIRED"]);
 const RESULT_STATES_0747 = new Set(["COMPLETE", "FAILED"]);
@@ -22,7 +24,7 @@ function clean0747(value, max = 240) {
 }
 
 function sha256Hex0747(value) {
-  return crypto.createHash("sha256").update(String(value || "")).digest("hex");
+  return crypto.createHash("sha256").update(value || "").digest("hex");
 }
 
 function int0747(value, min = 0, max = Number.MAX_SAFE_INTEGER) {
@@ -140,6 +142,36 @@ function sanitizeHealthPayload0747(input) {
   };
 }
 
+function validateTechnicalZip0761(raw) {
+  const v = assertObject0747(raw, "Pacote ZIP");
+  assertKeys0747(v, new Set([
+    "schemaVersion", "archiveBase64", "archiveSha256", "archiveBytes",
+    "capturedAtMillis", "sourceAppVersion", "sourceCommitSha", "fileName",
+  ]), "Pacote ZIP");
+  if (v.schemaVersion !== "rota-certa-remote-technical-zip-v1") throw new Error("Schema do ZIP invalido.");
+  const encoded = String(v.archiveBase64 || "");
+  if (encoded.length < 8 || encoded.length > Math.ceil(MAX_TECHNICAL_ZIP_BYTES_0761 / 3) * 4 + 8 ||
+      !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) throw new Error("ZIP Base64 invalido ou muito grande.");
+  const bytes = Buffer.from(encoded, "base64");
+  if (bytes.toString("base64") !== encoded || bytes.length < 22 ||
+      bytes.length > MAX_TECHNICAL_ZIP_BYTES_0761 ||
+      bytes.readUInt32LE(0) !== 0x04034b50) throw new Error("ZIP corrompido ou fora do limite.");
+  if (int0747(v.archiveBytes, 22, MAX_TECHNICAL_ZIP_BYTES_0761) !== bytes.length ||
+      clean0747(v.archiveSha256, 64) !== sha256Hex0747(bytes)) throw new Error("Integridade SHA-256 do ZIP invalida.");
+  const fileName = clean0747(v.fileName, 160);
+  if (!/^rota-certa-saude-[A-Za-z0-9._-]+\.zip$/.test(fileName)) throw new Error("Nome de arquivo invalido.");
+  return {
+    schemaVersion: v.schemaVersion,
+    archiveBase64: encoded,
+    archiveSha256: sha256Hex0747(bytes),
+    archiveBytes: bytes.length,
+    capturedAtMillis: int0747(v.capturedAtMillis),
+    sourceAppVersion: clean0747(v.sourceAppVersion, 40),
+    sourceCommitSha: clean0747(v.sourceCommitSha, 80),
+    fileName,
+  };
+}
+
 function healthResultTransition0747(currentState, requestedState) {
   const current = clean0747(currentState, 32).toUpperCase();
   const requested = clean0747(requestedState, 32).toUpperCase();
@@ -246,7 +278,7 @@ function createRemoteHealth0747({
     }
   }
 
-  async function createJob0747(driverUsername) {
+  async function createJob0747(driverUsername, mode = "HEALTH_SNAPSHOT") {
     const now = Date.now();
     const stateRef = db.collection(STATE_COLLECTION_0747).doc(driverUsername);
     let jobId = "";
@@ -266,8 +298,12 @@ function createRemoteHealth0747({
           const latest = latestSnap.data();
           const latestState = clean0747(latest.state, 32).toUpperCase();
           if (ACTIVE_STATES_0747.has(latestState) &&
-              latestState !== "PENDING_DEVICE" &&
               Number(latest.expiresAtMillis || 0) > now) {
+            if (latest.mode !== mode) {
+              throttled = true;
+              retryAfterMillis = Math.max(1, Number(latest.expiresAtMillis) - now);
+              return;
+            }
             jobId = latestJobId;
             reused = true;
             return;
@@ -284,6 +320,7 @@ function createRemoteHealth0747({
       transaction.set(db.collection(JOB_COLLECTION_0747).doc(jobId), {
         jobId,
         driverUsername,
+        mode,
         state: "REQUESTED",
         requestedAtMillis: now,
         updatedAtMillis: now,
@@ -308,10 +345,105 @@ function createRemoteHealth0747({
     return {
       jobId,
       state: clean0747(data.state, 32) || "PENDING_DEVICE",
+      mode,
       reused,
       requestedAtMillis: Number(data.requestedAtMillis || now),
       updatedAtMillis: Number(data.updatedAtMillis || now),
     };
+  }
+
+  async function refreshTechnicalPublic0761(req, res, tokenRaw) {
+    const access = await resolveAccess0747(tokenRaw);
+    if (!access) return fail(res, 404, "technical_access_not_found", "Acesso privado ausente ou expirado.");
+    const job = await createJob0747(access.username, TECHNICAL_ZIP_MODE_0761);
+    if (job.throttled) {
+      res.set("Retry-After", String(Math.max(1, Math.ceil(job.retryAfterMillis / 1000))));
+      return fail(res, 429, "technical_refresh_throttled", "Outra coleta ainda esta ativa ou no intervalo de seguranca.");
+    }
+    return json(res, 202, { ...job, statusMeaning: "Somente ACEITAR no Samsung autoriza gerar e enviar o ZIP tecnico." });
+  }
+
+  async function latestTechnicalPublic0761(req, res, tokenRaw) {
+    const access = await resolveAccess0747(tokenRaw);
+    if (!access) return fail(res, 404, "technical_access_not_found", "Acesso privado ausente ou expirado.");
+    res.set("Cache-Control", "no-store");
+    const stateSnap = await db.collection(STATE_COLLECTION_0747).doc(access.username).get();
+    const jobId = canonicalUuid0736((stateSnap.data() || {}).latestJobId);
+    const jobSnap = jobId && await db.collection(JOB_COLLECTION_0747).doc(jobId).get();
+    if (!jobSnap || !jobSnap.exists || jobSnap.data().mode !== TECHNICAL_ZIP_MODE_0761) {
+      return json(res, 200, { state: "PENDING_UNKNOWN", result: null });
+    }
+    const job = jobSnap.data();
+    const now = Date.now();
+    const expired = (ACTIVE_STATES_0747.has(job.state) && Number(job.expiresAtMillis) <= now) ||
+      (TERMINAL_STATES_0747.has(job.state) && Number(job.resultExpiresAtMillis || 0) > 0 &&
+       Number(job.resultExpiresAtMillis) <= now);
+    if (expired && job.state !== "EXPIRED") {
+      await jobSnap.ref.set({ state: "EXPIRED", payload: null, errorCode: "JOB_EXPIRED", updatedAtMillis: now }, { merge: true });
+    }
+    const valid = !expired && job.state === "COMPLETE" && job.payload &&
+      job.payload.schemaVersion === "rota-certa-remote-technical-zip-v1";
+    const payload = valid ? job.payload : null;
+    return json(res, 200, {
+      state: expired ? "EXPIRED" : job.state,
+      jobId,
+      updatedAtMillis: Number(job.updatedAtMillis || 0),
+      completedAtMillis: Number(job.completedAtMillis || 0),
+      errorCode: expired ? "JOB_EXPIRED" : clean0747(job.errorCode, 120),
+      errorMessage: expired ? "" : clean0747(job.errorMessage, 240),
+      result: payload ? {
+        fileName: payload.fileName,
+        archiveSha256: payload.archiveSha256,
+        archiveBytes: payload.archiveBytes,
+        capturedAtMillis: payload.capturedAtMillis,
+        sourceCommitSha: payload.sourceCommitSha,
+        sourceAppVersion: payload.sourceAppVersion,
+        downloadPath: "/v1/public/remote-technical/" + normalizePublicToken0736(tokenRaw) + "/download",
+      } : null,
+    });
+  }
+
+  async function downloadTechnicalPublic0761(req, res, tokenRaw) {
+    const access = await resolveAccess0747(tokenRaw);
+    if (!access) return fail(res, 404, "technical_access_not_found", "Acesso privado ausente ou expirado.");
+    const latest = await db.collection(STATE_COLLECTION_0747).doc(access.username).get();
+    const jobId = canonicalUuid0736((latest.data() || {}).latestJobId);
+    if (!jobId) return fail(res, 404, "technical_archive_not_found", "ZIP tecnico nao disponivel.");
+    const snap = await db.collection(JOB_COLLECTION_0747).doc(jobId).get();
+    const job = snap.exists ? snap.data() : {};
+    if (job.mode !== TECHNICAL_ZIP_MODE_0761 || job.state !== "COMPLETE" ||
+        Number(job.resultExpiresAtMillis || 0) <= Date.now() || !job.payload) {
+      return fail(res, 404, "technical_archive_not_found", "ZIP tecnico indisponivel ou expirado.");
+    }
+    const payload = validateTechnicalZip0761(job.payload);
+    const bytes = Buffer.from(payload.archiveBase64, "base64");
+    res.set("Content-Type", "application/zip");
+    res.set("Content-Disposition", 'attachment; filename="' + payload.fileName + '"');
+    res.set("Cache-Control", "private, no-store, max-age=0");
+    res.set("X-Content-Type-Options", "nosniff");
+    res.set("X-Archive-Sha256", payload.archiveSha256);
+    return res.status(200).send(bytes);
+  }
+
+  async function pendingDriver0761(req, res) {
+    const driver = await requireDriver(req, res);
+    if (!driver) return;
+    const stateSnap = await db.collection(STATE_COLLECTION_0747).doc(driver.username).get();
+    const jobId = canonicalUuid0736((stateSnap.data() || {}).latestJobId);
+    const jobSnap = jobId && await db.collection(JOB_COLLECTION_0747).doc(jobId).get();
+    const job = jobSnap && jobSnap.exists ? jobSnap.data() : {};
+    const pending = Boolean(job.mode === TECHNICAL_ZIP_MODE_0761 &&
+      ACTIVE_STATES_0747.has(job.state) && job.state !== "RUNNING" &&
+      Number(job.expiresAtMillis || 0) > Date.now());
+    res.set("Cache-Control", "no-store");
+    return json(res, 200, {
+      pending,
+      jobId: pending ? jobId : "",
+      state: pending ? job.state : "",
+      mode: pending ? job.mode : "",
+      requestedAtMillis: pending ? Number(job.requestedAtMillis) : 0,
+      expiresAtMillis: pending ? Number(job.expiresAtMillis) : 0,
+    });
   }
 
   async function refreshPublic0747(req, res, tokenRaw) {
@@ -400,7 +532,7 @@ function createRemoteHealth0747({
       errorCode: "",
       errorMessage: "",
     }, { merge: true });
-    return json(res, 200, { accepted: true, jobId: owned.jobId, state: "RUNNING" });
+    return json(res, 200, { accepted: true, jobId: owned.jobId, state: "RUNNING", mode: owned.data.mode || "HEALTH_SNAPSHOT" });
   }
 
   async function submitResult0747(req, res, jobIdRaw) {
@@ -422,12 +554,21 @@ function createRemoteHealth0747({
 
     let payload = null;
     if (requested === "COMPLETE") {
-      try {
-        payload = sanitizeHealthPayload0747(req.body && req.body.payload);
-      } catch (error) {
-        return fail(res, 400, "remote_health_payload_invalid", clean0747(error && error.message, 240) || "Snapshot de saude invalido.");
+      if (clean0747(owned.data.state).toUpperCase() !== "RUNNING") {
+        return fail(res, 409, "remote_health_consent_required", "Coleta sem ACK autorizado.");
       }
-    } else if (req.body && req.body.payload != null) {
+      try {
+        if (owned.data.mode === TECHNICAL_ZIP_MODE_0761) {
+          if (req.body.payload != null) throw new Error("Snapshot nao aceito em coleta ZIP.");
+          payload = validateTechnicalZip0761(req.body && req.body.technicalPackage);
+        } else {
+          if (req.body.technicalPackage != null) throw new Error("ZIP nao solicitado.");
+          payload = sanitizeHealthPayload0747(req.body && req.body.payload);
+        }
+      } catch (error) {
+        return fail(res, 400, "remote_health_payload_invalid", clean0747(error && error.message, 240) || "Resultado invalido.");
+      }
+    } else if (req.body && (req.body.payload != null || req.body.technicalPackage != null)) {
       return fail(res, 400, "remote_health_failed_payload_forbidden", "FAILED nao pode transportar logs.");
     }
 
@@ -452,13 +593,16 @@ function createRemoteHealth0747({
     return json(res, 200, { accepted: true, jobId: owned.jobId, state: requested });
   }
 
-  return { refreshPublic0747, latestPublic0747, ackJob0747, submitResult0747 };
+  return { refreshPublic0747, latestPublic0747, ackJob0747, submitResult0747,
+    refreshTechnicalPublic0761, latestTechnicalPublic0761, downloadTechnicalPublic0761, pendingDriver0761 };
 }
 
 module.exports = {
   STATE_COLLECTION_0747,
   JOB_COLLECTION_0747,
   MAX_PAYLOAD_BYTES_0747,
+  MAX_TECHNICAL_ZIP_BYTES_0761,
+  validateTechnicalZip0761,
   sanitizeHealthPayload0747,
   createRemoteHealth0747,
 };
