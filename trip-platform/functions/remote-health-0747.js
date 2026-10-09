@@ -3,6 +3,7 @@
 const crypto = require("crypto");
 const {
   ACCESS_COLLECTION_0736,
+  STATE_COLLECTION_0736,
   normalizePublicToken0736,
   canonicalUuid0736,
 } = require("./standalone-covers-remote-0736");
@@ -94,6 +95,29 @@ function sanitizeEvent0747(raw) {
   };
 }
 
+function sanitizeReleaseAudit0765(raw) {
+  const v = assertObject0747(raw, "Registro de versao");
+  assertKeys0747(v, new Set([
+    "version", "build", "status", "implemented", "fixed", "improved", "modulesAffected",
+  ]), "Registro de versao");
+  const bounded = (value, field) => {
+    if (!Array.isArray(value) || value.length > 10 ||
+        value.some(x => typeof x !== "string" || x.length > 240)) {
+      throw new Error(field + " nao possui uma lista de alteracoes valida.");
+    }
+    return value.map(x => clean0747(x, 240));
+  };
+  return {
+    version: clean0747(v.version, 40),
+    build: int0747(v.build, 0, 10_000_000),
+    status: clean0747(v.status, 40),
+    implemented: bounded(v.implemented, "Implementacoes"),
+    fixed: bounded(v.fixed, "Correcoes"),
+    improved: bounded(v.improved, "Melhorias"),
+    modulesAffected: bounded(v.modulesAffected, "Modulos"),
+  };
+}
+
 function sanitizeHealthPayload0747(input) {
   const bytes = Buffer.byteLength(JSON.stringify(input == null ? null : input), "utf8");
   if (bytes <= 0 || bytes > MAX_PAYLOAD_BYTES_0747) throw new Error("Snapshot de saude vazio ou acima do limite.");
@@ -101,7 +125,7 @@ function sanitizeHealthPayload0747(input) {
   assertKeys0747(root, new Set([
     "schemaVersion", "kind", "capturedAtMillis", "sourceAppVersion", "sourceVersionCode",
     "sourceCommitSha", "sourceBranch", "state", "validation", "validationSummary",
-    "sourceEventCount", "droppedEvents", "incidents", "events", "buffer",
+    "sourceEventCount", "droppedEvents", "incidents", "events", "buffer", "recentReleases",
   ]), "Snapshot de saude");
   if (root.schemaVersion !== "rota-certa-remote-health-v1") throw new Error("Schema de saude nao suportado.");
   if (root.kind !== "ROTA_CERTA_REMOTE_HEALTH") throw new Error("Tipo de saude nao suportado.");
@@ -111,6 +135,10 @@ function sanitizeHealthPayload0747(input) {
   if (!incidentsRaw || incidentsRaw.length > 40) throw new Error("Lista de incidentes invalida.");
   if (!eventsRaw || eventsRaw.length > 240) throw new Error("Lista de eventos invalida.");
 
+  const releasesRaw = root.recentReleases == null ? [] : root.recentReleases;
+  if (!Array.isArray(releasesRaw) || releasesRaw.length > 8) {
+    throw new Error("Historico de versoes excede o limite permitido.");
+  }
   const buffer = assertObject0747(root.buffer, "Buffer");
   assertKeys0747(buffer, new Set([
     "eventsInBuffer", "bufferCapacity", "recordCalls", "recordMedianNs", "recordP95Ns", "recordMaxNs",
@@ -131,6 +159,7 @@ function sanitizeHealthPayload0747(input) {
     droppedEvents: int0747(root.droppedEvents, 0, Number.MAX_SAFE_INTEGER),
     incidents: incidentsRaw.map(sanitizeIncident0747),
     events: eventsRaw.map(sanitizeEvent0747),
+    recentReleases: releasesRaw.map(sanitizeReleaseAudit0765),
     buffer: {
       eventsInBuffer: int0747(buffer.eventsInBuffer, 0, 100_000),
       bufferCapacity: int0747(buffer.bufferCapacity, 0, 100_000),
@@ -206,7 +235,14 @@ function createRemoteHealth0747({
     const data = snap.data();
     if (data.enabled !== true || Number(data.expiresAtMillis || 0) <= Date.now()) return null;
     const username = normalizeUsername(data.driverUsername);
-    return username ? { username } : null;
+    if (!username) return null;
+    // One revocable capability controls technical ZIP, health diagnostics and trip data.
+    const stateSnap = await db.collection(STATE_COLLECTION_0736).doc(username).get();
+    if (!stateSnap.exists) return null;
+    const state = stateSnap.data();
+    if (state.remoteAutoAccessEnabled0764 === false ||
+        clean0747(state.accessTokenHash, 80) !== sha256Hex0747(token)) return null;
+    return { username };
   }
 
   async function requireOwnedJob0747(req, res, jobIdRaw) {
@@ -366,7 +402,7 @@ function createRemoteHealth0747({
       res.set("Retry-After", String(Math.max(1, Math.ceil(job.retryAfterMillis / 1000))));
       return fail(res, 429, "technical_refresh_throttled", "Outra coleta ainda esta ativa ou no intervalo de seguranca.");
     }
-    return json(res, 202, { ...job, statusMeaning: "Somente ACEITAR no Samsung autoriza gerar e enviar o ZIP tecnico." });
+    return json(res, 202, { ...job, statusMeaning: "Coleta tecnica somente com toggle remoto ativo no aparelho e permissoes do Android." });
   }
 
   async function latestTechnicalPublic0761(req, res, tokenRaw) {
@@ -487,7 +523,7 @@ function createRemoteHealth0747({
     }
     return json(res, 202, {
       ...job,
-      statusMeaning: "PUSH_SENT significa somente que a solicitacao chegou ao fluxo de consentimento. Logs so podem ser coletados depois de ACEITAR.",
+      statusMeaning: "Solicitacao recebida; coleta depende da autorizacao remota ativa no aparelho. PUSH_SENT nao comprova captura.",
     });
   }
 
