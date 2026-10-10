@@ -10,7 +10,7 @@ const {
 
 const STATE_COLLECTION_0747 = "tripRemoteHealthState0747";
 const JOB_COLLECTION_0747 = "tripRemoteHealthJobs0747";
-const JOB_TTL_MILLIS_0747 = 10 * 60 * 1000;
+const JOB_TTL_MILLIS_0747 = 30 * 60 * 1000;
 const RESULT_TTL_MILLIS_0747 = 24 * 60 * 60 * 1000;
 const MIN_REFRESH_MILLIS_0747 = 30 * 1000;
 const MAX_PAYLOAD_BYTES_0747 = 512 * 1024;

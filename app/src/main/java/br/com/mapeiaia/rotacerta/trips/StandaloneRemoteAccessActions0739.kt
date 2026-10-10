@@ -71,19 +71,20 @@ internal fun StandaloneRemoteAccessActions0739(
         // Never start a remote listener from stale local consent without a server ACK.
         val wasEnabled = RemoteSupportAutoAccess0763.enabled(context, "remote_health_collect")
         val synced = runCatching { syncServer(wasEnabled) }.getOrDefault(false)
-        if (synced && wasEnabled) {
-            runCatching { startListener() }.onFailure {
-                RemoteSupportAutoAccess0763.setEnabled(context, false)
-                autoAccess = false
-                stopListener()
-                runCatching { syncServer(false) }
-                permissionMessage = "Falha ao ligar a escuta: autorização local revogada."
+        if (wasEnabled) {
+            // A transient timeout must not silently turn an explicit ON into
+            // OFF. WorkManager recovers authenticated polling without FCM or
+            // any additional user action; foreground listening is best-effort.
+            RemotePollingRecovery0770.reconcile(context, immediate = true)
+            if (synced) {
+                runCatching { startListener() }.onFailure {
+                    permissionMessage =
+                        "Escuta rápida indisponível; recuperação automática em segundo plano ativa."
+                }
+            } else {
+                permissionMessage =
+                    "Toggle ON preservado. Aguardando conexão autenticada em segundo plano."
             }
-        } else if (wasEnabled) {
-            RemoteSupportAutoAccess0763.setEnabled(context, false)
-            autoAccess = false
-            stopListener()
-            permissionMessage = "Servidor não confirmou a autorização: acesso permanece desligado."
         } else if (!synced) {
             permissionMessage = "Acesso desligado no aparelho. Revogação do link remoto pendente de conexão."
         }
