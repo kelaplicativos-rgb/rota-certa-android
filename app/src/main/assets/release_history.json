@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.770",
+      "build": 6061,
+      "date": "2026-10-10",
+      "title": "Coleta remota contínua com apenas um toggle",
+      "summary": "Escuta de curta latência mais recuperação persistente pelo WorkManager a cada 15 minutos, reinicialização e atualização do APK, independentemente de FCM. Jobs remotos aceitam a latência do Android com validade de 30 minutos. Nenhuma publicação é modificada.",
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Worker periódico persistente com rede e consentimento por motorista",
+        "Recuperação na inicialização do sistema e atualização do APK",
+        "Reaproveitamento dos coletores de capas, consulta individual, saúde e ZIP",
+        "Novos testes de privacidade, continuidade de consentimento e prazo de jobs"
+      ],
+      "fixed": [
+        "Falha de consulta quando serviço dataSync é interrompido pelo Android",
+        "ON deixa de ser revogado silenciosamente em falhas transitórias",
+        "Expiração de solicitações remotas antes do polling periódico"
+      ],
+      "improved": [
+        "OFF cancela workers e interrompe consultas locais",
+        "Mantidos registros de falhas reais e escopo read-only",
+        "Sem alteração FAROL, OCR, Agenda, reservas, passageiros ou publicação"
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Coleta remota",
+        "Central de Saúde",
+        "WorkManager",
+        "Backend de consultas"
+      ]
+    },
+    {
       "version": "0.1.769",
       "build": 6060,
       "date": "2026-10-10",
