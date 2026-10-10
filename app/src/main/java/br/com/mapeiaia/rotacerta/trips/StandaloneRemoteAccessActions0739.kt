@@ -77,7 +77,7 @@ internal fun StandaloneRemoteAccessActions0739(
                 permissionMessage = "Recuperação remota automática em segundo plano."
             }
         } else if (RemoteAccessDesiredState0771.desired(context)) {
-            permissionMessage = "ON solicitado. Autorização aguardando confirmação do servidor."
+            permissionMessage = "Toggle ON preservado. Autorização aguardando confirmação do servidor."
         }
     }
 
