@@ -171,6 +171,17 @@
             android:name=".trips.RemoteCoversPollService0758"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+        <!-- Explicit toggle ON only. Schedules WorkManager after reboot/update;
+             never starts a dataSync foreground service from BOOT_COMPLETED. -->
+        <receiver
+            android:name=".trips.RemotePollingRecoveryReceiver0770"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <service
             android:name=".trips.RotaCertaBookingMessagingService"
             android:exported="false">
