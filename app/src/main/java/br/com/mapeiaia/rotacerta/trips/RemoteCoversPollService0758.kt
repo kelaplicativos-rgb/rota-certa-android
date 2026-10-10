@@ -129,6 +129,7 @@ internal class RemoteCoversPollService0758 : Service() {
                         settings.driverToken.isNotBlank()) {
                         val api = TripRemoteApi(settings)
                         val now = System.currentTimeMillis()
+                        var authenticatedPollSucceeded = false
                         if (!RemoteSupportAutoAccess0763.enabled(applicationContext, "standalone_covers_collect")) {
                             seenCoverJobId = ""
                             seenTripJobId = ""
@@ -139,6 +140,7 @@ internal class RemoteCoversPollService0758 : Service() {
                         // Independent polls: failure of one source must not suppress the other.
                         runCatching { api.pollStandaloneCoversPending0758() }
                             .onSuccess { pending ->
+                                authenticatedPollSucceeded = true
                                 if (RemoteSupportAutoAccess0763.enabled(applicationContext, "standalone_covers_collect") &&
                                     shouldOfferRemoteConsent0758(pending, seenCoverJobId, now)) {
                                     seenCoverJobId = pending.jobId
@@ -156,6 +158,7 @@ internal class RemoteCoversPollService0758 : Service() {
                             }
                         runCatching { api.pollRemoteTechnicalPending0761() }
                             .onSuccess { pending ->
+                                authenticatedPollSucceeded = true
                                 if (RemoteSupportAutoAccess0763.enabled(applicationContext, "remote_health_collect") &&
                                     shouldOfferRemoteTechnicalConsent0761(pending, seenTechnicalJobId, now)) {
                                     seenTechnicalJobId = pending.jobId
@@ -173,6 +176,7 @@ internal class RemoteCoversPollService0758 : Service() {
                             }
                         runCatching { api.pollRemoteHealthPending0762() }
                             .onSuccess { pending ->
+                                authenticatedPollSucceeded = true
                                 if (RemoteSupportAutoAccess0763.enabled(applicationContext, "remote_health_collect") &&
                                     shouldOfferRemoteHealthConsent0762(pending, seenHealthJobId, now)) {
                                     seenHealthJobId = pending.jobId
@@ -190,6 +194,7 @@ internal class RemoteCoversPollService0758 : Service() {
                             }
                         runCatching { api.pollBlaBlaTripQueryPending0760() }
                             .onSuccess { pending ->
+                                authenticatedPollSucceeded = true
                                 if (RemoteSupportAutoAccess0763.enabled(applicationContext, "blablacar_trip_query_collect") &&
                                     shouldOfferRemoteTripConsent0760(pending, seenTripJobId, now)) {
                                     seenTripJobId = pending.jobId
@@ -205,6 +210,23 @@ internal class RemoteCoversPollService0758 : Service() {
                                     "source=trip_query reason=${error.javaClass.simpleName.take(64)}"
                                 )
                             }
+                        // A successful authenticated read proves the device polling
+                        // channel is alive. Recover obsolete FCM-only warnings,
+                        // without dismissing consent or genuine collection failures.
+                        if (authenticatedPollSucceeded &&
+                            RemoteSupportAutoAccess0763.enabled(applicationContext, "remote_health_collect")) {
+                            val attention = RemoteSupportAttention0743.current(applicationContext)
+                            if (shouldRecoverRemoteTransportAttention0769(
+                                    status = attention.status,
+                                    reasonCode = attention.reasonCode,
+                                    remoteAccessEnabled = true,
+                                )) {
+                                RemoteSupportAttention0743.markReady(
+                                    applicationContext,
+                                    "Escuta remota confirmada por polling autenticado; FCM opcional.",
+                                )
+                            }
+                        }
                     }
                 } catch (error: Exception) {
                     UnifiedDebugEventStore.record(
