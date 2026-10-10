@@ -37,9 +37,12 @@ internal object RemoteSupportAutoAccess0763 {
             "Nao foi possivel salvar a autorizacao remota."
         }
         if (!value) {
-            // Cancel already queued or active remote reads when OFF is selected.
+            // OFF wins immediately, including any pending WorkManager recovery.
             WorkManager.getInstance(app).cancelAllWorkByTag(WORK_TAG)
         }
+        // Explicit toggle ON persists the OS-managed fallback. It remains
+        // tenant-scoped, network-constrained and read-only, even after reboot.
+        RemotePollingRecovery0770.reconcile(app, immediate = value)
         UnifiedDebugEventStore.recordAlways(
             if (value) "REMOTE_AUTO_ACCESS_ENABLED_0763" else "REMOTE_AUTO_ACCESS_REVOKED_0763",
             app.packageName,
