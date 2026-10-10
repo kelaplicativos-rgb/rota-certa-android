@@ -11,13 +11,13 @@ const privateHtml = fs.readFileSync(path.join(root, "trip-platform", "public", "
 const privateJs = fs.readFileSync(path.join(root, "trip-platform", "public", "minha-area.js"), "utf8");
 const gradle = fs.readFileSync(path.join(root, "app", "build.gradle.kts"), "utf8");
 function between(source,startMarker,endMarker){const start=source.indexOf(startMarker);assert.notEqual(start,-1,startMarker+" missing");const end=source.indexOf(endMarker,start+startMarker.length);assert.notEqual(end,-1,endMarker+" missing");return source.slice(start,end);}
-test("0649 unauthenticated landing is neutral VIP access",()=>{
-  assert.match(html, /<title>Área VIP — Acesso privado<\/title>/);
-  assert.match(html, /Você precisa ser VIP para entrar/);
+test("0768 VIP entrance uses only approved WhatsApp and no password form",()=>{
+  assert.match(html, /<title>Viagem Certa — Acesso exclusivo<\/title>/);
   assert.match(html, /id="passengerWhatsapp0589"/);
-  assert.match(html, /id="vipPassword0649"/);
+  assert.match(html, /id="passengerAccessContinue0589"/);
+  assert.doesNotMatch(html, /id="vipPassword0649"/);
   assert.match(html, /id="passengerNav0589" class="passengerNav0589 hidden"/);
-  assert.match(html, /og:title" content="Área VIP — Acesso privado"/);
+  assert.match(html, /og:title" content="Viagem Certa — Acesso exclusivo"/);
 });
 test("0649 agenda trip and change APIs require VIP session plus driver access",()=>{
   const agenda=between(api,"async function getPublicDriverAgenda","async function waitPublicAgendaCanonicalChange0495");
