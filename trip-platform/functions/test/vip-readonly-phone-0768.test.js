@@ -24,7 +24,7 @@ test("WhatsApp login is constrained to the driver allowlist and scoped read only
 });
 test("Read token is never accepted by booking, credits, passenger-account or mutation authorization",()=>{
   const verifier=section("async function verifyVipPhoneView0768","async function loginVipPhoneView0768");
-  assert.match(verifier,/X-Rota-Certa-Vip-Read-Token/);
+  assert.match(section("function vipPhoneToken0768","async function verifyVipPhoneView0768"),/X-Rota-Certa-Vip-Read-Token/);
   assert.match(verifier,/expiresAtMillis/);
   assert.match(verifier,/normalizeUsername\(data\.driverUsername\) !== username/);
   assert.match(verifier,/passengerAccessIsAuthorized\(access\.data\(\)\)/);
@@ -47,7 +47,7 @@ test("New public VIP page has just WhatsApp, no invitation workflow or password 
   assert.match(html,/vipTripCard0768/);
 });
 test("Full card is a verified BlaBlaCar link, never an internal booking on phone-only session",()=>{
-  assert.match(view,/document\.createElement\(publicUrl ? "a" : "article"\)/);
+  assert.match(view,/document\.createElement\(href\?"a":"article"\)/);
   assert.match(view,/card\.href = publicUrl/);
   assert.match(view,/card\.rel = "noopener noreferrer"/);
   assert.doesNotMatch(view,/openFullTripBooking0623|createBooking\(/);
