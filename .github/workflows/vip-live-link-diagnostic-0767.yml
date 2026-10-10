@@ -40,6 +40,18 @@ jobs:
           if cmp -s trip-platform/public/public-agenda-shell-0569.js /tmp/vip-live-shell.js; then echo "HOSTED_SHELL_MATCHES_REPO=yes"; else echo "HOSTED_SHELL_MATCHES_REPO=no"; fi
           echo "Static link and JavaScript parse checks:"
           node --check /tmp/vip-live-shell.js
+          echo "Differences in public HTML (first 100 lines, no private data):"
+          diff -u trip-platform/public/index.html /tmp/vip-invite-page.html | head -100 || true
+          echo "Differences in public JavaScript (first 140 lines, no private data):"
+          diff -u trip-platform/public/public-agenda-shell-0569.js /tmp/vip-live-shell.js | head -140 || true
+          echo "Deployed invitation feature detection:"
+          for term in 'params0569.get("convite")' 'requestVipReferral0649' 'Este número ainda não é VIP' 'vipReferralRequestWrap0649' 'requestPassengerAgendaAccess0589'; do
+            if grep -Fq "$term" /tmp/vip-live-shell.js; then
+              echo "LIVE_FEATURE_PRESENT: $term"
+            else
+              echo "LIVE_FEATURE_MISSING: $term"
+            fi
+          done
           echo "VIP_LINK_ROUTING_OK"
       - uses: actions/upload-artifact@v4
         if: always()
