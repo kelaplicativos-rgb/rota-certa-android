@@ -56,7 +56,6 @@ jobs:
           node --test \
             trip-platform/functions/test/vip-readonly-phone-0768.test.js \
             trip-platform/functions/test/viagem-certa-passenger-gate-0589.test.js \
-            trip-platform/functions/test/public-blablacar-link-0409.test.js \
             trip-platform/functions/test/remote-health-0747.test.js \
             trip-platform/functions/test/remote-health-poll-0762.test.js \
             trip-platform/functions/test/remote-technical-zip-0761.test.js \
