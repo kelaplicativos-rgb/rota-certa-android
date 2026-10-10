@@ -74,7 +74,10 @@ internal class RemotePollingRecoveryReceiver0770 : BroadcastReceiver() {
                 Intent.ACTION_MY_PACKAGE_REPLACED,
             )) return
         // Scheduling is fast and never performs network I/O on the receiver.
-        runCatching { RemotePollingRecovery0770.reconcile(context, immediate = true) }
+        runCatching {
+            RemoteAccessDesiredState0771.schedule(context)
+            RemotePollingRecovery0770.reconcile(context, immediate = true)
+        }
             .onFailure {
                 UnifiedDebugEventStore.record(
                     "REMOTE_RECOVERY_SCHEDULE_FAILED_0770",
