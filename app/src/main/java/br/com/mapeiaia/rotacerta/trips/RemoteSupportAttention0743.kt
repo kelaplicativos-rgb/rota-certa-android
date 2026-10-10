@@ -8,6 +8,31 @@ import kotlinx.coroutines.flow.asStateFlow
 
 internal const val REMOTE_SUPPORT_ATTENTION_MARKER_0743 = "REMOTE_SUPPORT_ATTENTION_0743"
 
+// Push notifications are optional for the remote collector: authenticated device
+// polling is the primary transport. Still report a genuine unavailable listener
+// when the driver explicitly enabled remote access.
+internal fun shouldEscalateRemotePushFailure0769(
+    remoteAccessEnabled: Boolean,
+    pollingListenerRunning: Boolean,
+): Boolean = remoteAccessEnabled && !pollingListenerRunning
+
+// A successful authenticated poll may clear *only* transport fallback warnings.
+// Never dismiss consent requests, authorization errors or collection failures.
+internal fun shouldRecoverRemoteTransportAttention0769(
+    status: String,
+    reasonCode: String,
+    remoteAccessEnabled: Boolean,
+): Boolean = remoteAccessEnabled &&
+    status == "ATTENTION" &&
+    reasonCode in setOf(
+        "FCM_TOKEN_FAILED",
+        "FCM_TOKEN_UNAVAILABLE",
+        "PUSH_REGISTER_FAILED",
+        "PUSH_REGISTER_REJECTED",
+        "PUSH_REGISTRATION_PENDING",
+        "REMOTE_POLL_LISTENER_INACTIVE",
+    )
+
 internal data class RemoteSupportAttentionState0743(
     val tenantId: String = "",
     val status: String = "UNKNOWN",

@@ -194,11 +194,11 @@ fun BlaBlaCollectorPanel(
             standaloneRemoteMessage0739 = result.message
             if (result.pushRegistered) {
                 RemoteSupportAttention0743.markReady(context)
-            } else {
+            } else if (RemoteSupportAutoAccess0763.enabled(context, "remote_health_collect")) {
                 RemoteSupportAttention0743.markPending(
                     context,
-                    reasonCode = "PUSH_REGISTRATION_PENDING",
-                    message = result.message,
+                    reasonCode = "REMOTE_POLL_LISTENER_INACTIVE",
+                    message = "Acesso preparado; a escuta remota ainda não está ativa.",
                 )
             }
             if (copyWhenReady) copyRemoteAccess0739(result.access)

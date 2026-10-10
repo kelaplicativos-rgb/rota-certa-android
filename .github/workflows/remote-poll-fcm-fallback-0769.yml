@@ -1,0 +1,142 @@
+name: Rota Certa 0.1.769 Remote FCM Fallback exact SHA
+
+on:
+  push:
+    branches: ['agent/remote-poll-fcm-attention-fix-0.1.769']
+  pull_request:
+    branches: ['main']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: remote-fcm-fallback-0769-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      ROTA_CERTA_GIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      ROTA_CERTA_GIT_BRANCH: agent/remote-poll-fcm-attention-fix-0.1.769
+      OM_SOURCE_SHA: 3ef379196cca434cf17f4ee684f16aa99fd8985e
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.ROTA_CERTA_GIT_SHA }}
+          fetch-depth: 0
+      - name: Fetch exact baseline for change scope
+        run: git fetch --no-tags --depth=1 origin agent/global-html-busy-recovery-0.1.768
+
+      - name: Prove exact source and isolated source scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
+          grep -Fq 'val releaseVersionName = "0.1.769"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 6_060' app/build.gradle.kts
+          grep -Fq '"version": "0.1.769"' app/src/main/assets/release_history.json
+          grep -Fq 'BLABLACAR_GLOBAL_HTML_BUSY_RECOVERY_0768' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
+          git fetch --no-tags --depth=1 origin main
+          git diff --check cc025b0781a8888b6652f6d573a3fbefb33ed97d HEAD
+          ! git diff --name-only cc025b0781a8888b6652f6d573a3fbefb33ed97d HEAD | grep -E '(Farol|farol|FAROL|AccessibilityService|vip-view|trip-platform)'
+          if git diff --name-only cc025b0781a8888b6652f6d573a3fbefb33ed97d HEAD | grep -Ev '^app/build.gradle.kts$|^app/src/main/assets/release_history.json$|^app/src/main/java/br/com/mapeiaia/rotacerta/trips/(RotaCertaBookingMessagingService.kt|RemoteCoversPollService0758.kt|RemoteSupportAttention0743.kt|TripBlaBlaCollectorUi.kt)$|^app/src/test/java/br/com/mapeiaia/rotacerta/trips/RemotePollFcmFallback0769Test.kt$|^[.]github/workflows/remote-poll-fcm-fallback-0769.yml$'; then
+            echo 'Unexpected scope outside HTML recovery'; exit 1
+          fi
+          printf '%s\n' "$ROTA_CERTA_GIT_SHA" > /tmp/source-sha.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Backend test and schema validation
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/functions/remote-health-0747.js
+          node --check trip-platform/public/vip-view-0768.js
+          node --test \
+            trip-platform/functions/test/vip-readonly-phone-0768.test.js \
+            trip-platform/functions/test/viagem-certa-passenger-gate-0589.test.js \
+            trip-platform/functions/test/remote-health-0747.test.js \
+            trip-platform/functions/test/remote-health-poll-0762.test.js \
+            trip-platform/functions/test/remote-technical-zip-0761.test.js \
+            trip-platform/functions/test/standalone-covers-remote-0736.test.js \
+            trip-platform/functions/test/remote-access-toggle-0764.test.js \
+            trip-platform/functions/test/blablacar-trip-query-remote-0737.test.js | tee /tmp/backend-tests.txt
+          grep -Fq 'src="/vip-view-0768.js?v=1"' trip-platform/public/index.html
+          ! grep -Fq 'id="vipPassword0649"' trip-platform/public/index.html
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/cache@v4
+        id: om-sdk-cache
+        with:
+          path: ~/.m2/repository/app/organicmaps/sdk
+          key: organicmaps-sdk-${{ runner.os }}-${{ env.OM_SOURCE_SHA }}-android36-ndk29-arm64
+      - name: Build pinned Organic Maps SDK only on cache miss
+        if: steps.om-sdk-cache.outputs.cache-hit != 'true'
+        run: bash tools/ci/build-organicmaps-sdk.sh
+
+      - name: Verify history, signature, existing FAROL and remote consent
+        run: |
+          set -euo pipefail
+          ./gradlew :app:verifyReleaseHistory :app:verifyAndroidUpdateContract --no-daemon
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.RemoteTechnicalZip0761ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.RemoteHealth0747ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.RemoteHealthSnapshot0762ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.RemoteVersionAudit0765ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.RemoteAutoAccess0763ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.StandaloneRemoteAccessProvisioning0739Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPassengerDeepCapture0653Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaGlobalHtmlBusyRecovery0768Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaGlobalHtmlRefresh0679Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectAccountCapture0608Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.RemoteSupportConsent0746ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRemoteTripQuery0737Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaStandaloneRideCoversExport0734Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolRoadKmFinality0713Test' \
+            --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-tests.txt
+
+      - name: Build exact-SHA APK
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_GIT_SHA"
+
+      - name: Verify artifact and signer
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" apk summary "$APK" | tee /tmp/apk-summary.txt
+          read -r APP_ID VC VN < /tmp/apk-summary.txt
+          test "$APP_ID" = br.com.mapeiaia.rotacerta
+          test "$VC" = 6060
+          test "$VN" = 0.1.769
+          TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apk-signer.txt
+          unzip -p "$APK" 'classes*.dex' | strings | grep -Fqm1 "$ROTA_CERTA_GIT_SHA"
+          sha256sum "$APK" | tee /tmp/apk-sha256.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rota-certa-0.1.769-remote-fcm-fallback-${{ env.ROTA_CERTA_GIT_SHA }}
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            /tmp/source-sha.txt
+            /tmp/backend-tests.txt
+            /tmp/android-tests.txt
+            /tmp/apk-summary.txt
+            /tmp/apk-signer.txt
+            /tmp/apk-sha256.txt
+          if-no-files-found: warn

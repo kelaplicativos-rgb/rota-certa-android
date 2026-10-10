@@ -119,14 +119,22 @@ internal object BookingPushRegistration0304 {
             return@withContext false
         }
 
+        // FCM remains necessary for push notifications, but its failure must not
+        // override a healthy opt-in collector already listening by HTTP polling.
+        val reportRemoteTransportFailure = shouldEscalateRemotePushFailure0769(
+            remoteAccessEnabled = RemoteSupportAutoAccess0763.enabled(appContext, "remote_health_collect"),
+            pollingListenerRunning = RemoteCoversPollService0758.isRunning,
+        )
         val tokenResult = runCatching { FirebaseMessaging.getInstance().token.await() }
         val token = tokenResult.getOrNull()?.trim().orEmpty()
         if (token.length < 32) {
-            RemoteSupportAttention0743.markPending(
-                appContext,
-                reasonCode = if (tokenResult.isFailure) "FCM_TOKEN_FAILED" else "FCM_TOKEN_UNAVAILABLE",
-                message = "O aparelho ainda não conseguiu obter o registro de notificações. Toque em Verificar conexão remota.",
-            )
+            if (reportRemoteTransportFailure) {
+                RemoteSupportAttention0743.markPending(
+                    appContext,
+                    reasonCode = if (tokenResult.isFailure) "FCM_TOKEN_FAILED" else "FCM_TOKEN_UNAVAILABLE",
+                    message = "O aparelho ainda não conseguiu obter o registro de notificações. Toque em Verificar conexão remota.",
+                )
+            }
             UnifiedDebugEventStore.recordAlways(
                 "REMOTE_SUPPORT_FCM_TOKEN_UNAVAILABLE_0743",
                 context.packageName,
@@ -142,11 +150,13 @@ internal object BookingPushRegistration0304 {
                 deviceLabel = "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
             )
         }.getOrElse { error ->
-            RemoteSupportAttention0743.markPending(
-                appContext,
-                reasonCode = "PUSH_REGISTER_FAILED",
-                message = "Não foi possível registrar este aparelho para consultas remotas. Abra as notificações e tente novamente.",
-            )
+            if (reportRemoteTransportFailure) {
+                RemoteSupportAttention0743.markPending(
+                    appContext,
+                    reasonCode = "PUSH_REGISTER_FAILED",
+                    message = "Não foi possível registrar este aparelho para consultas remotas. Abra as notificações e tente novamente.",
+                )
+            }
             UnifiedDebugEventStore.recordAlways(
                 "PUBLIC_BOOKING_PUSH_REGISTER_FAILED",
                 context.packageName,
@@ -161,11 +171,13 @@ internal object BookingPushRegistration0304 {
         }
 
         if (!response.registered) {
-            RemoteSupportAttention0743.markPending(
-                appContext,
-                reasonCode = "PUSH_REGISTER_REJECTED",
-                message = "O servidor não confirmou o registro deste aparelho para consultas remotas.",
-            )
+            if (reportRemoteTransportFailure) {
+                RemoteSupportAttention0743.markPending(
+                    appContext,
+                    reasonCode = "PUSH_REGISTER_REJECTED",
+                    message = "O servidor não confirmou o registro deste aparelho para consultas remotas.",
+                )
+            }
             UnifiedDebugEventStore.recordAlways(
                 "REMOTE_SUPPORT_PUSH_REGISTER_REJECTED_0743",
                 context.packageName,
