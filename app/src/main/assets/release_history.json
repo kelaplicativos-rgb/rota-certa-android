@@ -2,6 +2,37 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.771",
+      "build": 6062,
+      "date": "2026-10-10",
+      "title": "Retentativa de saúde remota e consentimento resistente ao DNS",
+      "summary": "Conserva a intenção explícita do toggle durante falhas de DNS, só libera coleta ON após ACK autenticado e mantém OFF bloqueado localmente com revogação no servidor em retry. ZIP/snapshot não são marcados FAILED por problemas transitórios de transporte.",
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Estado desejado explícito separado da autorização efetiva",
+        "Reconciliação autenticada automática de ON/OFF e recuperação após reinício",
+        "Backoff exponencial de ZIP e snapshot de saúde com falhas de rede transitórias",
+        "Testes específicos para DNS, 401/403, preservação de OFF e controle read-only"
+      ],
+      "fixed": [
+        "Erro temporário de DNS não causa revogação silenciosa do toggle ON",
+        "Falha transitória no envio do ZIP não vira FAILED prematuro",
+        "OFF voluntário revoga coleta no aparelho imediatamente, com revogação do link remoto eventual"
+      ],
+      "improved": [
+        "Nenhuma mudança em publicações, reservas, passageiros, vagas, FAROL ou OCR",
+        "Respeito à expiração e autorização dos jobs de coleta"
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Coleta remota",
+        "Central de Saúde",
+        "Trabalho em segundo plano",
+        "Acesso privado"
+      ]
+    },
+    {
       "version": "0.1.770",
       "build": 6061,
       "date": "2026-10-10",

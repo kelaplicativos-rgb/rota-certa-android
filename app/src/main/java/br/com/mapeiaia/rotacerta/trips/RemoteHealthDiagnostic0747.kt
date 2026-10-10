@@ -3,6 +3,7 @@ package br.com.mapeiaia.rotacerta.trips
 import android.content.Context
 import android.util.Base64
 import java.security.MessageDigest
+import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.Data
@@ -18,11 +19,29 @@ import br.com.mapeiaia.rotacerta.monitoring.OperationalHealthCoordinator
 import br.com.mapeiaia.rotacerta.monitoring.OperationalHealthTechnicalPackage0575
 import br.com.mapeiaia.rotacerta.versioncenter.ReleaseHistoryStore
 import br.com.mapeiaia.rotacerta.versioncenter.VersionHistoryLogic
+import java.io.IOException
+import java.net.SocketException
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 
 internal const val REMOTE_HEALTH_MARKER_0747 = "REMOTE_HEALTH_0747"
+
+// A missing DNS record, timeout or HTTP 5xx means the evidence has NOT been
+// rejected by the server. Keep the same server job pending and retry the
+// submission; never mark it FAILED while the network is temporarily down.
+internal fun isTransientRemoteDiagnosticFailure0771(error: Throwable): Boolean {
+    if (error is CancellationException) throw error
+    if (error is TripRemoteApiException) {
+        return error.httpStatus <= 0 || error.httpStatus in setOf(408, 425, 429) ||
+            error.httpStatus >= 500
+    }
+    if (error is IOException || error is SocketException) return true
+    return error.cause?.let(::isTransientRemoteDiagnosticFailure0771) ?: false
+}
+
 internal const val REMOTE_HEALTH_JOB_ID_0747 = "remote_health_job_id_0747"
 
 internal fun normalizeRemoteHealthJobId0747(raw: String?): String? {
@@ -141,6 +160,7 @@ internal object RemoteHealthScheduler0747 {
                     .setRequiredNetworkType(NetworkType.CONNECTED)
                     .build(),
             )
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.SECONDS)
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
         WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
@@ -195,7 +215,17 @@ internal class RemoteHealthWorker0747(
             )
             Result.success()
         }.getOrElse { error ->
-            // A failure never uploads partial evidence or retries using an unconsented job.
+            if (error is CancellationException) throw error
+            if (isTransientRemoteDiagnosticFailure0771(error)) {
+                UnifiedDebugEventStore.recordAlways(
+                    "REMOTE_TECHNICAL_ZIP_RETRY_0771", applicationContext.packageName,
+                    "jobPresent=true attempt=$runAttemptCount error=${error.javaClass.simpleName.take(80)}"
+                )
+                // WorkManager keeps the authorized job queued for network
+                // recovery; the backend independently enforces its 30min TTL.
+                return@getOrElse Result.retry()
+            }
+            // Non-transport failures may be reported to the server as FAILED.
             val reported = runCatching {
                 api.submitRemoteHealthResult0747(
                     jobId = jobId, status = "FAILED",
@@ -239,7 +269,9 @@ internal class RemoteHealthWorker0747(
                 applicationContext.packageName,
                 "jobPresent=true error=${error.javaClass.simpleName.take(80)}",
             )
-            return if (runAttemptCount < 3) Result.retry() else Result.failure()
+            if (error is CancellationException) throw error
+            return if (isTransientRemoteDiagnosticFailure0771(error)) Result.retry()
+                else Result.failure()
         }
         if (ack.state in setOf("COMPLETE", "FAILED", "EXPIRED")) return Result.success()
         if (ack.mode == "TECHNICAL_ZIP") {
@@ -344,6 +376,14 @@ internal class RemoteHealthWorker0747(
             )
             Result.success()
         }.getOrElse { error ->
+            if (error is CancellationException) throw error
+            if (isTransientRemoteDiagnosticFailure0771(error)) {
+                UnifiedDebugEventStore.recordAlways(
+                    "REMOTE_HEALTH_SNAPSHOT_RETRY_0771", applicationContext.packageName,
+                    "jobPresent=true attempt=$runAttemptCount error=${error.javaClass.simpleName.take(80)}"
+                )
+                return@getOrElse Result.retry()
+            }
             val reported = runCatching {
                 api.submitRemoteHealthResult0747(
                     jobId = jobId,
