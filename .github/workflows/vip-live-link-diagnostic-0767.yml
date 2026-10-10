@@ -29,6 +29,8 @@ jobs:
           check "script" "$BASE/public-agenda-shell-0569.js" "/tmp/vip-live-shell.js"
           check "myarea" "$BASE/minha-area.html" "/tmp/vip-myarea.html"
           check "health" "$BASE/v1/health" "/tmp/vip-live-health.json"
+          check "password_script" "$BASE/vip-password-two-step-20261007.js?v=1" "/tmp/vip-live-password-step.js"
+          node --check /tmp/vip-live-password-step.js
           grep -Fq 'id="passengerWhatsapp0589"' /tmp/vip-invite-page.html
           grep -Fq '/public-agenda-shell-0569.js' /tmp/vip-invite-page.html
           grep -Fq 'function requestVipReferral0649()' /tmp/vip-live-shell.js
@@ -57,5 +59,7 @@ jobs:
         if: always()
         with:
           name: vip-link-readonly-diagnostics
-          path: /tmp/vip-*.headers
+          path: |
+            /tmp/vip-live-password-step.js
+            /tmp/vip-*.headers
           if-no-files-found: warn
