@@ -2,6 +2,36 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.767",
+      "build": 6058,
+      "date": "2026-10-10",
+      "title": "Viagem Certa VIP: acesso por WhatsApp e cards públicos BlaBlaCar",
+      "summary": "Área VIP reformulada com um único campo de WhatsApp previamente autorizado, sessão separada somente para visualizar anúncios públicos e cards inteiros clicáveis no anúncio correspondente.",
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Login por número autorizado sem senha para visualizar apenas anúncios públicos",
+        "Layout de cards com horários, rota, motorista e agrupamento por data",
+        "Card inteiro abre URL pública validada na BlaBlaCar"
+      ],
+      "fixed": [
+        "Removida a exigência de senha na tela VIP de leitura",
+        "Eliminada abertura de reserva interna ao tocar no card"
+      ],
+      "improved": [
+        "Sessão de visualização não concede acesso a reservas, créditos ou dados privados",
+        "Sem extrapolar tarifas ausentes no feed público",
+        "Nenhuma alteração no FAROL, Agenda e Timeline Android"
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Viagem Certa VIP",
+        "Firebase Hosting",
+        "Autorização pública restrita"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.766",
       "build": 6057,
       "date": "2026-10-09",

@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
-  <title>Área VIP — Acesso privado</title>
-  <meta name="description" content="Espaço exclusivo para membros convidados.">
-  <meta property="og:title" content="Área VIP — Acesso privado">
-  <meta property="og:description" content="Espaço exclusivo para membros convidados.">
+  <title>Área Exclusiva</title>
+  <meta name="description" content="Viagens selecionadas para WhatsApps autorizados.">
+  <meta property="og:title" content="Área Exclusiva">
+  <meta property="og:description" content="Viagens selecionadas para WhatsApps autorizados.">
   <meta property="og:type" content="website">
   <style>
     :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#171717;background:#fbf8fc;--ink:#171717;--muted:#5f5962;--line:#d8d1d9;--accent:#7055bd}
@@ -118,72 +118,66 @@
     .passengerNav0589{position:absolute;top:0;right:0;display:flex;justify-content:flex-end;gap:6px;margin:0}
     .passengerNav0589 a,.passengerNav0589 button{display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:7px 10px;border:1px solid #d7d0d9;border-radius:12px;background:#fff;color:#4f3c8e;font:inherit;font-size:13px;font-weight:900;text-decoration:none;cursor:pointer}
     @media(max-width:420px){main{padding-left:10px;padding-right:10px}.agendaTrip0569{padding:18px 15px 20px;border-radius:23px}.agendaDate0569{font-size:25px}.agendaDriver0569{font-size:18px}.agendaJourney0569{grid-template-columns:68px 23px minmax(0,1fr);column-gap:7px}.agendaTime0569 strong{font-size:22px}.agendaTime0569 small{font-size:16px}.agendaCity0569{font-size:23px}.agendaSegmentRow0580{grid-template-columns:minmax(0,1fr) auto auto;column-gap:6px;row-gap:3px}.agendaSegmentSeats0580{min-width:52px;font-size:13px}.agendaSegmentReserve0584{min-width:82px;min-height:32px;padding:6px 8px;font-size:12px}.agendaCardActions0584{justify-content:stretch}.agendaViewRide0584{width:100%}}
+
+    /* 0768: dedicated public-ad VIP experience, aligned with the requested card reference. */
+    :root { --ink:#071a38; --muted:#64718a; --line:#e3e5e9; --accent:#52637b; }
+    html,body{background:#f5f6fa;color:#071a38}
+    main{width:min(100%,680px);padding:22px 16px calc(50px + env(safe-area-inset-bottom,0px))}
+    .top0569{padding:4px 70px 20px;border-bottom:0}
+    .brand0569{color:#11284c;font-size:29px;font-weight:900}
+    .title0569{margin-top:0;color:#11284c;font-size:29px;font-weight:900}
+    .vipGate0649{margin:18px auto 0;max-width:480px;padding:34px 26px;border:1px solid #e8e9ed;border-radius:28px;background:#fff;box-shadow:0 16px 42px #14213d0a}
+    .vipCrown0768{font-size:45px;color:#9e7b32;text-align:center;margin-bottom:12px}
+    .vipGate0649 .vipEyebrow0649{color:#8b6b2c;font-size:13px;letter-spacing:.18em;text-align:center}
+    .vipGate0649 h1{margin:14px 0 10px;text-align:center;font-size:28px;line-height:1.2;color:#09203e}
+    .vipGate0649 .vipLead0649{text-align:center;color:#65718a;font-size:16px}
+    .accessInput0589{font-size:20px;border:1px solid #cdd4df;border-radius:16px;min-height:58px}
+    .accessButton0589{min-height:56px;border-radius:16px;background:#10284c;color:#fff;font-size:18px}
+    .passengerNav0589 button{border-radius:12px;background:#fff;color:#11284c}
+    .vipDayHeading0768{font-size:34px;line-height:1.2;font-weight:850;letter-spacing:-.03em;margin:26px 0 16px;padding-left:8px;color:#0a1f3e}
+    .vipTripCard0768{display:block;width:100%;padding:0;margin:0 0 20px;background:#fff;border:1px solid #e1e3e8;border-radius:24px;overflow:hidden;color:#091e3b;text-decoration:none;box-shadow:0 1px 1px #00000005}
+    a.vipTripCard0768:hover{border-color:#8298b7;box-shadow:0 8px 24px #172b4f12}
+    a.vipTripCard0768:focus-visible{outline:3px solid #2865b9;outline-offset:3px}
+    .vipTripUnavailable0768{opacity:.65}
+    .vipTripMain0768{display:grid;grid-template-columns:68px 18px minmax(0,1fr) auto;gap:8px;padding:26px 20px 29px;min-height:190px;align-items:stretch}
+    .vipTripTimes0768{display:flex;flex-direction:column;align-items:start;justify-content:space-between;gap:8px;font-size:18px}
+    .vipTripTimes0768 strong{font-size:24px;letter-spacing:-.03em;white-space:nowrap}
+    .vipTripTimes0768 small{font-size:17px;color:#66748b}
+    .vipTripRail0768{position:relative;margin:5px 0 12px;width:3px;justify-self:center;background:#3e526b;border-radius:5px}
+    .vipTripRail0768:before,.vipTripRail0768:after{content:"";position:absolute;left:50%;transform:translateX(-50%);width:11px;height:11px;border:3px solid #3e526b;border-radius:50%;background:#fff}
+    .vipTripRail0768:before{top:-4px}.vipTripRail0768:after{bottom:-4px}
+    .vipTripCities0768{display:flex;flex-direction:column;justify-content:space-between;gap:18px;min-width:0}
+    .vipTripCities0768 strong{font-size:24px;line-height:1.18;overflow-wrap:break-word;letter-spacing:-.02em}
+    .vipTripFare0768{font-size:21px;white-space:nowrap;text-align:right;padding-left:2px;font-weight:850}
+    .vipTripFooter0768{display:flex;align-items:center;gap:14px;border-top:1px solid #e5e7eb;padding:20px 22px;color:#65738b;font-size:20px;min-height:76px}
+    .vipTripDriver0768{font-weight:750}.vipTripUnavailableText0768{font-size:12px;margin-left:auto}
+    .vipEmpty0768{margin:30px 10px;color:#69768b;font-size:17px}
+    @media(max-width:460px){
+      main{padding:16px 12px 32px}.vipTripMain0768{grid-template-columns:60px 15px minmax(0,1fr) auto;padding:24px 16px;gap:7px;min-height:170px}
+      .vipTripTimes0768 strong{font-size:19px}.vipTripTimes0768 small{font-size:14px}
+      .vipTripCities0768 strong{font-size:20px}.vipTripFare0768{font-size:16px}
+      .vipTripCard0768{border-radius:20px}.vipDayHeading0768{font-size:30px}
+      .vipTripFooter0768{padding:16px 18px;font-size:18px}
+    }
   </style>
 </head>
 <body>
   <main>
     <header id="vipHeader0649" class="top0569" aria-label="Área VIP">
-      <div id="vipBrand0649" class="brand0569">ÁREA VIP</div>
-      <div id="vipTitle0649" class="title0569">Acesso privado para membros</div>
+      <div id="vipTitle0649" class="title0569">Área Exclusiva</div>
       <nav id="passengerNav0589" class="passengerNav0589 hidden" aria-label="Área do membro">
-        <a id="passengerAreaLink0589" href="/minha-area.html">Minha área</a>
+
         <button id="passengerAgendaLogout0589" class="hidden" type="button">Sair</button>
       </nav>
     </header>
 
-    <section id="accessGate0589" class="vipGate0649" aria-hidden="false">
-      <div class="vipEyebrow0649">ACESSO EXCLUSIVO</div>
-      <h1>Você precisa ser VIP para entrar.</h1>
-      <p class="vipLead0649">Este é um espaço privado, reservado a membros convidados.</p>
-      <div class="vipTrust0649" aria-hidden="true"><span>Privado</span><span>Pessoal</span><span>Por convite</span></div>
-
-      <label class="accessLabel0589">WhatsApp
-        <input id="passengerWhatsapp0589" class="accessInput0589" autocomplete="tel" inputmode="tel" maxlength="24" placeholder="(11) 99999-9999">
+    <section id="accessGate0589" class="vipGate0649" aria-label="Acesso por WhatsApp">
+      <p class="vipLead0649">Informe seu WhatsApp autorizado para continuar.</p>
+      <label class="accessLabel0589" for="passengerWhatsapp0589">WhatsApp
+        <input id="passengerWhatsapp0589" class="accessInput0589" type="tel" autocomplete="tel" inputmode="tel" maxlength="24" placeholder="(11) 99999-9999">
       </label>
-      <div id="vipPasswordWrap0649" class="hidden">
-        <label class="accessLabel0589">Senha
-          <input id="vipPassword0649" class="accessInput0589 bookingPassword0625" type="password" inputmode="numeric" autocomplete="current-password" minlength="4" maxlength="4" pattern="[0-9]{4}" placeholder="••••">
-        </label>
-      </div>
-      <div id="vipPasswordConfirmWrap0649" class="hidden">
-        <label class="accessLabel0589">Confirme sua senha
-          <input id="vipPasswordConfirm0649" class="accessInput0589 bookingPassword0625" type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="4" pattern="[0-9]{4}" placeholder="••••">
-        </label>
-      </div>
-      <button id="vipForgotPassword0651" class="accessSecondary0651 hidden" type="button">Esqueci minha senha</button>
-      <button id="passengerAccessContinue0589" class="accessButton0589" type="button">CONTINUAR</button>
-
-      <div id="vipForcedPasswordChange0651" class="forcedPassword0651 hidden">
-        <h2>Crie sua nova senha</h2>
-        <p>A senha temporária serviu somente para confirmar seu acesso. Escolha agora 4 números novos.</p>
-        <label class="accessLabel0589">Nova senha
-          <input id="vipRecoveredPassword0651" class="accessInput0589 bookingPassword0625" type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="4" pattern="[0-9]{4}" placeholder="••••">
-        </label>
-        <label class="accessLabel0589">Confirme a nova senha
-          <input id="vipRecoveredPasswordConfirm0651" class="accessInput0589 bookingPassword0625" type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="4" pattern="[0-9]{4}" placeholder="••••">
-        </label>
-        <button id="vipSaveRecoveredPassword0651" class="accessButton0589" type="button">SALVAR NOVA SENHA</button>
-      </div>
-
-      <div id="vipReferralRequestWrap0649" class="hidden">
-        <label class="accessLabel0589">Seu nome
-          <input id="vipReferralName0649" class="accessInput0589" autocomplete="name" maxlength="120" placeholder="Como prefere ser chamado">
-        </label>
-        <button id="vipReferralRequest0649" class="accessButton0589" type="button">SOLICITAR ACESSO VIP</button>
-      </div>
+      <button id="passengerAccessContinue0589" class="accessButton0589" type="button">Continuar</button>
       <p id="passengerAccessMessage0589" class="accessMessage0589 hidden" role="alert"></p>
-    </section>
-
-    <section id="vipMemberHome0649" class="vipMember0649 hidden">
-      <div class="vipMemberTop0649">
-        <span class="vipBadge0649">MEMBRO VIP</span>
-        <span id="vipCreditBalance0649" class="vipCredit0649">Créditos: —</span>
-      </div>
-      <div class="vipMemberActions0649">
-        <button id="vipShareInvite0649" type="button">Indicar amigo</button>
-        <button id="vipRefreshCredits0649" type="button">Atualizar créditos</button>
-      </div>
-      <p id="vipMemberMessage0649" class="vipMemberMessage0649">Indicações aprovadas podem gerar créditos para descontos.</p>
     </section>
 
     <section id="loading" class="state0569 hidden">Carregando sua área…</section>
@@ -192,73 +186,6 @@
   </main>
   <a id="whatsappFab0569" class="whatsappFab0569 hidden" aria-hidden="true" aria-label="Falar com o motorista pelo WhatsApp"><span aria-hidden="true">✆</span><span>WhatsApp</span></a>
 
-  <div id="bookingModal0623" class="bookingBackdrop0623 hidden" role="dialog" aria-modal="true" aria-labelledby="bookingTitle0623">
-    <section class="bookingSheet0623">
-      <button id="bookingClose0623" class="bookingClose0623" type="button" aria-label="Fechar">×</button>
-      <h2 id="bookingTitle0623" class="bookingTitle0623">Reservar meu lugar</h2>
-      <p class="bookingLead0623">Uma pergunta por vez.</p>
-      <div id="bookingSummary0623" class="bookingSummary0623"></div>
-      <p id="bookingProgress0625" class="bookingFine0623" aria-live="polite"></p>
-
-      <div id="bookingContactStep0625">
-        <label class="bookingLabel0623">Qual é o seu WhatsApp?
-          <input id="bookingPhone0623" class="bookingInput0623" autocomplete="tel" inputmode="tel" maxlength="24" placeholder="(11) 99999-9999">
-        </label>
-        <button id="bookingContactContinue0625" class="bookingPrimary0623" type="button">CONTINUAR</button>
-      </div>
-
-      <div id="bookingNameStep0625" class="hidden">
-        <label class="bookingLabel0623">Como você se chama?
-          <input id="bookingName0623" class="bookingInput0623" autocomplete="name" maxlength="120" placeholder="Seu nome">
-        </label>
-        <button id="bookingNameContinue0625" class="bookingPrimary0623" type="button">CONTINUAR</button>
-        <button class="bookingSecondary0623 bookingBack0625" type="button">Voltar</button>
-      </div>
-
-      <div id="bookingPasswordStep0625" class="hidden">
-        <label id="bookingPasswordLabel0625" class="bookingLabel0623">Crie sua senha
-          <input id="bookingPassword0625" class="bookingInput0623 bookingPassword0625" type="password" inputmode="numeric" autocomplete="current-password" minlength="4" maxlength="4" pattern="[0-9]{4}" placeholder="••••">
-        </label>
-        <p class="bookingFine0623">Use exatamente 4 números.</p>
-        <button id="bookingPasswordContinue0625" class="bookingPrimary0623" type="button">CONTINUAR</button>
-        <button class="bookingSecondary0623 bookingBack0625" type="button">Voltar</button>
-      </div>
-
-      <div id="bookingPasswordConfirmStep0625" class="hidden">
-        <label class="bookingLabel0623">Confirme sua senha
-          <input id="bookingPasswordConfirm0625" class="bookingInput0623 bookingPassword0625" type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="4" pattern="[0-9]{4}" placeholder="••••">
-        </label>
-        <button id="bookingPasswordConfirmContinue0625" class="bookingPrimary0623" type="button">CONTINUAR</button>
-        <button class="bookingSecondary0623 bookingBack0625" type="button">Voltar</button>
-      </div>
-
-      <div id="bookingSeatsStep0625" class="hidden">
-        <label class="bookingLabel0623">Quantos lugares?</label>
-        <div class="bookingSeats0623" role="group" aria-label="Quantidade de lugares">
-          <button id="bookingSeatsMinus0623" class="bookingSeatButton0623" type="button" aria-label="Diminuir lugares">−</button>
-          <div id="bookingSeatCount0623" class="bookingSeatCount0623" aria-live="polite">1 lugar</div>
-          <button id="bookingSeatsPlus0623" class="bookingSeatButton0623" type="button" aria-label="Aumentar lugares">+</button>
-        </div>
-        <button id="bookingSeatsContinue0625" class="bookingPrimary0623" type="button">CONTINUAR</button>
-        <button class="bookingSecondary0623 bookingBack0625" type="button">Voltar</button>
-      </div>
-
-      <div id="bookingReviewStep0625" class="hidden">
-        <h3>Confira sua reserva</h3>
-        <div id="bookingReview0625" class="bookingSummary0623"></div>
-        <label id="bookingCreditWrap0649" class="bookingCredit0649 hidden">
-          <input id="bookingUseCredits0649" type="checkbox" checked>
-          <span id="bookingCreditText0649">Usar meus créditos disponíveis neste pedido.</span>
-        </label>
-        <button id="bookingConfirm0625" class="bookingPrimary0623" type="button">SOLICITAR RESERVA</button>
-        <button class="bookingSecondary0623 bookingBack0625" type="button">Voltar</button>
-      </div>
-
-      <p id="bookingStatus0623" class="bookingStatus0623 hidden" role="status" aria-live="polite"></p>
-      <a id="bookingHelp0623" class="bookingHelp0623 hidden" rel="noopener noreferrer">Preciso de ajuda pelo WhatsApp</a>
-    </section>
-  </div>
-
-  <script src="/public-agenda-shell-0569.js?v=0.1.724-lossless-realtime" defer></script>
+  <script src="/vip-view-0768.js?v=1" defer></script>
 </body>
 </html>

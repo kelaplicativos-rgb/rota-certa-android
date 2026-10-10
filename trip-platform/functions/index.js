@@ -4541,6 +4541,70 @@ async function publicAgendaExactBlaBlaLinks0570(driver, sourceDocs, rawTrips) {
   });
 }
 
+// VIP 0768 uses an intentionally read-only bearer, separate from passenger
+// account sessions. Knowing an authorized phone number is NOT phone ownership
+// verification, so this credential must never authorize bookings, credits,
+// private passenger records, mutations or account operations.
+const VIP_PHONE_SESSION_COLLECTION_0768 = "vipPhoneReadOnlySessions0768";
+const VIP_PHONE_TTL_MS_0768 = 6 * 60 * 60 * 1000;
+
+function vipPhoneToken0768(req) {
+  const token = cleanText(req.get("X-Rota-Certa-Vip-Read-Token"), 240);
+  return /^[A-Za-z0-9_-]{40,200}$/.test(token) ? token : "";
+}
+
+async function verifyVipPhoneView0768(req, canonicalDriverUsername) {
+  const token = vipPhoneToken0768(req);
+  if (!token) return false;
+  const ref = db.collection(VIP_PHONE_SESSION_COLLECTION_0768).doc(sha256Hex(token));
+  const snapshot = await ref.get();
+  if (!snapshot.exists) return false;
+  const data = snapshot.data() || {};
+  const username = normalizeUsername(canonicalDriverUsername);
+  if (!username || normalizeUsername(data.driverUsername) !== username ||
+      Number(data.expiresAtMillis || 0) <= Date.now()) return false;
+  const contact = cleanText(data.passengerContact, 40);
+  if (!contact) return false;
+  const access = await driverPassengerAccessRef(username, contact).get();
+  return access.exists && passengerAccessIsAuthorized(access.data());
+}
+
+async function loginVipPhoneView0768(req, res) {
+  await enforceBookingRateLimit(req);
+  let phone;
+  try { phone = normalizeBrazilWhatsapp(req.body && req.body.passengerContact); }
+  catch (_) { return fail(res, 403, "vip_phone_not_authorized", "WhatsApp não autorizado para acessar esta área."); }
+  const resolved = await resolveDriverUsername(
+    (req.body && (req.body.publicSlug || req.body.driverUsername)) || ""
+  );
+  if (!resolved) return fail(res, 403, "vip_phone_not_authorized", "WhatsApp não autorizado para acessar esta área.");
+  const username = resolved.canonicalUsername;
+  const access = await driverPassengerAccessRef(username, phone).get();
+  if (!access.exists || !passengerAccessIsAuthorized(access.data())) {
+    return fail(res, 403, "vip_phone_not_authorized", "WhatsApp não autorizado para acessar esta área.");
+  }
+  const token = crypto.randomBytes(32).toString("base64url");
+  const expiresAtMillis = Date.now() + VIP_PHONE_TTL_MS_0768;
+  await db.collection(VIP_PHONE_SESSION_COLLECTION_0768).doc(sha256Hex(token)).set({
+    driverUsername: username,
+    passengerContact: phone,
+    scope: "PUBLIC_ADS_ONLY",
+    createdAtMillis: Date.now(),
+    expiresAtMillis,
+  });
+  res.set("Cache-Control", "private, no-store");
+  return json(res, 200, { sessionToken: token, expiresAtMillis, access: "PUBLIC_ADS_ONLY" });
+}
+
+async function checkVipPhoneView0768(req, res) {
+  const resolved = await resolveDriverUsername(req.query && req.query.driverUsername);
+  if (!resolved || !(await verifyVipPhoneView0768(req, resolved.canonicalUsername))) {
+    return fail(res, 401, "vip_phone_session_invalid", "Informe seu WhatsApp autorizado.");
+  }
+  res.set("Cache-Control", "private, no-store");
+  return json(res, 200, { allowed: true, access: "PUBLIC_ADS_ONLY" });
+}
+
 async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRoute = false) {
   const resolvedDriver = await resolveDriverUsername(usernameRaw);
   const username = resolvedDriver ? resolvedDriver.canonicalUsername : "";
@@ -4568,7 +4632,7 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
   if (testerSessionHeader(req)) {
     tester = await requireTesterSession(req, res, username);
     if (!tester) return;
-  } else {
+  } else if (!(await verifyVipPhoneView0768(req, username))) {
     const session = await requirePassengerSession(req, res);
     if (!session) return;
     const authorized = await requirePassengerDriverAccess(req, res, username, session);
@@ -4630,7 +4694,7 @@ async function waitPublicAgendaCanonicalChange0495(res, req, usernameRaw, agenda
   if (testerSessionHeader(req)) {
     tester0589 = await requireTesterSession(req, res, username);
     if (!tester0589) return;
-  } else {
+  } else if (!(await verifyVipPhoneView0768(req, username))) {
     const session = await requirePassengerSession(req, res);
     if (!session) return;
     const authorized = await requirePassengerDriverAccess(req, res, username, session);
@@ -11942,6 +12006,12 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     }
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "bookings" && req.method === "GET") {
       return await listDriverBookings(req, res, parts[3]);
+    }
+    if (req.method === "POST" && path === "/v1/public/vip/phone-login") {
+      return await loginVipPhoneView0768(req, res);
+    }
+    if (req.method === "GET" && path === "/v1/public/vip/phone-session") {
+      return await checkVipPhoneView0768(req, res);
     }
     if (req.method === "GET" && path === "/v1/public/all-consults/capabilities") {
       return await allConsults0757.getCapabilities0757(req, res);
