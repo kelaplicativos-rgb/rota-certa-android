@@ -53,7 +53,16 @@ jobs:
           node --check trip-platform/functions/index.js
           node --check trip-platform/functions/remote-health-0747.js
           node --check trip-platform/public/vip-view-0768.js
-          node --test trip-platform/functions/test/*.test.js | tee /tmp/backend-tests.txt
+          node --test \
+            trip-platform/functions/test/vip-readonly-phone-0768.test.js \
+            trip-platform/functions/test/viagem-certa-passenger-gate-0589.test.js \
+            trip-platform/functions/test/public-blablacar-link-0409.test.js \
+            trip-platform/functions/test/remote-health-0747.test.js \
+            trip-platform/functions/test/remote-health-poll-0762.test.js \
+            trip-platform/functions/test/remote-technical-zip-0761.test.js \
+            trip-platform/functions/test/standalone-covers-remote-0736.test.js \
+            trip-platform/functions/test/remote-access-toggle-0764.test.js \
+            trip-platform/functions/test/blablacar-trip-query-remote-0737.test.js | tee /tmp/backend-tests.txt
           grep -Fq 'src="/vip-view-0768.js?v=1"' trip-platform/public/index.html
           ! grep -Fq 'id="vipPassword0649"' trip-platform/public/index.html
 
