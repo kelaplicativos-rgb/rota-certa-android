@@ -163,7 +163,7 @@ jobs:
           node --check trip-platform/functions/index.js
           node --test trip-platform/functions/test/remote-device-recovery-0770.test.js trip-platform/functions/test/standalone-covers-remote-0736.test.js trip-platform/functions/test/remote-technical-zip-0761.test.js
       - name: Install production Cloud Functions dependencies
-        run: npm --prefix trip-platform/functions ci --omit=dev --no-audit --no-fund
+        run: npm --prefix trip-platform/functions install --omit=dev --no-audit --no-fund
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
