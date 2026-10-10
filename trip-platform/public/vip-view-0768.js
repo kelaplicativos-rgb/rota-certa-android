@@ -33,8 +33,6 @@ function showArea0768(on) {
   $vip0768("agenda")?.classList.toggle("hidden", !on);
   $vip0768("passengerNav0589")?.classList.toggle("hidden", !on);
   $vip0768("passengerAgendaLogout0589")?.classList.toggle("hidden", !on);
-  $vip0768("vipBrand0649").textContent = on ? "VIAGEM CERTA" : "♛";
-  $vip0768("vipTitle0649").textContent = on ? "Viagens exclusivas" : "Acesso exclusivo";
 }
 function isBlaBlaUrl0768(raw) {
   try {
@@ -96,10 +94,11 @@ function renderCard0768(trip) {
   const fare=node0768("strong","vipTripFare0768",full?"Cheio":href?"Ver preço":"Indisponível");
   tripMain.append(clock,rail,cities,fare);
   card.append(tripMain);
-  const footer=node0768("div","vipTripFooter0768");
-  footer.append(node0768("span","","🚘"),node0768("span","vipTripDriver0768",trip.blablaProfileName||trip.driverDisplayName||"Motorista"));
-  if(!href)footer.append(node0768("small","vipTripUnavailableText0768","Anúncio público indisponível"));
-  card.append(footer);
+  if(!href){
+    const footer=node0768("div","vipTripFooter0768");
+    footer.append(node0768("small","vipTripUnavailableText0768","Anúncio público indisponível"));
+    card.append(footer);
+  }
   return card;
 }
 function render0768(trips) {
