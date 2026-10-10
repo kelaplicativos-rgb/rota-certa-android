@@ -1,0 +1,49 @@
+name: VIP public-link live diagnostics (read only)
+on:
+  push:
+    branches: ['agent/vip-live-link-diagnostic-0767']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check-live:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect deployed public invite routes without phone numbers or secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://rota-certa-7ccc8.web.app"
+          check() {
+            local label="$1" url="$2" output="$3"
+            local status
+            status=$(curl -L --retry 2 --max-time 25 -sS -D "/tmp/$label.headers" -o "$output" -w '%{http_code}' "$url")
+            printf '%s: HTTP %s; size %s bytes; content-type %s\n' "$label" "$status" "$(wc -c < "$output")" "$(grep -i '^content-type:' "/tmp/$label.headers" | tail -1 | tr -d '\r' | cut -c 1-90)"
+            test "$status" = 200
+          }
+          check "invite" "$BASE/ezequiel?convite=diagnostico0767" "/tmp/vip-invite-page.html"
+          check "plain" "$BASE/ezequiel" "/tmp/vip-plain-page.html"
+          check "root" "$BASE/" "/tmp/vip-root-page.html"
+          check "script" "$BASE/public-agenda-shell-0569.js" "/tmp/vip-live-shell.js"
+          check "myarea" "$BASE/minha-area.html" "/tmp/vip-myarea.html"
+          check "health" "$BASE/v1/health" "/tmp/vip-live-health.json"
+          grep -Fq 'id="passengerWhatsapp0589"' /tmp/vip-invite-page.html
+          grep -Fq '/public-agenda-shell-0569.js' /tmp/vip-invite-page.html
+          grep -Fq 'function requestVipReferral0649()' /tmp/vip-live-shell.js
+          grep -Fq 'params0569.get("convite")' /tmp/vip-live-shell.js
+          cmp -s /tmp/vip-invite-page.html /tmp/vip-plain-page.html
+          echo "Live source integrity:"
+          sha256sum trip-platform/public/index.html /tmp/vip-invite-page.html trip-platform/public/public-agenda-shell-0569.js /tmp/vip-live-shell.js | sed -E 's@[^ ]+/(tmp/)?@.../@g'
+          if cmp -s trip-platform/public/index.html /tmp/vip-invite-page.html; then echo "HOSTED_INDEX_MATCHES_REPO=yes"; else echo "HOSTED_INDEX_MATCHES_REPO=no"; fi
+          if cmp -s trip-platform/public/public-agenda-shell-0569.js /tmp/vip-live-shell.js; then echo "HOSTED_SHELL_MATCHES_REPO=yes"; else echo "HOSTED_SHELL_MATCHES_REPO=no"; fi
+          echo "Static link and JavaScript parse checks:"
+          node --check /tmp/vip-live-shell.js
+          echo "VIP_LINK_ROUTING_OK"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vip-link-readonly-diagnostics
+          path: /tmp/vip-*.headers
+          if-no-files-found: warn
