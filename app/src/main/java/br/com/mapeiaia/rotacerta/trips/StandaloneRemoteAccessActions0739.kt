@@ -37,7 +37,7 @@ internal fun StandaloneRemoteAccessActions0739(
     val scope = rememberCoroutineScope()
     val tenantId = RotaCertaTenantRegistry(context).activeScope().tenantId
     var autoAccess by remember(context, tenantId) {
-        mutableStateOf(RemoteSupportAutoAccess0763.enabled(context, "remote_health_collect"))
+        mutableStateOf(RemoteAccessDesiredState0771.desired(context))
     }
     var busy by remember(context, tenantId) { mutableStateOf(false) }
     var showAdvanced by remember(context, tenantId) { mutableStateOf(false) }
@@ -67,26 +67,17 @@ internal fun StandaloneRemoteAccessActions0739(
     }
 
     LaunchedEffect(context, tenantId) {
-        // Repair the server state after upgrades, process death or offline revocation.
-        // Never start a remote listener from stale local consent without a server ACK.
-        val wasEnabled = RemoteSupportAutoAccess0763.enabled(context, "remote_health_collect")
-        val synced = runCatching { syncServer(wasEnabled) }.getOrDefault(false)
-        if (wasEnabled) {
-            // A transient timeout must not silently turn an explicit ON into
-            // OFF. WorkManager recovers authenticated polling without FCM or
-            // any additional user action; foreground listening is best-effort.
+        // No implicit grant: only the already acknowledged local permission
+        // may run the listener. A pending ON or OFF is reconciled by WorkManager.
+        RemoteAccessDesiredState0771.schedule(context)
+        val authorized = RemoteSupportAutoAccess0763.enabled(context, "remote_health_collect")
+        if (authorized) {
             RemotePollingRecovery0770.reconcile(context, immediate = true)
-            if (synced) {
-                runCatching { startListener() }.onFailure {
-                    permissionMessage =
-                        "Escuta rápida indisponível; recuperação automática em segundo plano ativa."
-                }
-            } else {
-                permissionMessage =
-                    "Toggle ON preservado. Aguardando conexão autenticada em segundo plano."
+            runCatching { startListener() }.onFailure {
+                permissionMessage = "Recuperação remota automática em segundo plano."
             }
-        } else if (!synced) {
-            permissionMessage = "Acesso desligado no aparelho. Revogação do link remoto pendente de conexão."
+        } else if (RemoteAccessDesiredState0771.desired(context)) {
+            permissionMessage = "ON solicitado. Autorização aguardando confirmação do servidor."
         }
     }
 
@@ -101,40 +92,25 @@ internal fun StandaloneRemoteAccessActions0739(
                 enabled = !busy,
                 onCheckedChange = { requested ->
                     busy = true
-                    // OFF blocks the device instantly, even if the server is offline.
-                    if (!requested) {
-                        runCatching { RemoteSupportAutoAccess0763.setEnabled(context, false) }
-                        autoAccess = false
-                        stopListener()
-                        permissionMessage = "Coleta no aparelho interrompida. Revogando links privados…"
-                    }
-                    scope.launch {
-                        try {
-                            check(syncServer(requested)) { "Servidor não confirmou o novo estado." }
-                            if (requested) {
-                                RemoteSupportAutoAccess0763.setEnabled(context, true)
-                                startListener()
-                            }
-                            autoAccess = requested
-                            permissionMessage = if (requested) {
-                                "ON: capas, viagens detalhadas, saúde e ZIP disponíveis sob consulta."
-                            } else {
-                                "OFF: coleta bloqueada e links privados revogados no servidor."
-                            }
-                        } catch (_: Exception) {
-                            if (requested) {
-                                runCatching { RemoteSupportAutoAccess0763.setEnabled(context, false) }
-                                runCatching { stopListener() }
-                                runCatching { syncServer(false) }
-                                autoAccess = false
-                                permissionMessage = "Não foi possível ativar. O acesso continua desligado."
-                            } else {
-                                permissionMessage = "OFF local concluído. Revogação do servidor pendente; conecte a internet e reabra esta tela."
-                            }
-                        } finally {
-                            busy = false
+                    try {
+                        // Only explicit user interaction changes the desired
+                        // toggle position. A transient DNS failure never does.
+                        RemoteAccessDesiredState0771.request(context, requested)
+                        autoAccess = requested
+                        if (requested) {
+                            permissionMessage =
+                                "ON registrado. Consultas começam após confirmação automática do servidor."
+                        } else {
+                            stopListener()
+                            permissionMessage =
+                                "OFF aplicado no aparelho. Revogação do link em segundo plano."
                         }
+                    } catch (error: Exception) {
+                        permissionMessage = "Falha ao salvar a escolha; nenhuma permissão adicional foi concedida."
+                    } finally {
+                        busy = false
                     }
+
                 },
             )
             Text("Permitir consultas remotas", modifier = Modifier.padding(start = 12.dp))
