@@ -12,13 +12,13 @@ const privateJs = fs.readFileSync(path.join(root, "trip-platform", "public", "mi
 const gradle = fs.readFileSync(path.join(root, "app", "build.gradle.kts"), "utf8");
 function between(source,startMarker,endMarker){const start=source.indexOf(startMarker);assert.notEqual(start,-1,startMarker+" missing");const end=source.indexOf(endMarker,start+startMarker.length);assert.notEqual(end,-1,endMarker+" missing");return source.slice(start,end);}
 test("0768 VIP entrance uses only approved WhatsApp and no password form",()=>{
-  assert.match(html, /<title>Viagens exclusivas<\/title>/);
+  assert.match(html, /<title>Área Exclusiva<\/title>/);
   assert.doesNotMatch(html, /VIAGEM CERTA|Acesso exclusivo|ACESSO EXCLUSIVO|Suas viagens em um só lugar\.|♛/);
   assert.match(html, /id="passengerWhatsapp0589"/);
   assert.match(html, /id="passengerAccessContinue0589"/);
   assert.doesNotMatch(html, /id="vipPassword0649"/);
   assert.match(html, /id="passengerNav0589" class="passengerNav0589 hidden"/);
-  assert.match(html, /og:title" content="Viagens exclusivas"/);
+  assert.match(html, /og:title" content="Área Exclusiva"/);
 });
 test("0649 agenda trip and change APIs require VIP session plus driver access",()=>{
   const agenda=between(api,"async function getPublicDriverAgenda","async function waitPublicAgendaCanonicalChange0495");
