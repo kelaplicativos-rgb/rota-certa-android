@@ -727,6 +727,13 @@ internal class BlaBlaRidesSnapshotStabilizer0526(
  * exposes a single-flight boundary. Each profile finishes rides -> trips -> passengers before
  * the next profile starts, preventing UNIFIED_SINGLE_FLIGHT_BUSY from dropping another account.
  */
+/**
+ * Only contention is transient enough to merit an automatic retry.
+ * Identity, HTML and data integrity failures remain fail-closed.
+ */
+internal fun globalHtmlBusyRetryable0768(errorCode: String): Boolean =
+    errorCode == "UNIFIED_SINGLE_FLIGHT_BUSY"
+
 internal object BlaBlaRidesSnapshotCoordinator0526 {
     suspend fun captureAll(
         context: Context,
@@ -779,6 +786,52 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
                     BlaBlaHtmlCaptureTransaction0610.heartbeat(app, transaction)
                     add(account to result)
                 }
+            }.toMutableList()
+
+            // 0.1.768: A busy WebView profile must not invalidate the global transaction
+            // before the other isolated profiles have had their turn. Retry only a
+            // lease-contention failure, never identity, HTML or passenger failures.
+            // No canonical/public state is changed by this recovery path.
+            val busyIndices0768 = accountResults0658.indices.filter { index ->
+                globalHtmlBusyRetryable0768(accountResults0658[index].second.errorCode)
+            }
+            val leaseStore0768 = BlaBlaDynamicSessionStore(app)
+            for (index0768 in busyIndices0768) {
+                val account0768 = accountResults0658[index0768].first
+                var waitedMillis0768 = 0L
+                while (
+                    leaseStore0768.hasConcurrentExternalFlight0426(account0768) &&
+                    waitedMillis0768 < 120_000L
+                ) {
+                    BlaBlaHtmlCaptureTransaction0610.heartbeat(app, transaction)
+                    if (waitedMillis0768 % 5_000L == 0L) {
+                        onProgress(
+                            "Perfil pendente • " + account0768.displayLabel +
+                                " • aguardando navegador disponível"
+                        )
+                    }
+                    delay(500L) // cancellable: never steals or releases another owner's lease
+                    waitedMillis0768 += 500L
+                }
+                BlaBlaHtmlCaptureTransaction0610.heartbeat(app, transaction)
+                onProgress("Revalidando perfil pendente • " + account0768.displayLabel)
+                val recovered0768 = BlaBlaDirectAccountCapture0608.capture(
+                    context = app,
+                    store = store,
+                    account = account0768,
+                    captureId = manifest.captureId,
+                    onProgress = onProgress,
+                    transaction0610 = transaction,
+                )
+                accountResults0658[index0768] = account0768 to recovered0768
+                UnifiedDebugEventStore.recordAlways(
+                    "BLABLACAR_GLOBAL_HTML_BUSY_RECOVERY_0768",
+                    app.packageName,
+                    "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} " +
+                        "accountKey=${store.accountKey(account0768.id)} " +
+                        "waitedMs=$waitedMillis0768 result=${recovered0768.errorCode.ifBlank { "CAPTURED" }} " +
+                        "neverStealLease=true preservePreviousCanonical=true",
+                )
             }
             accountResults0658.forEach { (account, result) ->
                 result.privateStage0610?.let { stagedByAccount[account.id] = it }
