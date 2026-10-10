@@ -101,7 +101,12 @@ internal class RemoteCoversPollService0758 : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        if (polling?.isActive == true) return START_NOT_STICKY
+        if (!RemoteSupportAutoAccess0763.enabled(this, "remote_health_collect")) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        RemotePollingRecovery0770.reconcile(this)
+        if (polling?.isActive == true) return START_STICKY
         val manager = getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= 26) {
             manager.createNotificationChannel(NotificationChannel(
@@ -123,6 +128,11 @@ internal class RemoteCoversPollService0758 : Service() {
         isRunning = true
         polling = scope.launch {
             while (isActive) {
+                if (!RemoteSupportAutoAccess0763.enabled(applicationContext, "remote_health_collect")) {
+                    main.post { closePopup() }
+                    stopSelf()
+                    break
+                }
                 try {
                     val settings = TripStore(applicationContext).onlineSettings()
                     if (settings.configured && settings.driverUsername.isNotBlank() &&
@@ -237,7 +247,19 @@ internal class RemoteCoversPollService0758 : Service() {
                 delay(10_000)
             }
         }
-        return START_NOT_STICKY
+        return START_STICKY
+    }
+
+    // Android 15/16 imposes a time budget on dataSync foreground services.
+    // Stop promptly on timeout; the periodic WorkManager recovery remains
+    // installed and can process later jobs without violating that limit.
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        UnifiedDebugEventStore.record(
+            "REMOTE_DATA_SYNC_TIMEOUT_RECOVERY_0770", packageName,
+            "fallback=WorkManager foregroundServiceStopped=true",
+        )
+        RemotePollingRecovery0770.reconcile(this)
+        stopSelf(startId)
     }
 
     private fun showConsent(event: String, jobId: String) {
