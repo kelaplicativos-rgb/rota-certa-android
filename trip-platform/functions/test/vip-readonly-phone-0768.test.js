@@ -48,7 +48,7 @@ test("New public VIP page has just WhatsApp, no invitation workflow or password 
 });
 test("Full card is a verified BlaBlaCar link, never an internal booking on phone-only session",()=>{
   assert.match(view,/node0768\(href\?"a":"article"/);
-  assert.match(view,/card\.href = publicUrl/);
+  assert.match(view,/card\.href=href/);
   assert.match(view,/card\.rel = "noopener noreferrer"/);
   assert.doesNotMatch(view,/openFullTripBooking0623|createBooking\(/);
   assert.match(view,/No verified fare field exists/);
