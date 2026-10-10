@@ -2,6 +2,35 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.768",
+      "build": 6059,
+      "date": "2026-10-10",
+      "title": "Recuperação isolada de perfil HTML ocupado",
+      "summary": "Coleta global aguarda liberação do navegador por perfil e revalida apenas os perfis temporariamente ocupados, após concluir os demais. Publicação canônica continua condicionada a 100% de validação.",
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Segunda passagem só para perfis que falharam com UNIFIED_SINGLE_FLIGHT_BUSY",
+        "Espera limitada a 120 segundos, cancelável, com heartbeat de transação e progresso",
+        "Diagnóstico de recuperação por perfil com tempo de espera e resultado",
+        "Regressão unitária para falhas não recuperáveis"
+      ],
+      "fixed": [
+        "Falha prematura da coleta global quando o primeiro perfil está temporariamente ocupado"
+      ],
+      "improved": [
+        "As contas disponíveis não são bloqueadas por outra conta ocupada",
+        "Dados canônicos anteriores preservados em coleta incompleta",
+        "FAROL, OCR, leitores de tela, UI e login VIP permanecem inalterados"
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Coleta global HTML BlaBlaCar",
+        "Central de Saúde"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.767",
       "build": 6058,
       "date": "2026-10-10",
