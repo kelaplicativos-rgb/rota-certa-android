@@ -2,6 +2,35 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.769",
+      "build": 6060,
+      "date": "2026-10-10",
+      "title": "Diagnóstico remoto sem falso alerta de FCM",
+      "summary": "Separa indisponibilidade das notificações push da conectividade autenticada da escuta remota. Um poll válido recupera apenas alertas de transporte obsoletos, preservando consentimento e falhas reais.",
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Comprovação do polling autenticado independente do token FCM",
+        "Recuperação seletiva de alerta de transporte após resposta autenticada",
+        "Regressões unitárias de proteção ao consentimento e falhas reais"
+      ],
+      "fixed": [
+        "FCM indisponível deixa de sobrescrever o estado de escuta remota funcional",
+        "Tela de capas deixa de classificar serviço de polling inativo como falha de registro push",
+        "Acesso remoto intencionalmente OFF não vira alerta de FCM"
+      ],
+      "improved": [
+        "Conserva observabilidade de falha de FCM para notificações de reservas",
+        "Sem alterações de Agenda, capacidade, BlaBlaCar, FAROL, login e publicação"
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Suporte remoto",
+        "Central de Saúde",
+        "Notificações"
+      ]
+    },
+    {
       "version": "0.1.768",
       "build": 6059,
       "date": "2026-10-10",
